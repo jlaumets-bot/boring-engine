@@ -1,0 +1,1304 @@
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Boring Electrolytes — Content Engine</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface2: #1a1a1a;
+  --surface3: #222;
+  --border: #2a2a2a;
+  --border2: #333;
+  --text: #E8E4DF;
+  --text2: #999;
+  --text3: #666;
+  --gold: #C4A882;
+  --gold-dim: rgba(196,168,130,0.15);
+  --green: #4ADE80;
+  --green-bg: #0D2818;
+  --red: #F87171;
+  --red-bg: #2D1515;
+  --blue: #60A5FA;
+  --blue-bg: #0C2D48;
+  --purple: #C084FC;
+  --purple-bg: #2D1B4E;
+  --orange: #FB923C;
+  --orange-bg: #3D2200;
+  --yellow: #FACC15;
+  --yellow-bg: #332B00;
+  --indigo: #A5B4FC;
+  --indigo-bg: #1E1B4B;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.6);
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  max-width: 960px;
+  margin: 0 auto;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== HEADER ===== */
+.header {
+  padding: 20px 16px 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+}
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.header-brand {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 3px;
+}
+.header h1 {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.5px;
+  margin-top: 2px;
+}
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text2);
+  transition: all var(--transition);
+}
+.icon-btn:hover { border-color: var(--gold); color: var(--gold); }
+.icon-btn.active { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+.header-btn { padding:8px 14px; border-radius:var(--radius-xs); border:1px solid var(--border2); background:var(--surface2); color:var(--text2); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:all var(--transition); }
+.header-btn:hover { border-color:var(--gold); color:var(--gold); }
+
+/* ===== NAV TABS ===== */
+.nav-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 3px;
+  margin: 0 16px 16px;
+  border: 1px solid var(--border);
+}
+.nav-tab {
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text3);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.nav-tab:hover { color: var(--text2); }
+.nav-tab.active {
+  background: var(--gold);
+  color: var(--bg);
+  box-shadow: 0 2px 8px rgba(196,168,130,0.3);
+}
+.nav-tab .tab-icon { font-size: 16px; display: block; margin-bottom: 2px; }
+.nav-tab .tab-count {
+  display: inline-block;
+  background: rgba(255,255,255,0.2);
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 10px;
+  margin-left: 4px;
+}
+.nav-tab.active .tab-count { background: rgba(0,0,0,0.2); }
+
+/* ===== VIEW CONTAINER ===== */
+.view { display: none; padding: 0 16px 100px; }
+.view.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ===== STATS BAR ===== */
+.stats-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+.stat-pill {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  text-align: center;
+}
+.stat-pill .num { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+.stat-pill .label { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+.stat-pill.pending .num { color: var(--gold); }
+.stat-pill.approved .num { color: var(--green); }
+.stat-pill.production .num { color: var(--blue); }
+.stat-pill.posted .num { color: var(--purple); }
+
+.format-tag {
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.format-tag.video { background: var(--orange-bg); color: var(--orange); }
+.format-tag.carousel { background: var(--blue-bg); color: var(--blue); }
+.format-tag.static { background: var(--purple-bg); color: var(--purple); }
+.format-tag.micro { background: var(--green-bg); color: var(--green); }
+.format-tag.bonus { background: var(--yellow-bg); color: var(--yellow); }
+.format-tag.statement { background: var(--text); color: var(--bg); }
+
+/* ===== PIPELINE VIEW ===== */
+.pipeline-stages {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid var(--border);
+}
+.pipeline-stage-tab {
+  flex: 1;
+  padding: 10px 4px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+  font-family: inherit;
+}
+.pipeline-stage-tab:hover { color: var(--text2); }
+.pipeline-stage-tab.active { color: var(--bg); }
+.pipeline-stage-tab.active.s-approved { background: var(--green); }
+.pipeline-stage-tab.active.s-filming { background: var(--orange); }
+.pipeline-stage-tab.active.s-editing { background: var(--blue); }
+.pipeline-stage-tab.active.s-posted { background: var(--purple); }
+.pipeline-stage-tab .stage-count {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+
+.pipeline-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+  overflow: hidden;
+  transition: all var(--transition);
+  animation: slideUp 0.3s ease;
+}
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.pipeline-card:hover { border-color: var(--border2); box-shadow: var(--shadow); }
+.pipeline-card-header {
+  padding: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.pipeline-card-info { flex: 1; }
+.pipeline-card-info .format-tag { margin-bottom: 8px; display: inline-block; }
+.pipeline-card-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.pipeline-card-hook { font-size: 12px; color: var(--text3); }
+.pipeline-card-day { font-size: 10px; color: var(--gold); font-weight: 600; margin-top: 6px; }
+
+.pipeline-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.pipe-btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: inherit;
+  color: var(--text2);
+  white-space: nowrap;
+}
+.pipe-btn:hover { border-color: var(--gold); color: var(--gold); }
+.pipe-btn.next { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+.pipe-btn.next:hover { background: #A8895E; }
+.pipe-btn.film { background: var(--orange-bg); color: var(--orange); border-color: var(--orange); }
+.pipe-btn.film:hover { background: var(--orange); color: var(--bg); }
+
+.pipeline-card-detail {
+  display: none;
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border);
+}
+.pipeline-card-detail.open { display: block; }
+
+/* ===== TELEPROMPTER ===== */
+.teleprompter-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #000;
+  z-index: 1000;
+  flex-direction: column;
+}
+.teleprompter-overlay.open { display: flex; }
+.teleprompter-top {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0,0,0,0.9);
+  border-bottom: 1px solid #222;
+  flex-shrink: 0;
+}
+.teleprompter-title { font-size: 14px; font-weight: 700; color: var(--gold); }
+.teleprompter-close {
+  padding: 8px 16px;
+  border-radius: var(--radius-xs);
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+}
+.teleprompter-controls {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0,0,0,0.9);
+  border-bottom: 1px solid #222;
+  flex-shrink: 0;
+}
+.tp-speed-label { font-size: 11px; color: #666; font-weight: 600; }
+.tp-speed-slider { flex: 1; accent-color: var(--gold); }
+.tp-play-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: transparent;
+  color: var(--gold);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+.tp-play-btn:hover { background: var(--gold); color: var(--bg); }
+.tp-font-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-xs);
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.tp-font-btn:hover { color: #fff; border-color: #555; }
+.teleprompter-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px 24px;
+  scroll-behavior: smooth;
+}
+.tp-script {
+  font-size: 32px;
+  font-weight: 400;
+  color: #fff;
+  line-height: 1.8;
+  max-width: 700px;
+  margin: 0 auto;
+  padding-bottom: 60vh;
+}
+.tp-shots {
+  margin-top: 40px;
+  padding-top: 40px;
+  border-top: 2px solid #222;
+}
+.tp-shots-title { font-size: 14px; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; }
+.tp-shot-item { font-size: 20px; color: #888; line-height: 1.6; margin-bottom: 12px; padding-left: 16px; border-left: 2px solid #333; }
+.tp-screen-section {
+  margin-top: 40px;
+  padding-top: 40px;
+  border-top: 2px solid #222;
+}
+.tp-screen-title { font-size: 14px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px; }
+.tp-screen-text { font-size: 20px; color: var(--blue); line-height: 1.6; }
+
+/* ===== LIST VIEW (IDEAS) ===== */
+.filter-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  color: var(--text3);
+  font-family: inherit;
+}
+.filter-chip:hover { border-color: var(--gold); color: var(--gold); }
+.filter-chip.active { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+.filter-chip.format-chip { border-style: dashed; }
+.filter-chip.format-chip.active { border-style: solid; background: var(--text); }
+
+.list-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  overflow: visible;
+  transition: all var(--transition);
+  position: relative;
+}
+.list-card:hover { border-color: var(--border2); box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+.list-card.approved { border-left: 4px solid var(--green); }
+.list-card.filming { border-left: 4px solid var(--orange); }
+.list-card.editing { border-left: 4px solid var(--blue); }
+.list-card.posted { border-left: 4px solid var(--purple); }
+.list-card.dismissed { border-left: 4px solid var(--red); opacity: 0.35; }
+
+.list-card-summary { padding: 14px 16px; cursor: pointer; }
+.list-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.list-card-title { font-size: 14px; font-weight: 700; color: var(--text); margin-top: 6px; }
+.list-card-hook { font-size: 12px; color: var(--text3); margin-top: 3px; }
+.list-card-status {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 6px;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.list-card-status.s-approved { background: var(--green-bg); color: var(--green); }
+.list-card-status.s-filming { background: var(--orange-bg); color: var(--orange); }
+.list-card-status.s-editing { background: var(--blue-bg); color: var(--blue); }
+.list-card-status.s-posted { background: var(--purple-bg); color: var(--purple); }
+.list-card-status.s-dismissed { background: var(--red-bg); color: var(--red); }
+
+.list-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.action-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all var(--transition);
+  color: var(--text3);
+}
+.action-circle.approve:hover { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.action-circle.dismiss:hover { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.action-circle.undo:hover { border-color: var(--text2); color: var(--text2); }
+
+.dismiss-popup {
+  display: none;
+  position: absolute;
+  top: 48px;
+  right: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 8px 4px;
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+  width: 180px;
+}
+.dismiss-popup.open { display: block; }
+.dismiss-popup .dp-title { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 12px 6px; }
+.dismiss-popup .dp-option { padding: 8px 12px; font-size: 12px; color: #ccc; cursor: pointer; border-radius: var(--radius-xs); margin: 0 4px; transition: background 0.15s; }
+.dismiss-popup .dp-option:hover { background: var(--red-bg); color: var(--red); }
+.dismiss-popup .dp-cancel { padding: 6px 12px; font-size: 11px; color: var(--text3); cursor: pointer; text-align: center; border-top: 1px solid var(--border); margin-top: 4px; }
+.dismiss-popup .dp-cancel:hover { color: var(--text2); }
+
+.list-card-detail {
+  display: none;
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border);
+}
+.list-card-detail.open { display: block; animation: fadeIn 0.2s ease; }
+
+.detail-section { margin-top: 14px; }
+.detail-label { font-size: 10px; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.detail-text { font-size: 13px; color: #ccc; line-height: 1.7; white-space: pre-line; }
+.detail-text.script { background: rgba(255,255,255,0.02); padding: 12px 14px; border-radius: var(--radius-xs); border-left: 3px solid var(--gold); color: #ddd; }
+.detail-text.tags { color: var(--gold); font-size: 12px; }
+.detail-text.caption { background: rgba(196,168,130,0.05); padding: 12px 14px; border-radius: var(--radius-xs); border-left: 3px solid var(--gold); color: #ddd; }
+.detail-text.preview { background: #000; color: #fff; padding: 24px; border-radius: var(--radius); font-weight: 700; font-size: 18px; line-height: 1.4; }
+
+.detail-btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.detail-btn {
+  padding: 8px 16px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: inherit;
+  color: var(--text2);
+}
+.detail-btn:hover { border-color: var(--gold); color: var(--gold); }
+.detail-btn.primary { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+.detail-btn.primary:hover { background: #A8895E; }
+.detail-btn.script-btn { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.detail-btn.generate-btn { background: var(--indigo-bg); color: var(--indigo); border-color: #6366F1; }
+.detail-btn.film-btn { background: var(--orange-bg); color: var(--orange); border-color: var(--orange); }
+
+.reel-title-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 10px 14px; background: var(--indigo-bg); border-radius: var(--radius-xs); border-left: 3px solid #6366F1; }
+.reel-title-label { font-size: 10px; font-weight: 700; color: var(--indigo); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+.reel-title-text { font-size: 13px; color: #ccc; flex: 1; }
+.copy-reel-btn { padding: 4px 10px; border-radius: 5px; border: 1px solid #6366F1; background: var(--surface2); font-size: 10px; cursor: pointer; color: var(--indigo); font-weight: 600; white-space: nowrap; font-family: inherit; }
+.copy-reel-btn:hover { background: #6366F1; color: #fff; }
+
+.canva-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 14px; background: rgba(168,85,247,0.08); border-radius: var(--radius-xs); border-left: 3px solid var(--purple); flex-wrap: wrap; }
+.canva-label { font-size: 10px; font-weight: 700; color: var(--purple); text-transform: uppercase; letter-spacing: 0.5px; }
+.canva-sizes { font-size: 11px; color: var(--text3); flex: 1; }
+.canva-sizes span { margin-right: 12px; }
+.canva-link { padding: 4px 10px; border-radius: 5px; border: 1px solid var(--purple); background: var(--surface2); font-size: 10px; cursor: pointer; color: var(--purple); font-weight: 600; text-decoration: none; }
+.canva-link:hover { background: var(--purple); color: #fff; }
+
+/* ===== EXPORT / FOOTER ===== */
+.export-bar { display: flex; gap: 8px; margin: 24px 0; justify-content: center; flex-wrap: wrap; }
+.export-btn {
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gold);
+  background: var(--gold);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--transition);
+}
+.export-btn:hover { background: #A8895E; }
+.export-btn.secondary { background: var(--surface); color: var(--gold); }
+.export-btn.secondary:hover { background: var(--surface2); }
+
+.footer { text-align: center; padding: 20px 0; font-size: 10px; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; }
+
+/* ===== SETTINGS PAGE ===== */
+.settings-overlay { display: none; }
+.settings-overlay.open { display: block; }
+.main-views { }
+.main-views.hidden { display: none; }
+
+.sp-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 16px; border-bottom: 1px solid var(--border); }
+.sp-header h2 { font-size: 20px; font-weight: 800; color: var(--text); }
+.sp-back {
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text2);
+  font-family: inherit;
+  font-weight: 600;
+  transition: all var(--transition);
+}
+.sp-back:hover { border-color: var(--gold); color: var(--gold); }
+.sp-body { padding: 16px; padding-bottom: 60px; }
+
+.sp-section { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+.sp-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  cursor: pointer;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  user-select: none;
+  transition: background var(--transition);
+}
+.sp-section-header:hover { background: var(--surface2); }
+.sp-section-header .sp-arrow { font-size: 10px; color: var(--text3); transition: transform 0.2s; }
+.sp-section-header .sp-arrow.open { transform: rotate(90deg); }
+.sp-section-body { display: none; padding: 16px; border-top: 1px solid var(--border); background: rgba(255,255,255,0.01); }
+.sp-section-body.open { display: block; }
+
+.sp-field { margin-bottom: 14px; }
+.sp-field:last-child { margin-bottom: 0; }
+.sp-label { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block; }
+.sp-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 13px; font-family: inherit; background: var(--surface); color: var(--text); transition: border-color var(--transition); }
+.sp-input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dim); }
+.sp-textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; background: var(--surface); color: var(--text); }
+.sp-textarea:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dim); }
+
+.sp-tip { display: flex; gap: 6px; padding: 10px 12px; background: var(--blue-bg); border-radius: var(--radius-xs); margin-top: 8px; font-size: 11px; color: var(--blue); line-height: 1.5; }
+.sp-tip::before { content: 'i'; flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%; background: rgba(96,165,250,0.2); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+
+.sp-tone-grid { display: flex; flex-direction: column; gap: 8px; }
+.sp-tone-card { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 2px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; transition: all var(--transition); }
+.sp-tone-card:hover { border-color: var(--gold); }
+.sp-tone-card.selected { border-color: var(--gold); background: var(--gold-dim); }
+.sp-tone-card .sp-tone-check { width: 20px; height: 20px; border: 2px solid #444; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; font-size: 12px; }
+.sp-tone-card.selected .sp-tone-check { background: var(--gold); border-color: var(--gold); color: var(--bg); }
+.sp-tone-name { font-size: 13px; font-weight: 700; color: var(--text); }
+.sp-tone-desc { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.sp-tone-count { font-size: 10px; color: var(--gold); margin-top: 3px; }
+
+.sp-platform { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.sp-platform:last-of-type { border-bottom: none; }
+.sp-platform-name { font-size: 13px; font-weight: 600; color: var(--text); min-width: 90px; }
+.sp-platform-input { width: 50px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 13px; text-align: center; background: var(--surface); color: var(--text); font-family: inherit; }
+.sp-platform-unit { font-size: 11px; color: var(--text3); }
+.sp-platform-tip { font-size: 10px; color: var(--blue); margin-left: auto; max-width: 180px; text-align: right; }
+
+.sp-format-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.sp-format-row:last-of-type { border-bottom: none; }
+.sp-format-name { font-size: 13px; font-weight: 600; min-width: 100px; }
+.sp-format-input { width: 50px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-xs); font-size: 13px; text-align: center; background: var(--surface); color: var(--text); font-family: inherit; }
+.sp-format-unit { font-size: 11px; color: var(--text3); }
+.sp-format-avail { font-size: 10px; color: var(--text3); margin-left: auto; }
+
+.sp-extra-btn { padding: 10px 16px; border-radius: var(--radius-xs); border: 1px dashed var(--gold); background: var(--surface); font-size: 12px; cursor: pointer; color: var(--gold); width: 100%; margin-top: 12px; font-family: inherit; transition: all var(--transition); }
+.sp-extra-btn:hover { background: var(--gold-dim); }
+.sp-extra-field { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+
+.sp-post-times { margin-top: 12px; }
+.sp-time-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: var(--text3); }
+.sp-time-label { font-weight: 600; min-width: 80px; color: #ccc; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 600px) {
+  .header { padding: 16px 12px 0; }
+  .nav-tabs { margin: 0 12px 12px; }
+  .view { padding: 0 12px 100px; }
+  .nav-tab { font-size: 11px; padding: 8px 4px; }
+  .tp-script { font-size: 24px; padding: 20px 16px; }
+  .pipeline-stage-tab { font-size: 10px; }
+  .stat-pill .num { font-size: 22px; }
+  .header-top { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .header-actions { align-self: flex-end; margin-top: -32px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div>
+      <div class="header-brand">Boring Electrolytes</div>
+      <h1>Content Engine</h1>
+      <div style="font-size:12px;color:var(--text3);margin-top:2px">Full production-ready posts. Click to expand. Approve, dismiss, or copy.</div>
+    </div>
+    <div class="header-actions">
+      <button class="header-btn" onclick="toggleSettings()">⚙ Brand & Voice</button>
+      <button class="header-btn" onclick="openScheduleSection()">📊 Schedule</button>
+    </div>
+  </div>
+</div>
+
+<div class="main-views" id="mainViews">
+  <nav class="nav-tabs" id="navTabs"></nav>
+
+  <div class="view" id="view-ideas">
+    <div class="stats-bar" id="statsBar"></div>
+    <div id="ideaFilters"></div>
+    <div id="ideaContent"></div>
+    <div class="export-bar">
+      <button class="export-btn" onclick="exportApproved()">Copy All Approved</button>
+      <button class="export-btn secondary" onclick="expandAll()">Expand All</button>
+      <button class="export-btn secondary" onclick="collapseAll()">Collapse All</button>
+      <button class="export-btn secondary" onclick="resetAll()">Reset All</button>
+    </div>
+  </div>
+
+  <div class="view" id="view-pipeline">
+    <div class="pipeline-stages" id="pipelineStages"></div>
+    <div id="pipelineContent"></div>
+  </div>
+
+  <div class="footer">Boring Electrolytes Content Engine</div>
+</div>
+
+<div class="settings-overlay" id="settingsOverlay"></div>
+
+<div class="teleprompter-overlay" id="teleprompterOverlay">
+  <div class="teleprompter-top">
+    <div class="teleprompter-title" id="tpTitle"></div>
+    <button class="teleprompter-close" onclick="closeTeleprompter()">Close</button>
+  </div>
+  <div class="teleprompter-controls">
+    <button class="tp-play-btn" id="tpPlayBtn" onclick="toggleTpScroll()">&#9654;</button>
+    <span class="tp-speed-label">Speed</span>
+    <input type="range" class="tp-speed-slider" id="tpSpeed" min="0.5" max="5" step="0.5" value="2">
+    <button class="tp-font-btn" onclick="tpFontDown()">A-</button>
+    <button class="tp-font-btn" onclick="tpFontUp()">A+</button>
+  </div>
+  <div class="teleprompter-body" id="tpBody"></div>
+</div>
+
+<script>
+// ===== DATA =====
+const IDEAS = [
+  {day:"Monday",community:"Fasting / Keto",format:"video",title:"The Reframe: Headache Isn't Hunger",hook:"That headache at hour 16 isn't hunger.",script:"That headache at hour 16 isn't hunger. It's your sodium dropping through the floor. Most people quit their fast because of a problem that costs twenty-five cents to solve. One teaspoon. Zero calories. Zero sugar. Nothing that breaks your fast. Your body isn't telling you to eat. It's telling you to replace what you flushed out six hours ago.",shots:"1. Close-up: clock showing 16:00\n2. The Boring Setup: pouch, glass, teaspoon on wood surface\n3. Teaspoon scoops powder, stirs into water (natural sound)\n4. Text overlay appears with sodium facts\n5. Glass on table. Walk away.",screen:"[0:00] That headache at hour 16 isn't hunger.\n[0:04] 1000mg sodium per serving\n[0:08] 0 calories. 0 sugar. 0 flavors.\n[0:12] \u20ac0.25 per serving",caption:"Your fast isn't failing. Your electrolytes are. Three ingredients, zero calories, nothing that breaks a fast. Link in bio.",reelTitle:"Fasting headache is sodium depletion not hunger \u2014 here is why",tags:"#intermittentfasting #fastingtips #electrolytes #fastingheadache #boringelectrolytes"},
+  {day:"Monday",community:"Fasting / Keto",format:"carousel",title:"The Fasting Timeline",hook:"What happens to your electrolytes during a 24-hour fast.",script:"Slide 1: 'What happens to your electrolytes during a 24-hour fast.'\nSlide 2: Hour 0-4 \u2014 Normal. Your body has reserves.\nSlide 3: Hour 4-8 \u2014 Glycogen depletes. Each gram releases 3g of water + sodium.\nSlide 4: Hour 8-12 \u2014 Kidneys increase sodium excretion. You start flushing electrolytes.\nSlide 5: Hour 12-16 \u2014 Sodium drops significantly. Headaches, fatigue, brain fog begin.\nSlide 6: Hour 16-24 \u2014 Without replacement, muscle cramps, dizziness, irritability.\nSlide 7: 'This is where one teaspoon changes everything. 1000mg sodium. 200mg potassium. 60mg magnesium.'\nSlide 8: Product flat lay. 'Three ingredients. \u20ac0.25. boringelectrolytes.com'",shots:"Design: Clean white slides, black sans-serif text. One fact per slide. Timeline visualization with a descending sodium curve. Final slide is The Boring Setup photo.",screen:"Each slide is one screen. Large text, minimal design. Sodium level indicator decreasing across slides.",caption:"Your body doesn't wait 24 hours to run out of electrolytes. The flush starts at hour 4. Save this for your next fast. boringelectrolytes.com",reelTitle:"Electrolyte loss during a 24 hour fast hour by hour",tags:"#intermittentfasting #prolongedfasting #extendedfast #fastingtips #boringelectrolytes"},
+  {day:"Monday",community:"Fasting / Keto",format:"micro",title:"Zero Calories, Zero Sugar \u2014 What Breaks a Fast",hook:"Does this break a fast? No.",script:"Does this break a fast? No. Here's why. A fast is broken by an insulin response. Insulin is triggered by calories, primarily carbohydrates and protein. This contains zero calories, zero sugar, zero carbohydrates, zero protein. It contains three minerals: sodium, potassium, and magnesium. Minerals do not trigger an insulin response. Your fast stays intact. Your electrolytes get replaced. Class dismissed.",shots:"1. Hold up the pouch. Direct to camera.\n2. Set it down on a clean surface.\n3. Single take, no jump cuts, no music.\n4. Pick up the pouch at the end, put it back down. Walk away.",screen:"[0:00] Does this break a fast?\n[0:02] NO.\n[0:04] 0 calories | 0 sugar | 0 carbs\n[0:08] Minerals \u2260 insulin response\n[0:12] Class dismissed.",caption:"Three minerals. Zero calories. Zero insulin response. Your fast stays intact. boringelectrolytes.com",reelTitle:"Do electrolytes break a fast zero sugar zero calories explained",tags:"#intermittentfasting #doesitbreakfast #fastingfriendly #zerocalories #boringelectrolytes"},
+  {day:"Monday",community:"Fasting / Keto",format:"statement",title:"How to Ruin a Fast",hook:"How to ruin a fast: ignore your electrolytes.",boldText:"How to ruin a fast:\n\nIgnore your electrolytes.",script:"DESIGN: Black background, white bold sans-serif text (Helvetica Neue or Inter), left-aligned. Two lines. Large font \u2014 should be readable in thumbnail. No logo on image. Logo only in profile.\n\nEXACT TEXT ON IMAGE:\nLine 1: 'How to ruin a fast:'\nLine 2 (after line break): 'Ignore your electrolytes.'\n\nCreate in Canva: 1080x1080px, #111111 background, #FFFFFF text, font size 64-72px, left-aligned with generous padding (80px sides).",shots:"Design only. No filming. Create in Canva or Figma in under 2 minutes.",screen:"How to ruin a fast:\n\nIgnore your electrolytes.",caption:"Your headache at hour 16 isn't hunger. It's sodium depletion. Three ingredients, zero calories, zero sugar. Your fast stays intact. boringelectrolytes.com",reelTitle:"How to ruin a fast skip electrolytes and drink plain water",tags:"#fasting #intermittentfasting #fastingmistakes #electrolytes #boringelectrolytes"},
+  {day:"Tuesday",community:"Sauna / Heat",format:"video",title:"The Sauna Math (Whiteboard)",hook:"You just lost a gram of sodium. Your powder gave you four hundred milligrams back.",script:"Twenty minutes in a sauna. Your blood plasma volume drops. You sweat out roughly a gram of sodium. You reach for your electrolyte powder and it gives you back four hundred milligrams. That's not hydration, that's a rounding error. One teaspoon of this replaces the full gram. Because someone should have done the math before putting it in a pouch.",shots:"1. Steam / sauna door opening\n2. Whiteboard: draw '1000mg lost' on left, '400mg replaced' on right\n3. Long pause on the gap between the numbers\n4. Erase 400, write 1000. Tap the board.\n5. The Boring Setup: stir, drink.",screen:"[0:00] 20 min sauna = 1000mg sodium lost\n[0:06] Most powders: 400mg\n[0:10] This one: 1000mg\n[0:14] Someone should have done the math.",caption:"Your sauna is doing its job. Your electrolyte powder probably isn't. One teaspoon replaces what twenty minutes of heat takes out. boringelectrolytes.com",reelTitle:"Sauna sodium loss vs replacement the actual numbers",tags:"#sauna #saunalife #deliberateheatexposure #saunarecovery #boringelectrolytes"},
+  {day:"Tuesday",community:"Sauna / Heat",format:"carousel",title:"Post-Sauna Protocol Card",hook:"The post-sauna protocol. Four steps.",script:"Slide 1: 'Post-Sauna Protocol'\nSlide 2: Step 1 \u2014 One teaspoon Boring Electrolytes\nSlide 3: Step 2 \u2014 500ml room-temperature water\nSlide 4: Step 3 \u2014 Within 15 minutes of exiting the sauna\nSlide 5: Step 4 \u2014 That's it.\nDesign: Dark background, white text, one step per slide. Clean, clinical, protocol-style.",shots:"Design only \u2014 no filming needed. Dark mode slides, white sans-serif text, minimal icons.",screen:"Each slide is one step. Large text centered.",caption:"Four steps. Fifteen minutes. One teaspoon. The entire post-sauna protocol. Save this. boringelectrolytes.com",reelTitle:"Post sauna recovery protocol what to drink and when",tags:"#sauna #biohacking #saunabenefits #heattherapy #boringelectrolytes"},
+  {day:"Tuesday",community:"Sauna / Heat",format:"statement",title:"3 Things You Lose in a Sauna",hook:"3 things you lose in a 20-minute sauna.",boldText:"3 things you lose in\na 20-minute sauna:\n\n1. Sodium\n2. Potassium\n3. Magnesium\n\n3 things we put\nin our powder:\n\n1. Sodium\n2. Potassium\n3. Magnesium",script:"DESIGN: Black background (#111111), white bold text (#FFFFFF). Left-aligned. Two mirrored lists. The symmetry IS the argument.\n\n1080x1350px (portrait for feed). Font: Inter or Helvetica Neue Bold, 42-48px. Padding: 80px sides, 60px top/bottom.\n\nThe punchline is the structural repetition \u2014 the viewer realizes the lists are identical.",shots:"Design only. Canva or Figma. Under 3 minutes.",screen:"3 things you lose in a 20-minute sauna:\n1. Sodium\n2. Potassium\n3. Magnesium\n\n3 things we put in our powder:\n1. Sodium\n2. Potassium\n3. Magnesium",caption:"Not a coincidence. boringelectrolytes.com",reelTitle:"3 things you lose in a sauna sodium magnesium potassium",tags:"#saunalife #electrolytes #saunarecovery #sweatloss #boringelectrolytes"},
+  {day:"Wednesday",community:"Clean Label",format:"video",title:"The Speed Label Read",hook:"Timer starts now. Read your ingredient list.",script:"Here's a challenge. Grab your electrolyte powder. I'll set a timer. Read your entire ingredient list out loud. Ready? Go. Still going? Interesting. Now let me read mine. Himalayan Pink Salt. Potassium Citrate. Magnesium Malate. Three seconds. If you need more than one breath to read your ingredient list, you might want to ask what you're paying for.",shots:"1. Phone timer visible on screen, start it\n2. Show a competitor label (blurred brand) \u2014 long ingredient list\n3. Timer running... 8, 9, 10 seconds...\n4. Cut to Boring label. Reset timer.\n5. Read three ingredients. Timer stops at 3 seconds.\n6. Set product down. Shrug.",screen:"[0:00] CHALLENGE: Read your ingredient list.\n[0:03] Timer: running...\n[0:08] Still going?\n[0:11] Now ours:\n[0:12] Himalayan Pink Salt. Potassium Citrate. Magnesium Malate.\n[0:15] 3 seconds.",caption:"The Speed Label Read challenge. Ours takes three seconds. Time yourself and post your result. boringelectrolytes.com",reelTitle:"How fast can you read an electrolyte ingredient list clean label test",tags:"#cleanlabel #supplementreview #readtheingredients #ingredientcheck #boringelectrolytes"},
+  {day:"Wednesday",community:"Clean Label",format:"carousel",title:"The Boring Challenge Carousel",hook:"Time yourself reading this ingredient list.",script:"Slide 1: 'Time yourself reading this ingredient list.'\nSlide 2: Dextrose, Citric Acid, Sodium Citrate, Potassium Chloride, Natural Flavors, Magnesium Oxide, Silicon Dioxide, Malic Acid, Stevia Leaf Extract, Beta Carotene (for color), Rebaudioside A. (small text: 'Your time: ___ seconds')\nSlide 3: 'Now try ours.'\nSlide 4: Himalayan Pink Salt. Potassium Citrate. Magnesium Malate. (large, clean text, lots of white space)\nSlide 5: 'Done already?'\nSlide 6: 'Three ingredients. Because you don't need twelve. boringelectrolytes.com'",shots:"Design only. Clean white slides, black text. Slide 2 uses small dense text. Slide 4 uses large spaced text. The contrast is the argument.",screen:"Each slide is one screen. Dense vs spacious contrast.",caption:"The Boring Challenge. Time yourself reading your electrolyte ingredient list. Ours takes three seconds. Post your time. boringelectrolytes.com",reelTitle:"Reading electrolyte ingredient lists ranked by time clean label comparison",tags:"#cleanlabel #readtheingredients #whatsinmyfood #ingredientcheck #boringelectrolytes"},
+  {day:"Wednesday",community:"Clean Label",format:"static",title:"The Ingredient Count Bar Chart",hook:"How many ingredients does your electrolyte powder have?",script:"Single image. Simple horizontal bar chart:\n\nBrand A: 15 ingredients\nBrand B: 12 ingredients\nBrand C: 9 ingredients\nBrand D: 8 ingredients\nBoring: 3 ingredients\n\nNo brand names. Clean white background, muted gray bars for competitors, brand blue for Boring. Logo small in bottom right.",shots:"Design only. Canva or Figma. Horizontal bars. Maximum simplicity.",screen:"N/A \u2014 static image",caption:"Count the bars. boringelectrolytes.com",reelTitle:"Electrolyte supplement ingredient count comparison clean vs complex labels",tags:"#supplementreview #cleanlabel #electrolytes #realingredients #boringelectrolytes"},
+  {day:"Wednesday",community:"Clean Label",format:"statement",title:"How to Read a Supplement Label",hook:"How to read a supplement label: if it takes more than one breath, put it back.",boldText:"How to read a\nsupplement label:\n\nIf it takes more\nthan one breath,\nput it back.",script:"DESIGN: Black background, white bold text, left-aligned. 1080x1080px. Font: Inter Bold 56-64px. Padding 80px.\n\nThis is the 'How to stay poor: start tomorrow' format applied to ingredient transparency. Short, punchy, shareable rule of thumb.",shots:"Design only. Under 2 minutes in Canva.",screen:"How to read a supplement label:\n\nIf it takes more than one breath, put it back.",caption:"Ours takes three seconds to read. Himalayan Pink Salt. Potassium Citrate. Magnesium Malate. Done. boringelectrolytes.com",reelTitle:"How to read a supplement label what the ingredient list actually tells you",tags:"#supplementreview #readtheingredients #cleanlabel #healthliteracy #boringelectrolytes"},
+  {day:"Thursday",community:"Trades / Outdoor",format:"video",title:"Peloton vs. Rooftop Monologue",hook:"Peloton riders get electrolyte marketing. You get tap water.",script:"There are thirty-seven electrolyte brands targeting people who do spin classes. There are zero targeting the guy who just spent eight hours on a roof in July. You lose more sodium roofing a house than running a marathon. But nobody's making content about that, because you don't have a ring light and a Lululemon sponsorship. This has three ingredients, costs twenty-five cents, and works whether you're in a gym or on a job site. No flavor. No nonsense. Just the minerals you sweated out six hours ago.",shots:"1. Direct to camera. No fancy setup \u2014 natural light, plain background or outdoor setting\n2. Matter-of-fact delivery, slight edge but not angry\n3. Hold up the pouch briefly\n4. Set it on a work surface (toolbox, truck bed, lunch cooler)\n5. Walk away.",screen:"[0:00] Peloton riders get electrolyte marketing.\n[0:03] You get tap water.\n[0:06] You lose more sodium roofing a house than running a marathon.\n[0:12] 3 ingredients. \u20ac0.25. Works on the job site.",caption:"Nobody makes electrolytes for people who actually sweat for a paycheck. Three ingredients, full dose sodium, twenty-five cents a serving. What's in your water bottle on site? boringelectrolytes.com",reelTitle:"Electrolytes for outdoor workers vs gym goers sodium loss compared",tags:"#trades #bluecollar #tradeslife #outdoorwork #boringelectrolytes"},
+  {day:"Thursday",community:"Trades / Outdoor",format:"carousel",title:"Sodium Lost by Activity",hook:"How much sodium do you lose? It depends on what you do.",script:"Slide 1: 'How much sodium do you actually lose?'\nSlide 2: 1 hour cycling: ~700mg\nSlide 3: 1 hour running: ~900mg\nSlide 4: 1 hour roofing in summer: ~1200mg\nSlide 5: 1 hour landscaping: ~1100mg\nSlide 6: 20 min sauna at 80\u00b0C: ~1000mg\nSlide 7: 'Most electrolyte powders replace: 400mg'\nSlide 8: 'Boring Electrolytes: 1000mg per serving. \u20ac0.25. boringelectrolytes.com'",shots:"Design only. Dark slides, white text, one number per slide. Simple activity icons. Not pastel \u2014 bold, clean, masculine.",screen:"Each slide = one activity + sodium loss number.",caption:"Trades workers lose more sodium than marathon runners. But nobody markets to them. Here are the real numbers. Save this. boringelectrolytes.com",reelTitle:"Sodium loss by activity construction work vs cycling vs running",tags:"#construction #bluecollar #electrolytes #outdoorwork #boringelectrolytes"},
+  {day:"Thursday",community:"Trades / Outdoor",format:"statement",title:"5 Things That Dehydrate You at Work",hook:"5 things dehydrating you on the job site.",boldText:"5 things dehydrating\nyou on the job site:\n\n1. The sun\n2. The concrete\n3. The coffee\n4. The energy drink\n5. Not replacing what\n   you sweat out\n\nFix #5 for \u20ac0.25.",script:"DESIGN: Black background, white bold text. 1080x1350px portrait. Font: Inter Bold 40-48px. Left-aligned, generous padding.\n\nHormozi list format but for trades workers. The punchline is the last line \u2014 actionable and cheap. Share-trigger for blue-collar audience.",shots:"Design only. Under 2 minutes.",screen:"5 things dehydrating you on the job site:\n1. The sun\n2. The concrete\n3. The coffee\n4. The energy drink\n5. Not replacing what you sweat out\n\nFix #5 for \u20ac0.25.",caption:"You can't control the sun. You can control what's in your water bottle. Three ingredients. Full dose. Twenty-five cents. boringelectrolytes.com",reelTitle:"5 things that dehydrate you at work electrolytes for blue collar workers",tags:"#trades #construction #dehydration #jobsitesafety #boringelectrolytes"},
+  {day:"Friday",community:"Hangover / Recovery",format:"video",title:"Before Coffee, Before Food, Before Regret",hook:"Your morning-after protocol starts with the thing that makes it worse.",script:"Saturday morning. Headache. What do you reach for? Coffee. Which is a diuretic. Which means you're dehydrating yourself further to treat dehydration. Before coffee. Before food. Before regret. One teaspoon in water. Your body lost sodium, potassium, and magnesium last night. Coffee replaces none of them. This replaces all three.",shots:"1. POV: alarm going off, hand reaching for phone\n2. Reach for coffee cup \u2014 then pause\n3. Subtle X appears over the coffee\n4. The Boring Setup: glass, teaspoon, stir\n5. Text sequence: Before coffee. Before food. Before regret.\n6. Drink. Set glass down.",screen:"[0:00] Saturday morning. Headache.\n[0:03] Your first instinct: coffee.\n[0:05] Coffee is a diuretic.\n[0:08] Before coffee. Before food. Before regret.\n[0:12] Replace what you actually lost.",caption:"Your hangover protocol is backwards. Coffee dehydrates. This replaces the sodium, potassium, and magnesium you lost last night. Before coffee, before food, before regret. boringelectrolytes.com",reelTitle:"Hangover morning protocol what to take before coffee and food",tags:"#hangover #hangoverremedy #morningafter #hangovercure #boringelectrolytes"},
+  {day:"Friday",community:"Hangover / Recovery",format:"statement",title:"Your Hangover Protocol Is Backwards",hook:"Your morning-after protocol, ranked by usefulness.",boldText:"Your morning-after\nprotocol, ranked:\n\n1. Electrolytes (replaces\n   what you lost)\n2. Water (dilutes what's\n   left)\n3. Food (gives you energy)\n4. Coffee (dehydrates you\n   more)\n\nYou're doing it\nin reverse order.",script:"DESIGN: Black background, white bold text. 1080x1350px. Font: Inter Bold 38-44px. Left-aligned.\n\nThe punchline is the last line. The viewer realizes they always start with coffee (#4) and never touch electrolytes (#1). Self-recognition = shares.",shots:"Design only.",screen:"Your morning-after protocol, ranked:\n1. Electrolytes\n2. Water\n3. Food\n4. Coffee\n\nYou're doing it in reverse order.",caption:"Step 1 should be step 1. One teaspoon, three minerals, zero calories. Before the coffee. boringelectrolytes.com",reelTitle:"Hangover recovery order ranked why most people do it wrong",tags:"#hangover #hangoverremedy #electrolytes #morningafter #boringelectrolytes"},
+  {day:"Friday",community:"Hangover / Recovery",format:"micro",title:"Why Coffee Makes Hangovers Worse",hook:"Your morning-after coffee is making it worse.",script:"Your morning-after coffee is making it worse. Here's why. Alcohol is a diuretic \u2014 it makes you urinate more, flushing sodium, potassium, and magnesium. You wake up depleted. You reach for coffee. Coffee is also a diuretic. You're now dehydrating yourself to treat dehydration. Your headache isn't caffeine withdrawal. It's electrolyte depletion. Before the coffee: one teaspoon, one glass of water. Replace the sodium, potassium, and magnesium you lost. Then have your coffee. In that order.",shots:"1. Direct to camera, kitchen, morning light\n2. Hold coffee cup in one hand, pouch in the other\n3. Set coffee down. Hold up pouch.\n4. 'In that order.'\n5. Stir and drink. Then pick up coffee.",screen:"[0:00] Your morning coffee is making it worse.\n[0:04] Alcohol = diuretic\n[0:07] Coffee = also a diuretic\n[0:10] Dehydrating to treat dehydration\n[0:14] Step 1: electrolytes. Step 2: coffee.",caption:"The order matters. Electrolytes first, coffee second. boringelectrolytes.com",reelTitle:"Why coffee makes a hangover worse caffeine as a diuretic explained",tags:"#hangover #coffee #dehydration #morningafter #boringelectrolytes"},
+  {day:"Saturday",community:"Minimalism",format:"video",title:"The ASMR Ritual (No Voiceover)",hook:"No voiceover. No music. Just the sound of three ingredients.",script:"No spoken words. Natural sound only.\n\nOpen pouch (paper crinkle).\nMetal teaspoon scoops powder (granular sound).\nTeaspoon taps glass rim (clink).\nPowder falls into water (soft splash).\nStir slowly (swirl).\nGlass sits on wood. Five seconds of nothing.\n\nText one word at a time:\nThree. Ingredients. Because. You. Don't. Need. Twelve.",shots:"1. Extreme close-up: pouch opening\n2. Teaspoon scooping (ASMR-close mic)\n3. Teaspoon tapping glass rim\n4. Powder dissolving (overhead swirl shot)\n5. Glass on wood. 5 seconds of silence.",screen:"[0:03] Three.\n[0:05] Ingredients.\n[0:07] Because.\n[0:09] You.\n[0:10] Don't.\n[0:11] Need.\n[0:12] Twelve.",caption:"The quietest thing in your feed today. Three ingredients. Unflavoured. On purpose. boringelectrolytes.com",reelTitle:"Electrolyte mixing ASMR morning ritual unflavored no voiceover",tags:"#minimalism #asmr #slowliving #intentionalliving #boringelectrolytes"},
+  {day:"Saturday",community:"Minimalism",format:"video",title:"The Anti-Ad",hook:"This is an ad. You know it. I know it.",script:"Open on a beautifully lit product shot \u2014 looks like a real ad for exactly three seconds. Then cut to you holding the product, deadpan: 'This is an ad. You know it. I know it. Here are three minerals your body needs. You probably lost some of them today. This costs twenty-five cents. It has no flavor because it doesn't need one. That's it. That's the ad. Okay, bye.' Set the product down. Walk out of frame.",shots:"1. Cinematic product shot for 3 seconds (dramatic lighting \u2014 parody)\n2. Hard cut to normal room, normal lighting\n3. Deadpan delivery straight to camera\n4. Set pouch on table\n5. Walk out of frame. Camera holds on pouch 2 seconds.",screen:"[0:00] (cinematic product shot)\n[0:03] This is an ad.\n[0:05] 3 minerals. \u20ac0.25.\n[0:08] No flavor. On purpose.\n[0:10] Okay, bye.",caption:"This is an ad. A very boring one. boringelectrolytes.com",reelTitle:"Electrolyte ad with no claims no influencers and no flavor",tags:"#minimalism #antiad #honestmarketing #simplicity #boringelectrolytes"},
+  {day:"Saturday",community:"Minimalism",format:"statement",title:"3 Ingredients. Period.",hook:"Three ingredients. Because you don't need twelve.",boldText:"3 ingredients.\n\nBecause you don't\nneed 12.",script:"DESIGN: Black background, white bold text. 1080x1080px square. Font: Inter Bold, 72px for '3 ingredients.' and 56px for the second line. Left-aligned. Maximum white space.\n\nThis is the minimalist version of the Hormozi statement. The emptiness around the text IS the brand. The shortest post in someone's feed.",shots:"Design only. Under 1 minute in Canva.",screen:"3 ingredients.\n\nBecause you don't need 12.",caption:"Himalayan Pink Salt. Potassium Citrate. Magnesium Malate. That's the whole list. boringelectrolytes.com",reelTitle:"3 ingredient electrolyte supplement sodium magnesium potassium nothing else",tags:"#minimalism #lessismore #cleanlabel #simplicity #boringelectrolytes"},
+  {day:"Saturday",community:"Minimalism",format:"carousel",title:"The Quiet Carousel",hook:"No claims. No flavors. No exclamation marks.",script:"Slide 1: 'No claims.'\nSlide 2: 'No flavors.'\nSlide 3: 'No exclamation marks.'\nSlide 4: 'No artificial anything.'\nSlide 5: 'Three ingredients.'\nSlide 6: Logo + 'Cleanest hydration mix. Full dose. Nothing else.'\n\nDesign: White background, centered black text, one phrase per slide. Maximum white space.",shots:"Design only. The restraint IS the design.",screen:"Each slide is one phrase. Nothing else.",caption:"Six slides. Six facts. No exclamation marks. boringelectrolytes.com",reelTitle:"What Boring Electrolytes does not contain no sweeteners no fillers",tags:"#minimalism #slowliving #intentionalliving #lessismore #boringelectrolytes"},
+  {day:"Sunday",community:"Estonian / Nordic",format:"video",title:"Estonian Grandmothers vs. American Saunas",hook:"American electrolyte brands think a sauna is twenty minutes at sixty degrees.",script:"American electrolyte brands think a sauna is twenty minutes at sixty degrees. We're from Estonia. Our grandmothers do eighty degrees before breakfast. We made this because imported electrolyte powders are designed for yoga studios, not actual saunas. Three ingredients. Full dose. Made in Tallinn. Twenty-five cents. Because we know what real heat feels like, and we know what it takes out of you.",shots:"1. Estonian sauna exterior or interior (real, not stock)\n2. Steam rising, l\u00f6yly being thrown\n3. Direct to camera\n4. Product on sauna bench\n5. End card: 'Tehtud Eestis. Made in Estonia.'",screen:"[0:00] American brands think a sauna is 60\u00b0C.\n[0:04] Estonian grandmothers: 80\u00b0C before breakfast.\n[0:08] Tehtud Tallinnas.\n[0:12] 3 koostisosa. \u20ac0,25.",caption:"Ameerika elektrol\u00fc\u00fcdibrande ei ole saunakultuuriks loodud. Meie oleme. Kolm koostisosa, t\u00e4isdoos, tehtud Tallinnas. boringelectrolytes.com",reelTitle:"Estonian sauna culture vs American sauna how electrolyte use differs",tags:"#eesti #madeinestonia #saunaculture #nordiclifestyle #boringelectrolytes"},
+  {day:"Sunday",community:"Estonian / Nordic",format:"carousel",title:"Prisma Shelf Price Comparison",hook:"We went to Prisma and compared every electrolyte product on the shelf.",script:"Slide 1: 'We went to Prisma and checked every electrolyte product on the shelf.'\nSlide 2-5: Product A-D \u2014 Xmg sodium, X ingredients, \u20acX.XX per serving (blurred brands, real prices)\nSlide 6: Boring \u2014 1000mg sodium, 3 ingredients, \u20ac0.25/serving\nSlide 7: 'Check it yourself. Prisma, aisle [X].'",shots:"Go to actual Prisma. Photograph each electrolyte product. Note price, serving size, sodium per serving, ingredient count. Design clean comparison slides.",screen:"Each slide: product photo (blurred) + sodium + ingredients + price per serving.",caption:"Me k\u00e4isime Prismas ja v\u00f5rdlesime k\u00f5iki elektrol\u00fc\u00fcditooteid riiulil. Kontrolli ise. boringelectrolytes.com",reelTitle:"Electrolyte price comparison Estonian store shelf vs premium brands",tags:"#madeinestonia #eesti #hinnav\u00f5rdlus #eestitoode #boringelectrolytes"},
+  {day:"Sunday",community:"Estonian / Nordic",format:"statement",title:"Made in Tallinn. Not California.",hook:"Made in Tallinn. Not California.",boldText:"Made in Tallinn.\nNot California.\n\nBecause California\ndoesn't know what\n80\u00b0C feels like.",script:"DESIGN: Black background, white bold text. 1080x1080px. Font: Inter Bold 56-64px. Left-aligned.\n\nLocal pride statement. The temperature reference is the punchline \u2014 Estonians know exactly what 80\u00b0C means. Californians think that's an oven setting.",shots:"Design only.",screen:"Made in Tallinn. Not California.\n\nBecause California doesn't know what 80\u00b0C feels like.",caption:"Tehtud Tallinnas. Mitte Californias. Sest California ei tea, mis on 80\u00b0C.\n\nThree ingredients, full dose, made for real saunas. boringelectrolytes.com",reelTitle:"Estonian electrolyte brand made in Tallinn unflavored no additives",tags:"#madeinestonia #tallinn #eesti #nordicbrand #boringelectrolytes"},
+  {day:"Bonus",community:"All",format:"bonus",title:"Weekly Shelf Check (Series)",hook:"Recurring weekly series: a different store each week.",script:"Visit one store per week (Prisma, Selver, Coop, Rimi, pharmacy, gym shop). Film yourself walking the supplement aisle. Pick up each electrolyte product. Read the sodium dose aloud. Calculate cost per serving on camera. Rank them.\n\nWeek 1: Prisma | Week 2: Selver | Week 3: Coop | Week 4: Pharmacy | Week 5: Gym shop | Week 6: Amazon.de\n\nBuild a running ranking visible in each episode's end card.",shots:"1. Walk into store (exterior)\n2. Supplement aisle\n3. Pick up products, flip, read sodium\n4. Phone calculator: price \u00f7 servings\n5. End card: ranking table\n6. 'See you next week.'",screen:"[0:00] Store name\n[0:05] Product + sodium + price\n[0:20] Running ranking\n[0:25] 'See you next week.'",caption:"Week [X] Shelf Check: [Store]. We read every electrolyte label and did the math. boringelectrolytes.com",reelTitle:"Weekly electrolyte shelf price check Estonian store vs online brands",tags:"#supplementreview #electrolytes #pricecomparison #shelfcheck #boringelectrolytes"},
+  {day:"Bonus",community:"All",format:"bonus",title:"The Community Question (Series)",hook:"One question from the comments, answered in 30 seconds.",script:"Pick one real comment/DM per week. Show actual comment (blurred username). Answer in under 30 seconds.\n\nExample: 'Someone asked: does this break a fast? No. Zero calories, zero sugar, zero insulin response. Next question.'\n\nExample: 'Someone asked: why no flavor? Because flavor requires citric acid, stevia, silicon dioxide, and natural flavors. Five extra ingredients for mango taste. We skipped that. Next question.'\n\nSign-off: 'Next question.' every time.",shots:"1. Comment on screen (blurred username)\n2. Direct to camera\n3. Answer in one breath\n4. 'Next question.'\n5. Cut to black or product.",screen:"[0:00] Question on screen\n[0:03] Answer\n[0:25] 'Next question.'",caption:"You asked, we answered. Got a question? Drop it below. boringelectrolytes.com",reelTitle:"Electrolyte Q&A fasting sauna hydration questions answered",tags:"#electrolytes #askmeanything #supplementfacts #hydration #boringelectrolytes"},
+  {day:"Bonus",community:"All",format:"micro",title:"Why Magnesium Oxide Is Cheap",hook:"Four percent. That's the absorption rate of what's in your powder.",script:"Four percent. That's the absorption rate of magnesium oxide. The form that ninety percent of supplement brands use. Why? Because it costs them two cents per dose. Magnesium malate costs fifteen cents. But it actually gets absorbed. So when a label says 'one hundred percent daily value of magnesium' and uses oxide, what they're really giving you is four percent of your daily value. The label is technically correct. Your body disagrees. We use magnesium malate. It costs us more. You absorb it. That's the whole story.",shots:"1. Whiteboard: '4% absorption' large\n2. '2\u00a2/dose' \u2192 'Mg Oxide'\n3. '15\u00a2/dose' \u2192 'Mg Malate'\n4. Circle Mg Malate. Tap board.\n5. The Boring Setup.",screen:"[0:00] 4% absorption\n[0:05] Mg Oxide: 2\u00a2/dose\n[0:10] Mg Malate: 15\u00a2/dose\n[0:15] 100% on label \u2260 100% in body\n[0:20] We use malate.",caption:"100% daily value means nothing if your body only absorbs 4%. We use magnesium malate. It costs us more. That's our problem, not yours. boringelectrolytes.com",reelTitle:"Why magnesium oxide is cheap and why absorption rate matters",tags:"#magnesium #supplements #magnesiummalate #supplementfacts #boringelectrolytes"},
+  {day:"Bonus",community:"All",format:"micro",title:"Dehydration vs. Electrolyte Depletion",hook:"You can drink three liters and still feel terrible.",script:"You can drink three liters of water today and still feel terrible. Because dehydration and electrolyte depletion are not the same thing. Dehydration means you don't have enough water. Electrolyte depletion means the water you have can't get where it needs to go. Sodium is the transport mechanism. It pulls water into your cells through osmosis. Without enough sodium, you're just flushing water through. Three liters in, three liters out. Your cells stay thirsty. One teaspoon adds a gram of sodium. That's the difference between drinking water and actually hydrating.",shots:"1. Two glasses of water side by side\n2. Whiteboard: cell diagram, water movement arrows\n3. Without sodium: arrows bounce off\n4. With sodium: arrows enter cell\n5. The Boring Setup.",screen:"[0:00] 3 liters. Still terrible.\n[0:05] Dehydration \u2260 electrolyte depletion\n[0:10] Sodium = transport\n[0:15] Without it: water in, water out\n[0:20] 1 tsp = actual hydration",caption:"Drinking water and hydrating are not the same thing. Sodium gets water into your cells. One teaspoon changes the math. boringelectrolytes.com",reelTitle:"Dehydration vs electrolyte depletion why drinking water alone is not enough",tags:"#hydration #electrolytes #dehydration #sodium #boringelectrolytes"},
+  {day:"Bonus",community:"All",format:"statement",title:"How to Stay Dehydrated",hook:"How to stay dehydrated: drink water without electrolytes.",boldText:"How to stay\ndehydrated:\n\nDrink water\nwithout electrolytes.",script:"DESIGN: Black background, white bold text. 1080x1080px. Font: Inter Bold 64-72px. Left-aligned.\n\nDirect Hormozi format parody. 'How to stay poor' becomes 'How to stay dehydrated.' The counterintuitive statement stops the scroll. The viewer thinks 'wait, water dehydrates you?' and reads on.",shots:"Design only. Under 1 minute.",screen:"How to stay dehydrated:\n\nDrink water without electrolytes.",caption:"Water without sodium just passes through. Your cells need electrolytes to actually absorb it. One teaspoon. Three minerals. The rest is physics. boringelectrolytes.com",reelTitle:"How to stay dehydrated drink water skip sodium avoid electrolytes",tags:"#hydration #dehydration #electrolytes #healthfacts #boringelectrolytes"},
+  {day:"Bonus",community:"All",format:"statement",title:"5 Things Worth Protecting (Boring Edition)",hook:"5 things worth protecting \u2014 Boring Electrolytes edition.",boldText:"5 things worth\nprotecting:\n\n1. Your sodium levels\n2. Your ingredient list\n3. Your wallet (\u20ac0.25/serving)\n4. Your morning-after self\n5. Your right to read\n   a label in under\n   3 seconds",script:"DESIGN: Black background, white bold text. 1080x1350px portrait. Font: Inter Bold 38-44px. Left-aligned.\n\nDirect parody of the Hormozi '5 things worth protecting' format. Each item maps to a Boring value proposition. Self-aware, slightly funny, highly shareable because the audience recognizes the format.",shots:"Design only.",screen:"5 things worth protecting:\n1. Your sodium levels\n2. Your ingredient list\n3. Your wallet (\u20ac0.25/serving)\n4. Your morning-after self\n5. Your right to read a label in under 3 seconds",caption:"Protecting things that actually matter. Three ingredients. Full dose. Twenty-five cents. boringelectrolytes.com",reelTitle:"5 things worth protecting sleep focus muscle function sodium levels",tags:"#electrolytes #cleanlabel #healthtips #sodium #boringelectrolytes"},
+  {day:"Bonus",community:"All",format:"statement",title:"The Supplement Industry Hopes You Don't...",hook:"The supplement industry hopes you never do this.",boldText:"The supplement\nindustry hopes you\nnever do this:\n\nFlip the pouch over\nand read the back.",script:"DESIGN: Black background, white bold text. 1080x1080px. Font: Inter Bold 56-64px. Left-aligned.\n\nProvocative but factual. Creates an immediate urge to go check their own supplement. High engagement because it triggers action \u2014 people will comment 'just checked mine' or tag friends. Positions Boring as the brand with nothing to hide.",shots:"Design only.",screen:"The supplement industry hopes you never do this:\n\nFlip the pouch over and read the back.",caption:"We have three ingredients. We'd love for you to read them. boringelectrolytes.com",reelTitle:"Supplement label reading what the industry hopes you skip",tags:"#supplements #supplementindustry #cleanlabel #readtheingredients #boringelectrolytes"},
+];
+
+const TONE_MAP = {
+  "The Reframe: Headache Isn't Hunger":["educational","provocative"],
+  "The Fasting Timeline":["educational"],
+  "Zero Calories, Zero Sugar \u2014 What Breaks a Fast":["educational"],
+  "How to Ruin a Fast":["sarcastic","provocative"],
+  "The Sauna Math (Whiteboard)":["educational","witty"],
+  "Post-Sauna Protocol Card":["educational"],
+  "3 Things You Lose in a Sauna":["witty","educational"],
+  "The Speed Label Read":["witty","provocative"],
+  "The Boring Challenge Carousel":["witty","provocative"],
+  "The Ingredient Count Bar Chart":["educational"],
+  "How to Read a Supplement Label":["sarcastic","provocative"],
+  "Peloton vs. Rooftop Monologue":["sarcastic","provocative"],
+  "Sodium Lost by Activity":["educational"],
+  "5 Things That Dehydrate You at Work":["witty","educational"],
+  "Before Coffee, Before Food, Before Regret":["witty","sarcastic"],
+  "Your Hangover Protocol Is Backwards":["witty","sarcastic"],
+  "Why Coffee Makes Hangovers Worse":["educational"],
+  "The ASMR Ritual (No Voiceover)":["witty"],
+  "The Anti-Ad":["sarcastic","witty"],
+  "3 Ingredients. Period.":["sarcastic","witty"],
+  "The Quiet Carousel":["witty"],
+  "Estonian Grandmothers vs. American Saunas":["sarcastic","provocative"],
+  "Prisma Shelf Price Comparison":["educational","provocative"],
+  "Made in Tallinn. Not California.":["sarcastic","provocative"],
+  "Weekly Shelf Check (Series)":["educational","provocative"],
+  "The Community Question (Series)":["educational"],
+  "Why Magnesium Oxide Is Cheap":["educational","provocative"],
+  "Dehydration vs. Electrolyte Depletion":["educational"],
+  "How to Stay Dehydrated":["sarcastic","provocative"],
+  "5 Things Worth Protecting (Boring Edition)":["witty","sarcastic"],
+  "The Supplement Industry Hopes You Don't...":["provocative","sarcastic"]
+};
+
+const TONE_OPTIONS = [
+  {id:"sarcastic",name:"Sarcastic / Deadpan",desc:"Dry humor, anti-marketing energy."},
+  {id:"witty",name:"Witty / Clever",desc:"Smart wordplay, unexpected angles."},
+  {id:"educational",name:"Educational / Authority",desc:"Fact-first, professor-mode micro-lectures."},
+  {id:"provocative",name:"Provocative / Bold",desc:"Hot takes, pattern-interrupt."}
+];
+
+const PLATFORM_TIPS = {instagram:"1-2 reels + 3-5 carousels/week",tiktok:"1-3 videos/day for growth",linkedin:"1/day max, quality > quantity",youtube:"3-5 Shorts/week for new channels"};
+
+const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday","Bonus"];
+const DAY_COMMUNITIES = {Monday:"Fasting",Tuesday:"Sauna",Wednesday:"Clean Label",Thursday:"Trades",Friday:"Hangover",Saturday:"Minimalism",Sunday:"Estonian",Bonus:"All"};
+const FORMATS = ["video","carousel","static","statement","micro","bonus"];
+const FORMAT_LABELS = {video:"Video",carousel:"Carousel",static:"Static",statement:"Statement",micro:"Micro-Lecture",bonus:"Bonus"};
+const DISMISS_REASONS = ["Off brand","Already done","Too generic","Wrong audience","Not timely"];
+
+// Pipeline stages
+const STAGES = ["approved","filming","editing","posted"];
+const STAGE_LABELS = {approved:"Approved",filming:"Filming",editing:"Editing",posted:"Posted"};
+const STAGE_NEXT = {approved:"filming",filming:"editing",editing:"posted"};
+const STAGE_PREV = {filming:"approved",editing:"filming",posted:"editing"};
+
+// ===== STATE =====
+const STORAGE_KEY = "boring_content_engine_v5";
+const SETTINGS_KEY = "boring_content_engine_settings";
+let state, activeView = "ideas", activeFilter = "all", activeFormat = "all", activePipelineStage = "approved";
+let expandedIds = new Set(), openDismissPopup = null;
+let settings = loadSettings();
+
+// Teleprompter state
+let tpScrolling = false, tpInterval = null, tpFontSize = 32;
+
+function defaultSettings() {
+  return {
+    brandName:"Boring Electrolytes", website:"boringelectrolytes.com",
+    tagline:"Three ingredients. Full dose. Nothing else.",
+    usps:"1000mg sodium per serving\n3 ingredients only\n\u20ac0.25 per serving\nUnflavoured on purpose\nMade in Estonia",
+    tones:["sarcastic","witty","educational","provocative"],
+    platforms:{instagram:2,tiktok:1,linkedin:0,youtube:0},
+    formatMix:{video:3,carousel:2,statement:2,micro:1,static:1,bonus:1},
+    showExtra:false, targetAudience:"", competitors:"", bannedTopics:"",
+    openSections:{brand:true,tone:false,schedule:false,mix:false},
+    calendarAssignments:{}
+  };
+}
+
+function loadSettings() {
+  try { const s=localStorage.getItem(SETTINGS_KEY); if(s){return{...defaultSettings(),...JSON.parse(s)};} } catch(e){}
+  return defaultSettings();
+}
+function saveSettings() { try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}catch(e){} }
+
+function loadState() {
+  try {
+    const s=localStorage.getItem(STORAGE_KEY);
+    if(s) {
+      const p=JSON.parse(s);
+      state=IDEAS.map((idea,i)=>{
+        const sv=p.find(x=>x.title===idea.title);
+        return {...idea,id:i,status:sv?sv.status:"pending",dismissReason:sv?(sv.dismissReason||null):null};
+      });
+    } else {
+      // migrate from v4/v3
+      const old=localStorage.getItem("boring_content_engine_v4")||localStorage.getItem("boring_content_engine_v3");
+      if(old){
+        const p=JSON.parse(old);
+        state=IDEAS.map((idea,i)=>{
+          const sv=p.find(x=>x.title===idea.title);
+          return {...idea,id:i,status:sv?sv.status:"pending",dismissReason:sv?(sv.dismissReason||null):null};
+        });
+      } else {
+        state=IDEAS.map((idea,i)=>({...idea,id:i,status:"pending",dismissReason:null}));
+      }
+    }
+  } catch(e){state=IDEAS.map((idea,i)=>({...idea,id:i,status:"pending",dismissReason:null}));}
+}
+function saveState() {
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state.map(s=>({title:s.title,status:s.status,dismissReason:s.dismissReason}))));}catch(e){}
+}
+
+function getVisibleIdeas() {
+  return state.filter(i=>{
+    const tones=TONE_MAP[i.title]||[];
+    return tones.some(t=>settings.tones.includes(t)) && settings.formatMix[i.format]>0;
+  });
+}
+
+function getPendingIdeas() { return getVisibleIdeas().filter(i=>i.status==="pending"); }
+
+// ===== NAV =====
+function renderNav() {
+  const pending=getPendingIdeas().length;
+  const inProd=state.filter(i=>["approved","filming","editing"].includes(i.status)).length;
+  const tabs = [
+    {id:"ideas",label:"Ideas",icon:"📋",count:state.length},
+    {id:"pipeline",label:"Pipeline",icon:"⚙️",count:inProd}
+  ];
+  document.getElementById("navTabs").innerHTML = tabs.map(t =>
+    `<button class="nav-tab ${activeView===t.id?'active':''}" onclick="switchView('${t.id}')">
+      <span class="tab-icon">${t.icon}</span>${t.label}${t.count!==null?`<span class="tab-count">${t.count}</span>`:''}
+    </button>`
+  ).join('');
+}
+
+function switchView(view) {
+  activeView = view;
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+view).classList.add('active');
+  renderNav();
+  if(view==='ideas') { renderStats(); renderIdeaFilters(); renderIdeas(); }
+  else if(view==='pipeline') renderPipeline();
+}
+
+// ===== STATS =====
+function renderStats() {
+  const vis=getVisibleIdeas();
+  const total=vis.length;
+  const pending=vis.filter(i=>i.status==="pending").length;
+  const approved=vis.filter(i=>["approved","filming","editing","posted"].includes(i.status)).length;
+  const dismissed=vis.filter(i=>i.status==="dismissed").length;
+  document.getElementById("statsBar").innerHTML = `
+    <div class="stat-pill"><div class="num">${total}</div><div class="label">Total</div></div>
+    <div class="stat-pill pending"><div class="num">${pending}</div><div class="label">Pending</div></div>
+    <div class="stat-pill approved"><div class="num" style="color:var(--green)">${approved}</div><div class="label">Approved</div></div>
+    <div class="stat-pill"><div class="num" style="color:var(--red)">${dismissed}</div><div class="label">Dismissed</div></div>
+  `;
+}
+
+// ===== TELEPROMPTER =====
+function openTeleprompter(id) {
+  const idea = state[id];
+  document.getElementById('tpTitle').textContent = idea.title;
+  const body = document.getElementById('tpBody');
+  let html = `<div class="tp-script" style="font-size:${tpFontSize}px">${idea.script}</div>`;
+  html += `<div class="tp-shots"><div class="tp-shots-title">Shot List</div>`;
+  idea.shots.split('\n').forEach(s => { if(s.trim()) html += `<div class="tp-shot-item">${s}</div>`; });
+  html += `</div>`;
+  html += `<div class="tp-screen-section"><div class="tp-screen-title">On-Screen Text</div><div class="tp-screen-text" style="white-space:pre-line">${idea.screen}</div></div>`;
+  body.innerHTML = html;
+  body.scrollTop = 0;
+  document.getElementById('teleprompterOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeTeleprompter() {
+  document.getElementById('teleprompterOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+  stopTpScroll();
+}
+
+function toggleTpScroll() {
+  if(tpScrolling) stopTpScroll();
+  else startTpScroll();
+}
+
+function startTpScroll() {
+  tpScrolling = true;
+  document.getElementById('tpPlayBtn').innerHTML = '\u23F8';
+  const speed = parseFloat(document.getElementById('tpSpeed').value);
+  tpInterval = setInterval(() => {
+    document.getElementById('tpBody').scrollTop += speed;
+  }, 30);
+}
+
+function stopTpScroll() {
+  tpScrolling = false;
+  document.getElementById('tpPlayBtn').innerHTML = '\u25B6';
+  if(tpInterval) { clearInterval(tpInterval); tpInterval = null; }
+}
+
+function tpFontUp() {
+  tpFontSize = Math.min(64, tpFontSize + 4);
+  const el = document.querySelector('.tp-script');
+  if(el) el.style.fontSize = tpFontSize + 'px';
+}
+function tpFontDown() {
+  tpFontSize = Math.max(16, tpFontSize - 4);
+  const el = document.querySelector('.tp-script');
+  if(el) el.style.fontSize = tpFontSize + 'px';
+}
+
+document.getElementById('tpSpeed').addEventListener('input', () => {
+  if(tpScrolling) { stopTpScroll(); startTpScroll(); }
+});
+
+// ===== PIPELINE VIEW =====
+function renderPipeline() {
+  const stages = document.getElementById('pipelineStages');
+  const content = document.getElementById('pipelineContent');
+
+  const counts = {};
+  STAGES.forEach(s => { counts[s] = state.filter(i=>i.status===s).length; });
+
+  stages.innerHTML = STAGES.map(s =>
+    `<button class="pipeline-stage-tab s-${s} ${activePipelineStage===s?'active':''}" onclick="setPipelineStage('${s}')">
+      <span class="stage-count">${counts[s]}</span>${STAGE_LABELS[s]}
+    </button>`
+  ).join('');
+
+  const items = state.filter(i=>i.status===activePipelineStage);
+  if(!items.length) {
+    content.innerHTML = `<div class="swipe-empty" style="padding:40px"><p>No ideas in ${STAGE_LABELS[activePipelineStage]} stage.</p></div>`;
+    return;
+  }
+
+  content.innerHTML = items.map(idea => {
+    const exp = expandedIds.has(idea.id);
+    const nextStage = STAGE_NEXT[idea.status];
+    const prevStage = STAGE_PREV[idea.status];
+    return `<div class="pipeline-card">
+      <div class="pipeline-card-header" onclick="toggleExpand(${idea.id})">
+        <div class="pipeline-card-info">
+          <span class="format-tag ${idea.format}">${FORMAT_LABELS[idea.format]}</span>
+          <div class="pipeline-card-title">${exp?'\u25BC':'\u25B6'} ${idea.title}</div>
+          <div class="pipeline-card-hook">${idea.hook}</div>
+          <div class="pipeline-card-day">${idea.day} \u2022 ${idea.community}</div>
+        </div>
+        <div class="pipeline-card-actions" onclick="event.stopPropagation()">
+          ${idea.format==='video'||idea.format==='micro'?`<button class="pipe-btn film" onclick="openTeleprompter(${idea.id})">Teleprompter</button>`:''}
+          ${prevStage?`<button class="pipe-btn" onclick="moveStage(${idea.id},'${prevStage}')">\u2190 ${STAGE_LABELS[prevStage]}</button>`:''}
+          ${nextStage?`<button class="pipe-btn next" onclick="moveStage(${idea.id},'${nextStage}')">${STAGE_LABELS[nextStage]} \u2192</button>`:''}
+          <button class="pipe-btn" onclick="moveStage(${idea.id},'pending')" title="Back to pending">\u21B6</button>
+        </div>
+      </div>
+      <div class="pipeline-card-detail ${exp?'open':''}">
+        ${renderDetailContent(idea)}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setPipelineStage(s) { activePipelineStage=s; renderPipeline(); }
+function moveStage(id, newStatus) { state[id].status=newStatus; state[id].dismissReason=null; saveState(); renderPipeline(); renderNav(); }
+
+function getFormatColor(f) {
+  return {video:'var(--orange)',carousel:'var(--blue)',static:'var(--purple)',statement:'var(--text)',micro:'var(--green)',bonus:'var(--yellow)'}[f]||'var(--text3)';
+}
+
+// ===== IDEAS (LIST) VIEW =====
+function renderIdeaFilters() {
+  let h = '<div class="filter-row">';
+  h += `<button class="filter-chip ${activeFilter==='all'?'active':''}" onclick="setFilter('all')">All</button>`;
+  DAYS.forEach(d => { h += `<button class="filter-chip ${activeFilter===d?'active':''}" onclick="setFilter('${d}')">${d}</button>`; });
+  h += '</div><div class="filter-row">';
+  FORMATS.forEach(f => { h += `<button class="filter-chip format-chip ${activeFormat===f?'active':''}" onclick="setFormat('${f}')">${FORMAT_LABELS[f]}</button>`; });
+  h += '</div>';
+  document.getElementById("ideaFilters").innerHTML = h;
+}
+
+function setFilter(f) { activeFilter=f; renderIdeaFilters(); renderIdeas(); }
+function setFormat(f) { activeFormat=(activeFormat===f?'all':f); renderIdeaFilters(); renderIdeas(); }
+
+function renderIdeas() {
+  let filtered = getVisibleIdeas();
+  if(activeFilter!=='all') filtered=filtered.filter(i=>i.day===activeFilter);
+  if(activeFormat!=='all') filtered=filtered.filter(i=>i.format===activeFormat);
+
+  const grouped = {};
+  filtered.forEach(i => { if(!grouped[i.day]) grouped[i.day]=[]; grouped[i.day].push(i); });
+
+  let html = '';
+  DAYS.forEach(day => {
+    if(!grouped[day]) return;
+    html += `<div style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--gold)">
+        <h2 style="font-size:13px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:0.5px">${day}</h2>
+        <span style="font-size:11px;color:var(--text3)">${grouped[day][0].community}</span>
+      </div>`;
+    grouped[day].forEach(idea => {
+      const exp = expandedIds.has(idea.id);
+      const showPopup = openDismissPopup === idea.id;
+      const isPending = idea.status === 'pending';
+      const isDismissed = idea.status === 'dismissed';
+
+      html += `<div class="list-card ${idea.status}">
+        <div class="list-card-summary" onclick="toggleExpand(${idea.id})">
+          <div class="list-card-top">
+            <div style="flex:1">
+              <span class="format-tag ${idea.format}">${FORMAT_LABELS[idea.format]}</span>
+              <div class="list-card-title">${exp?'\u25BC':'\u25B6'} ${idea.title}</div>
+              <div class="list-card-hook">${idea.hook}</div>
+              ${idea.status!=='pending' ? `<span class="list-card-status s-${idea.status}">${STAGE_LABELS[idea.status]||idea.status}${idea.dismissReason?' \u2022 '+idea.dismissReason:''}</span>` : ''}
+            </div>
+            <div class="list-actions" onclick="event.stopPropagation()">
+              ${isPending ? `
+                <button class="action-circle approve" onclick="quickApprove(${idea.id})" title="Approve">\u2713</button>
+                <button class="action-circle dismiss" onclick="showDismissPopupFn(${idea.id})" title="Dismiss">\u2717</button>
+              ` : `
+                <button class="action-circle undo" onclick="undoStatus(${idea.id})" title="Back to pending">\u21B6</button>
+              `}
+              ${showPopup ? `<div class="dismiss-popup open">
+                <div class="dp-title">Why dismiss?</div>
+                ${DISMISS_REASONS.map(r=>`<div class="dp-option" onclick="dismissWithReason(${idea.id},'${r}')">${r}</div>`).join('')}
+                <div class="dp-cancel" onclick="cancelDismissPopup()">Cancel</div>
+              </div>` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="list-card-detail ${exp?'open':''}">
+          ${renderDetailContent(idea)}
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+
+  if(!html) html = '<div class="swipe-empty" style="padding:40px"><p>No ideas match your filters.</p></div>';
+  document.getElementById("ideaContent").innerHTML = html;
+}
+
+function renderDetailContent(idea) {
+  const hasPreview = idea.boldText;
+  let html = '';
+
+  if(idea.reelTitle) {
+    html += `<div class="reel-title-row"><span class="reel-title-label">Reel Title</span><span class="reel-title-text">${idea.reelTitle}</span><button class="copy-reel-btn" onclick="event.stopPropagation();copyText('${escJs(idea.reelTitle)}',this)">Copy</button></div>`;
+  }
+  if(idea.format==='carousel'||idea.format==='statement') {
+    html += `<div class="canva-row"><span class="canva-label">Design</span><div class="canva-sizes"><span>1080\u00d71080</span><span>1080\u00d71350</span><span>1080\u00d71920</span></div><a class="canva-link" href="https://www.canva.com/create" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open Canva</a></div>`;
+  }
+  if(hasPreview) {
+    html += `<div class="detail-section"><div class="detail-label">Preview</div><div class="detail-text preview">${nl2br(idea.boldText)}</div></div>`;
+  }
+  html += `<div class="detail-section"><div class="detail-label">${hasPreview?'Design Instructions':'Full Script'}</div><div class="detail-text script">${nl2br(idea.script)}</div></div>`;
+  html += `<div class="detail-section"><div class="detail-label">Shot List</div><div class="detail-text">${nl2br(idea.shots)}</div></div>`;
+  html += `<div class="detail-section"><div class="detail-label">On-Screen Text</div><div class="detail-text">${nl2br(idea.screen)}</div></div>`;
+  html += `<div class="detail-section"><div class="detail-label">Caption</div><div class="detail-text caption">${nl2br(idea.caption)}</div></div>`;
+  html += `<div class="detail-section"><div class="detail-label">Tags</div><div class="detail-text tags">${idea.tags}</div></div>`;
+
+  html += `<div class="detail-btn-row">`;
+  if(idea.format==='video'||idea.format==='micro') {
+    html += `<button class="detail-btn film-btn" onclick="event.stopPropagation();openTeleprompter(${idea.id})">\uD83D\uDCF1 Teleprompter</button>`;
+    html += `<button class="detail-btn script-btn" onclick="event.stopPropagation();copyText('${escJs(idea.script)}',this)">\uD83D\uDCCB Copy Script</button>`;
+  }
+  html += `<button class="detail-btn generate-btn" onclick="event.stopPropagation();generateMore(${idea.id},this)">\u2728 Generate More</button>`;
+  html += `<button class="detail-btn" onclick="event.stopPropagation();copyIdea(${idea.id},this)">Copy Post</button>`;
+  if(idea.status==='pending') {
+    html += `<button class="detail-btn primary" onclick="event.stopPropagation();quickApprove(${idea.id})">Approve</button>`;
+  } else if(idea.status==='approved') {
+    html += `<button class="detail-btn primary" onclick="event.stopPropagation();moveStage(${idea.id},'filming');refreshCurrentView()">Start Filming \u2192</button>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function escJs(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n'); }
+function nl2br(s) { return s.replace(/\n/g,'<br>'); }
+
+function toggleExpand(id) { if(openDismissPopup!==null)return; expandedIds.has(id)?expandedIds.delete(id):expandedIds.add(id); refreshCurrentView(); }
+function quickApprove(id) { state[id].status="approved"; state[id].dismissReason=null; saveState(); renderNav(); refreshCurrentView(); }
+function undoStatus(id) { state[id].status="pending"; state[id].dismissReason=null; saveState(); renderNav(); refreshCurrentView(); }
+function showDismissPopupFn(id) { openDismissPopup=(openDismissPopup===id)?null:id; refreshCurrentView(); }
+function dismissWithReason(id,reason) { state[id].status="dismissed"; state[id].dismissReason=reason; openDismissPopup=null; saveState(); renderNav(); refreshCurrentView(); }
+function cancelDismissPopup() { openDismissPopup=null; refreshCurrentView(); }
+
+function refreshCurrentView() {
+  if(activeView==='ideas') { renderStats(); renderIdeas(); }
+  else if(activeView==='pipeline') renderPipeline();
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(()=>{
+    const orig=btn.textContent; btn.textContent="Copied!"; setTimeout(()=>{btn.textContent=orig;},1500);
+  }).catch(()=>prompt("Copy:",text));
+}
+
+function copyIdea(id, btn) {
+  const i=state[id];
+  let t=`[${i.day}] [${FORMAT_LABELS[i.format]}] ${i.title}\n\n`;
+  if(i.reelTitle) t+=`REEL TITLE:\n${i.reelTitle}\n\n`;
+  if(i.boldText) t+=`BOLD TEXT FOR IMAGE:\n${i.boldText}\n\n`;
+  t+=`SCRIPT:\n${i.script}\n\nSHOT LIST:\n${i.shots}\n\nON-SCREEN TEXT:\n${i.screen}\n\nCAPTION:\n${i.caption}\n\nTAGS:\n${i.tags}`;
+  navigator.clipboard.writeText(t).then(()=>{
+    const orig=btn.textContent; btn.textContent="Copied!"; setTimeout(()=>{btn.textContent=orig;},1500);
+  }).catch(()=>prompt("Copy:",t));
+}
+
+function generateMore(id, btn) {
+  const i=state[id];
+  const p=`I loved this content idea from my Boring Electrolytes Content Engine. Generate 3 more variations with the same angle and energy.\n\nORIGINAL IDEA:\nTitle: ${i.title}\nDay/Community: ${i.day} \u2014 ${i.community}\nFormat: ${FORMAT_LABELS[i.format]}\nHook: ${i.hook}\nScript: ${i.script}\n\nRULES:\n- Same format (${FORMAT_LABELS[i.format]})\n- Same community (${i.community})\n- Brand voice: deadpan, dry, no exclamation marks, Scandinavian engineer energy\n- 3 ingredients only: Himalayan Pink Salt, Potassium Citrate, Magnesium Malate\n- Price: \u20ac0.25/serving\n- Each variation needs: title, hook, full script, shot list, on-screen text, caption, tags\n- Make each variation a different angle on the same theme`;
+  navigator.clipboard.writeText(p).then(()=>{
+    btn.textContent="\u2705 Copied!"; setTimeout(()=>{btn.textContent="\u2728 Generate More";},2000);
+  }).catch(()=>window.prompt("Copy:",p));
+}
+
+function expandAll() { getVisibleIdeas().forEach(i=>expandedIds.add(i.id)); renderIdeas(); }
+function collapseAll() { expandedIds.clear(); renderIdeas(); }
+function exportApproved() {
+  const a=state.filter(i=>["approved","filming","editing","posted"].includes(i.status));
+  if(!a.length){alert("No approved ideas.");return;}
+  let t="BORING ELECTROLYTES \u2014 APPROVED CONTENT\n\n";
+  a.forEach((i,n)=>{
+    t+=`${"=".repeat(50)}\n${n+1}. [${i.day}] [${FORMAT_LABELS[i.format]}] ${i.title} [${(STAGE_LABELS[i.status]||i.status).toUpperCase()}]\n${"=".repeat(50)}\n\n`;
+    if(i.reelTitle) t+=`REEL TITLE:\n${i.reelTitle}\n\n`;
+    if(i.boldText) t+=`BOLD TEXT:\n${i.boldText}\n\n`;
+    t+=`SCRIPT:\n${i.script}\n\nSHOT LIST:\n${i.shots}\n\nON-SCREEN:\n${i.screen}\n\nCAPTION:\n${i.caption}\n\nTAGS:\n${i.tags}\n\n\n`;
+  });
+  navigator.clipboard.writeText(t).then(()=>alert(`${a.length} posts copied.`)).catch(()=>prompt("Copy:",t));
+}
+
+function resetAll() {
+  if(!confirm("Reset all ideas to pending?")) return;
+  state.forEach(i=>{i.status="pending";i.dismissReason=null;});
+  saveState(); renderNav(); refreshCurrentView();
+}
+
+// ===== SETTINGS =====
+function toggleSettings() {
+  const main=document.getElementById('mainViews');
+  const overlay=document.getElementById('settingsOverlay');
+  if(overlay.classList.contains('open')) {
+    overlay.classList.remove('open');
+    main.classList.remove('hidden');
+    renderNav(); refreshCurrentView();
+  } else {
+    renderSettingsPanel();
+    main.classList.add('hidden');
+    overlay.classList.add('open');
+    window.scrollTo(0,0);
+  }
+}
+function toggleSection(key) { settings.openSections[key]=!settings.openSections[key]; saveSettings(); renderSettingsPanel(); }
+function updateSetting(key,value) { settings[key]=value; saveSettings(); }
+function toggleTone(toneId) {
+  const idx=settings.tones.indexOf(toneId);
+  if(idx>-1){if(settings.tones.length>1)settings.tones.splice(idx,1);} else settings.tones.push(toneId);
+  saveSettings(); renderSettingsPanel();
+}
+function updatePlatform(p,v) { settings.platforms[p]=Math.max(0,Math.min(10,parseInt(v)||0)); saveSettings(); renderSettingsPanel(); }
+function updateFormatMix(f,v) { settings.formatMix[f]=Math.max(0,Math.min(10,parseInt(v)||0)); saveSettings(); renderSettingsPanel(); }
+function showExtraQuestions() { settings.showExtra=true; saveSettings(); renderSettingsPanel(); }
+function getToneCounts() { const c={}; TONE_OPTIONS.forEach(t=>{c[t.id]=IDEAS.filter(i=>(TONE_MAP[i.title]||[]).includes(t.id)).length;}); return c; }
+function getFormatCounts() { const c={}; FORMATS.forEach(f=>{c[f]=IDEAS.filter(i=>i.format===f).length;}); return c; }
+
+function renderSettingsPanel() {
+  const panel=document.getElementById('settingsOverlay');
+  const toneCounts=getToneCounts();
+  const formatCounts=getFormatCounts();
+  const sec=settings.openSections;
+  const totalDaily=Object.values(settings.platforms).reduce((a,b)=>a+b,0);
+  const totalWeeklyFormats=Object.values(settings.formatMix).reduce((a,b)=>a+b,0);
+
+  panel.innerHTML = `
+    <div class="sp-header">
+      <button class="sp-back" onclick="toggleSettings()">\u2190 Back</button>
+      <h2>Brand & Voice</h2>
+    </div>
+    <div class="sp-body">
+      <div class="sp-section">
+        <div class="sp-section-header" onclick="toggleSection('brand')">Brand Basics <span class="sp-arrow ${sec.brand?'open':''}">&#9654;</span></div>
+        <div class="sp-section-body ${sec.brand?'open':''}">
+          <div class="sp-field"><label class="sp-label">Brand Name</label><input class="sp-input" value="${settings.brandName}" onchange="updateSetting('brandName',this.value)"></div>
+          <div class="sp-field"><label class="sp-label">Website</label><input class="sp-input" value="${settings.website}" onchange="updateSetting('website',this.value)"></div>
+          <div class="sp-field"><label class="sp-label">Tagline</label><input class="sp-input" value="${settings.tagline}" onchange="updateSetting('tagline',this.value)"></div>
+          <div class="sp-field"><label class="sp-label">Key USPs (one per line)</label><textarea class="sp-textarea" onchange="updateSetting('usps',this.value)">${settings.usps}</textarea></div>
+          <div class="sp-tip">Your USPs drive which content angles feel authentic.</div>
+          ${settings.showExtra ? `<div class="sp-extra-field">
+            <div class="sp-field"><label class="sp-label">Target Audience</label><textarea class="sp-textarea" onchange="updateSetting('targetAudience',this.value)">${settings.targetAudience}</textarea></div>
+            <div class="sp-field"><label class="sp-label">Main Competitors</label><textarea class="sp-textarea" onchange="updateSetting('competitors',this.value)">${settings.competitors}</textarea></div>
+            <div class="sp-field"><label class="sp-label">Topics to Avoid</label><textarea class="sp-textarea" onchange="updateSetting('bannedTopics',this.value)">${settings.bannedTopics}</textarea></div>
+          </div>` : `<button class="sp-extra-btn" onclick="showExtraQuestions()">+ More brand questions</button>`}
+        </div>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-header" onclick="toggleSection('tone')">Voice & Tone <span class="sp-arrow ${sec.tone?'open':''}">&#9654;</span></div>
+        <div class="sp-section-body ${sec.tone?'open':''}">
+          <div class="sp-field"><label class="sp-label">Content angles</label>
+            <div class="sp-tone-grid">
+              ${TONE_OPTIONS.map(t => {
+                const sel=settings.tones.includes(t.id);
+                return `<div class="sp-tone-card ${sel?'selected':''}" onclick="toggleTone('${t.id}')">
+                  <div class="sp-tone-check">${sel?'\u2713':''}</div>
+                  <div><div class="sp-tone-name">${t.name}</div><div class="sp-tone-desc">${t.desc}</div><div class="sp-tone-count">${toneCounts[t.id]} ideas</div></div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+          <div class="sp-tip">Matching ideas: <strong>${getVisibleIdeas().length} of ${IDEAS.length}</strong></div>
+        </div>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-header" onclick="toggleSection('schedule')">Posting Schedule <span class="sp-arrow ${sec.schedule?'open':''}">&#9654;</span></div>
+        <div class="sp-section-body ${sec.schedule?'open':''}">
+          ${Object.entries(settings.platforms).map(([p,v])=>`
+            <div class="sp-platform">
+              <span class="sp-platform-name">${p.charAt(0).toUpperCase()+p.slice(1)}</span>
+              <input class="sp-platform-input" type="number" min="0" max="10" value="${v}" onchange="updatePlatform('${p}',this.value)">
+              <span class="sp-platform-unit">/day</span>
+              <span class="sp-platform-tip">${PLATFORM_TIPS[p]}</span>
+            </div>`).join('')}
+          <div class="sp-tip">Total: <strong>${totalDaily} posts/day</strong> = ~${totalDaily*7}/week</div>
+          <div class="sp-post-times">
+            <label class="sp-label" style="margin-top:12px">Posting windows</label>
+            <div class="sp-time-row"><span class="sp-time-label">Morning</span> 7:00 \u2013 9:00</div>
+            <div class="sp-time-row"><span class="sp-time-label">Midday</span> 12:00 \u2013 13:00</div>
+            <div class="sp-time-row"><span class="sp-time-label">Evening</span> 17:00 \u2013 19:00</div>
+          </div>
+        </div>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-header" onclick="toggleSection('mix')">Content Mix <span class="sp-arrow ${sec.mix?'open':''}">&#9654;</span></div>
+        <div class="sp-section-body ${sec.mix?'open':''}">
+          ${FORMATS.map(f=>`
+            <div class="sp-format-row">
+              <span class="sp-format-name" style="color:${getFormatColor(f)}">${FORMAT_LABELS[f]}</span>
+              <input class="sp-format-input" type="number" min="0" max="10" value="${settings.formatMix[f]}" onchange="updateFormatMix('${f}',this.value)">
+              <span class="sp-format-unit">/week</span>
+              <span class="sp-format-avail">${formatCounts[f]} available</span>
+            </div>`).join('')}
+          <div class="sp-tip">Total: <strong>${totalWeeklyFormats}/week</strong>. Set to 0 to hide a format.</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function openScheduleSection() {
+  settings.openSections.schedule = true;
+  saveSettings();
+  toggleSettings();
+}
+
+// Close popups on outside click
+document.addEventListener('click', e => {
+  if(openDismissPopup!==null && !e.target.closest('.dismiss-popup') && !e.target.closest('.action-circle.dismiss')) {
+    openDismissPopup=null; refreshCurrentView();
+  }
+});
+
+// ===== INIT =====
+loadState();
+renderNav();
+switchView('ideas');
+
+</script>
+</body>
+</html>
