@@ -1,0 +1,274 @@
+{
+ "quick-post": {
+  "status": "pass",
+  "bugs": [
+   "Sticky header clips the scrolled post so leftover 'counter.' sits under the brand bar"
+  ]
+ },
+ "approve-jump": {
+  "status": "pass",
+  "bugs": []
+ },
+ "pipeline": {
+  "status": "fail",
+  "bugs": [
+   "Shrimp brand-brain popup kept covering Mark Done / pipeline cards and stayed open after multiple dismissals, so mark-done and the facts state change could not be verified",
+   "Shrimp mascot overlaps the third card (Assign / title area)"
+  ]
+ },
+ "flow-post-to-done": {
+  "status": "blocked",
+  "bugs": [
+   "Brand Voice AI Assistant overlay blocks the generated post so Approve cannot be tapped",
+   "Shrimp/brain prompts kept returning after Later/× and consumed the e2e path",
+   "Approve → Pipeline → Mark Done handoffs were never testable; facts.ideas.filming/done never moved"
+  ]
+ },
+ "ideas": {
+  "status": "fail",
+  "bugs": [
+   "Brand Voice / shrimp overlay is unclosable — click on × lands on .bv-messages instead of the close control",
+   "click on Later lands on .bv-msg.ai instead of the button",
+   "blocking modal prevents testing Plan my week, tweak-the-plan fold, and Filters stat boxes"
+  ]
+ },
+ "batch-approve": {
+  "status": "blocked",
+  "bugs": [
+   "Could not start batch-approve: Brand Voice AI Assistant stayed open (modalOpen=true) over the Ideas list after repeated Later/×/Answer, so select mode and Approve N were never reached."
+  ]
+ },
+ "guardrail": {
+  "status": "pass",
+  "bugs": [
+   "Competitors label truncated to “petitors” and overlapping the Reviews & reputation chip"
+  ]
+ },
+ "proof-data": {
+  "status": "pass",
+  "bugs": []
+ },
+ "proof-actions": {
+  "status": "pass",
+  "bugs": []
+ },
+ "proof-filming-teardown": {
+  "status": "pass",
+  "bugs": []
+ },
+ "proof-onboarding-honesty": {
+  "status": "pass",
+  "bugs": []
+ },
+ "proof-data-safety": {
+  "status": "pass",
+  "bugs": [
+   "Brand-brain map labels overlap (Reviews & reputation vs Competitors) and Market complaints is truncated"
+  ]
+ },
+ "proof-brain-meters": {
+  "status": "pass",
+  "bugs": []
+ },
+ "proof-escaping": {
+  "status": "pass",
+  "bugs": [
+   "Google “People Also” diagram label is cut off mid-word as “Google People Al”",
+   "Saved to your Brand Notebook overlay covers the brand-brain paragraph underneath"
+  ]
+ },
+ "remix": {
+  "status": "blocked",
+  "bugs": [
+   "Could not start Remix: shrimp modal kept covering the screen until actions ran out",
+   "CSS rules (.remix-borrow-strip, .borrow-head, .borrow-chip, etc.) leaked into resultText",
+   "Brand-brain map labels overlap each other and the center node"
+  ]
+ },
+ "idea-catcher": {
+  "status": "blocked",
+  "bugs": [
+   "Idea Catcher was never usable this session — shrimp modal kept covering the screen until actions ran out",
+   "Session landed on Settings instead of Idea Catcher with modalOpen still true",
+   "Brand-brain map labels overlap and are cut off"
+  ]
+ },
+ "questions": {
+  "status": "blocked",
+  "bugs": [
+   "Could not reach question cards or Answer this before actions ran out because covering brand-brain popups kept intercepting the screen and diverted into Brand Voice."
+  ]
+ },
+ "notebook": {
+  "status": "fail",
+  "bugs": [
+   "Shrimp brand-brain modal cannot be dismissed — taps on Later and × land on DIV (CLICK BLOCKED)",
+   "Unclosable modal blocks Notebook compose/save",
+   "'Your website' brain-map label is cut off"
+  ]
+ },
+ "viral-lab": {
+  "status": "fail",
+  "bugs": [
+   "Unclosable Brand Voice / shrimp overlay: taps on ×, Later, and Answer land on DIV or .bv-messages instead of the buttons",
+   "Viral Lab quick-lane card (textarea + Analyze it + or add details myself) never appeared — screen stayed covered"
+  ]
+ },
+ "settings": {
+  "status": "blocked",
+  "bugs": []
+ },
+ "brain": {
+  "status": "blocked",
+  "bugs": [
+   "Voice Memory textarea stayed covered by the shrimp modal after multiple Later/× dismissals, so typing/scroll-inside could not be verified"
+  ]
+ },
+ "assistant": {
+  "status": "pass",
+  "bugs": []
+ },
+ "dark-mode": {
+  "status": "fail",
+  "bugs": [
+   "Settings/Brain · Channels: 'Make it better' button text (and sparkle icon) is hardcoded dark ink on a dark fill — nearly invisible",
+   "Settings/Brain · Channels: 'Ask Assistant' button text is hardcoded dark ink on a dark fill — nearly invisible",
+   "Settings/Brain · Channels: textarea placeholder ('Where you show up. E.g. Instagram…') is low-contrast gray on dark gray",
+   "Settings/Brain · Visual Aesthetic: placeholder ('Colors, mood, photography style for AI-generated images') is low-contrast gray on dark gray",
+   "Audit incomplete: shrimp brand-brain popup kept covering the UI, so Quick Post, Ideas, Pipeline, Trends, Remix, Notebook, and Questions were never contrast-checked"
+  ]
+ },
+ "more-sheet": {
+  "status": "fail",
+  "bugs": [
+   "Shrimp overlay cannot be dismissed — CLICK BLOCKED: Later hits .bv-msg.ai, × hits .bv-messages (unclosable blocking popup)",
+   "Assistant message text is cut off at the top under the 78% progress banner",
+   "Could not reopen More or test a second row / close the sheet because the overlay ate the taps"
+  ]
+ },
+ "settings-deep": {
+  "status": "blocked",
+  "bugs": [
+   "Required subsections (Posting Schedule, Content Mix, Competitor Bookmarks, Brands/Accounts, Team, Account/plan) were never reached or expanded — test incomplete.",
+   "Shrimp brand-brain popup repeatedly covered Settings (still modalOpen) so Workspace and the collapsible sections could not be inspected.",
+   "Brand-brain diagram labels clipped by the card: “People Also Ask” and “Live-tren”.",
+   "No harmless value change and no save-confirmation toast were observed."
+  ]
+ },
+ "notifications": {
+  "status": "blocked",
+  "bugs": [
+   "Daily Idea Ping toggle and copy not visible on the Settings screen shown, so the control could not be found or toggled",
+   "Posting-time dropdown is disabled in the DOM and was never confirmed to become usable with ping ON"
+  ]
+ },
+ "tour": {
+  "status": "fail",
+  "bugs": [
+   "Guided tour never started — no spotlight, tooltip, Next, or Skip",
+   "Shrimp modal cannot be dismissed: tap on Later lands on DIV (CLICK BLOCKED)",
+   "Shrimp modal cannot be dismissed: tap on × lands on DIV (CLICK BLOCKED)",
+   "Leftover covering overlay blocks taps so the screen is not usable"
+  ]
+ },
+ "reload-persistence": {
+  "status": "fail",
+  "bugs": [
+   "notesKept: BROKEN — notes 74 -> 149 — notebook notes did not persist across reload (count silently changed)"
+  ]
+ },
+ "remix-sources": {
+  "status": "blocked",
+  "bugs": [
+   "YouTube Get Transcript was never run — lane unverified before action limit",
+   "YouTube URL text is cut off on the left of the input",
+   "Switching from Article to YouTube does not clear the prior extract, so leftover article text stays in the description box"
+  ]
+ },
+ "settings-autofill": {
+  "status": "blocked",
+  "bugs": [
+   "Brand-brain shrimp sheet keeps reappearing after Later/×/Answer and blocked every attempt to use the auto-fill crawlers",
+   "Auto-fill (Scan my whole site / social / reviews) was never executed, so progress, completion, and review-panel behavior are untested"
+  ]
+ },
+ "carousel-maker": {
+  "status": "blocked",
+  "bugs": [
+   "Brand-brain / shrimp overlay kept covering the ideas list so Make Slides could not be opened",
+   "Carousel maker never launched — no slides, no pager, no export to verify",
+   "Chat bubble content cut off at the top of the assistant panel"
+  ]
+ },
+ "proof-taptargets": {
+  "status": "pass",
+  "bugs": []
+ },
+ "quick-post-formats": {
+  "status": "blocked",
+  "bugs": [
+   "Unclosable shrimp/Brand Voice modal: × click lands on .bv-messages (CLICK BLOCKED)",
+   "Later click lands on .bv-msg.ai (CLICK BLOCKED) — cannot reach Quick Post formats"
+  ]
+ },
+ "repeat-output": {
+  "status": "blocked",
+  "bugs": [
+   "Covering Brand Voice AI Assistant modal prevented access to Generate today's post / Try Another, so repeat-output could not be tested",
+   "Chat message at top of the assistant thread is truncated mid-sentence"
+  ]
+ },
+ "idea-actions": {
+  "status": "blocked",
+  "bugs": [
+   "Brand Voice AI Assistant overlay remained open (modalOpen=true) after many dismissals and blocked idea-action buttons",
+   "Chat bubble text cut off at the top of the panel",
+   "Sharpen, Viral Twist, Redo with notes, and Generate More were never exercised"
+  ]
+ },
+ "pipeline-tools": {
+  "status": "blocked",
+  "bugs": [
+   "Brand Voice × does not close — taps land on .bv-messages",
+   "Shrimp Answer/Later do not dismiss — taps land on .pipe-btn.next",
+   "Unclosable overlay blocks Pipeline, so Teleprompter / B-roll / Make Slides / Sharpen cannot be tested"
+  ]
+ },
+ "trends": {
+  "status": "fail",
+  "bugs": [
+   "Keyword field text is cut off mid-word ('hango') with no wrap or overflow treatment",
+   "Rising-trend chip title truncated mid-line ('Creatine +')",
+   "Shrimp mascot overlaps the second chip's dismiss ×, blocking the tap target",
+   "Window selector wraps '1 month' onto a separate row instead of one control group",
+   "Auto-pulled list includes off-niche items (solid-state batteries, Graphics - DVIDS) alongside electrolyte stories"
+  ]
+ },
+ "brand-switch": {
+  "status": "blocked",
+  "bugs": [
+   "Brand-switch isolation never completed: another brand was never loaded, so header change, facts.ideas.total change, and no-bleed could not be verified.",
+   "Shrimp brain modal stays open (modalOpen=true) while the brand dropdown is also open, covering the flow needed to pick a different brand."
+  ]
+ },
+ "flow-question-to-idea": {
+  "status": "fail",
+  "bugs": [
+   "Close (×) clicks are intercepted by .bv-messages so the Brand Voice modal cannot be dismissed",
+   "Shrimp Later click lands on .paa-q; Answer click lands on .tp-shz-angle",
+   "Blocking overlay prevents reaching Answer this on the Questions screen",
+   "First assistant message is cut off at the top of the chat"
+  ]
+ },
+ "shrimp": {
+  "status": "pass",
+  "bugs": []
+ },
+ "proof-brand-delete": {
+  "status": "fail",
+  "bugs": [
+   "brandDelete BROKEN: throwaway QA TEMP BRAND 37513 still in the database after deleteBrand",
+   "Delete path surfaced 'You can't delete a brand that was shared with you' — likely blocking or mis-targeting the throwaway brand delete"
+  ]
+ }
+}

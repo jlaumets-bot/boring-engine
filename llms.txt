@@ -1,0 +1,57 @@
+# Content Shrimp
+
+> A brand brain that learns your voice and turns it into ready-to-post content — social posts, scripts, remixes and memes — that actually sound like you, not generic AI.
+
+## What is Content Shrimp?
+
+Content Shrimp is a web app for founders, creators, and small brands who are tired of generic AI output. You paste your website once; it reads every page, researches your competitors and reviews, and fills out your brand profile. A few questions sharpen it, and it keeps learning from every post you approve, edit, or pass — so it sounds more like you every week instead of like a blank ChatGPT starting from zero.
+
+## Key Features
+
+- Brand Brain: learns your voice across many dimensions — tone, pain points, vocabulary, words to avoid, CTA style, audience, competitors, and what you approve, edit and pass
+- Weekly Ideas and a 7-day content calendar mapped to your themes
+- Quick Posts: one-tap, ready-to-film posts for today
+- Remix: turn any creator's video into a post in your own voice
+- Trends: rising niche topics + competitor moves, plus reverse-engineer any viral video into the brand's own version
+- Memes and product / lifestyle images (bring your own Google Gemini key)
+- What People Search: the real questions people and AI assistants ask about your niche
+- Pipeline and teleprompter to film and post
+- Film with the built-in teleprompter, then post it yourself
+- Multi-brand support with separate voice, calendar and team per brand
+
+## Content Formats Generated
+
+- Short-form video scripts (Reels, TikTok, Shorts)
+- Carousel posts
+- Static image posts
+- Statement graphics (bold text)
+- Micro-content (10-15 second clips)
+- Memes and product / lifestyle images
+
+## Pricing
+
+- Free trial: 7 days of Pro-level access, no card required (Agency has no trial)
+- Pro: $24/month — 750 posts a month, every tool, learning brand brain
+- Agency: $79/month — 2,500 posts a month, every tool, learning brand brain
+
+## Target Audience
+
+Founders, creators, solopreneurs, small DTC brands, and agencies who need to post consistently but have no time and no content team.
+
+## Technical Details
+
+- Web app, no install required; works on desktop and mobile browsers and installs as a PWA
+- Content generation and live web research powered by Grok (xAI)
+- Image generation via Google Gemini, using your own API key
+- Supabase for authentication and data storage
+
+## Links
+
+- Website: https://contentshrimp.com
+- App: https://contentshrimp.com/app.html
+- Blog (SEO, AEO, GEO & content-system guides): https://contentshrimp.com/blog
+- FAQ: https://contentshrimp.com/faq.html
+
+## Contact
+
+Content Shrimp is operated by Jord Digital Ltd, a company registered in the United Kingdom.

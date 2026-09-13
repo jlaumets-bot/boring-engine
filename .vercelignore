@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# WHAT GETS UPLOADED TO THE DEPLOYMENT.
+# outputDirectory is "." — the repo root IS the public site — so anything NOT
+# listed here is served at https://contentshrimp.com/<path>. Every rule below
+# was checked against app.html / index.html / sw.js / manifest.json / api/ for
+# runtime references before being added (see scripts/verify/public-exposure.mjs,
+# which fails loudly if a required public asset is ever excluded by mistake).
+# DO NOT add a blanket *.js / *.json / *.png rule — that would delete api/*.js,
+# package.json (used to install function deps) and every icon.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Editor backups / temp files
+*.bak
+*.orig
+*.old
+*.swp
+*~
+.DS_Store
+.fuse_hidden*
+
+# secrets stay local — Vercel uses its own env vars
+.env
+.env.*
+.auth.json
+
+# Internal engineering documentation. Every .md in this repo is working notes
+# (CLAUDE.md is 692KB of architecture, known defects and infra detail). Verified:
+# no .md file is linked or fetched by any public page, sw.js or api/ endpoint.
+*.md
+
+# Database schema + row-level-security policy source — never a public asset.
+sql/
+*.sql
+
+# Build / verification tooling. Runs on the dev machine only; nothing at runtime
+# references scripts/ (api/_build.js is generated INTO api/ and stays deployed).
+scripts/
+DEPLOY.command
+*.sh
+
+# Local QA/test harness + its output (this is also what blew past Vercel's 1GB limit)
+node_modules/
+mobile-shots/
+mobile-test-shots/
+qa-runs/
+qa-*.png
+*.webm
+*.zip
+mobile-test.js
+mobile-user.js
+mobile-shots.js
+mobile-user*.json
+qa.js
+measure-consistency.js
+
+# Renderer spike page — a standalone dev harness, deliberately never in the SW
+# CORE list and referenced only from a code comment in app.html.
+render-test.html
+
+# Generated output of api/_publish/selftest.js (sample render PNGs, dev only)
+_render-selftest/
+
+# Tooling state / stray empty files — no public purpose
+.git/
+.vercel/
+.unlazy/
+.writetest
+Faceless

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Render spike — Content Shrimp</title>
+<style>
+:root{--cream:#F9F6EA;--ink:#16130F;--lav:#E7DAF9;--tan:#DDD7C3;--t3:#8A8270}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'SF Pro Display',system-ui,-apple-system,sans-serif;background:var(--cream);color:var(--ink);padding:16px 16px 60px;line-height:1.5}
+h1{font-size:19px;font-weight:800;margin-bottom:4px}
+.sub{font-size:12.5px;color:var(--t3);margin-bottom:16px;line-height:1.45}
+.card{background:#fff;border:1.5px solid var(--ink);border-radius:16px;padding:16px;margin-bottom:14px}
+.btn{display:block;width:100%;background:var(--lav);color:var(--ink);border:1.5px solid var(--ink);border-radius:999px;padding:14px;font:800 15px inherit;font-family:inherit;cursor:pointer;margin-top:10px}
+.btn.out{background:#fff}
+.btn:disabled{opacity:.45}
+label.file{display:block;border:1.5px dashed var(--tan);border-radius:12px;padding:18px;text-align:center;font-size:13px;font-weight:700;color:var(--t3);cursor:pointer}
+input[type=file]{display:none}
+#log{font:11px ui-monospace,Menlo,monospace;background:var(--ink);color:#C8E6C9;border-radius:12px;padding:12px;white-space:pre-wrap;word-break:break-word;max-height:230px;overflow:auto;margin-top:12px}
+#log b{color:#FFD54F}
+.row{display:flex;gap:8px;align-items:center;font-size:12.5px;margin-bottom:6px}
+.dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+.ok{background:#4CAF50}.no{background:#E57373}.mid{background:#FFB74D}
+canvas,video.out{width:100%;max-width:270px;border-radius:14px;display:block;margin:12px auto 0;background:#000}
+.bar{height:6px;background:var(--tan);border-radius:99px;overflow:hidden;margin-top:10px}
+.bar i{display:block;height:100%;width:0;background:var(--lav)}
+</style>
+</head>
+<body>
+<h1>Split-screen render spike</h1>
+<p class="sub">Tests whether the phone itself can composite your footage + the graphics into a real video file — no server, no upload. Pick or film a short clip (5–15s is plenty).</p>
+
+<div class="card">
+  <div id="caps"></div>
+</div>
+
+<div class="card">
+  <label class="file" for="f">Tap to pick or film a clip</label>
+  <input id="f" type="file" accept="video/*">
+  <button class="btn" id="go" disabled>Render the split screen</button>
+  <div class="bar"><i id="bar"></i></div>
+  <canvas id="c" width="720" height="1280"></canvas>
+</div>
+
+<div class="card" id="outCard" style="display:none">
+  <div style="font-weight:800;font-size:14px;margin-bottom:6px">Result</div>
+  <video class="out" id="out" controls playsinline></video>
+  <a id="dl" class="btn out" download="split-screen.mp4" style="text-align:center;text-decoration:none">Download the file</a>
+  <button class="btn out" id="share">Share it</button>
+</div>
+
+<div id="log"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const log = (m, hi) => { $('log').innerHTML += (hi ? '<b>' + m + '</b>' : m) + '\n'; $('log').scrollTop = 1e6; };
+
+// ── the graphics track (same shape /api/video-beats returns) ──────────────────
+const BEATS = [
+  { eyebrow:'THE HOOK',  kind:'statement', headline:'Skip samples,\nlose the order', highlight:'lose the order' },
+  { eyebrow:'THE COST',  kind:'number',    value:'€100k', sub:'gone on one unchecked run.' },
+  { eyebrow:'WHAT TO VET', kind:'chips',   chips:['Factory audit','Sample run','Escrow'] },
+  { eyebrow:'THE FIX',   kind:'statement', headline:'Three documents.\nBefore the deposit.', highlight:'Before the deposit.' }
+];
+const PER = 3.25;
+
+// ── capability report ─────────────────────────────────────────────────────────
+(function caps(){
+  const rows = [];
+  const add = (label, state, note) => rows.push(
+    `<div class="row"><span class="dot ${state}"></span><span><b style="font-weight:700">${label}</b>${note ? ' — ' + note : ''}</span></div>`
+  );
+  const cs = !!(HTMLCanvasElement.prototype.captureStream);
+  const mr = typeof MediaRecorder !== 'undefined';
+  const wc = typeof VideoEncoder !== 'undefined';
+  const mp4 = mr && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('video/mp4');
+  const webm = mr && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('video/webm');
+  add('canvas.captureStream', cs ? 'ok' : 'no', cs ? 'yes' : 'missing — cannot render here');
+  add('MediaRecorder', mr ? 'ok' : 'no', mr ? 'yes' : 'missing');
+  add('MP4 output', mp4 ? 'ok' : (webm ? 'mid' : 'no'), mp4 ? 'native mp4' : (webm ? 'webm only (needs convert for TikTok)' : 'none'));
+  add('WebCodecs', wc ? 'ok' : 'mid', wc ? 'available (faster path later)' : 'absent — MediaRecorder path used');
+  $('caps').innerHTML = rows.join('');
+  log('device: ' + navigator.userAgent.slice(0, 90));
+  log('mp4=' + mp4 + '  webm=' + webm + '  webcodecs=' + wc);
+})();
+
+let file = null;
+$('f').onchange = e => {
+  file = e.target.files[0];
+  if (!file) return;
+  $('go').disabled = false;
+  document.querySelector('label.file').textContent = file.name + ' · ' + (file.size/1048576).toFixed(1) + ' MB';
+  log('picked: ' + (file.size/1048576).toFixed(1) + ' MB, type ' + file.type);
+};
+
+// ── draw one composite frame: footage on top, graphics below ──────────────────
+function drawFrame(ctx, vid, t, W, H){
+  const half = H/2;
+  // top: the user's footage, cover-cropped
+  ctx.fillStyle = '#211e1a'; ctx.fillRect(0,0,W,half);
+  if (vid.videoWidth) {
+    const s = Math.max(W/vid.videoWidth, half/vid.videoHeight);
+    const w = vid.videoWidth*s, h = vid.videoHeight*s;
+    ctx.drawImage(vid, (W-w)/2, (half-h)/2, w, h);
+  }
+  // bottom: the generated graphics
+  ctx.fillStyle = '#F9F6EA'; ctx.fillRect(0,half,W,half);
+  const i = Math.min(BEATS.length-1, Math.floor(t/PER));
+  const b = BEATS[i];
+  const x = 54, top = half + 70;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#8A8270';
+  ctx.font = '700 22px system-ui, sans-serif';
+  ctx.letterSpacing = '3px';
+  ctx.fillText((b.eyebrow||'').toUpperCase(), x, top);
+  ctx.letterSpacing = '0px';
+  let y = top + 46;
+  if (b.kind === 'number') {
+    ctx.fillStyle = '#16130F'; ctx.font = '800 120px system-ui, sans-serif';
+    ctx.fillText(b.value, x, y); y += 132;
+    ctx.fillStyle = '#5C564A'; ctx.font = '500 28px system-ui, sans-serif';
+    ctx.fillText(b.sub || '', x, y);
+  } else if (b.kind === 'chips') {
+    ctx.font = '700 26px system-ui, sans-serif';
+    let cx = x;
+    (b.chips||[]).forEach(c => {
+      const w = ctx.measureText(c).width + 40;
+      if (cx + w > W - 40) { cx = x; y += 66; }
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#16130F'; ctx.lineWidth = 3;
+      const r = 26; roundRect(ctx, cx, y, w, 52, r); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#16130F'; ctx.fillText(c, cx + 20, y + 13);
+      cx += w + 14;
+    });
+  } else {
+    ctx.font = '800 52px system-ui, sans-serif';
+    (b.headline||'').split('\n').forEach(line => {
+      if (b.highlight && line.includes(b.highlight)) {
+        const before = line.slice(0, line.indexOf(b.highlight));
+        const bw = ctx.measureText(before).width, hw = ctx.measureText(b.highlight).width;
+        ctx.fillStyle = '#E7DAF9'; roundRect(ctx, x+bw-8, y-4, hw+16, 62, 8); ctx.fill();
+      }
+      ctx.fillStyle = '#16130F'; ctx.fillText(line, x, y); y += 62;
+    });
+  }
+  // progress bar
+  const total = BEATS.length*PER;
+  ctx.fillStyle = '#E7DAF9';
+  ctx.fillRect(0, H-8, W * Math.min(1, t/total), 8);
+}
+function roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+// ── render: play the clip, composite every frame, record the canvas ───────────
+$('go').onclick = async () => {
+  if (!file) return;
+  $('go').disabled = true;
+  const t0 = performance.now();
+  const cv = $('c'), ctx = cv.getContext('2d', { alpha:false });
+  const W = cv.width, H = cv.height;
+
+  const vid = document.createElement('video');
+  vid.src = URL.createObjectURL(file);
+  vid.muted = false; vid.playsInline = true;
+  await new Promise(r => { vid.onloadedmetadata = r; });
+  log('clip: ' + vid.videoWidth + 'x' + vid.videoHeight + ' · ' + vid.duration.toFixed(1) + 's', true);
+
+  const mime = (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('video/mp4')) ? 'video/mp4' : 'video/webm';
+  const stream = cv.captureStream(30);
+  // keep the original audio if the browser lets us tap it
+  try {
+    const cap = vid.captureStream ? vid.captureStream() : (vid.mozCaptureStream ? vid.mozCaptureStream() : null);
+    if (cap) cap.getAudioTracks().forEach(t => stream.addTrack(t));
+    log('audio track: ' + (cap && cap.getAudioTracks().length ? 'yes' : 'none'));
+  } catch (e) { log('audio tap failed: ' + e.message); }
+
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8000000 });
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  const done = new Promise(r => { rec.onstop = r; });
+  rec.start();
+  log('recording as ' + mime + '…', true);
+
+  await vid.play();
+  const total = Math.min(vid.duration, BEATS.length*PER);
+  await new Promise(resolve => {
+    const step = () => {
+      const t = vid.currentTime;
+      drawFrame(ctx, vid, t, W, H);
+      $('bar').style.width = Math.min(100, t/total*100) + '%';
+      if (vid.ended || t >= total) return resolve();
+      requestAnimationFrame(step);
+    };
+    step();
+  });
+  vid.pause();
+  rec.stop();
+  await done;
+
+  const blob = new Blob(chunks, { type: mime });
+  const secs = ((performance.now()-t0)/1000).toFixed(1);
+  log('DONE in ' + secs + 's · ' + (blob.size/1048576).toFixed(1) + ' MB · ' + mime, true);
+  const url = URL.createObjectURL(blob);
+  $('out').src = url;
+  $('dl').href = url;
+  $('dl').download = 'split-screen.' + (mime === 'video/mp4' ? 'mp4' : 'webm');
+  $('outCard').style.display = 'block';
+  $('go').disabled = false;
+
+  $('share').onclick = async () => {
+    const f = new File([blob], 'split-screen.' + (mime==='video/mp4'?'mp4':'webm'), { type: mime });
+    if (navigator.canShare && navigator.canShare({ files:[f] })) {
+      try { await navigator.share({ files:[f] }); log('shared ✓'); } catch(e){ log('share cancelled'); }
+    } else { log('share sheet not available — use Download'); }
+  };
+};
+</script>
+</body>
+</html>

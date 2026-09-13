@@ -1,0 +1,9 @@
+{
+  "name": "content-shrimp",
+  "private": true,
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.65",
+    "playwright": "^1.61.1",
+    "web-push": "^3.6.7"
+  }
+}

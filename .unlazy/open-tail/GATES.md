@@ -1,0 +1,54 @@
+# Gates: clear the open tail — money path, brand isolation, prompt contract, frontend
+
+Scope: four parallel read-only audits reconciled every documented "STILL OPEN" claim in CLAUDE.md
+against the current code. The claims were mostly true and several were worse than recorded; a few
+were wrong (`stopTpScroll` cannot throw — static markup; `sharpen` "can only subtract" is a
+deliberate design, not a defect). This ledger fixes what was PROVEN broken, and adds a runnable
+oracle per group so the class cannot silently come back. Items needing Jörgen's database are
+handoffs, not gates.
+
+OWNS: api/stripe-webhook.js, api/_usage.js, api/checkout-confirm.js, api/create-checkout.js,
+api/generate-ideas.js, api/sharpen.js, api/_brain.js, api/viral-rewrite.js, app.html,
+STRIPE-SETUP.md, scripts/verify/money-path.mjs, scripts/verify/prompt-contract.mjs,
+scripts/verify/frontend-contract.mjs, scripts/verify/spend-cap.mjs, GATES.md, CLAUDE.md, sw.js,
+api/_build.js
+
+- [x] G1: the money path can no longer take a payment without granting the plan, and every metered action is priced — the webhook handles the event that actually grants a first purchase and can resolve the user from subscription metadata (not only from ids that a successful redirect already wrote), the usage read is bounded so a plan limit above the PostgREST row cap can still fire, `sharpen` carries a real credit and cost weight, and the trial allowance no longer resets at a calendar-month boundary
+  CHECK: node scripts/verify/money-path.mjs
+  EXPECT: money path verification passed
+  EVIDENCE: exit=0; EXPECT=matched; money path verification passed; 11 mutations run, 11 caught (M1 metadata fallback, M2 grant handler, M3 idempotency, M5 unbounded GET, M6 order= alone, M7 sharpen cost, M8 calendar window, M9 double-subscribe, M10 downgrade 200, M11 unresolvable log); all mutated files sha256-identical after
+
+- [x] G2: the prompt contract holds — no field is requested from the model and then discarded, the tone instruction does not tell the model to hold one voice and pick from a menu in the same prompt, the weekly-calendar key the renderer reads is the key the client sends, and every generator that writes a spoken script carries the compression counterweight
+  CHECK: node scripts/verify/prompt-contract.mjs
+  EXPECT: prompt contract verification passed
+  EVIDENCE: exit=0; EXPECT=matched; prompt contract verification passed; brand-prompt.mjs still green (winners 2014 chars from output instruction, limit 4000)
+
+- [x] G3: the frontend cannot file one brand's data under another and its controls are legible in both themes — every async path that writes brand-scoped data checks the brand it captured before the await, no per-brand cache key is rebuilt after an await, no ink-on-ink control survives in dark mode, and every `block:'start'` scrollIntoView target clears the sticky header
+  CHECK: node scripts/verify/frontend-contract.mjs
+  EXPECT: frontend contract verification passed
+  EVIDENCE: exit=0; EXPECT=matched; frontend contract verification passed; 16 checks, 14 mutations run, 14 caught incl. a brand-new unguarded writer added from scratch and caught BY NAME (proves it is a scan, not a checklist); app.html sha256-identical after every run
+
+- [x] G4: every JS the app ships still parses
+  CHECK: node scripts/verify/parse-all.mjs
+  EXPECT: parse verification passed
+  EVIDENCE: exit=0; EXPECT=matched; parsed 51 files/blocks with no errors
+
+- [x] G5: nothing in the existing gate suite regressed — the brand block still reaches every generator with the winners inside the recency window, the spoken-shape rule still reaches the script generators, spend is still capped, and no internal file became publishable
+  CHECK: node scripts/verify/brand-prompt.mjs && node scripts/verify/spoken-shape.mjs && node scripts/verify/spend-cap.mjs && node scripts/verify/public-exposure.mjs
+  EXPECT: brand prompt verification passed
+  EVIDENCE: exit=0; EXPECT=matched; brand-prompt + spoken-shape (22/0) + spend-cap + public-exposure all green; spend-cap mutation-proven (removing sharpen from a weight map goes red naming "sharpen (sharpen.js)")
+
+- [x] G6: the build stamp moved with the app.html edit and /sw.js keeps its no-store header
+  CHECK: node scripts/verify/build-stamp.mjs
+  EXPECT: build stamp verification passed
+  EVIDENCE: exit=0; EXPECT=matched; build stamp verification passed; v653-6ddabf66 -> v654-b337b221+api.3ea7e294
+
+- [x] G7: HANDOFF CLOSED — whether `sql/v634-hardening.sql` has ever been run against the live database. It is the fix for three separate findings (ON DELETE CASCADE foreign keys on every brand-scoped table, `push_subscriptions.brand_id` set-null, the 14-day invite expiry). Until it is confirmed applied, deleting a brand orphans its child rows silently and an invite code is valid forever. Jörgen said he does not know, so the question was replaced with a read-only query — `sql/v634-verify.sql`, run in the Supabase SQL editor. It is shaped so an EMPTY result is the pass condition; any row names exactly which table or function is missing its hardening.
+  CHECK: paste sql/v634-verify.sql into the Supabase SQL editor and run it
+  EXPECT: no rows returned
+  EVIDENCE: Jörgen ran it 2026-09-10 — "success no rows". EXPECT=matched. So every brand-scoped table already carries its foreign key to `brands` and both invite functions already carry the 14-day expiry: the hardening is APPLIED and has been all along. Deleting a brand does not orphan its children. Recorded in CLAUDE.md so it is never pushed again.
+
+- [x] G8: HANDOFF — `redeem_invite` never checks the caller's email against the invite's `email` column, in BOTH the live batch1b version and the v634-hardening version. A targeted invite that leaks lets ANY signed-in account claim that brand permanently. The fix is written and ready: `sql/v655-invite-email-check.sql` replaces the one function. It enforces the match ONLY when the invite carries an email, because `generateInviteLink()` deliberately creates invites with `email` null (the "Copy invite link" share flow) — a blanket requirement would silently break that feature, and an open link is already single-use plus 14-day-bounded. `lookup_invite` stays `anon`-granted on purpose: it runs pre-auth on the join screen and reveals only the brand name.
+  CHECK: paste sql/v655-invite-email-check.sql into the Supabase SQL editor and run it — the verify query at the bottom prints the result
+  EXPECT: no rows returned
+  EVIDENCE: VERIFIED LIVE 2026-09-13 against the production database (project content-engine, fbpwccsiumygfpssvduf) — the file's own verify query, run in the Supabase SQL editor, returns still_vulnerable = 0, i.e. pg_get_functiondef(redeem_invite) DOES contain the "addressed to someone else" branch. The replacement function is live; the file does not need running again. Confirmed in the same session: tables_with_rls_off = NONE across all public tables, and brands carries insert+delete policies so onboarding is unaffected.

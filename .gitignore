@@ -1,0 +1,17 @@
+.vercel
+.env
+.env.*
+.env*.local
+.DS_Store
+node_modules/
+*.bak
+
+# Local QA / test artifacts — never commit
+mobile-test-shots/
+mobile-shots/
+mobile-user-report.md
+mobile-user-video.webm
+mobile-user-trace.zip
+mobile-test-report.md
+qa-*.png
+.auth.json

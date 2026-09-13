@@ -1,0 +1,212 @@
+{
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "rewrites": [
+    {
+      "source": "/auth/confirm",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/.well-known/llms.txt",
+      "destination": "/llms.txt"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), display-capture=(), accelerometer=(), gyroscope=(), magnetometer=(), interest-cohort=()"
+        }
+      ]
+    },
+    {
+      "source": "/(.*\\.html)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/llms.txt",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/robots.txt",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/sitemap.xml",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/xml; charset=utf-8"
+        }
+      ]
+    }
+  ],
+  "functions": {
+    "api/remix.js": {
+      "maxDuration": 300
+    },
+    "api/pull-trends.js": {
+      "maxDuration": 60
+    },
+    "api/sharpen.js": {
+      "maxDuration": 300
+    },
+    "api/people-also-ask.js": {
+      "maxDuration": 45
+    },
+    "api/settings-examples.js": {
+      "maxDuration": 30
+    },
+    "api/health.js": {
+      "maxDuration": 20
+    },
+    "api/pull-trends-cron.js": {
+      "maxDuration": 300
+    },
+    "api/generate-ideas.js": {
+      "maxDuration": 300
+    },
+    "api/crawl-brand.js": {
+      "maxDuration": 300
+    },
+    "api/transcribe.js": {
+      "maxDuration": 60
+    },
+    "api/transcribe-url.js": {
+      "maxDuration": 120
+    },
+    "api/extract-article.js": {
+      "maxDuration": 120
+    },
+    "api/transcribe-voice.js": {
+      "maxDuration": 30
+    },
+    "api/brand-voice-chat.js": {
+      "maxDuration": 90
+    },
+    "api/speak.js": {
+      "maxDuration": 30
+    },
+    "api/distill-voice.js": {
+      "maxDuration": 60
+    },
+    "api/delete-account.js": {
+      "maxDuration": 30
+    },
+    "api/generate-blog.js": {
+      "maxDuration": 300
+    },
+    "api/crawl-social.js": {
+      "maxDuration": 300
+    },
+    "api/send-daily.js": {
+      "maxDuration": 300
+    },
+    "api/viral-twist.js": {
+      "maxDuration": 300
+    },
+    "api/viral-rewrite.js": {
+      "maxDuration": 300
+    },
+    "api/viral-analyze.js": {
+      "maxDuration": 300
+    },
+    "api/meme.js": {
+      "maxDuration": 60
+    },
+    "api/hook-frame.js": {
+      "maxDuration": 60
+    },
+    "api/stock-photo.js": {
+      "maxDuration": 60
+    },
+    "api/video-beats.js": {
+      "maxDuration": 300
+    },
+    "api/reviews.js": {
+      "maxDuration": 120
+    },
+    "api/expand-field.js": {
+      "maxDuration": 300
+    },
+    "api/checkout-confirm.js": {
+      "maxDuration": 30
+    },
+    "api/create-checkout.js": {
+      "maxDuration": 30
+    },
+    "api/create-portal-session.js": {
+      "maxDuration": 30
+    },
+    "api/stripe-webhook.js": {
+      "maxDuration": 30
+    },
+    "api/usage.js": {
+      "maxDuration": 30
+    },
+    "api/creator-posts.js": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/send-daily",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/pull-trends-cron",
+      "schedule": "0 5 * * *"
+    }
+  ]
+}
