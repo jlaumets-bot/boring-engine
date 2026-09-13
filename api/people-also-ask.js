@@ -20,7 +20,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { keywords, brandContext } = req.body;
+    const { keywords, brandContext } = req.body || {};
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
       return res.status(400).json({ error: 'Missing keywords array' });
     }

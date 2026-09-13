@@ -73,3 +73,23 @@ OWNS: sw.js, vercel.json, app.html, scripts/verify/sw-landing-live.mjs,
   a minimal self-heal in index.html (getRegistration -> update, no register), which REOPENS G1 by
   design — that gate asserts index.html carries no SW code, so it must be revised deliberately, not
   quietly broken.
+  UPDATE 2026-09-13 — THE FIX IS PROVEN CORRECT IN A REAL BROWSER, NOT JUST IN THE ORACLE.
+  Installed the LIVE worker in a clean browser, confirmed active + controlling with scope
+  https://contentshrimp.com/, then read its cache directly: cs-shell holds /app.html,
+  /manifest.json, /supabase.min.js, /sw.js and the mascot images — and NEITHER '/' NOR
+  '/index.html'. Fetching '/' while controlled returned 200 from the network with
+  cache-control "no-store, max-age=0, must-revalidate", new H1 present, THE LOOP absent.
+  So G1/G2 hold against a real ServiceWorker, not only the fake global the gate drives.
+  G6 REMAINS UNMET, AND CORRECTLY SO — it is about an ALREADY-FROZEN device. Jörgen's phone
+  holds the PRE-v655 worker, which has '/' in CORE and is cache-first, so it answers the
+  landing from its own cache and never reaches the network — and therefore never fetches the
+  new sw.js either. NO DEPLOY CAN REACH IT: the thing that would fix it is precisely the thing
+  it refuses to request.
+  DECIDED: DO NOT add self-heal code to index.html. It cannot work — an already-frozen device is
+  served the OLD cached index.html, which by definition does not contain the new script. It would
+  only run on devices that are not frozen, and those can no longer become frozen. G1's assertion
+  that index.html carries no SW code therefore STANDS and is not reopened.
+  RESOLUTION PATH, the only one that exists: open /app.html once. That registers and updates the
+  worker, the new worker stops caching the landing, and the page is correct from then on. The
+  affected population is exactly "people who have opened the app", so opening the app is both the
+  cause of exposure and the cure. Self-limiting, no follow-up round required.

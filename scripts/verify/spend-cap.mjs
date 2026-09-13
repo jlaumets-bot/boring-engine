@@ -17,6 +17,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { stripCode, stripComments, selfTest as srcSelfTest } from './_srcscan.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const require_ = createRequire(import.meta.url);
@@ -156,6 +157,76 @@ if (!/gate && _cbGuard\.gate\.used\) > 0|used\) > 0/.test(cbSrc)) {
   note('crawl-brand exempts zero-usage accounts, so onboarding cannot be blocked');
 }
 
+// ── 3b. NO ENDPOINT IS UNGATED — enumerate api/, do not hardcode two names ────
+// GATES.md sells this gate as "no endpoint is ungated". Until v656 it proved that for exactly
+// two hardcoded filenames (crawl-brand, extract-article), so a brand-new api/free-money.js with
+// no auth and no guard passed green. The title was a claim the oracle never checked.
+//
+// Now: every api/*.js is either METERED (guard()/checkLimit()) or named in ALLOWLIST below with
+// a reason AND a mechanical re-check of that reason, so an allowlist entry cannot rot into a
+// blanket exemption. A file that is neither fails. Source is comment/string-stripped first —
+// the word "guard(" inside a comment used to count as metering.
+{
+  srcSelfTest();
+  const apiDir = join(ROOT, 'api');
+  const all = readdirSync(apiDir).filter((f) => f.endsWith('.js')).sort();
+
+  // Why each unmetered endpoint spends nothing. `check` runs against the COMMENT-STRIPPED source
+  // (string literals kept, because a require() path or a header name is the evidence) and must
+  // still hold, or the justification is stale and the entry stops protecting the file.
+  const ALLOWLIST = {
+    'health.js':             { why: 'liveness/config probe — no LLM, no third-party spend',
+                               check: (s) => !/_llm|openai|anthropic|x\.ai/i.test(s) || /CRON_SECRET/.test(s) },
+    'push-key.js':           { why: 'returns the public VAPID key only — public by design',
+                               check: (s) => /VAPID_PUBLIC_KEY/.test(s) && s.length < 2000 },
+    'generate-blog.js':      { why: 'RETIRED stub — answers 410 and does nothing else',
+                               check: (s) => /status\(410\)/.test(s) },
+    'pull-trends-cron.js':   { why: 'Vercel cron — authorised by CRON_SECRET, not by a user plan',
+                               check: (s) => /CRON_SECRET/.test(s) },
+    'send-daily.js':         { why: 'Vercel cron — authorised by CRON_SECRET, not by a user plan',
+                               check: (s) => /CRON_SECRET/.test(s) },
+    'stripe-webhook.js':     { why: 'authenticated by re-fetching the event from Stripe by id with our secret key',
+                               check: (s) => /stripeGet\(/.test(s) && /\/v1\/events\//.test(s) && /STRIPE_SECRET_KEY/.test(s) },
+    'delete-account.js':     { why: 'account deletion behind a Bearer token — destroys data, spends nothing meterable',
+                               check: (s) => /req\.headers\.authorization/.test(s) && /Bearer /.test(s) },
+    'checkout-confirm.js':   { why: 'Stripe checkout confirmation behind _requireUser — billing plumbing, not a metered action',
+                               check: (s) => /require\(['"]\.\/_requireUser['"]\)\s*\(/.test(s) },
+    'create-checkout.js':    { why: 'creates a Stripe Checkout session behind _requireUser — no LLM spend',
+                               check: (s) => /require\(['"]\.\/_requireUser['"]\)\s*\(/.test(s) },
+    'create-portal-session.js': { why: 'creates a Stripe billing-portal session behind _requireUser — no LLM spend',
+                               check: (s) => /require\(['"]\.\/_requireUser['"]\)\s*\(/.test(s) },
+    'usage.js':              { why: 'read-only plan/usage status behind _requireUser',
+                               check: (s) => /require\(['"]\.\/_requireUser['"]\)\s*\(/.test(s) && /getStatus\(/.test(s) },
+  };
+
+  const metered = [], exempt = [], ungated = [], stale = [];
+  for (const f of all) {
+    // Vercel does not route files whose name starts with "_" — they are shared modules, not
+    // endpoints. _usage.js also DEFINES guard(), so it can never be judged as a caller.
+    if (f.startsWith('_')) continue;
+    const raw = read(join('api', f));
+    const s = stripCode(raw);              // comments AND string contents gone: real code only
+    const nc = stripComments(raw);         // comments gone, strings kept
+    if (/\bguard\s*\(\s*req\b/.test(s) || /\bcheckLimit\s*\(/.test(s)) { metered.push(f); continue; }
+    const entry = ALLOWLIST[f];
+    if (!entry) { ungated.push(f); continue; }
+    if (!entry.check(nc)) stale.push(`${f} (allowlisted because "${entry.why}" — that is no longer true of the file)`);
+    else exempt.push(f);
+  }
+  if (ungated.length) {
+    fail.push(`UNGATED endpoint(s) — they neither meter (guard()/checkLimit()) nor appear in this gate's ` +
+         `named allowlist of endpoints that legitimately spend nothing: ` + ungated.map((f) => 'api/' + f).join(', '));
+  }
+  for (const s of stale) fail.push('spend-cap allowlist entry is stale: ' + s);
+  // A scanner that enumerated nothing would pass vacuously.
+  if (metered.length + exempt.length < 25) {
+    fail.push(`the endpoint enumeration saw only ${metered.length + exempt.length} api route(s) — the scanner ` +
+         `is broken, not the code (34 when this was written)`);
+  }
+  note(`${all.length} api/*.js files: ${metered.length} metered, ${exempt.length} allowlisted-unmetered, ` +
+       `${ungated.length} ungated`);
+}
+
 // ── 4. hook-frame must authenticate before any outbound fetch ─────────────────
 const hf = read('api/hook-frame.js');
 const iGuard = hf.indexOf('.guard(req');
@@ -201,4 +272,4 @@ if (fail.length) {
   for (const f of fail) console.error('  - ' + f);
   process.exit(1);
 }
-console.log('PASS: spend-cap — no zero-credit actions, every gated action is in both weight maps, cost fuse armed, both endpoints gated + metered, hook-frame authenticates first, burst limit active');
+console.log('PASS: spend-cap — no zero-credit actions, every gated action is in both weight maps, cost fuse armed, NO api endpoint is ungated (every one meters or is named+justified in the allowlist), hook-frame authenticates first, burst limit active');

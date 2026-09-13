@@ -194,9 +194,12 @@ function assertInert(name, out, { allowBr = false } = {}) {
 
 /* ── 6. call-site wiring: the sinks must actually USE the helpers ────────── */
 {
-  // These are the specific interpolations the audit found rendering raw. They are
-  // checked as source text because the oracle cannot execute a whole render pass.
-  const mustNotContain = [
+  // ── 6a. historical regressions ────────────────────────────────────────────
+  // HONEST LABEL: these six regexes match the EXACT source strings the 2026-08 audit found
+  // rendering raw. They can only ever re-detect those exact strings — rename a variable and
+  // they go quiet. They are regression witnesses for six specific lines, NOT a check of the
+  // class. The class checks are 6b/6c below; do not read this list as coverage.
+  const HISTORICAL_REGRESSIONS = [
     ['nl2br sinks',          /<div class="vl-take-text">\$\{a\.takeaway\}/],
     ['idea detail script',   /<div class="detail-text script">\$\{idea\.script\}/],
     ['idea title',           /<div class="list-card-title">\$\{exp\?'\\u25BC':'\\u25B6'\} \$\{idea\.title\}/],
@@ -204,32 +207,181 @@ function assertInert(name, out, { allowBr = false } = {}) {
     ['settings textarea',    /\)">\$\{settings\.(webMentions|categoryGripes|reviewInsights)(\|\|'')?\}<\/textarea>/],
     ['viral hook raw',       /<div class="vt-hook">\$\{a\.hook\|\|''\}<\/div>/],
   ];
-  for (const [name, re] of mustNotContain) {
+  for (const [name, re] of HISTORICAL_REGRESSIONS) {
     if (re.test(src)) fail('call-site/' + name, 'a raw unescaped interpolation is still present in app.html');
   }
   if (!/function\s+safeUrl\s*\(/.test(src)) fail('call-site/safeUrl', 'safeUrl() is not defined in app.html');
 
-  // Every generated href must be scheme-checked — either inline, or via a local that was
-  // assigned from safeUrl() just above it (the publish-log row does the latter).
-  for (const m of src.matchAll(/href="\$\{([^}]*)\}"/g)) {
-    const expr = m[1];
-    const window = src.slice(Math.max(0, m.index - 400), m.index);
-    if (!/safeUrl\(/.test(expr) && !/safeUrl\(/.test(window)) {
-      fail('call-site/href', `an href interpolation has no safeUrl(): \${${expr}}`);
+  /* ── expression-level judgement ─────────────────────────────────────────────
+   * v656: the href rule used to be "safeUrl( appears somewhere in the preceding 400
+   * characters". That is a property of the NEIGHBOURHOOD, not of the value being written:
+   * a brand-new unsafe sink placed next to a safe one passed. And the extractor was
+   * /href="\$\{([^}]*)\}"/ — `[^}]*` stops at the first `}`, so every sink whose expression
+   * contains an object literal (escAttr(safeUrl(x,{allowData:true}))) was INVISIBLE to the
+   * gate: 1 href and all 4 src sinks. Both are fixed here: brace-balanced extraction, and
+   * the interpolated EXPRESSION must itself pass through safeUrl.
+   */
+  const ENCODER = /^(?:escapeHtml|escHtml|escAttr|escJs|vlEscAttr|encodeURI|encodeURIComponent|String|esc)\s*\(/;
+  const SANITISER = /^safeUrl\s*\(/;
+  const ESCAPERS = /\b(?:escapeHtml|escHtml|escAttr|escJs|vlEscAttr|nl2br|tpEscape|brollEsc|esc)\s*\(/;
+
+  // Locally-minted URLs that no attacker can influence, named one by one with the reason.
+  // A blob: URL from URL.createObjectURL() or a FileReader data: URL of a file the user
+  // themselves just picked is not a scheme-injection vector — there is no attacker string.
+  const LOCAL_URL_ORIGINS = /^(?:URL\.createObjectURL\s*\(|window\.URL\.createObjectURL\s*\()/;
+  const PROVENANCE_ALLOWLIST = {
+    // "<sink expression>": why it needs no safeUrl
+    'dataUrl': 'a FileReader result for a file the user picked in this very handler (refShotSet / _applyBrandLogo) — never a remote string',
+  };
+
+  const matchParen = (s, open) => {
+    let d = 0;
+    for (let i = open; i < s.length; i++) {
+      if (s[i] === '(') d++;
+      else if (s[i] === ')') { d--; if (d === 0) return i; }
     }
+    return -1;
+  };
+  // Peel output encoders. They make a string safe to SIT IN an attribute; they do not
+  // validate its scheme, so escapeHtml('javascript:…') is still a live hole.
+  function peelEncoders(expr) {
+    let cur = String(expr).trim();
+    for (let n = 0; n < 6; n++) {
+      const m = ENCODER.exec(cur);
+      if (!m) break;
+      const close = matchParen(cur, m[0].length - 1);
+      if (close !== cur.length - 1) break;            // the call is not the whole expression
+      cur = cur.slice(m[0].length, close).trim();
+      // drop trailing option arguments: safeUrl(x, {allowData:true}) is peeled as a unit later
+    }
+    return cur;
   }
-  // Same for every generated image src — data:image/svg+xml can carry <script>.
-  for (const m of src.matchAll(/\bsrc="\$\{([^}]*)\}"/g)) {
-    if (!/safeUrl\(/.test(m[1])) fail('call-site/src', `an img src interpolation has no safeUrl(): \${${m[1]}}`);
+  // Split on a top-level operator (depth 0, outside quotes).
+  function topSplit(expr, ops) {
+    const parts = []; let d = 0, q = null, last = 0;
+    for (let i = 0; i < expr.length; i++) {
+      const c = expr[i];
+      if (q) { if (c === '\\') i++; else if (c === q) q = null; continue; }
+      if (c === '"' || c === "'" || c === '`') { q = c; continue; }
+      if (c === '(' || c === '[' || c === '{') d++;
+      else if (c === ')' || c === ']' || c === '}') d--;
+      else if (d === 0) {
+        for (const op of ops) {
+          if (expr.startsWith(op, i)) { parts.push(expr.slice(last, i)); last = i + op.length; i += op.length - 1; break; }
+        }
+      }
+    }
+    parts.push(expr.slice(last));
+    return parts.length > 1 ? parts.map(p => p.trim()).filter(Boolean) : null;
+  }
+  // The nearest preceding `const|let|var NAME = …` — a one-step def-use resolution, so a local
+  // that was assigned FROM safeUrl() counts, while a local assigned from anything else does not.
+  function assignmentsTo(name, at) {
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?:(?:const|let|var)\\s+|(?:^|[^\\w$.]))${esc}\\s*=\\s*([^;\\n]+)`, 'g');
+    const selfMemo = new RegExp(`^${esc}\\s*\\|\\|\\s*`);
+    const out = [];
+    let m;
+    while ((m = re.exec(src)) && m.index < at) {
+      let rhs = m[1].trim();
+      // memo cell: `x = x || <source>` — the self-reference carries whatever <source> produced,
+      // so the provenance question is entirely about <source>.
+      if (selfMemo.test(rhs)) rhs = rhs.replace(selfMemo, '').trim();
+      out.push(rhs);
+    }
+    return out;
+  }
+  function schemeChecked(expr, at, depth = 0) {
+    const e = peelEncoders(expr);
+    if (!e) return { ok: false, why: 'empty expression' };
+    if (/^(['"`]).*\1$/.test(e)) return { ok: true, why: 'string literal' };
+    if (SANITISER.test(e) && matchParen(e, e.indexOf('(')) === e.length - 1) {
+      return { ok: true, why: 'safeUrl() applied to the value itself' };
+    }
+    if (LOCAL_URL_ORIGINS.test(e)) return { ok: true, why: 'locally minted blob: URL' };
+    // depth 0 only: the allowlist excuses THAT sink expression, it must never be reachable
+    // through a resolution chain (or any value that happens to be assigned from a variable of
+    // the same name inherits the exemption — caught by mutation-testing this gate).
+    if (depth === 0 && PROVENANCE_ALLOWLIST[e]) return { ok: true, why: 'allowlisted provenance — ' + PROVENANCE_ALLOWLIST[e] };
+    for (const ops of [['?', ':'], ['||'], ['&&']]) {
+      const parts = topSplit(e, ops);
+      if (parts) {
+        const bad = parts.map(p => [p, schemeChecked(p, at, depth + 1)]).filter(([, r]) => !r.ok);
+        if (!bad.length) return { ok: true, why: 'every branch is scheme-checked' };
+        return { ok: false, why: `branch \`${bad[0][0]}\` is not scheme-checked` };
+      }
+    }
+    if (depth < 3 && /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(e)) {
+      const rhss = assignmentsTo(e, at);
+      if (!rhss.length) return { ok: false, why: `\`${e}\` has no resolvable assignment before the sink` };
+      // A bare local is block-scoped: the nearest preceding declaration is the one in effect.
+      // A property path (settings.brandLogo) is written from anywhere at any time, so textual
+      // order proves nothing — EVERY assignment to it must be scheme-checked, not just the last.
+      const candidates = e.includes('.') ? rhss : [rhss[rhss.length - 1]];
+      for (const rhs of candidates) {
+        const r = schemeChecked(rhs, at, depth + 1);
+        if (!r.ok) return { ok: false, why: `\`${e}\` is assigned from \`${rhs}\`, which is not scheme-checked` };
+      }
+      return { ok: true, why: `every assignment to \`${e}\` is scheme-checked` };
+    }
+    return { ok: false, why: 'the value never passes through safeUrl()' };
   }
 
-  // The two bookmark renderers build their <a> by string concatenation, so the regex
-  // above cannot see them. Same rule, same window: safeUrl must appear nearby.
-  for (const m of src.matchAll(/href="' \+ ([A-Za-z_$][\w$.]*)\(([^)]*)\) \+ '"/g)) {
-    const window = src.slice(Math.max(0, m.index - 300), m.index);
-    if (!/safeUrl\(/.test(window) && m[1] !== 'safeUrl') {
-      fail('call-site/concat-href', `a concatenated href has no safeUrl(): ${m[1]}(${m[2]})`);
+  // ── 6b. every generated href/src must be scheme-checked ───────────────────
+  // Brace-balanced extraction of  attr="${ … }"  (an object literal inside no longer hides it).
+  function interpolatedSinks(attr) {
+    const out = [];
+    const needle = `${attr}="\${`;
+    let i = 0;
+    while ((i = src.indexOf(needle, i)) !== -1) {
+      const open = i + attr.length + 2;                // index of '$'
+      let d = 0, end = -1;
+      for (let j = open + 1; j < src.length; j++) {
+        if (src[j] === '{') d++;
+        else if (src[j] === '}') { d--; if (d === 0) { end = j; break; } }
+      }
+      if (end === -1) { out.push({ expr: '(unbalanced)', index: i }); i = open; continue; }
+      out.push({ expr: src.slice(open + 2, end), index: i, full: src[end + 1] === '"' });
+      i = end;
     }
+    return out;
+  }
+  let sinksSeen = 0;
+  for (const attr of ['href', 'src']) {
+    for (const s of interpolatedSinks(attr)) {
+      sinksSeen++;
+      const r = schemeChecked(s.expr, s.index);
+      if (!r.ok) fail('call-site/' + attr, `a ${attr} interpolation is not scheme-checked: \${${s.expr}} — ${r.why}`);
+    }
+    // string-concatenation form:  attr="' + expr + '"
+    const cre = new RegExp(`${attr}="'\\s*\\+\\s*([^+]+?)\\s*\\+\\s*'`, 'g');
+    let m;
+    while ((m = cre.exec(src))) {
+      sinksSeen++;
+      const r = schemeChecked(m[1], m.index);
+      if (!r.ok) fail('call-site/concat-' + attr, `a concatenated ${attr} is not scheme-checked: ${m[1]} — ${r.why}`);
+    }
+    // Nothing may slip past the two extractors above unexamined.
+    const raw = (src.match(new RegExp(`${attr}="(?:\\\\$\\\\{|'\\\\s*\\\\+)`, 'g')) || []).length;
+    const seen = interpolatedSinks(attr).length + (src.match(cre) || []).length;
+    if (seen < raw) fail('call-site/' + attr, `${raw} dynamic ${attr}= sinks exist but the scanner only parsed ${seen} — it is under-reporting`);
+  }
+  if (sinksSeen < 15) fail('call-site/scanner', `only ${sinksSeen} dynamic href/src sinks found — the scanner is broken (18 when written)`);
+
+  // ── 6c. textarea bodies — the class the "settings textarea" witness belongs to ──
+  // `…>${x}</textarea>` is a raw-HTML sink: a "</textarea>" inside x closes the element and
+  // everything after it is parsed as markup. Checked as a CLASS, not as six remembered strings.
+  {
+    let checked = 0;
+    for (const m of src.matchAll(/\$\{([^{}]*)\}\s*<\/textarea>/g)) {
+      checked++;
+      if (!ESCAPERS.test(m[1])) {
+        const line = src.slice(0, m.index).split('\n').length;
+        fail('call-site/textarea', `app.html:${line} interpolates \${${m[1]}} straight into a <textarea> body ` +
+             `with no escaper — a "</textarea>" in the value closes the element and the rest is parsed as markup`);
+      }
+    }
+    if (checked < 10) fail('call-site/textarea', `only ${checked} textarea interpolations scanned — the scanner is broken`);
   }
 }
 

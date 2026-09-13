@@ -18,7 +18,7 @@ module.exports = async function handler(req, res) {
   if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
 
   try {
-    var { postUrl, postDescription, creatorName, platform, remixMode, brandContext, refImage, delivery, brandId, bcFields } = req.body;
+    var { postUrl, postDescription, creatorName, platform, remixMode, brandContext, refImage, delivery, brandId, bcFields } = req.body || {};
 
     // CAP EVERY RELAYED INPUT. postDescription carries a whole transcript/article the
     // client fetched, and it was the ONE major prompt input with no length limit
@@ -173,11 +173,24 @@ module.exports = async function handler(req, res) {
     if (!remix) return res.status(500).json({ error: 'Failed to parse remix \u2014 try again', raw: content });
     // `brandContext.brandId` was never a key getBrandContext() produced, so this row was
     // always attributed to a null brand. A lean request finally names the brand — use it.
-    await require('./_usage').logUsage({ userId: _g.user.id, brandId: brandId || (brandContext && (brandContext.brandId || brandContext.brand_id)) || null, action: 'remix', model: bc.engine || 'grok' });
+    // Only attribute the usage row to a brand the caller actually owns — this id comes from the
+    // client and went into usage_events unverified. Same pattern as pull-trends.js /
+    // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
+    let logBrandId = null;
+    const _bid = brandId || (brandContext && (brandContext.brandId || brandContext.brand_id)) || null;
+    if (_bid) {
+      try {
+        const store = require('./_publish/store');
+        if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
+      } catch (e) {}
+    }
+    await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'remix', model: bc.engine || 'grok' });
     return res.status(200).json({ remix });
 
   } catch (err) {
     console.error('Remix error:', err);
-    return res.status(500).json({ error: err.message });
+    // The raw message used to go to the browser — which on a body-less POST meant the client
+    // was shown our own TypeError. Siblings (viral-*, sharpen) all return a written sentence.
+    return res.status(500).json({ error: 'Remix failed — try again' });
   }
 };

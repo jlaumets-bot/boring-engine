@@ -140,12 +140,48 @@ if (!fs.existsSync(IGNORE_FILE)) {
 const rules = parseIgnore(fs.readFileSync(IGNORE_FILE, 'utf8'));
 matcherSelfTest();
 
+// ── the public-asset classifier ───────────────────────────────────────────────
+// Defined up here because BOTH the --explain lookup and the live sweep in 3(b) use it.
+// Extensions the live site actually serves.
+const PUBLIC_EXT = new Set([
+  '.html', '.css', '.js',                                     // pages, styles, app + api code
+  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif', '.ico',   // images
+  '.woff', '.woff2', '.ttf', '.otf', '.eot',                  // fonts
+]);
+// Named site files with a non-obvious extension. Named one by one ON PURPOSE: a blanket
+// ".json is public" rule would have let mobile-user-prev.json and notes.json through, and a
+// blanket ".txt is public" rule would have let secrets.txt through.
+const PUBLIC_NAMES = new Set([
+  'manifest.json', 'site.webmanifest',    // PWA manifest
+  'package.json', 'package-lock.json',    // Vercel installs the functions' deps from these
+  'robots.txt', 'llms.txt',               // crawler files, deliberately public
+  'sitemap.xml', 'sitemap-main.xml',      // sitemaps, deliberately public
+  'vercel.json',                          // platform config, consumed by the build
+]);
+const isPublicAssetType = (name) =>
+  PUBLIC_NAMES.has(name) || PUBLIC_EXT.has(path.extname(name).toLowerCase());
+
+function classifyPath(rel) {
+  const name = path.basename(rel);
+  return isPublicAssetType(name)
+    ? { publicType: true,  why: PUBLIC_NAMES.has(name) ? 'named public site file' : `public asset type (${path.extname(name).toLowerCase()})` }
+    : { publicType: false, why: `not a known public asset type — ${path.extname(name) ? `"${path.extname(name).toLowerCase()}" is not in the public list` : 'it has no extension'}` };
+}
+
+
 // Optional lookup mode:  node scripts/verify/public-exposure.mjs --explain CLAUDE.md sql/team-tables.sql
 if (process.argv[2] === '--explain') {
   if (failures.length) { console.error(failures.join('\n')); process.exit(1); }
   for (const p of process.argv.slice(3)) {
     const rel = p.replace(/^\//, '');
-    console.log(`${isIgnored(rules, rel) ? 'EXCLUDED    ' : 'PUBLISHED   '} /${rel}`);
+    const excluded = isIgnored(rules, rel);
+    const c = classifyPath(rel);
+    const verdict = excluded ? 'EXCLUDED    ' : 'PUBLISHED   ';
+    const note = c.publicType
+      ? `public asset — ${c.why}`
+      : (excluded ? `internal (${c.why}) — correctly excluded`
+                  : `internal (${c.why}) — THIS GATE FAILS if such a file exists in the repo`);
+    console.log(`${verdict} /${rel}   [${note}]`);
   }
   process.exit(0);
 }
@@ -179,6 +215,9 @@ for (const rel of REQUIRED_PUBLIC) {
 
 // every api/*.js endpoint must ship
 for (const f of fs.readdirSync(path.join(ROOT, 'api'))) {
+  // api/_build_probe_*.tmp.js is a transient probe written by build-stamp.mjs and is excluded
+  // on purpose (see .vercelignore); it is never an endpoint.
+  if (/^_build_probe_/.test(f)) continue;
   if (f.endsWith('.js') && isIgnored(rules, `api/${f}`)) {
     fail(`.vercelignore would EXCLUDE an API endpoint: api/${f}`);
   }
@@ -228,11 +267,21 @@ for (const rel of MUST_BE_EXCLUDED) {
   }
 }
 
-// (b) live sweep — catch anything new that lands in the repo later
+// (b) live sweep — INVERTED (v656).
+//
+// It used to work from a list of seven "sensitive" extensions (.md .sql .sh .bak .webm .zip
+// .command). Anything else was assumed safe, so secrets.txt, notes.json, service-account.pem
+// and backup.log all came back PUBLISHED and the gate stayed green. A denylist of file types
+// can only ever catch the file types somebody already thought of — and the whole point of this
+// sweep is "catch anything NEW that lands in the repo later".
+//
+// So it is inverted: a file is publishable only if it is a KNOWN PUBLIC ASSET — a page, a
+// stylesheet, JavaScript the app ships, an image, a font, or one of the named site files
+// (manifest / robots / sitemap / package.json, which Vercel needs to install function deps).
+// Everything else must be excluded by .vercelignore, whatever its extension is.
 const SKIP_WALK = new Set(['.git', 'node_modules', 'mobile-test-shots', 'mobile-shots']);
-const SENSITIVE_EXT = new Set(['.md', '.sql', '.sh', '.bak', '.webm', '.zip', '.command']);
-const SENSITIVE_DIR = ['sql/', 'scripts/', '_render-selftest/'];
 
+let walked = 0;
 function walk(dir, rel = '') {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
@@ -243,18 +292,17 @@ function walk(dir, rel = '') {
       walk(path.join(dir, e.name), r);
       continue;
     }
-    const ext = path.extname(e.name).toLowerCase();
-    const sensitive =
-      SENSITIVE_EXT.has(ext) ||
-      SENSITIVE_DIR.some(d => r.startsWith(d)) ||
-      e.name.startsWith('.env') ||
-      e.name === '.auth.json';
-    if (sensitive && !isIgnored(rules, r)) {
-      fail(`internal file would be PUBLISHED: /${r}`);
+    walked++;
+    const c = classifyPath(r);
+    if (!c.publicType && !isIgnored(rules, r)) {
+      fail(`internal file would be PUBLISHED: /${r} — ${c.why}. Either it is a real public asset ` +
+           `(then add its type/name to PUBLIC_EXT/PUBLIC_NAMES in this gate, with a reason) or it ` +
+           `must be excluded in .vercelignore.`);
     }
   }
 }
 walk(ROOT);
+if (walked < 120) fail(`the exposure sweep only walked ${walked} files — the walker is broken, not the repo`);
 
 // ── 4. vercel.json: valid JSON + security headers ────────────────────────────
 let cfg;
@@ -313,4 +361,4 @@ if (failures.length) {
   for (const f of failures) console.error('  - ' + f);
   process.exit(1);
 }
-console.log('PASS — no internal file is publishable, every required public asset survives, security headers present.');
+console.log(`PASS — every file in the repo is either a known public asset type or excluded by .vercelignore, every required public asset survives, security headers present.`);

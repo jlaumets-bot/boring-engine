@@ -169,10 +169,10 @@ check(decorative.length === 0,
 // one whose gate was removed) fails immediately. Never add a name here to make a red run green.
 const KNOWN_UNGATED = new Set([
   'inviteByEmail', 'generateInviteLink',                     // one-shot inserts of their own row
-  'brainDistill', 'memeGenerate', 'refreshCreatorPosts',
-  'loadSettingsExamples', 'pullReviews', 'pullWebTrends', 'fetchPAAQuestions',
+    
+   'pullReviews',  
   'obFinish', 'bvFinishOnboarding', 'initApp',               // boot / first-run: no brand to switch away from
-  'generateBlogPosts', 'blogImprove',
+   
 ]);
 const regressions = ungated.filter(u => !u.captured && !KNOWN_UNGATED.has(u.name));
 check(regressions.length === 0,

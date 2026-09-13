@@ -111,7 +111,18 @@ ${rulePrecedence()}`;
     const rewritten = extractJson(content);
     if (!rewritten) return res.status(502).json({ error: 'Could not parse the rewrite — try again' });
 
-    await require('./_usage').logUsage({ userId: _g.user.id, brandId: bc.brandId || bc.brand_id || null, action: 'viral', model: bc.engine || 'grok' });
+    // Only attribute the usage row to a brand the caller actually owns — this id comes from the
+    // client and went into usage_events unverified. Same pattern as pull-trends.js /
+    // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
+    let logBrandId = null;
+    const _bid = bc.brandId || bc.brand_id || null;
+    if (_bid) {
+      try {
+        const store = require('./_publish/store');
+        if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
+      } catch (e) {}
+    }
+    await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'viral', model: bc.engine || 'grok' });
     return res.status(200).json({ idea: rewritten });
   } catch (err) {
     console.error('viral-rewrite error:', err);

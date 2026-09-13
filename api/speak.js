@@ -18,7 +18,7 @@ module.exports = async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'No OpenAI API key configured' });
 
   try {
-    const { text } = req.body;
+    const { text } = req.body || {};
     if (!text) return res.status(400).json({ error: 'No text provided' });
 
     // Truncate to ~4000 chars to keep costs reasonable
@@ -60,6 +60,11 @@ module.exports = async function handler(req, res) {
         resp.on('end', () => resolve(Buffer.concat(chunks)));
       });
       r.on('error', reject);
+      // The only https.request in api/ without a socket timeout: when OpenAI accepted the socket
+      // and then went quiet this promise never settled, the function was killed by the platform at
+      // maxDuration 30, and the caller got a bare 504 with no JSON and no usage row. 25s leaves the
+      // handler room to turn this rejection into a real error response inside the 30s cap.
+      r.setTimeout(25000, () => { r.destroy(new Error('The voice service took too long — please try again.')); });
       r.write(payload);
       r.end();
     });

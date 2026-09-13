@@ -9,8 +9,15 @@
 # package.json (used to install function deps) and every icon.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Repo-description dotfiles. They describe how the repo is built, not the site, and
+# .vercelignore itself would otherwise be served at /.vercelignore — a map of what is hidden.
+.gitignore
+.vercelignore
+
 # Editor backups / temp files
 *.bak
+*.bak-*
+*.bak.*
 *.orig
 *.old
 *.swp
@@ -52,6 +59,13 @@ mobile-shots.js
 mobile-user*.json
 qa.js
 measure-consistency.js
+
+# Temp probe files written by scripts/verify/build-stamp.mjs. That gate creates a uniquely
+# named api/_build_probe_<random>.tmp.js for one stamp run and deletes it again; api/ is served,
+# so if a crashed run ever left one behind it would become a live public endpoint. Excluded by
+# shape, not by one fixed name (a fixed name was previously committed by accident — see the
+# note at the top of scripts/verify/build-stamp.mjs).
+api/_build_probe_*
 
 # Renderer spike page — a standalone dev harness, deliberately never in the SW
 # CORE list and referenced only from a code comment in app.html.

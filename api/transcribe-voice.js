@@ -54,7 +54,7 @@ module.exports = async function handler(req, res) {
   if (!groqKey) return res.status(500).json({ error: 'Transcription is not configured on the server.' });
 
   try {
-    const { audio, format = 'webm', language = 'en' } = req.body;
+    const { audio, format = 'webm', language = 'en' } = req.body || {};
     if (!audio) return res.status(400).json({ error: 'No audio data provided' });
 
     const audioBuffer = Buffer.from(audio, 'base64');

@@ -226,15 +226,26 @@ module.exports = async function handler(req, res) {
   let grok = null; // null = not tested this request
   if (req.query && (req.query.ping === '1' || req.query.ping === 'true')) {
     try {
-      const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || null;
-      const user = token ? await store.getUser(token).catch(() => null) : null;
-      if (!user) {
+      // METERED like every other call site that spends on a real model. It used to sit behind
+      // the Bearer check ALONE — no guard(), no logUsage(), and no weight in either map — so a
+      // signed-in free account could loop it: `used` never moved, the cost fuse never saw the
+      // spend, and the burst limiter (which counts logged rows) could never fire.
+      // guard() is used instead of a bare getUser so the plan limit and the fuse both apply;
+      // it is scoped to THIS branch only, so the plain GET the crons and the app poll stays
+      // public, unauthenticated and free, and /api/health still always answers 200.
+      const _g = await require('./_usage').guard(req, 'healthping');
+      if (!_g.user) {
         grok = { ok: null, reason: 'sign in to run the live check' };
+      } else if (_g.over) {
+        grok = { ok: null, reason: 'the live check is metered — you are out of credits this period' };
       } else {
         const t0 = Date.now();
         let text = null;
         try { text = await callLLM({ timeoutMs: 12000, messages: [{ role: 'user', content: 'Reply with the single word: ok' }], max_tokens: 5, temperature: 0 }); } catch (e) {}
         grok = { ok: !!(text && String(text).trim()), ms: Date.now() - t0 };
+        // Logged on the ATTEMPT, not on success: the token is spent either way, and a provider
+        // that fails fast is exactly the case an attacker would loop.
+        await require('./_usage').logUsage({ userId: _g.user.id, action: 'healthping', model: 'grok' });
         add('grok_live', grok.ok);
       }
     } catch (e) {

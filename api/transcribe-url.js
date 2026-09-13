@@ -47,6 +47,7 @@ const MSG_CUT_OFF       = 'The download was cut off before it finished — try a
 const MSG_HOST          = "Couldn't download that video — the host didn't respond. Try again, or paste the spoken words or a short description instead.";
 const MSG_BAD_LINK      = 'That video host returned a link we cannot follow — paste the spoken words or a short description instead.';
 const MSG_PROVIDER_SLOW = "The video service didn't respond in time — try again in a minute, or paste the spoken words instead.";
+const MSG_UNEXPECTED    = 'Something went wrong on our side — try again, or paste the spoken words instead.';
 
 // Node's socket failures (ECONNRESET, "socket hang up", ENOTFOUND, CERT_HAS_EXPIRED…)
 // carry an err.code and read as gibberish to a user. Every message thrown deliberately
@@ -54,6 +55,10 @@ const MSG_PROVIDER_SLOW = "The video service didn't respond in time — try agai
 // the discriminator, and the hand-written messages still pass through untouched.
 function userMessage(err) {
   const raw = err && err.message ? String(err.message) : '';
+  // A programming error is not one of those hand-written sentences — its message names our own
+  // internals (a body-less POST used to hand the caller our raw TypeError). Never relayed.
+  if (err instanceof TypeError || err instanceof ReferenceError
+      || err instanceof RangeError || err instanceof SyntaxError) return MSG_UNEXPECTED;
   if ((err && err.code) ||
       /socket hang up|ECONN|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|EHOSTUNREACH|ENETUNREACH|ERR_[A-Z_]{3,}/.test(raw)) {
     return MSG_HOST;
@@ -92,7 +97,7 @@ const handler = async function (req, res) {
   if (!groqKey) return res.status(500).json({ error: 'Transcription is not configured on the server.' });
 
   try {
-    const { url } = req.body;
+    const { url } = req.body || {};
     if (!url) return res.status(400).json({ error: 'Missing video URL' });
     try { await require('./_safeurl').assertPublicHttpUrl(String(url).trim()); }
     catch (e) { return res.status(400).json({ error: 'That URL is not allowed.' }); }

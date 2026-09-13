@@ -182,10 +182,29 @@ module.exports = async function handler(req, res) {
         metaUserId: (sub.metadata && sub.metadata.user_id) || null
       });
       const userId = _r.userId;
-      if (!userId && type === 'customer.subscription.created') {
-        console.error('stripe-webhook: NEW SUBSCRIPTION UNRESOLVABLE — sub=' + subId +
-          ' customer=' + customerId + ' evt=' + evtId + ' has no user_id metadata and matches no ' +
-          'user_plans row. This customer is paying and has NOT been granted anything.');
+      if (!userId) {
+        if (type === 'customer.subscription.created') {
+          console.error('stripe-webhook: NEW SUBSCRIPTION UNRESOLVABLE — sub=' + subId +
+            ' customer=' + customerId + ' evt=' + evtId + ' has no user_id metadata and matches no ' +
+            'user_plans row. This customer is paying and has NOT been granted anything.');
+        }
+        // AN UNRESOLVABLE EVENT THAT WOULD HAVE MOVED A PLAN MUST NOT BE ACKNOWLEDGED. This used
+        // to fall through to the 200 at the bottom: Stripe reads that as "delivered" and never
+        // retries, so a CANCELLED customer whose row carries neither stripe id and whose
+        // subscription carries no user_id metadata kept paid access forever, with nothing in the
+        // logs. Non-2xx makes Stripe redeliver — and a redelivery resolves normally the moment
+        // the grant path (or checkout-confirm) persists the stripe ids. Same 72h/3-day window as
+        // the failed-write 500s below.
+        // The ONE exception is a brand-new subscription that is not active yet (`incomplete`
+        // while the first payment confirms): the resolved path below deliberately does nothing
+        // for it, so an unresolvable one is genuinely ignorable.
+        const wouldChangePlan = type !== 'customer.subscription.created'
+          || sub.status === 'active' || sub.status === 'trialing';
+        if (!wouldChangePlan) return res.status(200).json({ ok: true, ignored: 'no user' });
+        console.error('stripe-webhook: PLAN CHANGE UNRESOLVABLE — type=' + type + ' sub=' + subId +
+          ' customer=' + customerId + ' status=' + (sub.status || 'none') + ' evt=' + evtId +
+          ' matches no user_plans row and carries no user_id metadata — returning 500 so Stripe retries.');
+        return res.status(500).json({ ok: false, error: 'unresolved_user' });
       }
       if (userId) {
         const isActive = type !== 'customer.subscription.deleted'

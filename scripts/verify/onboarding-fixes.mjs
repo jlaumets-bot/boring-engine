@@ -111,21 +111,69 @@ if (tags) {
   ok(/escHtml\(c\)/.test(tags), 'FIX7: the visible tag label is not escaped with escHtml');
 }
 
-/* Behavioural check: the escaping actually round-trips a hostile topic. */
+/* ── Behavioural check: the escaping actually round-trips a hostile topic ───── */
+// v656: this block used to DEFINE its own escHtml and vlEscAttr inline and then test those.
+// It therefore asserted that two functions written four lines above behaved as written — five
+// assertions that were true no matter what app.html contained. You could delete escHtml from
+// app.html entirely and this "behavioural check" stayed green.
+//
+// Now it lifts the REAL functions out of app.html and executes those, the way
+// scripts/verify/xss-escaping.mjs already does. Same extraction technique: anchor on the file's
+// layout rather than brace-matching, because these helpers are dense with regex literals such
+// as /"/g and a naive scanner mistakes the quote for a string and runs past the end.
 {
-  const escHtml = s => !s ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  const vlEscAttr = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const c = `What's trending & "hot" <b>`;
-  const attr = vlEscAttr(JSON.stringify(String(c)));
-  ok(attr.indexOf('"') === -1, 'FIX7: encoded handler arg still contains a raw double quote (would break the attribute)');
-  ok(attr.indexOf('<') === -1, 'FIX7: encoded handler arg still contains a raw <');
-  // Decode the attribute the way a browser would, then confirm it is valid JS
-  // that yields the ORIGINAL topic string — i.e. the × really would remove it.
-  const decoded = attr.replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
-  let round = null;
-  try { round = JSON.parse(decoded); } catch (e) { /* leave null */ }
-  ok(round === c, 'FIX7: the encoded topic does not decode back to the original string');
-  ok(escHtml(c).indexOf('<b>') === -1, 'FIX7: escHtml did not neutralise markup in the label');
+  function extractFn(name) {
+    const re = new RegExp(`\\bfunction\\s+${name}\\s*\\(`, 'g');
+    const m = re.exec(src);
+    if (!m) throw new Error(`could not find function ${name}() in app.html`);
+    const eol = src.indexOf('\n', m.index);
+    const firstLine = src.slice(m.index, eol < 0 ? src.length : eol);
+    let text;
+    if ((firstLine.match(/{/g) || []).length === (firstLine.match(/}/g) || []).length && firstLine.includes('{')) {
+      text = firstLine;                                   // single-line declaration
+    } else {
+      const end = src.indexOf('\n}', m.index);
+      if (end < 0) throw new Error(`no closing brace found for ${name}()`);
+      text = src.slice(m.index, end + 2);
+    }
+    const decls = (text.match(/\bfunction\s+[A-Za-z_$][\w$]*\s*\(/g) || []).length;
+    if (decls !== 1) throw new Error(`extraction for ${name}() captured ${decls} declarations`);
+    return text;
+  }
+
+  let escHtml, vlEscAttr;
+  try {
+    const bundle = ['escHtml', 'vlEscAttr'].map(extractFn).join('\n');
+    // eslint-disable-next-line no-new-func
+    ({ escHtml, vlEscAttr } = new Function(`${bundle}\nreturn { escHtml, vlEscAttr };`)());
+  } catch (e) {
+    fails.push('FIX7: could not lift escHtml/vlEscAttr out of app.html to test them — ' + e.message);
+  }
+
+  if (typeof escHtml !== 'function' || typeof vlEscAttr !== 'function') {
+    fails.push('FIX7: escHtml/vlEscAttr did not evaluate to functions — the behavioural check below cannot run, ' +
+               'so do NOT read the absence of failures as coverage');
+  } else try {
+    const c = `What's trending & "hot" <b>`;
+    const attr = vlEscAttr(JSON.stringify(String(c)));
+    ok(attr.indexOf('"') === -1, 'FIX7: app.html\'s vlEscAttr leaves a raw double quote in the encoded handler arg (would break the attribute)');
+    ok(attr.indexOf('<') === -1, "FIX7: app.html's vlEscAttr leaves a raw < in the encoded handler arg");
+    // Decode the attribute the way a browser would, then confirm it is valid JS
+    // that yields the ORIGINAL topic string — i.e. the × really would remove it.
+    const decoded = attr.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    let round = null;
+    try { round = JSON.parse(decoded); } catch (e) { /* leave null */ }
+    ok(round === c, 'FIX7: the encoded topic does not decode back to the original string');
+    ok(escHtml(c).indexOf('<b>') === -1, "FIX7: app.html's escHtml did not neutralise markup in the label");
+    // Negative control: the oracle must be able to fail. If these helpers were identity
+    // functions every assertion above would pass silently, so prove they change the input.
+    ok(escHtml(c) !== c && vlEscAttr('<"&>') !== '<"&>',
+       'FIX7-control: the lifted escHtml/vlEscAttr are pass-through — the behavioural check proves nothing');
+  } catch (e) {
+    // A helper that THROWS is a failure of app.html, not of this gate. Report it; do not let an
+    // uncaught exception turn a red gate into a stack trace nobody reads as a verdict.
+    fails.push('FIX7: app.html\'s escHtml/vlEscAttr threw while escaping a hostile topic — ' + e.message);
+  }
 }
 
 if (fails.length) {

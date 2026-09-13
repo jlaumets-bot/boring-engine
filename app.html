@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v655';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v656';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -8300,6 +8300,15 @@ const STAGE_PREV = {done:"filming"};
 // ===== STATE =====
 const STORAGE_KEY = "boring_content_engine_v5";
 const SETTINGS_KEY = "boring_content_engine_settings";
+// DEAD KEY — it was written on every save AND every keystroke, and never once read back.
+// `settings` is rebuilt FROM THE DATABASE on every load; loadSettings() below is the only reader
+// and has no callers at all (the note above notifyBrandSaveBlocked says so outright). Meanwhile
+// `settings` carries brandLogo and founderPhoto as base64, so this single blob was by far the
+// largest thing in localStorage — and the most likely reason a device hit QuotaExceededError
+// ("This device's storage is full") and then failed to keep the per-brand data that IS read back.
+// Dropped once, here, so existing installs actually get the space back: removing the writes alone
+// would have left the old multi-megabyte blob sitting there forever.
+try { localStorage.removeItem(SETTINGS_KEY); } catch(e) {}
 let state, activeView = "today", activeFilter = "all", activeFormat = "all", activePipelineStage = "filming";
 let expandedIds = new Set(), openDismissPopup = null;
 let notebookNotes = [];
@@ -8465,16 +8474,17 @@ function _queueBrandSave() {
 }
 // Immediate save — for discrete actions (toggles, pickers, uploads, programmatic writes).
 function saveSettings() {
-  _lsWriteGuarded(SETTINGS_KEY, JSON.stringify(settings));
   if (_brandSaveTimer) { clearTimeout(_brandSaveTimer); _brandSaveTimer = null; }   // supersede a pending keystroke save
   applyFeatureLocks();
   return _queueBrandSave();
 }
-// Debounced save — for typing. localStorage still updates on every keystroke (so a reload
-// can't lose the draft); only the network write waits for a pause.
+// Debounced save — for typing. Only the network write waits for a pause. (It also used to write
+// the whole `settings` blob to SETTINGS_KEY on EVERY keystroke, commented "so a reload can't lose
+// the draft" — but nothing has ever read that key back, so no reload ever recovered anything from
+// it. All it did was rewrite the logo/photo base64 on each keypress until the device ran out of
+// room, at which point the writes that DO get read back started failing instead.)
 const BRAND_SAVE_DEBOUNCE_MS = 600;
 function saveSettingsDebounced() {
-  _lsWriteGuarded(SETTINGS_KEY, JSON.stringify(settings));
   applyFeatureLocks();
   if (_brandSaveTimer) clearTimeout(_brandSaveTimer);
   _brandSaveTimer = setTimeout(function(){ _brandSaveTimer = null; _queueBrandSave(); }, BRAND_SAVE_DEBOUNCE_MS);
@@ -8944,6 +8954,13 @@ async function brainDistill() {
     .slice(-20).map(i => ({ format: i.format, reason: i.approveReason, title: i.title }));
   const existingRules = (settings.coachNotes || '').split('\n').map(l => l.trim()).filter(Boolean);
 
+  // BRAND PIN. Two writes here belong to the brand the signals were READ from: the
+  // 'brain_last_distill_count' watermark (lsSet resolves its namespace at WRITE time) and the
+  // distilled rules, which brainKeepRule then appends to settings.coachNotes. Marking the
+  // watermark against the wrong brand makes brainCountNewSignals() return 0 for it, so that
+  // brand's learning banner silently stops appearing even though its signals were never read.
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+  const _bdBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
   try {
     const resp = await fetch('/api/distill-voice', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -8951,6 +8968,14 @@ async function brainDistill() {
     });
     const data = await resp.json();
     const rules = (data && data.rules) || [];
+    // Another brand is open now. Do not mark ITS signals processed, and do not offer rules
+    // distilled from someone else's edits for saving into its Voice Memory.
+    if (_sameBrand && !_sameBrand()) {
+      window._brainReviewOpen = false;
+      try { renderBrainBanner(); } catch(_){}
+      try { showToast('You switched brand — what I read came from ' + _bdBrandName + ", so nothing was saved. Open the learning banner again for this brand.", 8000); } catch(_){}
+      return;
+    }
     // mark these signals as processed regardless, so we don't re-nag on the same batch
     const { total } = brainCountNewSignals();
     try { lsSet('brain_last_distill_count', String(total)); } catch(e) {}
@@ -13648,6 +13673,11 @@ async function fetchPAAQuestions(force) {
   paaLoading = true;
   window.__paaError = false;
   renderPAASection();
+  // BRAND PIN. 45s abort budget, and the landing writes `paaQuestions` / `paaUsed` and then
+  // savePAAState() -> lsSet, whose namespace bkey() resolves at WRITE time. A switch mid-fetch
+  // filed brand A's search questions into brand B's store.
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+  const _paaBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
 
   const _ctrl = new AbortController();
   const _to = setTimeout(() => { try { _ctrl.abort(); } catch(_){} }, 45000);
@@ -13660,7 +13690,12 @@ async function fetchPAAQuestions(force) {
     });
     clearTimeout(_to);
     const data = await resp.json();
-    if (resp.ok && data.questions) {
+    if (_sameBrand && !_sameBrand()) {
+      // Another brand is open now. These questions were pulled for a different brand's keywords,
+      // so drop them rather than file them here. Only say so if the user asked for this pull.
+      debugLog('fetchPAAQuestions: brand switched mid-fetch — discarded questions for ' + _paaBrandName);
+      if (force && typeof showToast === 'function') showToast('You switched brand — those questions were pulled for ' + _paaBrandName + ', so nothing was saved. Tap again for this brand.', 8000);
+    } else if (resp.ok && data.questions) {
       paaQuestions = data.questions;
       // Keep used state for questions that still exist
       const currentTexts = new Set(paaQuestions.map(q => q.question.toLowerCase().trim()));
@@ -14451,36 +14486,45 @@ function urlB64ToUint8(base64String) {
 }
 
 async function setMotivationReminders(on) {
-  localStorage.setItem('motivation-on', on ? '1' : '0');
+  // PER-BRAND. push_subscriptions holds one row per (user_id, brand_id) and motivation_on lives
+  // on that per-brand row — but this flag was plain device-global localStorage and the update
+  // below was scoped by user_id ALONE. Toggling it on one brand therefore redrew the toggle for
+  // every brand and rewrote every brand's row. lsSet/lsGet namespace by brand (bkey).
+  lsSet('motivation-on', on ? '1' : '0');
+  const _bid = (currentBrand && currentBrand.id) || null;   // read before the await
   try {
     if (sb && currentUser) {
-      await sb.from('push_subscriptions').update({ motivation_on: on }).eq('user_id', currentUser.id);
+      // `.is()` not `.eq()` for a null brand — PostgREST rejects brand_id=eq.null.
+      const _q = sb.from('push_subscriptions').update({ motivation_on: on }).eq('user_id', currentUser.id);
+      await (_bid ? _q.eq('brand_id', _bid) : _q.is('brand_id', null));
     }
   } catch (e) {}
   if (typeof showToast === 'function') showToast(on ? 'Motivation reminders on' : 'Motivation reminders off');
 }
 
 async function enableDailyPush() {
+  // SIX awaits sit between the tap and the write, and one of them (the permission dialog) blocks
+  // on a human for an unbounded time. The brand id was read at the END, twice — so enabling the
+  // ping for brand A while switching to B deleted B's subscription row and filed A's intent under
+  // B. Both the id and the gate are taken NOW, before anything can await — and now ABOVE the try,
+  // so the catch can test the gate too before it touches the per-brand flag.
+  const _pushBrandId = (currentBrand && currentBrand.id) || null;
+  const _sameBrand = brandGate();
   try {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) { showToast('Notifications need the installed app'); return; }
-    // SIX awaits sit between the tap and the write, and one of them (the permission dialog) blocks
-    // on a human for an unbounded time. The brand id was read at the END, twice — so enabling the
-    // ping for brand A while switching to B deleted B's subscription row and filed A's intent under
-    // B. Both the id and the gate are taken NOW, before anything can await.
-    const _pushBrandId = (currentBrand && currentBrand.id) || null;
-    const _sameBrand = brandGate();
     const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { localStorage.setItem('daily-push-on', '0'); notifBlockedHelp(); return; }
+    if (perm !== 'granted') { if (_sameBrand()) lsSet('daily-push-on', '0'); notifBlockedHelp(); return; }
     const keyResp = await fetch('/api/push-key');
     const { key } = await keyResp.json();
     if (!key) throw new Error('no key');
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(key) });
-    const hour = parseInt(document.getElementById('dailyPushHour')?.value || localStorage.getItem('daily-push-hour') || '9', 10);
+    const hour = parseInt(document.getElementById('dailyPushHour')?.value || lsGet('daily-push-hour') || '9', 10);
     if (!_sameBrand()) {
       showToast('You switched brand while that was turning on — nothing was changed. Try again on this brand.', 7000);
-      localStorage.setItem('daily-push-on', '0');
+      // No flag write here. The flag is per-brand now, and the brand open at this moment is NOT
+      // the one being turned on — clearing it would switch off a ping that brand really has.
       renderSettingsPanel();
       return;
     }
@@ -14495,15 +14539,16 @@ async function enableDailyPush() {
         subscription: sub.toJSON(),
         send_hour: hour,
         tz_offset_min: new Date().getTimezoneOffset(),
-        motivation_on: localStorage.getItem('motivation-on') !== '0'
+        motivation_on: lsGet('motivation-on') !== '0'
       });
     }
-    localStorage.setItem('daily-push-on', '1');
-    localStorage.setItem('daily-push-hour', String(hour));
+    // Past the gate, so currentBrand.id === _pushBrandId and bkey() resolves to the pinned brand.
+    lsSet('daily-push-on', '1');
+    lsSet('daily-push-hour', String(hour));
     showToast(`Daily idea ping on — every day at ${String(hour).padStart(2, '0')}:00`);
   } catch (e) {
     showToast('Could not turn on notifications — try from the installed app');
-    localStorage.setItem('daily-push-on', '0');
+    if (_sameBrand()) lsSet('daily-push-on', '0');
     renderSettingsPanel();
   }
 }
@@ -14512,7 +14557,7 @@ async function enableDailyPush() {
 function maybeAskNotif() {
   try {
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    if (localStorage.getItem('daily-push-on') === '1') return;            // already on
+    if (lsGet('daily-push-on') === '1') return;            // already on
     if (localStorage.getItem('notif-prompt-dismissed') === '1') return;   // user said not now
     if (Notification.permission === 'denied') return;                     // blocked — can't prompt; Settings path only
     const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
@@ -14560,6 +14605,11 @@ function notifBlockedHelp() {
 function closeNotifHelp() { const w = document.getElementById('notifOverlay'); if (w) w.remove(); }
 
 async function disableDailyPush() {
+  // Pin the brand BEFORE the awaits. The delete below is scoped by brand_id and the flag write at
+  // the end is per-brand, but both read currentBrand AFTER three awaits — so switching brand
+  // mid-unsubscribe deleted the OTHER brand's subscription row.
+  const _bid = (currentBrand && currentBrand.id) || null;
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
@@ -14570,11 +14620,11 @@ async function disableDailyPush() {
     // must match that. `.is()` not `.eq()` for a null brand — PostgREST rejects brand_id=eq.null.
     if (sb && currentUser) {
       const _q = sb.from('push_subscriptions').delete().eq('user_id', currentUser.id);
-      const _bid = (currentBrand && currentBrand.id) || null;
       await (_bid ? _q.eq('brand_id', _bid) : _q.is('brand_id', null));
     }
   } catch (e) {}
-  localStorage.setItem('daily-push-on', '0');
+  // Per-brand flag: only clear it if this is still the brand that was switched off.
+  if (!_sameBrand || _sameBrand()) lsSet('daily-push-on', '0');
   showToast('Daily idea ping off');
 }
 
@@ -14805,8 +14855,13 @@ async function deleteBrand(brandId, name) {
     }
     if (!leftover && sweptRows === 0) console.warn('deleteBrand: the child sweep removed 0 rows — the brand row is gone, so its children are no longer visible to delete. They are orphaned unless the database cascades.');
     try { if (localStorage.getItem('cs_last_brand') === brandId) localStorage.removeItem('cs_last_brand'); } catch (e) {}
-    // drop this brand's local caches so nothing bleeds into the next one
-    try { Object.keys(localStorage).filter(k => k.endsWith('::' + brandId)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+    // drop this brand's local caches so nothing bleeds into the next one.
+    // Not every per-brand key is `<base>::<brandId>`: the notebook cache is written as
+    // `notebook_<brandId>` (see saveNotebookToDB), so the ::-suffix filter never matched it and a
+    // deleted brand's notes stayed on the device forever — surviving the delete, and still there
+    // if that brand id ever came back. obResetForTesting already special-cases the same key; this
+    // is the same test.
+    try { Object.keys(localStorage).filter(k => k.endsWith('::' + brandId) || k === ('notebook_' + brandId)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
     // Redrawing must never be able to throw its way into the failure message below — the brand is
     // already gone by this point, and "nothing was deleted" would then be a lie.
     try {
@@ -15619,7 +15674,7 @@ function renderCarouselMaker() {
         <button class="cm-nav-btn" onclick="cmNavigate(1)" ${s.currentSlide === s.slides.length - 1 ? 'disabled' : ''}>&#9654;</button>
       </div>
       <div class="cm-slide-label">Slide ${s.currentSlide + 1} of ${s.slides.length}</div>`}
-      <textarea class="cm-textarea" id="cmTextarea" oninput="cmUpdateText(this.value)" placeholder="${s.single ? 'Statement text...' : 'Slide text...'}">${slide.text}</textarea>
+      <textarea class="cm-textarea" id="cmTextarea" oninput="cmUpdateText(this.value)" placeholder="${s.single ? 'Statement text...' : 'Slide text...'}">${escHtml(slide.text)}</textarea>
       ${s.single ? '' : `<div class="cm-slide-actions">
         <button onclick="cmAddSlide()">+ Add slide</button>
         ${s.slides.length > 1 ? `<button onclick="cmRemoveSlide()">Remove this slide</button>` : ''}
@@ -17465,12 +17520,20 @@ async function memeGenerate(){
   try{
     // Anti-repetition (key for high-volume meme generation): pass the recent memes so the model makes a
     // DIFFERENT joke/angle each time instead of reworking the same one.
+    // BRAND PIN. The write below is lsSet('meme_recent', …); lsSet resolves its namespace at
+    // WRITE time, so a switch during generation pushed one brand's meme line onto the other
+    // brand's anti-repetition list (and read that other list to build it).
+    const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
     let _memeRecent = [];
     try { _memeRecent = JSON.parse(lsGet('meme_recent') || '[]'); } catch(e){}
     const { ok, data } = await memeApi({ action:'generate', topic, brandContext: getBrandContext(), recentMemes: _memeRecent });
     if(!ok || !data.imageBase64){ throw new Error(data.error || 'failed'); }
     // Remember this meme's line so the next one won't repeat it (rolling, per-brand, capped).
+    // Skipped outright if the brand changed mid-generation — the meme itself is still shown, it
+    // just does not join another brand's recent list. Nothing is lost that this brand owns.
+    if(!_sameBrand || _sameBrand()){
     try { let _mr=[]; try{ _mr=JSON.parse(lsGet('meme_recent')||'[]'); }catch(e){} if(data.headline){ _mr.push(String(data.headline).trim()); lsSet('meme_recent', JSON.stringify(_mr.slice(-12))); } } catch(e){}
+    }
     const img = new Image();
     img.onload = () => {
       window._memeData = { headline: data.headline || '', caption: data.caption || '', img };
@@ -18521,11 +18584,20 @@ async function refreshCreatorPosts(btn){
   const creators = (_borrowCreators||[]).slice(0,6).map(function(c){ return { name:c.name, plat:c.best.plat, url:c.best.url }; });
   if(!creators.length){ showToast('Save a creator first — tap Manage above'); return; }
   const stop = (typeof btnWork==='function') ? btnWork(btn,'social') : function(){};
+  // BRAND PIN. lsSet resolves its namespace at WRITE time, so a switch during this pull filed
+  // one brand's saved-creator posts into the other brand's creator_posts cache.
+  const _sameBrand = (typeof brandGate==='function') ? brandGate() : null;
+  const _cpBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
   try{
     const r = await fetch('/api/creator-posts', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ brandId: (currentBrand&&currentBrand.id)||null, creators }) });
     const data = await r.json().catch(function(){ return {}; });
     if(!r.ok) throw new Error(data.error || 'Could not reach their posts');
+    // Refuse to cache one brand's creators under another's key.
+    if(_sameBrand && !_sameBrand()){
+      showToast('You switched brand — those posts were pulled for ' + _cpBrandName + ", so they weren't saved here. Refresh again for this brand.", 8000);
+      return;
+    }
     // Cached even when empty, so the "reason" line can explain why and we do not re-run a pull
     // that just came back with nothing every time the screen renders.
     lsSet('creator_posts', JSON.stringify({ at: Date.now(), posts: data.posts||[], reason: data.reason||'' }));
@@ -18868,6 +18940,12 @@ function switchSceneDay(day) {
 
 async function generateAndCacheScenes() {
   if (!settings.brandName) return;
+  // BRAND PIN. The scene generation below is a 15-40s round trip and the write at the end is
+  // `settings.dayScenes = ...` followed by saveBrandToDB(), which PATCHes .eq('id', currentBrand.id)
+  // off the GLOBAL `settings`. switchBrand replaces `settings` wholesale, so a switch mid-flight
+  // filed brand A's scenes into brand B's Supabase row — permanently, and with no error.
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+  const _scenesBrandName = String(settings.brandName || 'the previous brand');
   settings._scenesGenerating = true;
   debugLog('generateScenes: starting for ' + settings.brandName);
   const container = document.getElementById('quickScenesContainer');
@@ -18882,6 +18960,14 @@ async function generateAndCacheScenes() {
       () => getBrandContext());
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Failed to generate scenes');
+
+    // Refuse to file these scenes under whatever brand is open NOW. They were generated from
+    // the other brand's context, so they are not salvageable here — drop them and say so.
+    if (_sameBrand && !_sameBrand()) {
+      debugLog('generateScenes: brand switched mid-flight — discarded scenes for ' + _scenesBrandName);
+      try { showToast('You switched brand — those scenes were generated for ' + _scenesBrandName + ", so nothing was saved. Tap 'Get New Scenes' to run them for this brand.", 8000); } catch(_){}
+      return;
+    }
 
     // Handle new day-based format or legacy flat array
     if (data.dayScenes) {
@@ -18902,7 +18988,9 @@ async function generateAndCacheScenes() {
     debugLog('generateScenes ERROR: ' + e.message);
     if (container) container.innerHTML = '<span style="font-size:13px;color:var(--text3);">Could not generate scenes. Update brand settings to retry.</span>';
   } finally {
-    settings._scenesGenerating = false;
+    // Same pin: clearing the flag on the global `settings` after a switch would clear it on the
+    // brand now open, cancelling ITS in-flight spinner.
+    if (!_sameBrand || _sameBrand()) settings._scenesGenerating = false;
   }
 }
 
@@ -19297,6 +19385,11 @@ function spExamplesFor(key) {
 
 async function loadSettingsExamples() {
   const bid = (currentBrand && currentBrand.id) ? currentBrand.id : '_none';
+  // BRAND PIN. `bid` is captured here, but the write below goes through lsSet(bkey(...)), and
+  // BOTH bkey() calls resolve the namespace at WRITE time off the live currentBrand — so the
+  // captured id never reached the key. A switch mid-fetch stored brand A's example chips under
+  // brand B's cache slot, and B's Settings then showed A's examples on every later open.
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
   if (spChipsLoading) return;
   if (spChipsBrandId === bid && spBrandChips) return; // already have this brand's set
   // Cached for this brand?
@@ -19319,7 +19412,10 @@ async function loadSettingsExamples() {
     });
     if (resp.ok) {
       const data = await resp.json();
-      if (data && data.examples && typeof data.examples === 'object') {
+      // Only file these against the brand they were generated for. When the gate holds,
+      // currentBrand.id === bid, so bkey() resolves to the captured id and the stored key shape
+      // is exactly what it always was. When it does not, drop them: they describe another brand.
+      if (data && data.examples && typeof data.examples === 'object' && (!_sameBrand || _sameBrand())) {
         spBrandChips = data.examples;
         spChipsBrandId = bid;
         try { lsSet(bkey('spExamples'), JSON.stringify(data.examples)); } catch (e) {}
@@ -20185,17 +20281,17 @@ function renderSettingsPanel() {
           <div style="font-size:14px;font-weight:700;color:var(--text);">Daily Idea Ping</div>
           <div style="font-size:12px;color:var(--text3);">One notification a day with a ready-to-film idea. No streaks, no guilt.</div>
         </div>
-        <select id="dailyPushHour" ${localStorage.getItem('daily-push-on')==='1'?'':'disabled'} onchange="if(localStorage.getItem('daily-push-on')==='1'){enableDailyPush()}" style="border:1px solid var(--border2);border-radius:8px;padding:8px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;opacity:${localStorage.getItem('daily-push-on')==='1'?'1':'0.4'};transition:opacity .15s;">
-          ${Array.from({length:24},(_,h)=>`<option value="${h}" ${String(h)===(localStorage.getItem('daily-push-hour')||'9')?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('')}
+        <select id="dailyPushHour" ${lsGet('daily-push-on')==='1'?'':'disabled'} onchange="if(lsGet('daily-push-on')==='1'){enableDailyPush()}" style="border:1px solid var(--border2);border-radius:8px;padding:8px;background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;opacity:${lsGet('daily-push-on')==='1'?'1':'0.4'};transition:opacity .15s;">
+          ${Array.from({length:24},(_,h)=>`<option value="${h}" ${String(h)===(lsGet('daily-push-hour')||'9')?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('')}
         </select>
-        <label class="toggle-switch"><input type="checkbox" ${localStorage.getItem('daily-push-on')==='1'?'checked':''} onchange="this.checked?enableDailyPush():disableDailyPush(); var s=document.getElementById('dailyPushHour'); if(s){s.disabled=!this.checked; s.style.opacity=this.checked?'1':'0.4';}"><span class="toggle-track"></span></label>
+        <label class="toggle-switch"><input type="checkbox" ${lsGet('daily-push-on')==='1'?'checked':''} onchange="this.checked?enableDailyPush():disableDailyPush(); var s=document.getElementById('dailyPushHour'); if(s){s.disabled=!this.checked; s.style.opacity=this.checked?'1':'0.4';}"><span class="toggle-track"></span></label>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--surface3);margin-bottom:16px;gap:10px;">
         <div style="flex:1;min-width:0;">
           <div style="font-size:14px;font-weight:700;color:var(--text);">Motivation Reminders</div>
           <div style="font-size:12px;color:var(--text3);">If you go quiet, a nudge to open up and make content — with your numbers. Needs notifications on.</div>
         </div>
-        <label class="toggle-switch"><input type="checkbox" ${localStorage.getItem('motivation-on')!=='0'?'checked':''} onchange="setMotivationReminders(this.checked)"><span class="toggle-track"></span></label>
+        <label class="toggle-switch"><input type="checkbox" ${lsGet('motivation-on')!=='0'?'checked':''} onchange="setMotivationReminders(this.checked)"><span class="toggle-track"></span></label>
       </div>
       <div class="sp-section">
         <div class="sp-section-header" onclick="toggleSection('schedule')">Your posting target <span class="sp-arrow ${sec.schedule?'open':''}">&#9654;</span></div>
@@ -20712,6 +20808,12 @@ async function pullWebTrends(){
   if(!topic){ if(status){ status.textContent = 'Add a topic or niche to track first.'; status.className='vl-status warn'; } return; }
   const keywords = topic.split(/[,\n;]+/).map(s=>s.trim()).filter(Boolean).slice(0,3);
   if(btn){ btn.disabled = true; btn.textContent = 'Pulling…'; }
+  // BRAND PIN. This pull has a 65s abort budget, and everything it lands is brand-scoped:
+  // currentBrand.auto_trends and lsSet('brand_trends', …), whose namespace bkey() resolves at
+  // WRITE time. A switch mid-pull wrote brand A's headlines into brand B's trend store — and the
+  // trend store auto-feeds generation, so B's future ideas were then built on A's trends.
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+  const _trendBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
   // rotating status lines + a live countdown while it pulls (the X part can take up to ~50s)
   const _tpLines = ['Reading Google News for fresh headlines…','Scanning X for what’s rising…','Cross-checking the sources…','Keeping only your freshness window…','Filtering out the noise…','Almost there…'];
   // The countdown is an ESTIMATE, not knowledge. It used to fall to zero and then say
@@ -20748,6 +20850,12 @@ async function pullWebTrends(){
     const data = await resp.json().catch(()=>({}));
     if(resp.status===402){ if(data && data.error==='limit_reached' && typeof showUpgrade==='function') showUpgrade(data); throw new Error('limit_reached'); }
     if(!resp.ok || !Array.isArray(data.items)){ throw new Error(data.error || 'failed'); }
+    // Refuse to file another brand's headlines here. Nothing is applied: these were pulled for a
+    // different brand's keywords and context, so they are not salvageable against this one.
+    if(_sameBrand && !_sameBrand()){
+      if(typeof showToast==='function') showToast('You switched brand — those trends were pulled for ' + _trendBrandName + ', so nothing was saved. Pull again for this brand.', 8000);
+      return;
+    }
     const items = data.items;
     // v454: a manual pull can now refresh the weekly competitor pulse server-side — the
     // endpoint returns competitorMoves/compAt only when it actually re-ran. Apply it to the
@@ -21545,8 +21653,8 @@ async function obFinish() {
     setTimeout(() => { try { spDraftFromSocial(true); } catch(e) {} }, 3000);
   }
 
-  // Save to localStorage immediately as backup
-  try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}catch(e){}
+  // (The "save to localStorage as backup" write that used to sit here was never read back —
+  // see SETTINGS_KEY. The real backup is saveBrandToDB below.)
 
   // Hide wizard immediately so user isn't stuck
   document.getElementById('onboardingOverlay').classList.add('hidden');
@@ -23549,7 +23657,6 @@ async function bvFinishOnboarding() {
   }
 
   settings.onboardingComplete = true;
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch(e) {}
 
   // Close BV overlay
   bvStopSpeaking();
@@ -23933,6 +24040,13 @@ async function generateBlogPosts() {
   if (activeView === 'blog') renderBlog();
   renderNav();
 
+  // BRAND PIN. Up to three AI generations run back to back here, and each one ends in
+  // blogPosts.push(...) + saveBlogPosts() -> lsSet(BLOG_KEY). switchBrand replaces `blogPosts`
+  // wholesale via loadBlogPosts(), so a switch mid-run appended brand A's posts to brand B's
+  // array and then wrote the merged list into B's namespace.
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+  const _blogBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
+
   // One post per request, sequentially, so each lands fast and partial progress shows
   while (blogPosts.filter(p => p.status === 'pending').length < 3) {
     try {
@@ -23947,6 +24061,13 @@ async function generateBlogPosts() {
       if (!resp.ok) throw new Error('API ' + resp.status);
       const data = await resp.json();
       if (!data.posts || !data.posts.length) throw new Error('Empty response');
+      // Refuse to append another brand's post to the array now in `blogPosts`. Stop the run — the
+      // remaining iterations would write into this brand too.
+      if (_sameBrand && !_sameBrand()) {
+        debugLog('generateBlogPosts: brand switched mid-run — discarded post for ' + _blogBrandName);
+        if (typeof showToast === 'function') showToast('You switched brand — that post was written for ' + _blogBrandName + ', so it was not saved. Generate again for this brand.', 8000);
+        break;
+      }
       data.posts.forEach(p => {
         blogPosts.push({
           id: 'blog_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
@@ -24058,11 +24179,26 @@ function blogImprove(id) {
     reasons: BLOG_FIX, saveLabel: 'Rewrite',
     onSave: async arr => {
       const feedback = arr.join(', ') || 'Make it sharper and better structured.';
+      // BRAND PIN + membership check. This callback awaits a full AI rewrite and then mutates the
+      // `post` OBJECT it captured. switchBrand rebuilds `blogPosts` via loadBlogPosts(), so after a
+      // switch `post` is an orphan from the other brand's array: the mutation lands on nothing and
+      // saveBlogPosts() persists the NEW brand's untouched list. The rewrite the user asked for was
+      // discarded with no error and no toast. Now it is either applied to the real post, or said.
+      const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+      const _biBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
       post._rewriting = true; renderBlog();
       try {
         const resp = await fetch('/api/generate-blog', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ brandContext: getBrandContext(), rewrite: { question: post.question, answer: post.answer, category: post.category, feedback } }) });
         const data = await resp.json();
+        // The post this rewrite belongs to must still be in the list we are about to save. A brand
+        // switch is the reachable way it leaves (same cause blogEditSave already reports).
+        if ((_sameBrand && !_sameBrand()) || !Array.isArray(blogPosts) || blogPosts.indexOf(post) === -1) {
+          post._rewriting = false;
+          if (typeof showToast === 'function') showToast('You switched brand — that rewrite was written for ' + _biBrandName + ", so it couldn't be saved onto this brand's posts. Switch back and tap Improve again.", 9000);
+          renderBlog();
+          return;
+        }
         if (data.posts && data.posts[0]) {
           const np = data.posts[0];
           post.question = np.question || post.question; post.answer = np.answer || post.answer;

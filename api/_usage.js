@@ -54,6 +54,9 @@ const ACTION_CREDITS = {
   voicechat: 0.5,         // one Grok call carrying the whole brand snapshot
   searchimages: 0.5,      // an image search call
   distill: 0.25,          // small Grok call, AUTO-fired by the app — must not eat an allowance
+  healthping: 0.25,       // /api/health?ping=1 — one 5-token Grok call behind a Bearer check. It
+                          // was in NEITHER map and called guard()/logUsage() not at all, so a
+                          // signed-in free account could loop the real model unmetered.
   settingsexamples: 0.25, // one small "make it better" Grok call
   crawlgdoc: 0.25,        // RETIRED v636 (Master Prompt feature removed). Kept registered so a
                           // stray caller is priced, not defaulted to 1 credit as an unknown action.
@@ -124,7 +127,9 @@ const ACTION_COST = {
   // ~$2-3.10/1k results against ~$0.15-0.40/1k for tweets. Manual-only, so it fires rarely.
   creatorposts: 0.08,
   // Two Grok calls, the second with a 2500-token budget — ~2.5x a single `ideas` call.
-  sharpen: 0.015
+  sharpen: 0.015,
+  // One 5-token, temperature-0 Grok reply — the smallest real model call in the app.
+  healthping: 0.002
 };
 function costFor(action) {
   return ACTION_COST[action] != null ? ACTION_COST[action] : 0.01;

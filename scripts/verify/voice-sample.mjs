@@ -43,7 +43,29 @@ const out = fullBrandBlock(bc);
 const iVoice = out.indexOf('ZQVS'), iWin = out.indexOf('ZQWINNER'), iTrend = out.indexOf('ZQTREND'), iNotes = out.indexOf('ZQNOTES');
 ok(iVoice > 0, 'A1 renderer carries the voice sample');
 ok(iVoice > iWin && iVoice > iTrend && iVoice > iNotes, 'A2 voice sample is LAST — after winners, trends and coach notes');
-ok(out.lastIndexOf('ZQVS') === out.length - out.split('').reverse().join('').indexOf('SVQZ') - 4 || out.slice(iVoice).indexOf('\n   ->') > 0, 'A3 sample is followed only by its own instruction line');
+// A3 — v656. The old operand was `out.lastIndexOf('ZQVS') === out.length - reverse(out).indexOf('SVQZ') - 4`,
+// which is the SAME quantity written two ways: for a last occurrence at index L in a string of
+// length N, the reversed needle starts at N-L-4, so the right-hand side is N-(N-L-4)-4 = L. It
+// was `L === L` — true for every possible input, including a renderer that appended three more
+// sections after the sample. Assert the claim the message actually makes instead: after the
+// sample ends, the block contains its closing quote, ONE instruction line, and nothing else.
+{
+  const tail = out.slice(out.lastIndexOf(SAMPLE) + SAMPLE.length);
+  const lines = tail.split('\n');
+  const closesSample = /^\s*["'\u201d]?\s*$/.test(lines[0] || '');
+  const instruction  = /^\s*->/.test(lines[1] || '');
+  const nothingAfter = lines.slice(2).every(l => l.trim() === '');
+  ok(closesSample && instruction && nothingAfter,
+     'A3 sample is followed only by its own instruction line — got ' + JSON.stringify(tail.slice(0, 120)) +
+     (nothingAfter ? '' : ` and ${lines.slice(2).filter(l => l.trim()).length} further non-empty line(s)`));
+  // negative control: the assertion must be able to fail. Feed it a block with an extra section.
+  {
+    const faked = out + '\n\nEXTRA SECTION THAT MUST NOT BE HERE';
+    const t2 = faked.slice(faked.lastIndexOf(SAMPLE) + SAMPLE.length).split('\n');
+    ok(!t2.slice(2).every(l => l.trim() === ''),
+       'A3-control: the "nothing after the instruction line" test does not react to appended content — it is dead');
+  }
+}
 ok(/outranks/i.test(out.slice(iVoice)), 'A4 label says it outranks the descriptions and approved posts');
 ok(/moves|rhythm/i.test(out.slice(iVoice)) && /do not copy|never copy/i.test(out.slice(iVoice)), 'A5 instruction is copy-how-it-MOVES, not copy-the-sentences');
 const big = fullBrandBlock(Object.assign({}, bc, { voiceSample: 'w '.repeat(6000) }));

@@ -61,7 +61,7 @@ const handler = async function (req, res) {
   if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
 
   try {
-    const { audio, filename, mimeType, url, mode } = req.body;
+    const { audio, filename, mimeType, url, mode } = req.body || {};
 
     // --- YouTube caption extraction mode ---
     if (mode === 'youtube' || (url && !audio)) {
@@ -74,6 +74,11 @@ const handler = async function (req, res) {
       try {
         const ply = await fetch('https://www.youtube.com/youtubei/v1/player', {
           method: 'POST',
+          // TIME-BOXED so a stall FALLS THROUGH to the HTML scrape below instead of hanging to
+          // maxDuration 60 and being platform-killed — the fallback usually works, and without a
+          // signal it was never reached. 12s here still leaves the scrape (15s) and the caption
+          // fetch (15s) inside the 60s cap.
+          signal: AbortSignal.timeout(12000),
           headers: {
             'Content-Type': 'application/json',
             'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
@@ -149,7 +154,7 @@ const handler = async function (req, res) {
     // the private Supabase Storage bucket `transcribe-tmp` and sends storagePath.
     // The path MUST live in the caller's own folder (<userId>/...) so nobody can
     // transcribe (or delete) another user's upload.
-    const storagePath = (req.body.storagePath || '').toString();
+    const storagePath = ((req.body && req.body.storagePath) || '').toString();
     let audioBuffer = null;
     if (storagePath) {
       if (!/^[A-Za-z0-9_\-./]+$/.test(storagePath) || storagePath.includes('..') || !storagePath.startsWith(_g.user.id + '/')) {

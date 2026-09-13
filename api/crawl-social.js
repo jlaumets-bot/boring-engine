@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
 
   const _t0 = Date.now();
   try {
-    const { url } = req.body;
+    const { url } = req.body || {};
     if (!url || !url.trim()) return res.status(400).json({ error: 'Missing profile URL' });
     try { await require('./_safeurl').assertPublicHttpUrl(url.trim()); }
     catch (e) { return res.status(400).json({ error: 'That URL is not allowed.' }); }
@@ -79,7 +79,10 @@ module.exports = async function handler(req, res) {
       return res.status(502).json({ error: 'Could not read that profile right now — try again in a minute' });
     }
 
-    const items = await apifyRequest('GET', `/v2/datasets/${encodeURIComponent(datasetId)}/items?limit=40&format=json`, apiToken, DATASET_TIMEOUT_MS);
+    // 5th arg, not the 4th: apifyRequest is (method, path, token, body, timeoutMs). Passed in the
+    // body slot, DATASET_TIMEOUT_MS was written out as the request body of a GET and the read ran
+    // on the 30000 fallback instead — which blew the budget below and starved the LLM leg.
+    const items = await apifyRequest('GET', `/v2/datasets/${encodeURIComponent(datasetId)}/items?limit=40&format=json`, apiToken, null, DATASET_TIMEOUT_MS);
     const captions = (Array.isArray(items) ? items : [])
       .map(it => {
         if (platform === 'instagram') return it.caption || '';

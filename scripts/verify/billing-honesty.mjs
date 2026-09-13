@@ -22,6 +22,7 @@
 
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { stripCode, selfTest } from './_srcscan.mjs';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
 const require_ = createRequire(import.meta.url);
@@ -71,18 +72,68 @@ for (const f of ['checkout-confirm.js', 'stripe-webhook.js']) {
 // ── 3. every guard() caller must both enforce the limit and record the usage ──
 // stock-photo called guard() and checked neither — the only handler in the app doing so. Each
 // half hid the other: with no usage row, `used` stays 0 forever, so the gate could never fire.
+//
+// v656: this loop used to `continue` unless the file matched the literal `_g = await guard`.
+// Exactly ONE endpoint (api/stock-photo.js) is written that way; the other 22 use
+// `const _g = await require('./_usage').guard(req, 'action')`, and two more use their own
+// variable names (_cbGuard, _eaGuard). So the gate reached one file out of twenty-three and
+// silently skipped the rest — deleting both the `.over` block and the logUsage call from
+// api/viral-twist.js passed green. Now: find the guard call in whatever shape it is written,
+// bind the check to the variable the result was captured into, and print the reached count so
+// a future regression in this scanner shows up as a number rather than as silence.
 const fs = require_('node:fs');
+selfTest();   // the comment/string stripper must be proven before its result is trusted
+
+// Endpoints that legitimately need only one half. Both empty today — every guard() caller in
+// api/ blocks AND records. An entry here must name the file and say why, or it is a hole.
+const NEED_NOT_BLOCK = {};   // file -> reason (guard() used only to resolve the user, never to meter)
+const NEED_NOT_LOG   = {};   // file -> reason (the action is recorded by a different endpoint)
+
+const EXPECTED_MIN_REACHED = 20;   // 23 guard() callers when this was written
+
+const reached = [];
 for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.js'))) {
-  const src = fs.readFileSync(path.join(root, 'api', f), 'utf8');
-  if (!/\bguard\s*\(/.test(src) || /require\(['"]\.\/_usage['"]\)/.test(src) === false) continue;
-  if (!/_g\s*=\s*await\s+guard/.test(src)) continue;
-  check(`api/${f} calls guard() but never blocks an over-limit user (no _g.over check)`, /_g\.over/.test(src));
-  check(`api/${f} calls guard() but never records usage — its limit can never be reached`, /logUsage/.test(src));
+  if (f === '_usage.js') continue;            // defines guard(); the signature is not a call site
+  const src = stripCode(fs.readFileSync(path.join(root, 'api', f), 'utf8'));
+  // Any shape of guard call: `guard(req…`, `usage.guard(req…`, `require('./_usage').guard(req…`
+  if (!/\bguard\s*\(\s*req\b/.test(src)) continue;
+  reached.push(f);
+
+  // The result must be CAPTURED — an un-captured `await guard(req, …)` can never be acted on.
+  const caps = [...src.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+[^;\n]*?\bguard\s*\(\s*req\b/g)]
+    .map(m => m[1]);
+  const callCount = (src.match(/\bguard\s*\(\s*req\b/g) || []).length;
+  check(`api/${f}: calls guard() ${callCount}x but captures its result ${caps.length}x — an uncaptured ` +
+        `guard() result can never block anyone`, caps.length >= 1 && caps.length >= callCount);
+
+  // BLOCK: the captured result's `.over` must be read, and read as a condition.
+  if (NEED_NOT_BLOCK[f]) {
+    console.log(`  allowlisted (no block): api/${f} — ${NEED_NOT_BLOCK[f]}`);
+  } else {
+    const blocks = caps.some(v => new RegExp(`(?:if\\s*\\(|&&|\\|\\||!|\\?)\\s*!?\\s*${v}\\s*\\.\\s*over\\b`).test(src));
+    check(`api/${f} calls guard() but never blocks an over-limit user — no \`${caps[0] || '<var>'}.over\` ` +
+          `is tested (guard() only CHECKS the allowance; something has to act on it)`, blocks);
+  }
+
+  // RECORD: without a usage row `used` stays 0 forever and the limit is unreachable.
+  if (NEED_NOT_LOG[f]) {
+    console.log(`  allowlisted (no logUsage): api/${f} — ${NEED_NOT_LOG[f]}`);
+  } else {
+    check(`api/${f} calls guard() but never records usage — its limit can never be reached`,
+          /\blogUsage\s*\(/.test(src));
+  }
 }
 
+// A scanner that reaches nothing passes vacuously. Make that impossible.
+check(`the guard() scanner reached only ${reached.length} api file(s) — it is broken, not the code ` +
+      `(${EXPECTED_MIN_REACHED}+ endpoints call guard()). Files reached: ${reached.join(', ') || '(none)'}`,
+      reached.length >= EXPECTED_MIN_REACHED);
+
 if (fails.length) {
+  console.log(`REACHED ${reached.length} guard()-calling api file(s): ${reached.join(', ')}`);
   console.log('FAIL: billing-honesty');
   for (const f of fails) console.log('  - ' + f);
   process.exit(1);
 }
+console.log(`REACHED ${reached.length} guard()-calling api file(s): ${reached.join(', ')}`);
 console.log('PASS: billing-honesty — a failed plan write is logged, never reported as success, and every metered endpoint both blocks and records');

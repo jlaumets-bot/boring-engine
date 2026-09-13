@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
   if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
 
   try {
-    const { messages, brandContext, behavior, currentWork, convoMemory, founderName, brandId } = req.body;
+    const { messages, brandContext, behavior, currentWork, convoMemory, founderName, brandId } = req.body || {};
     let bc = brandContext || {};
 
     if (!messages || !messages.length) {

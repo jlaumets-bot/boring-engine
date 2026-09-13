@@ -106,9 +106,9 @@ module.exports = async function handler(req, res) {
   const _usage = require('./_usage');
 
   try {
-    const { brandContext, gaps, count = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat } = req.body;
+    const { brandContext, gaps, count = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat } = req.body || {};
     let bc = brandContext || {};
-    let learningContext = req.body.learningContext;
+    let learningContext = req.body && req.body.learningContext;
     // Bound the one client string that reached the prompt unchecked. Logged so an oversized
     // payload names itself instead of silently inflating every generation (see LEARNING_CTX_CAP).
     if (typeof learningContext === 'string' && learningContext.length > LEARNING_CTX_CAP) {
