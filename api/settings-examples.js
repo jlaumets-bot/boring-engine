@@ -105,7 +105,7 @@ JSON only.`;
         if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
       } catch (e) {}
     }
-    await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'settingsexamples', model: 'grok' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'settingsexamples', model: 'grok' });
     return res.status(200).json({ examples });
 
   } catch (err) {

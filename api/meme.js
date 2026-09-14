@@ -108,7 +108,16 @@ module.exports = async function handler(req, res) {
     }
 
     if (action === 'generate') {
-      const _gate = await require('./_usage').checkLimit(user.id, require('./_usage').creditsFor('meme'), 'meme');
+      // Billed to the brand OWNER, not to whoever is signed in — an Agency seat's meme comes
+      // out of the plan that pays for the brand. billingUserFor re-verifies membership itself
+      // (on top of the userCanAccessBrand check above) and falls back to the caller on anything
+      // it cannot confirm, so this can never spend a stranger's credits. Own brand → unchanged.
+      // Falls back to the caller when the helper is unavailable: metering must never be the
+      // reason a generation fails (the rule at the top of _usage.js).
+      const _usg = require('./_usage');
+      const _billingUser = typeof _usg.billingUserFor === 'function'
+        ? await _usg.billingUserFor(user.id, brandId) : user.id;
+      const _gate = await require('./_usage').checkLimit(_billingUser, require('./_usage').creditsFor('meme'), 'meme');
       if (!_gate.ok) return res.status(402).json({ error: _gate.reason === 'feature' ? 'feature_locked' : 'limit_reached', feature: _gate.feature || undefined, plan: _gate.plan, used: _gate.used, limit: _gate.limit, trialEndsAt: _gate.trialEndsAt });
       const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
       const enc = ((r.data || [])[0] || {}).gemini_key_enc;
@@ -136,7 +145,7 @@ module.exports = async function handler(req, res) {
       const img = await geminiImage(key, imgPrompt);
       if (img.error) return res.status(502).json({ error: 'Image generation failed: ' + img.error });
 
-      await require('./_usage').logUsage({ userId: user.id, brandId: brandId, action: 'meme', model: bc.engine || 'grok' });
+      await require('./_usage').logUsage({ userId: _billingUser, brandId: brandId, action: 'meme', model: bc.engine || 'grok' });
       return res.status(200).json({
         headline: meta.headline || '',
         caption: meta.caption || '',
@@ -149,7 +158,16 @@ module.exports = async function handler(req, res) {
       // Render a product/scene image from a ready-made prompt, using the user's own
       // Gemini key (same key as memes). Optional reference product photos are passed
       // through so the model matches the real product.
-      const _gate = await require('./_usage').checkLimit(user.id, require('./_usage').creditsFor('brandimage'), 'brandimage');
+      // Billed to the brand OWNER, not to whoever is signed in — an Agency seat's meme comes
+      // out of the plan that pays for the brand. billingUserFor re-verifies membership itself
+      // (on top of the userCanAccessBrand check above) and falls back to the caller on anything
+      // it cannot confirm, so this can never spend a stranger's credits. Own brand → unchanged.
+      // Falls back to the caller when the helper is unavailable: metering must never be the
+      // reason a generation fails (the rule at the top of _usage.js).
+      const _usg = require('./_usage');
+      const _billingUser = typeof _usg.billingUserFor === 'function'
+        ? await _usg.billingUserFor(user.id, brandId) : user.id;
+      const _gate = await require('./_usage').checkLimit(_billingUser, require('./_usage').creditsFor('brandimage'), 'brandimage');
       if (!_gate.ok) return res.status(402).json({ error: _gate.reason === 'feature' ? 'feature_locked' : 'limit_reached', feature: _gate.feature || undefined, plan: _gate.plan, used: _gate.used, limit: _gate.limit, trialEndsAt: _gate.trialEndsAt });
       const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
       const enc = ((r.data || [])[0] || {}).gemini_key_enc;
@@ -170,7 +188,7 @@ module.exports = async function handler(req, res) {
       const img = await geminiImage(key, parts);
       if (img.error) return res.status(502).json({ error: 'Image generation failed: ' + img.error });
 
-      await require('./_usage').logUsage({ userId: user.id, brandId: brandId, action: 'brandimage', model: 'gemini-image' });
+      await require('./_usage').logUsage({ userId: _billingUser, brandId: brandId, action: 'brandimage', model: 'gemini-image' });
       return res.status(200).json({ imageBase64: img.data, mime: img.mime });
     }
 

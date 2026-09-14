@@ -117,15 +117,17 @@ module.exports = async function handler(req, res) {
     // action was never recorded and was effectively unlimited on every plan. Logged only when
     // the vision call actually produced a read, which preserves this endpoint's stated rule
     // that the credit is charged for real work, never for a miss (no thumb / vision failure).
+    // NO BRAND ATTRIBUTION — and that is now said out loud. This used to read
+    // `req.body.brandId` and verify it with store.userCanAccessBrand, which reads like the
+    // sibling generators' attribution block but is dead code here: the one and only caller
+    // (fetchHookFrame in app.html) posts `{url}` and nothing else, and unlike its siblings this
+    // endpoint takes no brandContext to derive an id from. So `_bid` was always null, the
+    // access check never ran, and the row was always written with brand_id: null anyway.
+    // Rather than keep a lookup that pretends to attribute, write the honestly user-scoped row.
+    // If a caller is ever given a brand to name, re-add the sibling block — verified, not trusted.
     if (out) {
       try {
-        let logBrandId = null;
-        const _bid = (req.body && req.body.brandId) || null;
-        if (_bid) {
-          const store = require('./_publish/store');
-          if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
-        }
-        await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'hookframe', model: 'grok' });
+        await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'hookframe', model: 'grok' });
       } catch (e) { console.log('hook-frame: usage log failed — ' + (e && e.message)); }
     }
 

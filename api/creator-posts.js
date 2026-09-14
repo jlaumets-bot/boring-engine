@@ -169,7 +169,7 @@ module.exports = async function handler(req, res) {
 
     let logBrandId = null;
     if (brandId) { try { if (await store.userCanAccessBrand(_g.user.id, brandId)) logBrandId = brandId; } catch (e) {} }
-    await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'creatorposts', model: 'apify:' + lanes.join('+') });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'creatorposts', model: 'apify:' + lanes.join('+') });
 
     return res.status(200).json({ posts, skipped, at: Date.now(), empty: !posts.length });
   } catch (e) {

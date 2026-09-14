@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v656';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v657';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -6931,10 +6931,16 @@ function positionBrandDropdown() {
   dd.style.left = Math.round(left) + 'px';
 }
 
+// The teardown for the currently-open dropdown's three global listeners. It used to live ONLY
+// inside the setTimeout closure below, so the close-by-trigger path could not reach it.
+let _bsCleanup = null;
 function toggleBrandSwitcher() {
   const dd = document.getElementById('brandDropdown');
   if (dd.classList.contains('open')) {
     dd.classList.remove('open');
+    // Closing by tapping the trigger skipped cleanup() entirely — every open/close pair leaked a
+    // document click listener plus a capturing scroll and a resize listener, for the whole session.
+    if (_bsCleanup) { try { _bsCleanup(); } catch (e) {} _bsCleanup = null; }
     return;
   }
   renderBrandDropdown();
@@ -6953,10 +6959,12 @@ function toggleBrandSwitcher() {
       document.removeEventListener('click', closer);
       window.removeEventListener('scroll', onScrollResize, true);
       window.removeEventListener('resize', onScrollResize);
+      if (_bsCleanup === cleanup) _bsCleanup = null;
     };
     document.addEventListener('click', closer);
     window.addEventListener('scroll', onScrollResize, true);
     window.addEventListener('resize', onScrollResize);
+    _bsCleanup = cleanup;                 // reachable from the close-by-trigger path above
   }, 0);
 }
 
@@ -7774,6 +7782,13 @@ async function loadIdeasFromDB() {
 async function _replaceBrandRows(table, brandId, rows, opts) {
   opts = opts || {};
   if (!brandId) return { ok: false, error: new Error('no brand') };
+  // SERIALIZED per (table, brand, match). Unserialized, two saves fired inside one
+  // round-trip both read the SAME pre-insert id set, both insert a full copy, and the second
+  // delete removes ids that are already gone: the user ends up with `a b c d a b c d e`.
+  // Same discipline as _ideasSaveChain. This covers overlapping saves in THIS tab only —
+  // two devices (or two tabs) saving the same list still race, and that needs a server-side
+  // guard; the newest-first load path keeps the duplicate readable until then.
+  const _work = async () => {
   // 1. which rows are we superseding?
   let oldIds = null;                       // null = could not read → do NOT delete anything
   try {
@@ -7831,6 +7846,14 @@ async function _replaceBrandRows(table, brandId, rows, opts) {
     return { ok: true, duplicated: true };
   }
   return { ok: true };
+  };
+  const _chains = _replaceBrandRows._chains || (_replaceBrandRows._chains = Object.create(null));
+  let _key = table + '|' + brandId;
+  try { if (opts.match) _key += '|' + JSON.stringify(opts.match); } catch (e) {}
+  // .then(_work, _work): a failed save must not stall every later save of this list.
+  const _run = (_chains[_key] || Promise.resolve()).then(_work, _work);
+  _chains[_key] = _run.then(function(){}, function(){});
+  return _run;
 }
 
 async function saveRemixesToDB() {
@@ -9186,7 +9209,7 @@ async function openBrollIdea(idea, id){
     if (!body) return;
     if (!resp.ok || !data.beats || !data.beats.length) {
       body.innerHTML = '<div class="br-load" style="color:var(--warning,#B45309)">'
-        + brollEsc((data && data.error) || "Couldn't build the graphics track.")
+        + brollEsc(humanErr(data && data.error, "Couldn't build the graphics track."))
         + '<br><span>Tap B-roll again to retry.</span></div>';
       return;
     }
@@ -9447,7 +9470,12 @@ function closeTeleprompter() {
         const file = new File([blob], fname, { type: blob.type });
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
           try { await navigator.share({ files: [file], title: 'Content Shrimp Video' }); showToast('Video shared!','success'); }
-          catch(e) { tpDownloadBlob(blob, fname); }
+          catch(e) {
+            if (_tpShareCancelled(e)) {
+              try { window._tpLastTake = { blob: blob, name: fname }; } catch(_){}
+              showToast('Not shared — your video is still here. Tap to share it again.', 9000, function(){ tpShareOrSave(blob, fname); });
+            } else tpDownloadBlob(blob, fname);
+          }
         } else { tpDownloadBlob(blob, fname); }
       } catch(e) { showToast('Error saving video','error'); }
       try { tpBlur.stop(); } catch(e){}
@@ -9958,7 +9986,16 @@ function tpShareOrSave(blob, fname){
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], title: 'Content Shrimp Video' })
         .then(() => showToast('Filmed ✓ — your post is ready to share', 'success'))
-        .catch(() => tpDownloadBlob(blob, fname));
+        .catch(err => {
+          // A dismissed share sheet is not a failure: don't "save" it behind their back and don't
+          // claim anything. Keep the bytes reachable and offer the share again.
+          if (_tpShareCancelled(err)) {
+            try { window._tpLastTake = { blob: blob, name: fname }; } catch(e){}
+            showToast('Not shared — your video is still here. Tap to share it again.', 9000, function(){ tpShareOrSave(blob, fname); });
+            return;
+          }
+          tpDownloadBlob(blob, fname);
+        });
       return;
     }
   } catch(e) {}
@@ -10321,10 +10358,15 @@ function tpSplitResult(bd, outBlob, ext, rawBlob, rawName, warn){
         await navigator.share({ files: [file], title: 'Content Shrimp Video' });
         showToast('Shared ✓', 'success'); close(); return;
       }
-    } catch(e) { /* cancelled or blocked → fall through to saving */ }
-    tpDownloadBlob(outBlob, fname); close();
+    } catch(e) {
+      // Cancelled → the sheet (and its blob URL) must stay exactly where it is. close() revokes
+      // the URL, so falling through here used to destroy a take the user had only dismissed.
+      if (_tpShareCancelled(e)) { showToast('Not shared — your video is still here.', 4000); return; }
+    }
+    // Only close (which revokes the blob URL) if the download actually happened.
+    if (tpDownloadBlob(outBlob, fname)) close();
   };
-  document.getElementById('tpSplitDl').onclick = () => { tpDownloadBlob(outBlob, fname); close(); };
+  document.getElementById('tpSplitDl').onclick = () => { if (tpDownloadBlob(outBlob, fname)) close(); };
   document.getElementById('tpSplitPlain').onclick = () => { close(); tpShareOrSave(rawBlob, rawName); };
 }
 // Composite: footage on top, generated graphics below. Returns a real video Blob.
@@ -10875,13 +10917,43 @@ function spWrap(text, ctx, maxW){
   return out.slice(0, 4);
 }
 
+// Dismissing the share sheet is a CANCEL, not a failed share. Treating it as a failure is how a
+// just-filmed take got "saved" by a script-driven download that a PWA never performs — and the
+// user was told it was on their phone.
+function _tpShareCancelled(e) {
+  if (!e) return false;
+  if (e.name === 'AbortError') return true;                       // the spec's "user dismissed it"
+  return /abort|cancel|dismiss/i.test(String(e.message || ''));   // Safari has shipped plain Errors for it
+}
+// A script-driven <a download> click is INERT in an iOS home-screen PWA and in in-app browsers
+// (Instagram / Facebook / TikTok webviews): nothing is written and no error is raised. So we can
+// never verify a save there, and must not claim one.
+function _tpDownloadsInert(a) {
+  try {
+    if (a && !('download' in a)) return true;
+    const ua = navigator.userAgent || '';
+    if (navigator.standalone === true) return true;               // iOS home-screen PWA
+    if (/iPhone|iPad|iPod/i.test(ua) && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+    return /FBAN|FBAV|Instagram|Line\/|Twitter|TikTok|Snapchat|MicroMessenger/i.test(ua);
+  } catch (e) { return false; }
+}
+// Returns TRUE only when the download is something this browser actually performs. Callers use
+// that to decide whether it is safe to revoke the blob and close the sheet.
 function tpDownloadBlob(blob, fname) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = fname;
+  const _inert = _tpDownloadsInert(a);
   document.body.appendChild(a); a.click();
-  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-  showToast('Saved to your phone — check Downloads', 6000);
+  // When we cannot tell whether the click did anything, hold the blob URL far longer: revoking it
+  // is what made a lost take unrecoverable.
+  setTimeout(() => { try { document.body.removeChild(a); } catch(e){} URL.revokeObjectURL(url); }, _inert ? 120000 : 500);
+  if (_inert) {
+    showToast("This browser can't save the file on its own — use Share to keep this video. Don't close this screen yet.", 9000);
+    return false;
+  }
+  showToast('Sent to your Downloads — check your Files app if you do not see it', 6000);
+  return true;
 }
 
 function toggleTpScroll() {
@@ -11679,7 +11751,10 @@ async function autoRefillCheck(day, format) {
   // No AbortController budget of its own: this is a background refill, so a slow request
   // must not sit forever holding a stale `state` reference.
   const _ctrl = new AbortController();
-  const _to = setTimeout(() => { try { _ctrl.abort(); } catch(_) {} }, 90000);
+  // 240s, not 90s: generate-ideas has maxDuration 300 and makes two 90s LLM legs, so a 90s client
+  // budget hung up on a refill that was still running — the credit was spent and the posts thrown
+  // away. Same number and same reasoning as Quick Post above.
+  const _to = setTimeout(() => { try { _ctrl.abort(); } catch(_) {} }, 240000);
 
   try {
     // Lean request — see leanBrandFetch. This one matters most of the whole set: it fires
@@ -12700,6 +12775,27 @@ function _leanNetFail(e) {
 }
 // Honest wording for catch blocks: raw "Failed to fetch" reads like an app crash. It is
 // the connection — and the server has usually already done the work.
+// Server error CODES are for code, not for people: 'limit_reached', 'feature_locked' and friends
+// were being printed straight onto the screen. The 402 branches elsewhere show the right pattern —
+// route the code to real UI — so anything that still reaches a screen gets words here.
+function humanErr(code, fallback) {
+  const c = String((code && code.message) || code || '').trim();
+  const FB = fallback || 'Something went wrong — try again.';
+  if (!c) return FB;
+  const MAP = {
+    limit_reached: "You've used up this month's posts — upgrade to keep going.",
+    feature_locked: 'That one is on a paid plan.',
+    no_subscription: 'No active subscription to manage yet.',
+    brand_context_unavailable: "Your brand brain wasn't ready just then — try again.",
+    stale_brand_row: "Your brand brain wasn't ready just then — try again.",
+    unauthorized: 'Please sign in again.',
+    rate_limited: 'Too many requests just now — wait a few seconds and try again.'
+  };
+  if (MAP[c]) return MAP[c];
+  // snake_case, or a single bare word: a machine code, never something to show a person.
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(c) || !/\s/.test(c)) return FB;
+  return c;
+}
 function _leanErrMsg(e, fallback) {
   if (_leanNetFail(e)) return 'Your connection dropped mid-request — the work was likely done but never reached your phone. Try again.';
   return (e && e.message) || fallback || 'Something went wrong — try again';
@@ -12907,6 +13003,12 @@ async function generateTodayTabPost() {
         brandId: _leanBrandId,
         bcFields: _tvBcFieldCount(getBrandContext(pickedFormat)),
         avoidExtra: _avoidExtra,
+        // Same rule as the trends, and the same key leanBrandFetch sends for every OTHER
+        // generator: `edit_signals` is localStorage-only, so the server cannot derive which
+        // approved posts the user actually REWROTE. Without it the hydrated winners are all
+        // ranked as equal "approved" and the model's own unedited output gets presented back as
+        // the brand's truest voice — on the flagship generator, of all of them.
+        humanEditedTitles: (typeof _humanEditedTitles === 'function' ? _humanEditedTitles() : []),
         // ONLY what the database cannot know. recentTrends carries the user's hand-taught
         // trends (localStorage 'brand_trends') and already has dismissed auto-trends removed.
         brandContext: { communities, dayMap, recentTrends: getRecentTrends() }
@@ -13179,7 +13281,7 @@ async function tvViralTwist(btn){
       { idea: { title: i.title, hook: i.hook, format: i.format, script: i.script, boldText: i.boldText } },
       () => getBrandContext());
     const data = await resp.json();
-    if (!resp.ok || !data.twist) { throw new Error(data.error || 'Failed'); }
+    if (!resp.ok || !data.twist) { throw new Error(humanErr(data && data.error, "that didn't come back — try again")); }
     const t = data.twist;
     let h = '<div class="vt-panel"><div class="vt-title">' + ICO.zap + ' Viral angles</div>';
     (t.angles || []).forEach(a => {
@@ -13680,7 +13782,11 @@ async function fetchPAAQuestions(force) {
   const _paaBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
 
   const _ctrl = new AbortController();
-  const _to = setTimeout(() => { try { _ctrl.abort(); } catch(_){} }, 45000);
+  // The client budget used to EQUAL people-also-ask's 45s maxDuration, and the client's clock
+  // starts at upload while the server's starts at invocation — so on any slow link the abort fired
+  // first and killed a request the platform was about to answer. 52s lets the server's own
+  // 504/error arrive and be shown as a real message.
+  const _to = setTimeout(() => { try { _ctrl.abort(); } catch(_){} }, 52000);
   try {
     const resp = await fetch('/api/people-also-ask', {
       method: 'POST',
@@ -14290,7 +14396,19 @@ function showDismissPopupFn(id) {
   </div>`;
   document.body.appendChild(wrap);
 }
-function closeDismissSheet() { const w = document.getElementById('dpBackdrop'); if (w) w.remove(); }
+// Closing either reason sheet left its MediaRecorder RUNNING — no close path stopped it. The OS
+// recording indicator stayed lit after the sheet was gone, and the next mic tap only stopped the
+// ORPHAN, which then pasted the PREVIOUS sheet's transcript into the new one seconds later.
+// Every way out (Cancel, the ×, the backdrop, Dismiss/Save, Escape, a view switch) goes through
+// closeDismissSheet / closeApproveSheet, so this is the one place that has to stop them.
+function _stopSheetMic(which) {
+  const rec = (which === 'ap') ? _apRec : _dpRec;
+  if (!rec) return;
+  // _csAbandoned tells onstop there is no sheet left to transcribe into: skip the upload rather
+  // than spend a request writing into a textarea that no longer exists.
+  try { rec._csAbandoned = true; if (rec.state === 'recording') rec.stop(); } catch (e) {}
+}
+function closeDismissSheet() { _stopSheetMic('dp'); const w = document.getElementById('dpBackdrop'); if (w) w.remove(); }
 function dismissWithReason(id,reason) { closeDismissSheet(); reindexIdeas(); if(!state[id]){ openDismissPopup=null; return; } state[id].status="dismissed"; state[id].dismissReason=reason; openDismissPopup=null; saveState(); renderNav(); refreshCurrentView(); }
 let _dpSelected = new Set();
 function dpToggleReason(el, reason) {
@@ -14319,6 +14437,7 @@ async function dpToggleMic(id) {
       stream.getTracks().forEach(t => t.stop());
       if (btn) btn.classList.remove('recording');
       _dpRec = null;
+      if (rec._csAbandoned) return;      // sheet closed mid-recording — nothing to paste into
       const ta = document.getElementById('dpCustom'+id);
       if (ta) ta.placeholder = 'Transcribing\u2026';
       const blob = new Blob(chunks, { type: rec.mimeType });
@@ -14340,6 +14459,8 @@ async function dpToggleMic(id) {
     rec.start();
     _dpRec = rec;
     if (btn) btn.classList.add('recording');
+    // Same 60s backstop icMicToggle has: a forgotten mic must not hold the microphone open.
+    setTimeout(() => { if (_dpRec === rec) { try { rec.stop(); } catch (e) {} } }, 60000);
   } catch (e) {
     if (btn) btn.classList.remove('recording');
     alert('Could not access microphone. Check browser permissions.');
@@ -14382,7 +14503,7 @@ function showApprovePopupFn(id) {
   </div>`;
   document.body.appendChild(wrap);
 }
-function closeApproveSheet() { const w = document.getElementById('apBackdrop'); if (w) w.remove(); }
+function closeApproveSheet() { _stopSheetMic('ap'); const w = document.getElementById('apBackdrop'); if (w) w.remove(); }
 let _apSelected = new Set();
 function apToggleReason(el, reason) {
   if (_apSelected.has(reason)) { _apSelected.delete(reason); el.classList.remove('sel'); }
@@ -14435,6 +14556,7 @@ async function apToggleMic(id) {
       stream.getTracks().forEach(t => t.stop());
       if (btn) btn.classList.remove('recording');
       _apRec = null;
+      if (rec._csAbandoned) return;      // sheet closed mid-recording — nothing to paste into
       const ta = document.getElementById('apCustom'+id);
       if (ta) ta.placeholder = 'Transcribing\u2026';
       const blob = new Blob(chunks, { type: rec.mimeType });
@@ -14453,6 +14575,8 @@ async function apToggleMic(id) {
     rec.start();
     _apRec = rec;
     if (btn) btn.classList.add('recording');
+    // Same 60s backstop icMicToggle has: a forgotten mic must not hold the microphone open.
+    setTimeout(() => { if (_apRec === rec) { try { rec.stop(); } catch (e) {} } }, 60000);
   } catch (e) {
     if (btn) btn.classList.remove('recording');
     alert('Could not access microphone. Check browser permissions.');
@@ -14531,12 +14655,21 @@ async function enableDailyPush() {
     if (sb && currentUser) {
       // `.is()` not `.eq()` for a null brand — PostgREST rejects brand_id=eq.null (same shape as
       // disableDailyPush, which is the delete this insert has to stay symmetrical with).
-      const _delQ = sb.from('push_subscriptions').delete().eq('user_id', currentUser.id);
+      // ONLY THIS DEVICE'S ROW. Scoped by (user_id, brand_id) alone, this delete meant two
+      // devices could never both be subscribed to one brand: turning the ping on on a phone
+      // silently removed the tablet's subscription, and merely changing the hour re-ran the whole
+      // function (the <select>'s onchange calls enableDailyPush) and did it again. The push
+      // ENDPOINT is the device, so that is what the delete has to match — it still replaces this
+      // device's own previous row, which is all this delete was ever for.
+      const _subJson = sub.toJSON();
+      const _endpoint = (_subJson && _subJson.endpoint) || sub.endpoint || '';
+      let _delQ = sb.from('push_subscriptions').delete().eq('user_id', currentUser.id);
+      if (_endpoint) _delQ = _delQ.eq('subscription->>endpoint', _endpoint);
       await (_pushBrandId ? _delQ.eq('brand_id', _pushBrandId) : _delQ.is('brand_id', null));
       await sb.from('push_subscriptions').insert({
         user_id: currentUser.id,
         brand_id: _pushBrandId,
-        subscription: sub.toJSON(),
+        subscription: _subJson,
         send_hour: hour,
         tz_offset_min: new Date().getTimezoneOffset(),
         motivation_on: lsGet('motivation-on') !== '0'
@@ -14603,6 +14736,31 @@ function notifBlockedHelp() {
     '</div>';
 }
 function closeNotifHelp() { const w = document.getElementById('notifOverlay'); if (w) w.remove(); }
+
+// tz_offset_min is captured ONCE at subscribe time and never refreshed, so the daily ping lands
+// an hour off for half the year (DST) and stays wrong after any travel until the user happens to
+// turn the ping off and on again. Refreshing it is one cheap update of THIS DEVICE's rows —
+// keyed on the push endpoint, so it corrects every brand on this device and touches no other.
+// Called from refreshUsage (load + after any API call), rate-limited to once an hour.
+let _pushTzSyncedAt = 0;
+async function syncPushTimezone() {
+  try {
+    if (!sb || !currentUser) return;
+    if (Date.now() - _pushTzSyncedAt < 3600000) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    // Without this guard, serviceWorker.ready can stay pending forever on a browser that never
+    // registered one. Permission granted is the cheapest proof there is something to update.
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub || !sub.endpoint) return;
+    _pushTzSyncedAt = Date.now();
+    await sb.from('push_subscriptions')
+      .update({ tz_offset_min: new Date().getTimezoneOffset() })
+      .eq('user_id', currentUser.id)
+      .eq('subscription->>endpoint', sub.endpoint);
+  } catch (e) {}
+}
 
 async function disableDailyPush() {
   // Pin the brand BEFORE the awaits. The delete below is scoped by brand_id and the flag write at
@@ -14815,7 +14973,20 @@ async function deleteBrand(brandId, name) {
   if (_brandOwnership(brandId) === 'theirs') { showToast("You can't delete a brand that was shared with you — ask its owner to remove it."); return; }
   showToast('Deleting ' + name + '…');
   let removed = false;                     // flipped only once the brand row is CONFIRMED gone
+  let _pushKilled = false;
   try {
+    // push_subscriptions FIRST, and deliberately NOT in the sweep below: its brand_id is
+    // ON DELETE SET NULL by design, so the instant the brand row goes every row's brand_id is
+    // already null and no brand-scoped delete can ever find it again. The server then reads
+    // brand_id = null as "inactive 999 days" and pushes a daily notification FOREVER, and
+    // disableDailyPush can only match a null row when no brand is open — which never happens.
+    // Its RLS is auth.uid() = user_id, so unlike the child tables this works before the parent
+    // delete and cannot be silently refused once the brand is gone.
+    try {
+      const { data: _pk } = await sb.from('push_subscriptions').delete()
+        .eq('user_id', currentUser.id).eq('brand_id', brandId).select('id');
+      _pushKilled = !!(_pk && _pk.length);
+    } catch (e) { console.error('deleteBrand: could not clear push_subscriptions:', e); }
     let gone = null, error = null;
     // Fire-and-forget elsewhere in this file resolves rather than rejects; do the same here so a
     // thrown builder error cannot skip the guard below.
@@ -14882,7 +15053,8 @@ async function deleteBrand(brandId, name) {
     // `removed` is the honest discriminator: false means the brand row was never removed, so
     // nothing downstream ran either. Only then can we promise nothing was deleted.
     showToast("Couldn't delete that brand: " + (e.message || 'try again')
-      + (removed ? '' : ' — nothing was deleted.'), 7000);
+      + (removed ? '' : ' — nothing was deleted.')
+      + ((_pushKilled && !removed) ? ' Its daily notification was switched off — turn it back on in Settings.' : ''), 7000);
   }
 }
 
@@ -16048,7 +16220,7 @@ async function viralTwist(id, btn){
       { idea: { title:i.title, hook:i.hook, format:i.format, script:i.script, boldText:i.boldText } },
       () => getBrandContext());
     const data = await resp.json();
-    if(!resp.ok || !data.twist){ throw new Error(data.error || 'Failed'); }
+    if(!resp.ok || !data.twist){ throw new Error(humanErr(data && data.error, "that didn't come back — try again")); }
     const t = data.twist;
     let h = '<div class="vt-panel"><div class="vt-title">' + ICO.zap + ' Viral angles</div>';
     (t.angles||[]).forEach(a=>{
@@ -16348,7 +16520,9 @@ function renderRemixHookRead(read) {
 async function fetchHookFrame(url){
   try{
     if(!url || !/tiktok\.com|youtu\.?be|youtube\.com/i.test(url)) return null;
-    const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), 30000);
+    // hook-frame's maxDuration is 60 and its own LLM leg is 45s, so a 30s client budget threw away
+    // every read that took a normal amount of time. 55s sits under the platform ceiling.
+    const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), 55000);
     const r = await fetch('/api/hook-frame', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url}),signal:ctrl.signal});
     clearTimeout(t);
     if(!r.ok) return null;
@@ -16644,12 +16818,26 @@ async function connToken(){ try{ const { data:{ session } } = await sb.auth.getS
   document.head.appendChild(s);
 })();
 var csUsage = null;
+// csUsage === null means "we do not KNOW", not "trial". Every failure used to end here silently,
+// and the Plan box then rendered a Pro subscriber as "Trial plan · 0 / 0 posts · UPGRADE".
+var csUsageLoadFailed = false;
+var _csUsageRetryT = null;
+function _csUsageUnknown(){
+  csUsageLoadFailed = true;
+  try { var pb = document.getElementById('spPlanBox'); if (pb && typeof planBoxHtml === 'function') pb.innerHTML = planBoxHtml(); } catch(e){}
+  // One quiet retry — a dropped mobile request should not leave the plan unknown until a reload.
+  try { if (!_csUsageRetryT) _csUsageRetryT = setTimeout(function(){ _csUsageRetryT = null; refreshUsage(); }, 6000); } catch(e){}
+}
 async function refreshUsage(){
   try{
     const r = await fetch('/api/usage');
-    if(!r.ok) return;
+    if(!r.ok) { _csUsageUnknown(); return; }
     csUsage = await r.json();
+    csUsageLoadFailed = false;
     renderUsagePill();
+    // Piggy-back the daily-ping timezone refresh on the call that already runs on load (see
+    // syncPushTimezone — it rate-limits itself to once an hour and no-ops without push).
+    try { if (typeof syncPushTimezone === 'function') syncPushTimezone(); } catch(e){}
     try { renderOnb(); } catch(e){}
     // Free plan: rebuild the desktop sidebar once so paid tools carry their Pro pill
     // (the sidebar is built before /api/usage returns on a cold load).
@@ -16661,7 +16849,7 @@ async function refreshUsage(){
         renderUsagePill(); // re-fill the freshly rebuilt #dsPlan chip
       }
     } catch(e){}
-  }catch(e){}
+  }catch(e){ _csUsageUnknown(); }
 }
 function planLabel(p){ return ({trial:'Trial', free:'Free', starter:'Starter', pro:'Pro', agency:'Agency'})[p] || 'Plan'; }
 function csUsageText(){
@@ -16672,6 +16860,16 @@ function csUsageText(){
 }
 // The Plan box in Settings → Account: plan name, usage bar, and the right action.
 function planBoxHtml(){
+  // No usage data → say so. Guessing 'trial' with 0/0 and an Upgrade button is how a paying
+  // subscriber whose /api/usage call failed was shown their subscription as gone.
+  if(!csUsage){
+    return '<div class="sp-plan-top"><div class="sp-plan-name">Your plan</div></div>' +
+      '<div class="sp-plan-sub">' + (csUsageLoadFailed
+        ? "We couldn't check your plan just now — nothing has changed on your account."
+        : 'Checking your plan\u2026') + '</div>' +
+      (csUsageLoadFailed ? '<div class="sp-plan-btns"><button class="sp-plan-btn primary" onclick="refreshUsage()">Try again</button>' +
+        '<button class="sp-plan-btn" onclick="openBillingPortal(this)">Manage billing</button></div>' : '');
+  }
   var u = csUsage || {};
   var plan = u.plan || 'trial';
   var used = (u.used!=null?u.used:0), limit = (u.limit!=null?u.limit:0);
@@ -16806,28 +17004,52 @@ async function startCheckout(plan){
 }
 // Handle the redirect back from Stripe Checkout.
 async function handleCheckoutReturn(){
+  // The user has just been CHARGED. Every path out of here must say something: the empty catch
+  // below used to swallow a dropped connection on the redirect back from Stripe (routine on
+  // mobile) and leave a paying customer with no toast, no overlay, nothing at all.
+  var _charged = false;
   try{
     var p = new URLSearchParams(location.search);
     var co = p.get('checkout');
     if(!co) return;
     if(co === 'cancel'){ if(typeof showToast==='function') showToast('Checkout canceled — no charge made.', 3500); }
     else if(co === 'success'){
+      _charged = true;
       var sid = p.get('session_id');
       if(sid){
-        var r = await fetch('/api/checkout-confirm', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sessionId: sid }) });
-        var d = await r.json().catch(()=>({}));
+        var r = null, d = null, _netFail = false;
+        // The careful "charged but not switched over" message below only ever ran when the request
+        // ANSWERED. A fetch that throws is the same situation for the user, and needs the same words.
+        try {
+          r = await fetch('/api/checkout-confirm', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sessionId: sid }) });
+          d = await r.json().catch(()=>({}));
+        } catch(e){ _netFail = true; }
+        if(_netFail){
+          try{ refreshUsage(); }catch(e){}
+          if(typeof showToast==='function') showToast('Payment went through, but the connection dropped before we could switch your plan over. Reload in a minute — if it still shows the old plan, email support@contentshrimp.com with your receipt and we\u2019ll fix it right away.', 14000);
+        } else
         if(d && d.ok){ try{ refreshUsage(); }catch(e){} if(typeof showCheckoutSuccess==='function') showCheckoutSuccess(d.plan||'pro'); else if(typeof showToast==='function') showToast('You’re on ' + (d.plan||'your new plan') + ' — thank you!', 5000); }
         else {
           // Their card WAS charged; only the plan write failed, and nothing retries it —
           // the webhook finds users by the very ids that failed to write. So do not promise
           // it will fix itself. Say what happened and give them the one action that helps.
           try{ refreshUsage(); }catch(e){}
-          if(typeof showToast==='function') showToast((d && d.error) || 'Payment went through, but we couldn\u2019t switch your plan over. Reload in a minute — if it still says the old plan, email support@contentshrimp.com and we\u2019ll fix it right away.', 12000);
+          if(typeof showToast==='function') showToast('Payment went through, but we couldn\u2019t switch your plan over. Reload in a minute — if it still says the old plan, email support@contentshrimp.com and we\u2019ll fix it right away.', 12000);
         }
+      } else {
+        // Back from Stripe with no session_id: we cannot confirm anything — and saying NOTHING
+        // to someone who has just paid is the worst of the options.
+        try{ refreshUsage(); }catch(e){}
+        if(typeof showToast==='function') showToast('Payment received — we\u2019re switching your plan over. If it still shows the old plan in a minute, reload; if that doesn\u2019t do it, email support@contentshrimp.com.', 12000);
       }
     }
     try{ history.replaceState({}, '', location.pathname); }catch(e){}
-  }catch(e){}
+  }catch(e){
+    // Only reachable AFTER a charge in practice; never leave that silent.
+    try{ if(_charged && typeof showToast==='function') showToast('Payment went through, but something went wrong on the way back. Reload in a minute — if your plan still looks wrong, email support@contentshrimp.com with your receipt.', 14000); }catch(_){}
+    try{ if(_charged) refreshUsage(); }catch(_){}
+    try{ history.replaceState({}, '', location.pathname); }catch(_){}
+  }
 }
 
 /* ── Onboarding checklist (activation) ──────────────────────────────── */
@@ -19569,9 +19791,12 @@ async function spDraftFromCrawl(btnEl) {
   const url = (settings.website || '').trim();
   if (!url) { showToast('Add your Website URL in Brand Basics first'); return; }
   const btn = btnEl || document.getElementById('spDraftBtn');
-  const stopW = btnWork(btn, 'scan', { maxMs: 165000, onTimeout: () => showToast('That scan is taking too long — check your connection and try again') });
+  const stopW = btnWork(btn, 'scan', { maxMs: 255000, onTimeout: () => showToast('That scan is taking too long — check your connection and try again') });
   const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), 150000);
+  // 240s, the Quick Post rule: crawl-brand's maxDuration is 300, so a 150s client budget threw
+  // away scans the server was still doing (and still billing 3 credits for) at a closed socket.
+  // 240 sits under 300, so the SERVER's own error surfaces instead of an ambiguous client abort.
+  const to = setTimeout(() => ctrl.abort(), 240000);
   try {
     const resp = await fetch('/api/crawl-brand', {
       method: 'POST',
@@ -19853,9 +20078,11 @@ async function spDraftFromSocial(silent) {
     return;
   }
   const btn = document.getElementById('spSocialBtn');
-  const stopW = (btn && !silent) ? btnWork(btn, 'social', { maxMs: 165000, onTimeout: () => showToast('Reading your posts is taking too long — try again') }) : function(){};
+  const stopW = (btn && !silent) ? btnWork(btn, 'social', { maxMs: 255000, onTimeout: () => showToast('Reading your posts is taking too long — try again') }) : function(){};
   const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), 150000);
+  // 240s against crawl-social's maxDuration of 300 — see spDraftFromCrawl. The old 150s abandoned
+  // a crawl the server was still paying for and answered as "try again".
+  const to = setTimeout(() => ctrl.abort(), 240000);
   // A 1-2 minute crawl with no gate, writing straight into `settings` + saveSettings(): switch
   // brand while it runs and the previous brand's tones/vocab/CTA/example land in this brand's
   // brain. Captured before the fetch.
@@ -21279,10 +21506,12 @@ async function obCrawlWebsite() {
   // link lives inside #obStep1Form, which was just hidden above). Reloading returns them to step 1.
   // The Settings deep scan calls this SAME endpoint and has had both guards for versions — this was
   // an oversight on the one screen where it hurts most: a new user's very first action.
-  // 170s covers the endpoint's own 300s ceiling being unreachable on a normal run while still
-  // guaranteeing the user is never stranded.
+  // 240s against the endpoint's 300s ceiling (the Quick Post rule), so the user is never stranded
+  // AND we never hang up on the scan they are being charged 3 credits for. This is the ONBOARDING
+  // scan — the very first thing a new account does — so a client abort at 170s read as "the
+  // product doesn't work" while the server was still building the brain.
   const _ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-  const _killAt = setTimeout(() => { try { _ctrl && _ctrl.abort(); } catch(e) {} }, 170000);
+  const _killAt = setTimeout(() => { try { _ctrl && _ctrl.abort(); } catch(e) {} }, 240000);
   try {
     const resp = await fetch('/api/crawl-brand', {
       method: 'POST',
@@ -22816,7 +23045,10 @@ setTimeout(() => {
     const today = new Date().toDateString();
     let streak = parseInt(localStorage.getItem('mascot_streak') || '0');
     if (lastDay === today) return;
-    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    // CALENDAR yesterday, not "24 hours ago": on the day after a DST spring-forward, now-86400000
+    // lands on the day before yesterday and the streak resets to 1 for everyone in that timezone.
+    const _yd = new Date(); _yd.setDate(_yd.getDate() - 1);
+    const yesterday = _yd.toDateString();
     streak = (lastDay === yesterday) ? streak + 1 : 1;
     localStorage.setItem('mascot_streak', streak.toString());
     localStorage.setItem('mascot_last_day', today);

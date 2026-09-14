@@ -13,6 +13,13 @@
 //      MISSES `/`. Same class as the v613 bug where a CDN edge pinned sw.js and the fix deployed
 //      permanently invisible — one door over.
 //
+// v657 EXTENDS THIS GATE TO THE LEGAL PAGES. /terms.html, /privacy.html and /refunds.html are the
+// same shape as the landing page — linked from app.html's footer and from index.html, carrying no
+// service-worker code of their own — and ALWAYS_LIVE did not name them, so the worker pinned each
+// one on a device the first time it was viewed and updated legal text never reached that user.
+// A page that states the terms someone is bound by is the LAST page that may be served from a
+// months-old cache, so it is asserted here rather than trusted.
+//
 // This gate drives the REAL fetch handler out of sw.js rather than grepping it, because a grep
 // passes on a bypass that is present but unreachable. It also asserts the POSITIVE side: the app
 // shell and static assets must STILL be cache-first, or "fix the landing page" would have quietly
@@ -77,11 +84,18 @@ function handled(url, method = 'GET') {
   return answered;
 }
 
+// The pages with no service worker of their own: if the worker answers for one of these, the
+// visitor has no way left to obtain a newer copy.
+const LEGAL = ['/terms.html', '/privacy.html', '/refunds.html'];
+
 const mustBeLive = [
   [`${ORIGIN}/`, 'the bare root — the URL people type'],
   [`${ORIGIN}/index.html`, 'the landing page by filename'],
   [`${ORIGIN}/?utm_source=x`, 'the root with a campaign query string'],
   [`${ORIGIN}/api/health`, 'the API'],
+  ...LEGAL.map(p => [`${ORIGIN}${p}`, `a legal page — updated ${p.slice(1)} must reach a user who already read it once`]),
+  // the same page reached with a tracking parameter must not fall through to the cache branch
+  [`${ORIGIN}/terms.html?from=signup`, 'a legal page with a query string'],
 ];
 for (const [u, why] of mustBeLive) {
   if (handled(u)) fail(`the worker still answers for ${u} (${why}) — it can serve a stale copy`);
@@ -104,13 +118,17 @@ if (handled(`${ORIGIN}/app.html`, 'POST')) fail('the worker intercepts a POST �
 // ── The declared lists must agree with the behaviour ────────────────────────────────────────────
 if (!Array.isArray(CORE)) fail('CORE is not an array');
 else {
-  for (const bad of ['/', '/index.html']) {
-    if (CORE.includes(bad)) fail(`CORE still precaches ${bad} — the marketing page would be re-cached on every update`);
+  for (const bad of ['/', '/index.html', ...LEGAL]) {
+    if (CORE.includes(bad)) fail(`CORE still precaches ${bad} — it would be re-cached on every update`);
   }
   if (!CORE.includes('/app.html')) fail('CORE no longer precaches /app.html — the app shell would not be refreshed on update');
 }
 if (!Array.isArray(ALWAYS_LIVE) || !ALWAYS_LIVE.includes('/') || !ALWAYS_LIVE.includes('/index.html')) {
   fail('ALWAYS_LIVE does not name both / and /index.html');
+} else {
+  for (const p of LEGAL) {
+    if (!ALWAYS_LIVE.includes(p)) fail(`ALWAYS_LIVE does not name ${p} — a device that has viewed it once keeps that copy forever`);
+  }
 }
 
 // ── Why the SW fix is load-bearing: index.html cannot help itself ───────────────────────────────
@@ -119,6 +137,21 @@ if (!Array.isArray(ALWAYS_LIVE) || !ALWAYS_LIVE.includes('/') || !ALWAYS_LIVE.in
 const idx = fs.readFileSync(idxPath, 'utf8');
 if (/serviceWorker\s*\.\s*register/.test(idx)) {
   fail('index.html now registers a service worker — re-check whether it can refresh itself before trusting this gate');
+}
+// Same premise for the legal pages, and one more: they must actually exist to be linked.
+for (const p of LEGAL) {
+  const f = path.join(root, p.slice(1));
+  if (!fs.existsSync(f)) { fail(`${p} is in ALWAYS_LIVE but the file does not exist`); continue; }
+  if (/serviceWorker\s*\.\s*register/.test(fs.readFileSync(f, 'utf8'))) {
+    fail(`${p} now registers a service worker — re-check whether it can refresh itself before trusting this gate`);
+  }
+}
+// And they must be reachable, or none of this matters. app.html's footer links all three.
+const appHtml = fs.readFileSync(path.join(root, 'app.html'), 'utf8');
+for (const p of LEGAL) {
+  if (!appHtml.includes(`href="${p}"`)) {
+    fail(`app.html no longer links ${p} — if the link moved, confirm the new path is in ALWAYS_LIVE too`);
+  }
 }
 
 // ── Layer 2: the header on the bare root ────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
   if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
 
   try {
-    const { messages, brandContext, behavior, currentWork, convoMemory, founderName, brandId } = req.body || {};
+    const { messages, brandContext, behavior, currentWork, convoMemory, founderName, brandId, bcFields } = req.body || {};
     let bc = brandContext || {};
 
     if (!messages || !messages.length) {
@@ -34,9 +34,12 @@ module.exports = async function handler(req, res) {
     // answers fluently — it just stops knowing your competitors, reviews and approved work. A 424
     // (client re-sends the full context, one extra round trip) is the only honest failure here.
     if (brandId) {
-      const _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id }, '');
-      const _thin = _hyd.ok && Number.isFinite(bc.bcFields) && bc.bcFields > 2 &&
-        _hyd.fields < Math.ceil(bc.bcFields / 2);
+      // humanEditedTitles is localStorage-only knowledge, so the hydration cannot derive it (same
+      // reason recentTrends is sent). Without it every hydrated winner is labelled machine-written
+      // and _brain's approvedWinnersBlock demotes the user's own rewrites. Form copied from generate-ideas.
+      const _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id, humanEdited: req.body && req.body.humanEditedTitles }, '');
+      const _thin = _hyd.ok && Number.isFinite(bcFields) && bcFields > 2 &&
+        _hyd.fields < Math.ceil(bcFields / 2);
       if (!_hyd.ok || _thin) {
         return res.status(424).json({
           error: 'brand_context_unavailable',
@@ -157,7 +160,7 @@ If they haven't set the basics yet (brand name, audience), start there before an
       .replace(/<coach_memory>[\s\S]*?<\/coach_memory>/g, '')
       .trim();
 
-    await require('./_usage').logUsage({ userId: _g.user.id, action: 'voicechat' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'voicechat' });
     return res.status(200).json({ reply: cleanContent, suggestion, action, memory });
 
   } catch (err) {

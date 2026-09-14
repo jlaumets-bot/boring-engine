@@ -16,6 +16,7 @@ function safeVoiceFormat(format) {
   return Object.prototype.hasOwnProperty.call(VOICE_FORMATS, f) ? f : 'webm';
 }
 // Whisper wants an ISO-639-1 code ("en", optionally "en-us"). Anything else → 'en'.
+// Only reached when the caller EXPLICITLY supplied a language; see the auto-detect note below.
 function safeLanguage(language) {
   const l = String(language == null ? '' : language).trim().toLowerCase();
   return /^[a-z]{2}(-[a-z]{2})?$/.test(l) ? l : 'en';
@@ -54,12 +55,20 @@ module.exports = async function handler(req, res) {
   if (!groqKey) return res.status(500).json({ error: 'Transcription is not configured on the server.' });
 
   try {
-    const { audio, format = 'webm', language = 'en' } = req.body || {};
+    const { audio, format = 'webm', language } = req.body || {};
     if (!audio) return res.status(400).json({ error: 'No audio data provided' });
 
     const audioBuffer = Buffer.from(audio, 'base64');
     // Both land in multipart headers/fields — whitelist before interpolating.
     const fmt = safeVoiceFormat(format);
+    // DEFAULT 'en' — Jörgen's call, 2026-09-13, after this was raised as a bug.
+    // The trade-off, recorded so nobody "fixes" it back without deciding again:
+    // pinning English is MORE reliable for English speech, because Whisper's auto-detect
+    // can misread a short or noisy clip and switch language mid-transcript. The cost is that
+    // non-English dictation is transcribed AS English — which matters most for the founder's
+    // voiceSample, since _brain renders it last and strongest ("THIS IS THE VOICE").
+    // An explicitly supplied language is still honoured and still validated by safeLanguage,
+    // so the fix for a non-English user is to send one, not to change this default.
     const lang = safeLanguage(language);
     const filename = `audio.${fmt}`;
     const mimeType = VOICE_FORMATS[fmt];
@@ -78,7 +87,7 @@ module.exports = async function handler(req, res) {
     }
     if (text == null) return res.status(502).json({ error: lastErr || "Couldn't transcribe your voice — please try again." });
 
-    await require('./_usage').logUsage({ userId: _g.user.id, action: 'transcribevoice' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribevoice' });
     return res.status(200).json({ text });
 
   } catch (err) {

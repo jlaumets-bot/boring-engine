@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
   if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
 
   try {
-    const { idea, brandContext , brandId } = req.body || {};
+    const { idea, brandContext , brandId, bcFields } = req.body || {};
     if (!idea || !(idea.title || idea.hook || idea.script || idea.boldText)) {
       return res.status(400).json({ error: 'No idea provided' });
     }
@@ -29,9 +29,12 @@ module.exports = async function handler(req, res) {
     // silently, producing generic output that still LOOKS fine. Caught before it shipped.
     // Refuse rather than write brand-less content: 424 makes the client re-send what it has.
     if (brandId) {
-      const _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id }, '');
-      const _thin = _hyd.ok && Number.isFinite(bc.bcFields) && bc.bcFields > 2 &&
-        _hyd.fields < Math.ceil(bc.bcFields / 2);
+      // humanEditedTitles is localStorage-only knowledge, so the hydration cannot derive it (same
+      // reason recentTrends is sent). Without it every hydrated winner is labelled machine-written
+      // and _brain's approvedWinnersBlock demotes the user's own rewrites. Form copied from generate-ideas.
+      const _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id, humanEdited: req.body && req.body.humanEditedTitles }, '');
+      const _thin = _hyd.ok && Number.isFinite(bcFields) && bcFields > 2 &&
+        _hyd.fields < Math.ceil(bcFields / 2);
       if (!_hyd.ok || _thin) {
         return res.status(424).json({
           error: 'brand_context_unavailable',
@@ -101,7 +104,7 @@ ${rulePrecedence()}`;
         if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
       } catch (e) {}
     }
-    await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'viral', model: bc.engine || 'grok' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: bc.engine || 'grok' });
     return res.status(200).json({ twist });
   } catch (err) {
     console.error('viral-twist error:', err);

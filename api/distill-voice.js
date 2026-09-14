@@ -80,7 +80,7 @@ Return ONLY JSON: {"rules": [{"rule": "...", "evidence": "one short phrase citin
     const parsed = extractJson(content);
     if (!parsed) return res.status(502).json({ error: "Couldn't refine the voice notes — please try again." });
 
-    await require('./_usage').logUsage({ userId: _g.user.id, action: 'distill' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'distill' });
     return res.status(200).json({ rules: Array.isArray(parsed.rules) ? parsed.rules.slice(0, 3) : [] });
   } catch (e) {
     return res.status(500).json({ error: "Couldn't refine the voice notes — please try again." });

@@ -54,7 +54,7 @@ module.exports = async function handler(req, res) {
     if (t(data.phrases)) parts.push('Real phrases they use:\n' + t(data.phrases));
     const reviewInsights = parts.join('\n\n').trim();
 
-    await require('./_usage').logUsage({ userId: _g.user.id, action: 'crawlbrand', model: 'grok-search-reviews' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'crawlbrand', model: 'grok-search-reviews' });
     return res.status(200).json({ reviewInsights, sources: t(data.sources) });
   } catch (e) {
     console.error('reviews error:', e);

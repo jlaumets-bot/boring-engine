@@ -105,8 +105,41 @@ module.exports = async function handler(req, res) {
   if (!_isInternal && !_user) return res.status(401).json({ error: 'Please sign in again.' });
   const _usage = require('./_usage');
 
+  // WHO IS THIS GENERATION FOR? The internal caller is a cron, not a person, so there is no
+  // session to read the account off — it names the account explicitly with `forUserId` (and the
+  // brand it already verified as `forBrandId`). Only a holder of CRON_SECRET can set these, so
+  // they are as trusted as the secret itself; a normal request cannot reach this branch at all
+  // and its `forUserId` is ignored. The CRON_SECRET path therefore stays distinct — it skips
+  // the session, not the meter.
+  //
+  // It used to skip the meter too, and that was the hole: send-daily generates one brief per
+  // subscriber per day, ~30 a month, for accounts that may be free, expired or cancelled —
+  // unseen by the limit, the cost fuse and the rate limiter alike.
+  const _forUserId = _isInternal && req.body && typeof req.body.forUserId === 'string' ? req.body.forUserId : null;
+  const _forBrandId = _isInternal && req.body && typeof req.body.forBrandId === 'string' ? req.body.forBrandId : null;
+  if (_isInternal && !_forUserId) {
+    // Fail OPEN but LOUD, deliberately: an internal caller that has not been taught to name its
+    // account (an older send-daily during a rolling deploy) must not stop every daily push, but
+    // its generations are unmetered and that has to be findable.
+    console.error('generate-ideas: internal CRON_SECRET call arrived with no forUserId — this ' +
+      'generation is NOT metered against any account. Update the caller to send forUserId.');
+  }
+
   try {
-    const { brandContext, gaps, count = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat } = req.body || {};
+    const { brandContext, gaps, count: _rawCount = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat } = req.body || {};
+    // v657 — CLAMP `count` AT THE SOURCE. It came straight from the body and was
+    // interpolated into the prompt ("a JSON array of exactly ${count} ideas"), while metering
+    // charges ONE credit per CALL. The UI offers 10 and a direct POST could ask for 50, so a
+    // free user on "10" got 400 briefs a month against a 40-credit plan that _usage.js sizes
+    // as "credits ≈ posts" — and the cost fuse under-counted by the same factor.
+    // Clamped here, where it is destructured, so all five downstream uses (the Q&A gap maths,
+    // the two prompt strings and the schema line) get the bounded number automatically —
+    // a separate clamped variable would have left the raw one in the prompt.
+    const MAX_IDEAS = 10;
+    const count = Math.max(1, Math.min(MAX_IDEAS, Math.floor(Number(_rawCount) || 5)));
+    if (Number(_rawCount) > MAX_IDEAS) {
+      console.warn('generate-ideas: count %s clamped to %s', _rawCount, MAX_IDEAS);
+    }
     let bc = brandContext || {};
     let learningContext = req.body && req.body.learningContext;
     // Bound the one client string that reached the prompt unchecked. Logged so an oversized
@@ -116,9 +149,30 @@ module.exports = async function handler(req, res) {
       learningContext = learningContext.slice(0, LEARNING_CTX_CAP);
     }
 
-    // Usage gate — fail-open; skipped for the internal cron.
-    if (_user) {
-      const _gate = await _usage.checkLimit(_user.id, _usage.creditsFor('ideas'), 'ideas');
+    // WHOSE PLAN PAYS. Not "the caller's" any more:
+    //   * a signed-in user working inside a brand somebody else owns (an Agency seat) is
+    //     metered against the OWNER's plan — see _usage.billingUserFor, which only moves the
+    //     meter when store.userCanAccessBrand confirms real membership;
+    //   * the internal cron is metered against the account it is generating FOR.
+    // `brandId` is the client's claim; billingUserFor verifies it and falls back to the caller
+    // on anything it cannot confirm. Resolved ONCE here so the gate below and the usage row at
+    // the end of the handler can never disagree about who is being charged.
+    const _meterUser = _isInternal ? _forUserId : (_user && _user.id);
+    const _meterBrand = _isInternal ? _forBrandId : (brandId || (bc && (bc.brandId || bc.brand_id)) || null);
+    // Resolved through the helper when it is there, and falling back to the caller when it is
+    // not. That fallback is not defensive noise: this file's metering rule is "billing must never
+    // be the reason a generation fails" (see the header of _usage.js), and this is the one
+    // metering call that sits directly in the generation path.
+    let _billingUser = _meterUser || null;
+    if (_meterUser && typeof _usage.billingUserFor === 'function') {
+      _billingUser = await _usage.billingUserFor(_meterUser, _meterBrand);
+    }
+
+    // Usage gate — fail-open. It now covers the internal cron too, so an over-limit account
+    // does not receive generated content: send-daily reads the 402 as "no idea" and falls back
+    // to its generic push, which carries nothing we had to generate.
+    if (_billingUser) {
+      const _gate = await _usage.checkLimit(_billingUser, _usage.creditsFor('ideas'), 'ideas');
       if (!_gate.ok) return res.status(402).json({ error: 'limit_reached', plan: _gate.plan, used: _gate.used, limit: _gate.limit, trialEndsAt: _gate.trialEndsAt });
     }
 
@@ -169,7 +223,7 @@ module.exports = async function handler(req, res) {
 
     // ── MODE: SCENES ──────────────────────────────────────────
     if (mode === 'scenes') {
-      return await handleScenes(req, res, bc, _user ? _user.id : null);
+      return await handleScenes(req, res, bc, _billingUser);
     }
 
     // ── MODE: IDEAS (default) ─────────────────────────────────
@@ -479,7 +533,10 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       }
     } catch (e) { /* keep the original batch — guardrail is best-effort */ }
 
-    if (_user) await _usage.logUsage({ userId: _user.id, brandId: brandId || bc.brandId || bc.brand_id || null, action: 'ideas', model: bc.engine || 'grok' });
+    // Metered against whoever the gate was checked against (the brand owner for a seat, the
+    // cron's account for the daily push) — the two MUST match, or a ceiling would be checked
+    // that nothing ever increments.
+    if (_billingUser) await _usage.logUsage({ userId: _billingUser, brandId: _meterBrand || brandId || bc.brandId || bc.brand_id || null, action: 'ideas', model: bc.engine || 'grok' });
     return res.status(200).json({ ideas });
 
   } catch (err) {

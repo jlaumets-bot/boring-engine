@@ -87,7 +87,7 @@ module.exports = async function handler(req, res) {
     // They are NOT retried: the next hourly run only matches their own send_hour, so a
     // skipped subscriber MISSES THAT DAY entirely. That is why it is counted and logged
     // instead of being lost inside a platform timeout.
-    let sent = 0, failed = 0, skipped = 0, stampFailed = 0, brandDenied = 0, ranOut = false;
+    let sent = 0, failed = 0, skipped = 0, stampFailed = 0, brandDenied = 0, overLimit = 0, ranOut = false;
     const _t0 = Date.now();
     for (let i = 0; i < due.length; i++) {
       const left = RUN_BUDGET_MS - (Date.now() - _t0);
@@ -140,8 +140,23 @@ module.exports = async function handler(req, res) {
             else throw new Error('brand context unavailable: ' + ((_h && _h.reason) || 'unknown'));
           }
           const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://contentshrimp.com';
-          const gen = await postJson(`${host}/api/generate-ideas`, { count: 1, brandContext: bc },
+          // NAME THE ACCOUNT THIS BRIEF IS FOR. generate-ideas used to skip both the usage
+          // gate and the usage row for the CRON_SECRET caller, so roughly 30 generated briefs
+          // a month went to every subscriber with push on — free, expired-trial or cancelled
+          // alike — invisible to the plan limit, the cost fuse and the rate limiter. The secret
+          // still identifies the CALLER; these two fields identify the ACCOUNT, and the brand id
+          // is the one authorizedBrandId() has already verified against this row's own user_id
+          // (never the raw, client-written sub.brand_id).
+          // An over-limit account answers 402, which carries no `ideas` — so the code below
+          // falls into the existing generic push and no generated content is delivered.
+          const gen = await postJson(`${host}/api/generate-ideas`,
+            { count: 1, brandContext: bc, forUserId: sub.user_id, forBrandId: brandId || null },
             { Authorization: `Bearer ${cronSecret}` }, genMs);
+          if (gen && gen.error === 'limit_reached') {
+            overLimit++;
+            console.log('send-daily: subscription ' + sub.id + ' is over its plan limit (' +
+              gen.plan + ' ' + gen.used + '/' + gen.limit + ') — sending the generic push, no generated brief');
+          }
           const idea = gen && gen.ideas && gen.ideas[0];
           payload = JSON.stringify(idea ? {
             title: `Today's post is ready`,
@@ -186,6 +201,7 @@ module.exports = async function handler(req, res) {
     // Counts BOTH causes (access denied, and access unverifiable because the check errored),
     // because both end the same way: the brand was not used. The per-subscription lines above
     // say which — do not read this number as "N attacks".
+    if (overLimit) console.log('send-daily: ' + overLimit + ' subscriber(s) were over their plan limit this run and got the generic push instead of a generated brief');
     if (brandDenied) console.error('send-daily: ' + brandDenied + ' subscription(s) named a brand that could not be CONFIRMED as theirs; ' +
       'those pushes were sent WITHOUT brand content. Check the per-subscription lines above: a "SECURITY" line is a real ' +
       'ownership mismatch (audit that push_subscriptions row); an "access check FAILED" line is a database problem, not an attack.');
@@ -195,7 +211,7 @@ module.exports = async function handler(req, res) {
     // brandDenied rides in the heartbeat DETAIL only. /api/health reads job/last_success_at/
     // last_status and never touches detail, so this is additive telemetry — and the HTTP
     // response below stays byte-identical in shape.
-    await store.heartbeat('send-daily', _health, { checked: subs.length, due: due.length, sent, failed, skipped, stampFailed, brandDenied, ranOut });
+    await store.heartbeat('send-daily', _health, { checked: subs.length, due: due.length, sent, failed, skipped, stampFailed, brandDenied, overLimit, ranOut });
     return res.status(200).json({ checked: subs.length, due: due.length, sent, failed, skipped, stampFailed, ranOut });
   } catch (e) {
     console.error('send-daily error:', e);

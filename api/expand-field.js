@@ -93,7 +93,7 @@ Return ONLY the improved content for this field.`;
         if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
       } catch (e) {}
     }
-    await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'expand', model: bc.engine || 'grok' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'expand', model: bc.engine || 'grok' });
     return res.status(200).json({ expanded });
 
   } catch (err) {

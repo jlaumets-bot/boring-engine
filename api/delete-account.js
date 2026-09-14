@@ -65,6 +65,10 @@ module.exports = async function handler(req, res) {
   // leaves the account in a PARTIAL state, and the copy below is worded to be true
   // either way rather than claiming content was removed that may not have existed.
   let deletedRows = 0;
+  // Hoisted out of the try: every failure path below (and the catch) needs them to put the
+  // plan tombstone back — see restorePlanTombstone at the bottom of this handler.
+  let userId = null;
+  let planRowDeleted = false;
 
   try {
     const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
@@ -79,7 +83,7 @@ module.exports = async function handler(req, res) {
     const userResp = await sb(SUPABASE_URL, '/auth/v1/user', 'GET', SUPABASE_SERVICE_ROLE_KEY, null, token);
     const body = userResp.data;
     const user = body && body.id ? body : (body && body.user) || null;
-    const userId = user && user.id;
+    userId = user && user.id;
     if (!userResp.ok || !userId) return res.status(401).json({ ok: false, error: 'Invalid session' });
 
     // Find this user's brand ids. If this READ fails we do not know what to delete,
@@ -136,11 +140,15 @@ module.exports = async function handler(req, res) {
     }
     for (const t of USER_SCOPED) {
       if (timeLeft() <= 0) break;
-      record(t, await sb(SUPABASE_URL, `/rest/v1/${t}?user_id=eq.${userId}`, 'DELETE', SUPABASE_SERVICE_ROLE_KEY));
+      const _r = await sb(SUPABASE_URL, `/rest/v1/${t}?user_id=eq.${userId}`, 'DELETE', SUPABASE_SERVICE_ROLE_KEY);
+      // The plan row is the one deletion that changes what the app does to a STILL-SIGNED-IN
+      // user, so it is tracked separately (restorePlanTombstone).
+      if (t === 'user_plans' && _r.ok) planRowDeleted = true;
+      record(t, _r);
     }
 
     // ── 3. The brands themselves (cascades brand_connections, publish_jobs, …) ───
-    if (timeLeft() <= 0) return outOfTime(res, failures, skipped, deletedRows, 'brands');
+    if (timeLeft() <= 0) { await restorePlanTombstone(); return outOfTime(res, failures, skipped, deletedRows, 'brands'); }
     const brandsDel = await sb(SUPABASE_URL, `/rest/v1/brands?user_id=eq.${userId}`, 'DELETE', SUPABASE_SERVICE_ROLE_KEY);
     if (brandsDel.ok) { deletedRows++; }
     else {
@@ -148,6 +156,7 @@ module.exports = async function handler(req, res) {
       failures.push({ step: 'brands', status: brandsDel.status });
       // Do NOT attempt the auth-user delete: its data is still here, and removing the
       // login would strand that data with no owner.
+      await restorePlanTombstone();
       return res.status(502).json({
         ok: false, partial: deletedRows > 0, stage: 'brands',
         error: deletedRows > 0
@@ -158,7 +167,7 @@ module.exports = async function handler(req, res) {
     }
 
     // ── 4. The auth user (frees the email) ──────────────────────────────────────
-    if (timeLeft() <= 0) return outOfTime(res, failures, skipped, deletedRows, 'auth_user');
+    if (timeLeft() <= 0) { await restorePlanTombstone(); return outOfTime(res, failures, skipped, deletedRows, 'auth_user'); }
     const authDel = await sb(SUPABASE_URL, `/auth/v1/admin/users/${userId}`, 'DELETE', SUPABASE_SERVICE_ROLE_KEY);
     // 404 = already gone (a previous attempt got this far). Idempotent ⇒ success.
     const accountGone = authDel.ok || authDel.status === 404;
@@ -167,6 +176,8 @@ module.exports = async function handler(req, res) {
       failures.push({ step: 'auth_user', status: authDel.status });
       // THE dangerous case: the data is gone but the login is not. Say so plainly —
       // a user told deletion failed can escalate; one falsely told it succeeded cannot.
+      // It is also the case that used to hand out a brand-new trial, so put the plan row back.
+      await restorePlanTombstone();
       return res.status(409).json({
         ok: false, partial: true, stage: 'auth_user',
         error: "your data was deleted, but your sign-in could not be removed — the account and its email are still active. Please email " + SUPPORT_EMAIL + " and we'll finish removing it.",
@@ -191,6 +202,9 @@ module.exports = async function handler(req, res) {
     });
   } catch (e) {
     console.error('delete-account: unexpected failure', e && e.message);
+    // Same reasoning as the failure returns above: the account is still alive, so it must not
+    // be able to come back as a fresh trial. Never let this throw out of the catch.
+    try { await restorePlanTombstone(); } catch (_) {}
     return res.status(500).json({
       ok: false, partial: deletedRows > 0, stage: 'unexpected',
       error: deletedRows > 0
@@ -208,6 +222,43 @@ module.exports = async function handler(req, res) {
     if (r.status === 404) { if (!skipped.includes(table)) skipped.push(table); return; }
     logFail(table, r);
     failures.push({ step: table, status: r.status });
+  }
+  // ── The failed-deletion tombstone ────────────────────────────────────────────
+  // A deletion that does not complete leaves the person SIGNED IN with no user_plans row,
+  // and _usage.getOrInitPlan reads a missing row as a brand-new signup: it writes a fresh
+  // 7-day, 150-credit TRIAL. So the endpoint's own dominant failure mode (the auth-user
+  // delete, see the header) handed a new trial to an account whose subscription had just
+  // been cancelled three steps earlier.
+  //
+  // WHY A RESTORE ON THE FAILURE PATH, and not "delete user_plans last": the ON DELETE rule
+  // between user_plans and auth.users is unknown in this repo — sql/security-fixes-batch2.sql
+  // says so in as many words — and any row that does NOT cascade is a row that can BLOCK the
+  // auth.users delete. Moving the plan delete after the auth delete could therefore turn a
+  // deletion that works today into one that fails. This runs only when the account is KNOWN to
+  // still exist, so the row it writes can never block anything.
+  //
+  // The tombstone carries no personal data: no Stripe ids, no email, no period dates — just the
+  // user id, the free plan, and a trial end in the past, which is exactly what effectivePlan()
+  // reads. Erasure is therefore still honoured; what comes back is a marker, not their data.
+  async function restorePlanTombstone() {
+    if (!planRowDeleted || !userId) return;
+    const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+    const r = await sb(SUPABASE_URL, '/rest/v1/user_plans', 'POST', SUPABASE_SERVICE_ROLE_KEY, {
+      user_id: userId,
+      plan: 'free',
+      trial_ends_at: new Date(Date.now() - 1000).toISOString()
+    });
+    if (r.ok) {
+      planRowDeleted = false;
+      console.log('delete-account: deletion did not complete for ' + userId +
+        ' — wrote a free-plan tombstone so the still-live account cannot be re-initialised as a new trial');
+    } else {
+      // Loud: if this write fails we are back to the original bug for this one account.
+      console.error('delete-account: could NOT restore the plan tombstone for ' + userId +
+        ' (' + r.status + ') — this account will be handed a fresh 7-day trial on its next request',
+        (r.raw || '').slice(0, 200));
+    }
   }
   function logFail(step, r) {
     console.error('delete-account: ' + step + ' failed', { status: r.status, error: r.error, body: (r.raw || '').slice(0, 300) });

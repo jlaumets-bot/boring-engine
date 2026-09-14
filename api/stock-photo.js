@@ -112,7 +112,7 @@ module.exports = async function handler(req, res) {
     // user their photo. (No brandId: the caller sends only ?q= and ?t=, so there is none to
     // verify — same as transcribe-voice.js.)
     try {
-      await logUsage({ userId: _g.user.id, action: 'stockphoto', model: 'pexels' });
+      await logUsage({ userId: _g.billingUserId || _g.user.id, action: 'stockphoto', model: 'pexels' });
     } catch (e) { console.error('stock-photo: usage log failed — ' + (e && e.message)); }
 
     res.setHeader('Content-Type', ir.headers.get('content-type') || 'image/jpeg');

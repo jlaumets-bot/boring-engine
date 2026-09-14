@@ -222,7 +222,7 @@ const handler = async function (req, res) {
     }
     if (transcript == null) throw new Error(lastErr || 'Could not transcribe the audio — try again.');
 
-    await require('./_usage').logUsage({ userId: _g.user.id, action: 'transcribeurl' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribeurl' });
     return res.status(200).json({ transcript });
 
   } catch (err) {

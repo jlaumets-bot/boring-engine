@@ -245,7 +245,7 @@ module.exports = async function handler(req, res) {
         grok = { ok: !!(text && String(text).trim()), ms: Date.now() - t0 };
         // Logged on the ATTEMPT, not on success: the token is spent either way, and a provider
         // that fails fast is exactly the case an attacker would loop.
-        await require('./_usage').logUsage({ userId: _g.user.id, action: 'healthping', model: 'grok' });
+        await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'healthping', model: 'grok' });
         add('grok_live', grok.ok);
       }
     } catch (e) {

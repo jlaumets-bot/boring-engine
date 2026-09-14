@@ -41,7 +41,7 @@ module.exports = async function handler(req, res) {
     if (brandId) {
       try { if (await store.userCanAccessBrand(_g.user.id, brandId)) logBrandId = brandId; } catch (e) {}
     }
-    await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'pulltrends', model: process.env.APIFY_API_TOKEN ? 'news+x-apify' : 'google-news-rss' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'pulltrends', model: process.env.APIFY_API_TOKEN ? 'news+x-apify' : 'google-news-rss' });
 
     // v454: refresh the WEEKLY competitor pulse from the manual pull too. It was cron-only
     // (v383), so the "Competitor moves" panel stayed stale no matter how often the user hit

@@ -10,7 +10,15 @@ const COMP_STALE_MS = 7 * 24 * 3600 * 1000; // competitor pulse refreshes weekly
 
 const STALE_MS = 20 * 3600 * 1000; // only refresh brands not refreshed in ~a day
 const CAP = 30;                    // brands per run (oldest first) — cycles over days
-const CONC = 4;                    // parallel brands per batch
+const CONC = 2;                    // parallel brands per batch
+// v657 — WAS 4, AND THAT IS WHY THE X LANE RETURNED NOTHING. Each brand launches its own
+// Apify tweet-scraper run, and the Apify plan allows 5 CONCURRENT ACTOR RUNS. At CONC=4 the
+// batch tripped that ceiling and Apify answered 402 "concurrent-runs-limit-exceeded" — which
+// _trends.js logs as "OUT OF CREDITS / payment required", so the real cause was mislabelled in
+// the logs for as long as it has been happening. Observed 2026-09-13: five 402s in one run,
+// every x-lane result "10 raw, 0 kept". The feature produced nothing and /api/health stayed
+// green, because a lane returning zero items is not an error anywhere.
+// 2 leaves headroom for the retry the scraper makes on a slow run.
 
 // Best news-search terms come from the brand's niche/communities, not its name.
 function deriveKeywords(b) {

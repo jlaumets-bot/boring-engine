@@ -206,7 +206,7 @@
     },
     {
       "path": "/api/pull-trends-cron",
-      "schedule": "0 5 * * *"
+      "schedule": "35 5 * * *"
     }
   ]
 }

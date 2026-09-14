@@ -126,7 +126,7 @@ Rules: extract, don't invent. If a field has no evidence in the captions, return
     const voice = extractJson(content);
     if (!voice) return res.status(502).json({ error: "Couldn't read your posts clearly — please try again." });
 
-    await require('./_usage').logUsage({ userId: _g.user.id, action: 'crawlsocial' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'crawlsocial' });
     return res.status(200).json({ voice, postsAnalyzed: captions.length, platform });
   } catch (e) {
     console.error('crawl-social error:', e);

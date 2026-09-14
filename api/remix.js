@@ -53,7 +53,10 @@ module.exports = async function handler(req, res) {
     // the ones the user dismissed. fullBrandBlock renders it via trendsBlock(), so losing it
     // would quietly stop every remix from riding the trends the user actually taught.
     if (brandId) {
-      var _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id }, '');
+      // humanEditedTitles is localStorage-only knowledge, so the hydration cannot derive it (same
+      // reason recentTrends is sent). Without it every hydrated winner is labelled machine-written
+      // and _brain's approvedWinnersBlock demotes the user's own rewrites. Form copied from generate-ideas.
+      var _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id, humanEdited: req.body && req.body.humanEditedTitles }, '');
       // Never remix against a half-empty brain in silence. Missing row, failed read, or a row
       // holding materially less than the device says it has (a stale or failed brand save) =>
       // say so and let the client re-send what it has. A remix that LOOKS fine but was written
@@ -184,7 +187,7 @@ module.exports = async function handler(req, res) {
         if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
       } catch (e) {}
     }
-    await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'remix', model: bc.engine || 'grok' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'remix', model: bc.engine || 'grok' });
     return res.status(200).json({ remix });
 
   } catch (err) {

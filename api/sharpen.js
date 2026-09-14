@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
   if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
 
   try {
-    const { content, kind, format, brandContext , brandId } = req.body || {};
+    const { content, kind, format, brandContext , brandId, bcFields } = req.body || {};
     let bc = brandContext || {};
     // v625: HYDRATE THE BRAND BRAIN SERVER-SIDE. app.html now sends a LEAN request here
     // (brandId + only what the database cannot know). Without this branch the handler received
@@ -47,9 +47,12 @@ module.exports = async function handler(req, res) {
     // With '' here, sharpening a statement would be shown four approved videos as its exemplars —
     // a silent swap of the strongest voice signal in the product, invisible in the output.
     if (brandId) {
-      const _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id }, String(format || ''));
-      const _thin = _hyd.ok && Number.isFinite(bc.bcFields) && bc.bcFields > 2 &&
-        _hyd.fields < Math.ceil(bc.bcFields / 2);
+      // humanEditedTitles is localStorage-only knowledge, so the hydration cannot derive it (same
+      // reason recentTrends is sent). Without it every hydrated winner is labelled machine-written
+      // and _brain's approvedWinnersBlock demotes the user's own rewrites. Form copied from generate-ideas.
+      const _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id, humanEdited: req.body && req.body.humanEditedTitles }, String(format || ''));
+      const _thin = _hyd.ok && Number.isFinite(bcFields) && bcFields > 2 &&
+        _hyd.fields < Math.ceil(bcFields / 2);
       if (!_hyd.ok || _thin) {
         return res.status(424).json({
           error: 'brand_context_unavailable',
@@ -141,7 +144,7 @@ List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voi
           if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
         } catch (e) {}
       }
-      await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'sharpen', model: bc.engine || 'grok' });
+      await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: bc.engine || 'grok' });
       return res.status(200).json({ sharpened: content, unchanged: true });
     }
 
@@ -209,7 +212,7 @@ ${rulePrecedence()}`;
         if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
       } catch (e) {}
     }
-    await require('./_usage').logUsage({ userId: _g.user.id, brandId: logBrandId, action: 'sharpen', model: bc.engine || 'grok' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: bc.engine || 'grok' });
     return res.status(200).json({ sharpened });
   } catch (err) {
     console.error('sharpen error:', err);

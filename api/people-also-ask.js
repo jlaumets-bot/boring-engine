@@ -118,7 +118,7 @@ module.exports = async function handler(req, res) {
       }
     } catch (_) { questions = unique; }
 
-    await require('./_usage').logUsage({ userId: _g.user.id, action: 'paa' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'paa' });
     return res.status(200).json({ questions, count: questions.length });
 
   } catch (err) {

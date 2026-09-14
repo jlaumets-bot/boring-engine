@@ -70,6 +70,50 @@ module.exports = async function handler(req, res) {
     if (!metaUser || metaUser !== user.id) return res.status(403).json({ error: 'This checkout is not yours.' });
     if (!paid) return res.status(200).json({ ok: false, pending: true });
 
+    // ── REPLAY GUARD (v657) ────────────────────────────────────────────────────
+    // This endpoint used to check only: session exists, metadata.user_id is mine,
+    // payment_status === 'paid'. All three stay true FOREVER for a completed session —
+    // so a user who cancelled could re-POST the sessionId sitting in their browser
+    // history (it is in success_url) and get pro/agency back permanently. Nothing
+    // revoked it afterwards, because the subscription was gone and Stripe therefore
+    // sent no further events. stripe-webhook.js has had MAX_EVENT_AGE_MS since it was
+    // written; this file never got the equivalent.
+    //
+    // Two independent bounds, because neither alone is enough:
+    //   1. AGE — a genuine confirm happens seconds after checkout. 72h matches the
+    //      webhook's window and still covers a slow redirect, a closed tab reopened
+    //      later, or a retry after an outage.
+    //   2. STILL LIVE — the decisive one. A subscription that has been cancelled,
+    //      or was never created, can no longer grant anything no matter how the
+    //      session looks. This is what makes an old URL worthless.
+    const MAX_SESSION_AGE_S = 72 * 3600;
+    const ageS = session && session.created ? Math.floor(Date.now() / 1000) - Number(session.created) : 0;
+    if (ageS > MAX_SESSION_AGE_S) {
+      console.warn('checkout-confirm: REPLAY REFUSED (stale session) user=%s session=%s age_hours=%s',
+        user.id, sessionId, Math.round(ageS / 3600));
+      return res.status(403).json({ error: 'This checkout link has expired. Open Settings to manage your plan.' });
+    }
+
+    if (session.subscription) {
+      let sub = null;
+      try {
+        sub = await stripeGet('/v1/subscriptions/' + encodeURIComponent(session.subscription), secret);
+      } catch (e) {
+        // Cannot verify => do not grant. Failing closed here is correct: the only cost is
+        // that a legitimate user retries, and the webhook grants independently anyway.
+        console.error('checkout-confirm: could not read subscription %s for user %s — %s',
+          session.subscription, user.id, e && e.message);
+        return res.status(503).json({ error: 'Could not confirm your subscription just now — reload in a minute.' });
+      }
+      const live = sub && (sub.status === 'active' || sub.status === 'trialing');
+      if (!live) {
+        console.warn('checkout-confirm: REPLAY REFUSED (subscription not live) user=%s session=%s sub=%s status=%s',
+          user.id, sessionId, session.subscription, sub && sub.status);
+        return res.status(403).json({ error: 'That subscription is no longer active. Start a new plan from Settings.' });
+      }
+    }
+    // ───────────────────────────────────────────────────────────────────────────
+
     const plan = (session.metadata && session.metadata.plan) || 'pro';
     const planSet = await usage.setPlan(user.id, plan, {
       stripe_customer_id: session.customer || null,

@@ -27,6 +27,18 @@ CREATE TABLE brand_invites (
 -- 3. RLS policies for brand_members
 ALTER TABLE brand_members ENABLE ROW LEVEL SECURITY;
 
+-- !! THIS FILE IS HISTORY, NOT THE CURRENT STATE OF PRODUCTION. DO NOT RE-RUN IT. !!
+-- The SELECT policy written below selects FROM brand_members while defining a policy ON
+-- brand_members. The LIVE policy in the production database, read directly from
+-- pg_policies on 2026-09-13, does NOT contain that self-reference — it is clean.
+-- Production is correct and this file is stale; re-running this block would REPLACE a
+-- good live policy with the broken one printed here. Left in place unedited because it
+-- is the historical record of what was first run; corrected here in prose because the
+-- exact live predicate was read from the database, not authored in this repo, and
+-- transcribing it from memory would put a third, unverified version into circulation.
+-- Same warning applies to every other CREATE POLICY in this file.
+-- See sql/v657-brand-pinning.sql for the UPDATE-side defect these policies DO still have.
+
 -- Members can see other members of brands they belong to
 CREATE POLICY "Members can view brand members" ON brand_members FOR SELECT USING (
   brand_id IN (

@@ -290,7 +290,7 @@ ${web.slice(0, 12000)}`;
     // Record the crawl so it counts against the plan allowance and the cost fuse.
     // (Until this endpoint was gated above, this row was the ONLY trace of the spend and
     // nothing ever read it as a limit, because crawlbrand was registered at 0 credits.)
-    try { await require('./_usage').logUsage({ userId: _cbUser.id, action: 'crawlbrand' }); } catch (e) {}
+    try { await require('./_usage').logUsage({ userId: _cbGuard.billingUserId || _cbUser.id, action: 'crawlbrand' }); } catch (e) {}
 
     return res.status(200).json({ brandInfo, url: siteUrl });
 

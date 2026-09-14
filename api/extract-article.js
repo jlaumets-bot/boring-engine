@@ -45,7 +45,7 @@ module.exports = async function handler(req, res) {
 
     // Meter the fetch. Without a usage row the gate above can never fire, because
     // `used` would stay at 0 forever — the gate and the log only work as a pair.
-    try { await require('./_usage').logUsage({ userId: _eaGuard.user.id, action: 'extractarticle' }); } catch (e) {}
+    try { await require('./_usage').logUsage({ userId: _eaGuard.billingUserId || _eaGuard.user.id, action: 'extractarticle' }); } catch (e) {}
 
     return res.status(200).json({
       text: text.trim(),

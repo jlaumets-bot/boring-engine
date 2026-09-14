@@ -81,13 +81,22 @@ module.exports = async function handler(req, res) {
     if (snap == null) {
       console.error('create-checkout: could not read the plan for user=' + user.id +
         ' — proceeding WITHOUT the double-subscription check.');
-    } else if (require('./_usage').PAID_PLANS[snap.effectivePlan] || snap.stripeSubscriptionId) {
+    } else if (require('./_usage').PAID_PLANS[snap.effectivePlan]) {
+      // v657: the `|| snap.stripeSubscriptionId` disjunct was removed. The cancel path never
+      // cleared that column, so it stayed set forever and this refusal fired for every churned
+      // customer trying to come back — while the body said plan:"free" and "you already have an
+      // active subscription" in the same breath. The plan itself is the honest test: if they are
+      // on a paid plan they have a live subscription, and if they are not, they may buy one.
+      // (stripe-webhook.js now nulls the column on cancellation as well, belt and braces.)
       // 409, not 402: a 402 makes app.html's global fetch wrapper open the upgrade modal, which
       // is exactly the loop this refusal exists to break. `manageBilling` tells the frontend to
       // send them to /api/create-portal-session, where switching plans is a proration, not a
       // second charge.
       return res.status(409).json({
-        error: 'already_subscribed',
+        // app.html:16804 renders `d.error` VERBATIM in a toast, so this string is what the
+        // user actually reads. It used to be the literal token "already_subscribed".
+        error: 'You already have an active subscription. Use "Manage plan & billing" to switch plans.',
+        code: 'already_subscribed',
         manageBilling: true,
         plan: snap.effectivePlan,
         message: 'You already have an active subscription. Use "Manage plan & billing" to switch plans — starting a new checkout would charge you twice.'

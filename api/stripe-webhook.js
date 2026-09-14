@@ -253,7 +253,13 @@ module.exports = async function handler(req, res) {
           // cancelled / past_due / unpaid / incomplete_expired → back to free.
           // Through applyPlan for the same reason as the grant: a redelivered `deleted` must
           // not re-write a row that already says exactly this.
-          const { ok } = await applyPlan(userId, 'free', { current_period_end: periodEnd });
+          // v657: CLEAR THE DEAD SUBSCRIPTION ID. It used to be left on the row forever, and
+          // create-checkout refuses on `snap.stripeSubscriptionId` — so every cancelled customer
+          // was permanently barred from resubscribing and routed to the Billing Portal, which
+          // cannot start a new subscription for someone who no longer has one. Every win-back
+          // was blocked. The CUSTOMER id stays: that Stripe customer is still valid and reusing
+          // it keeps their card and invoice history on the next purchase.
+          const { ok } = await applyPlan(userId, 'free', { current_period_end: periodEnd, stripe_subscription_id: null });
           if (!ok) {
             console.error('stripe-webhook: DOWNGRADE NOT APPLIED — user=' + userId + ' still has paid access.' +
               ' sub=' + subId + ' customer=' + customerId + ' status=' + (sub.status || type) + ' evt=' + evtId +

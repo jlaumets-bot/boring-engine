@@ -1,5 +1,5 @@
 -- ============================================================
--- health-check.sql  —  read-only security posture audit  (v2)
+-- health-check.sql  —  read-only security posture audit  (v3)
 --
 -- Creates security_health(): a SECURITY DEFINER function that inspects the
 -- LIVE RLS/policy state and returns a compact JSON verdict. The /api/health
@@ -20,6 +20,39 @@
 --     edited to filter on the wrong thing.
 --   • user_brand_ids_secure      — the linchpin membership function must be
 --     SECURITY DEFINER, or RLS that depends on it can be bypassed.
+--
+-- v3 (2026-09-13) fixes TWO WAYS THIS FILE REPORTED GREEN ON A REAL HOLE:
+--
+--   1. user_brand_ids_secure tested `prosecdef` AND NOTHING ELSE. SECURITY DEFINER
+--      on its own is not a security property — it is the thing that CREATES the
+--      exposure. A definer function with no pinned search_path resolves its
+--      unqualified table names against the CALLER's search_path while running as
+--      the owner. user_brand_ids() was in exactly that state, and this check
+--      reported it healthy *because* of the half that made it dangerous. It now
+--      requires prosecdef AND a pinned search_path. See sql/v657-search-path.sql.
+--
+--   2. write_permissive covered cmd in ('INSERT','DELETE','ALL') only, and
+--      read_permissive covers SELECT/UPDATE/ALL with USING(true). A plain UPDATE
+--      policy therefore fell between them in two different ways:
+--        · UPDATE with `with_check = 'true'` was in NEITHER set → 'UPDATE' is now
+--          in write_permissive.
+--        · UPDATE (or ALL) with NO WITH CHECK AT ALL was in neither set either,
+--          and that is the more dangerous shape: Postgres REUSES USING as the
+--          check on the new row, so "brand_id is one of my brands" is satisfied by
+--          moving the row INTO one of my brands. Every brand-scoped UPDATE policy
+--          in this schema is that shape, and this file called them all healthy.
+--          → new key update_unpinned_policies. See sql/v657-brand-pinning.sql.
+--
+--      update_unpinned_policies is satisfied by EITHER a real WITH CHECK or a
+--      BEFORE UPDATE trigger on the table (the tool this schema actually uses,
+--      because a WITH CHECK cannot reference OLD). So it goes green once the
+--      v657 pin triggers are applied, rather than being a permanent red that
+--      someone eventually deletes.
+--
+-- NOTE FOR api/health.js (not owned by this file): it reads specific keys and
+-- ignores unknown ones, so v3 is backward compatible. update_unpinned_policies is
+-- NOT yet asserted there — add `add('no_unpinned_update_policies', unpinned.length === 0)`
+-- alongside the existing no_permissive_write_policies check to make it load-bearing.
 --
 -- Safe + idempotent. Read-only. Run once in the Supabase SQL editor.
 -- ============================================================
@@ -53,12 +86,41 @@ as $$
     select distinct tablename from pol
     where cmd in ('SELECT','UPDATE','ALL') and qual = 'true'
   ),
-  -- write-side permissive: INSERT/DELETE/ALL with a true predicate
-  -- (INSERT is gated by with_check; DELETE by qual; ALL by either)
+  -- write-side permissive: INSERT/UPDATE/DELETE/ALL with a true predicate
+  -- (INSERT is gated by with_check; DELETE by qual; UPDATE and ALL by either)
+  -- v3: 'UPDATE' added. It was missing, and an UPDATE policy with with_check='true'
+  -- was consequently in neither this set nor read_permissive — invisible.
   write_permissive as (
     select distinct tablename from pol
-    where cmd in ('INSERT','DELETE','ALL')
+    where cmd in ('INSERT','UPDATE','DELETE','ALL')
       and (qual = 'true' or with_check = 'true')
+  ),
+  -- v3: tables carrying an ENABLED BEFORE-UPDATE row trigger. Such a trigger is how
+  -- this schema constrains the NEW row (brands_pin_ownership, pin_brand_id) — a
+  -- WITH CHECK expression cannot reference OLD, so it is the only tool that can say
+  -- "this column may not change". tgtype bits: 2 = BEFORE, 16 = UPDATE.
+  before_update_pinned as (
+    select distinct c.relname as tablename
+    from pg_trigger t
+    join pg_class c     on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and not t.tgisinternal
+      and t.tgenabled <> 'D'
+      and (t.tgtype::int & 2)  <> 0
+      and (t.tgtype::int & 16) <> 0
+  ),
+  -- v3: THE CHECK THAT WOULD HAVE CAUGHT THE BRAND-MOVE HOLE.
+  -- An UPDATE (or FOR ALL) policy with NO WITH CHECK reuses USING as the check on
+  -- the new row, so a predicate like "brand_id in (my brands)" permits moving a row
+  -- INTO one of my brands. Satisfied by a real WITH CHECK or by a BEFORE UPDATE
+  -- trigger; anything else here is a table whose rows can be re-parented by a client.
+  update_unpinned as (
+    select distinct p.tablename
+    from pol p
+    where p.cmd in ('UPDATE','ALL')
+      and p.with_check is null
+      and p.tablename not in (select tablename from before_update_pinned)
   ),
   pcount as (
     select tablename, count(*) as n from pol group by tablename
@@ -79,9 +141,12 @@ as $$
     -- read-side permissive USING(true) SELECT/UPDATE/ALL policies (must be empty)
     'permissive_policies',
       (select coalesce(jsonb_agg(tablename order by tablename), '[]'::jsonb) from read_permissive),
-    -- write-side permissive INSERT/DELETE/ALL policies (must be empty)
+    -- write-side permissive INSERT/UPDATE/DELETE/ALL policies (must be empty)
     'permissive_write_policies',
       (select coalesce(jsonb_agg(tablename order by tablename), '[]'::jsonb) from write_permissive),
+    -- UPDATE/ALL policies with no WITH CHECK and no BEFORE UPDATE trigger (must be empty)
+    'update_unpinned_policies',
+      (select coalesce(jsonb_agg(tablename order by tablename), '[]'::jsonb) from update_unpinned),
     -- RLS-on but zero policies = deny-all. brand_connections / job_heartbeats
     -- are intentional (backend-only via service role); the endpoint allowlists
     -- those. Anything else here is a real gap.
@@ -99,10 +164,45 @@ as $$
     -- the linchpin membership function must exist …
     'has_user_brand_ids',
       exists(select 1 from pg_proc where proname = 'user_brand_ids'),
-    -- … and be SECURITY DEFINER, or the RLS that depends on it can be bypassed
+    -- … and be SECURITY DEFINER **AND** carry a pinned search_path.
+    -- v3: prosecdef alone was the whole test. That is backwards — SECURITY DEFINER
+    -- is the privilege escalation, and a pinned search_path is what makes it safe to
+    -- have. Without the pin, the function resolves `brands` / `brand_members` against
+    -- the CALLER's search_path while executing as the owner, and every brand-scoped
+    -- RLS policy in this database delegates its membership test to it.
     'user_brand_ids_secure',
-      exists(select 1 from pg_proc where proname = 'user_brand_ids' and prosecdef)
+      exists(
+        select 1
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public'
+          and p.proname = 'user_brand_ids'
+          and p.prosecdef
+          and exists (
+            select 1 from unnest(coalesce(p.proconfig, '{}'::text[])) as cfg(setting)
+            where cfg.setting ~ '^search_path='
+          )
+      )
   );
 $$;
 
 grant execute on function security_health() to service_role;
+
+
+-- ============================================================
+-- VERIFY — read-only. EMPTY RESULT = the v3 function is live, i.e. the audit can
+-- no longer report green on the two holes it certified. A row names what is stale.
+-- ============================================================
+select 'security_health' as problem, d.detail
+from (values
+  ('user_brand_ids_secure still tests prosecdef alone — a definer function with no pinned search_path reads green', 'proconfig'),
+  ('write_permissive still skips UPDATE — an UPDATE policy with a true predicate is invisible',                     'INSERT'',''UPDATE'),
+  ('no update_unpinned_policies key — an UPDATE policy with no WITH CHECK is still invisible',                      'update_unpinned')
+) as d(detail, needle)
+where not exists (select 1 from pg_proc p
+                  join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname = 'security_health')
+   or (select pg_get_functiondef(p.oid)
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public' and p.proname = 'security_health'
+       limit 1) not like '%' || d.needle || '%';

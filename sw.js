@@ -4,7 +4,7 @@
 // changing BUILD makes this file byte-different, the browser detects a new worker, and `install`
 // pulls the fresh app.html into the SAME stable cache while the OLD copy keeps serving instantly.
 const CACHE = 'cs-shell';   // stable — never rename
-const BUILD = 'v656-ee99fe10';       // ← bump this string on every app.html/asset change to push an update
+const BUILD = 'v657-9f8937f6';       // ← bump this string on every app.html/asset change to push an update
 
 // Only the app shell is refreshed on update. Images/icons are cached lazily on first use (never
 // eagerly precached — on a very slow connection an eager 1.8MB precache saturates the pipe and is
@@ -19,7 +19,17 @@ const CORE = ['/app.html', '/manifest.json'];
 // Requests the worker must never answer from cache. Compared against the pathname, not the raw URL,
 // so a query string or a hash cannot slip a stale copy through (`/?utm_source=…` is still the
 // landing page).
-const ALWAYS_LIVE = ['/', '/index.html'];
+//
+// THE LEGAL PAGES BELONG HERE FOR THE SAME REASON AS THE LANDING PAGE, AND THEY WERE MISSED.
+// /terms.html, /privacy.html and /refunds.html are linked from app.html (the footer, around line
+// 8639) and from index.html. This worker's scope is the whole origin, so the cache-first branch
+// below pinned each of them on a device the FIRST time that device viewed it — and, exactly like
+// index.html, none of them carries any service-worker code of its own, so nothing on those pages
+// can ever ask for a newer copy. A user who read the terms once was then held on that version
+// forever: updated terms, an updated privacy policy or a changed refund window never reached them,
+// while the origin served the current text to everyone else. These are the documents where "the
+// user saw the current version" is the entire point.
+const ALWAYS_LIVE = ['/', '/index.html', '/terms.html', '/privacy.html', '/refunds.html'];
 
 self.addEventListener('install', e => {
   self.skipWaiting();

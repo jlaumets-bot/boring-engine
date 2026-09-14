@@ -282,6 +282,25 @@ function periodStartForRow(row, now) {
       const iso = anniversaryStartISO(row.current_period_end, nowMs);
       if (iso) return iso;
     }
+    // v657 — FREE GETS A ROLLING WINDOW TOO, not the calendar month.
+    // Trial and paid plans each had a real window; `free` fell through to the 1st of the
+    // month. So the instant a trial expired or a subscription was cancelled, that entire
+    // month's trial/Pro spend (150-750 credits) was re-scored against the 40-credit free
+    // limit — leaving the account hard-blocked for the rest of the month. A trial started
+    // on the 1st meant ~23 consecutive dead days, landing exactly on the upgrade decision,
+    // and the UI could not even render it ("Free plan · 150 / 40 posts this month").
+    // _usage.js's own design note calls free "the post-trial floor — daily habit stays alive".
+    // The window now starts whenever the previous plan ENDED (trial_ends_at, or the paid
+    // period end), and rolls monthly from there, so the free allowance is genuinely fresh.
+    if (plan === 'free' && row) {
+      const ended = Date.parse(row.current_period_end || row.trial_ends_at || '');
+      if (!isNaN(ended) && ended <= nowMs) {
+        // roll forward in whole months from the end of the last paid/trial period
+        let start = ended;
+        while (start + 30 * 86400000 <= nowMs) start += 30 * 86400000;
+        return new Date(start).toISOString();
+      }
+    }
     return calendarMonthStartISO(nowMs);
   } catch (e) {
     return calendarMonthStartISO(nowMs);
@@ -565,20 +584,79 @@ async function stripeCustomerId(userId) {
   } catch (e) { return null; }
 }
 
+// ── WHOSE PLAN PAYS FOR THIS? ─────────────────────────────────────────────────
+// Metering used to be "the caller's own user_plans row", always. Agency is sold at $79 as
+// "multiple brands & seats"; every seat the owner invited was metered on ITS OWN row — 150
+// trial credits, then 40/month forever — so a seat was effectively a free account a week
+// after being invited, and the owner's 2,500 was only ever spent by the owner. Work done
+// INSIDE a brand is the brand OWNER's work; it belongs on the owner's plan and ceiling.
+//
+// THE HAZARD THIS MUST NOT OPEN: spending someone else's credits. brandId reaches us as a
+// CLIENT CLAIM on the request body, so it is never trusted. This only ever moves the meter
+// when store.userCanAccessBrand — the same membership check the rest of api/ already uses —
+// says the caller is genuinely the owner or a member. Every other outcome (own brand, no
+// brand, unknown brand, non-member, or ANY error) returns the caller unchanged, so the worst
+// a forged brandId can do is meter the forger against their own plan, exactly as today.
+//
+// COST: one extra PostgREST read, and ONLY when the request actually names a brand — a
+// request with no brandId does no extra work at all.
+async function billingUserFor(userId, brandId) {
+  if (!userId || !brandId) return userId;
+  try {
+    const rows = await sbRequest('GET',
+      `/rest/v1/brands?id=eq.${encodeURIComponent(brandId)}&select=user_id`);
+    const owner = (Array.isArray(rows) && rows[0] && rows[0].user_id) || null;
+    // Their OWN brand (by far the common case) and an unknown brand both mean "unchanged".
+    if (!owner || owner === userId) return userId;
+    const member = await require('./_publish/store').userCanAccessBrand(userId, brandId);
+    return member ? owner : userId;
+  } catch (e) {
+    // Fail to the CALLER, never to the owner: an unreadable membership check must not be a
+    // way to spend a stranger's allowance. Logged because it silently changes who is billed.
+    console.error('billingUserFor FAILED — user=' + userId + ' brand=' + brandId +
+      ' — metering against the caller instead of the brand owner:', (e && e.message) || e);
+    return userId;
+  }
+}
+
+// The brand a request is about, as the CLIENT claims it. Purely a lookup key for
+// billingUserFor, which verifies it — nothing here is trusted. Mirrors the `_bid` shape every
+// handler already builds for its usage row (body.brandId, or brandContext.brandId on a
+// pre-lean client), so the gate and that row agree on which brand the work belongs to.
+function claimedBrandId(req) {
+  try {
+    const b = req && req.body;
+    if (!b || typeof b !== 'object') return null;
+    const bc = b.brandContext;
+    const id = b.brandId || b.brand_id ||
+      (bc && typeof bc === 'object' && (bc.brandId || bc.brand_id)) || null;
+    return typeof id === 'string' && id ? id : null;
+  } catch (e) { return null; }
+}
+
 // Convenience for handlers: authenticate + gate in one call.
-// Returns { user, over, gate }. user=null → not signed in (handler returns 401).
+// Returns { user, over, gate, billingUserId }. user=null → not signed in (handler returns 401).
 // over=true → positively over limit (handler returns 402). Fail-open: on error over=false.
+//
+// billingUserId is WHOSE PLAN THIS CALL WAS GATED AGAINST (see billingUserFor) — the caller
+// themselves unless they are working inside a brand somebody else owns. Handlers MUST log
+// their usage row against it too, or the gate and the meter would disagree: the owner's
+// ceiling would be checked while the seat's row grew, and nothing would ever reach a limit.
+// Note that `gate` therefore describes the OWNER's plan/used/limit when a seat is over — a
+// teammate seeing "the brand's plan is out of posts" is the intended message.
 async function guard(req, action) {
   const user = await require('./_requireUser')(req);
   if (!user) return { user: null, over: false };
-  const gate = await checkLimit(user.id, creditsFor(action), action);
-  return { user, over: !gate.ok, gate };
+  const billingUserId = await billingUserFor(user.id, claimedBrandId(req));
+  const gate = await checkLimit(billingUserId, creditsFor(action), action);
+  return { user, over: !gate.ok, gate, billingUserId };
 }
 
 module.exports = {
   PLAN_LIMITS, ACTION_CREDITS, ACTION_COST, COST_CAP_EUR, RATE_LIMIT_PER_MIN, TRIAL_DAYS,
   creditsFor, costFor, getOrInitPlan, effectivePlan, limitFor,
   usedThisPeriod, usageThisPeriod, getStatus, checkLimit, logUsage, guard, setPlan, userIdByStripe, stripeCustomerId,
+  billingUserFor, claimedBrandId,
   setRequestBudget,
   // Period window (pure, testable) + the billing snapshot the money path branches on.
   periodStartISO, periodStartForRow, getPlanSnapshot, PAID_PLANS

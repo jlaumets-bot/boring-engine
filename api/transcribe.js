@@ -139,7 +139,7 @@ const handler = async function (req, res) {
         return res.status(400).json({ error: 'Could not parse captions from video.' });
       }
       const fullText = textParts.join(' ');
-      await require('./_usage').logUsage({ userId: _g.user.id, action: 'transcribe' });
+      await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribe' });
       return res.status(200).json({ text: fullText, wordCount: fullText.split(/\s+/).length });
     }
 
@@ -229,7 +229,7 @@ const handler = async function (req, res) {
     }
     if (transcript == null) return res.status(502).json({ error: lastErr || "Couldn't transcribe that — please try again." });
 
-    await require('./_usage').logUsage({ userId: _g.user.id, action: 'transcribe' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribe' });
     return res.status(200).json({ transcript });
 
   } catch (err) {

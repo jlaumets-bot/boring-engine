@@ -71,7 +71,7 @@ module.exports = async function handler(req, res) {
 
     // Return audio as base64
     const base64 = audioChunks.toString('base64');
-    await require('./_usage').logUsage({ userId: _g.user.id, action: 'speak' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'speak' });
     return res.status(200).json({ audio: base64, format: 'mp3' });
 
   } catch (err) {
