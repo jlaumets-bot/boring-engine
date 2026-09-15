@@ -75,12 +75,34 @@ Q3. Is security_health() still callable by the public?
   EXPECT: every gate exits 0
   EVIDENCE: 47 PASS / 0 FAIL, run 2026-09-15 after the edit and after the mutation restore.
 
+- [x] M3: only the brand OWNER can remove a team member.
+  FOUND BY M2's OWN VERIFY, not by looking. Arm 1 of sql/v658-member-delete.sql's verify scans
+  the WHOLE schema for a DELETE/ALL policy whose predicate mentions user_brand_ids or
+  brand_members, rather than a list of seven table names — written that way precisely because the
+  defect class was "a table inherits a too-wide policy". It returned one row for a table that was
+  not part of that change: brand_members.
+  THE LIVE POLICY HAD DRIFTED FROM THE REPO. sql/team-tables.sql:58 declares
+      USING (brand_id IN (SELECT id FROM brands WHERE user_id = auth.uid()))   -- owner only
+  but production carried
+      USING (brand_id IN (SELECT user_brand_ids() ...))                        -- owner OR member
+  so every teammate could delete rows from brand_members and remove any other teammate.
+  app.html:20768 already hides the remove button from non-owners, but removeMember()
+  (app.html:7286) is a plain PostgREST delete — a hidden button is not access control.
+  NOT BROKEN BY THE FIX, each checked rather than assumed: account deletion runs as service_role
+  and bypasses RLS (api/delete-account.js:74-83) with brand_members cascading from brands
+  (api/delete-account.js:36); no client path deletes one's own membership row (the only
+  brand_members delete in app.html is removeMember at :7289); the SELECT policy is untouched.
+  FIX: sql/v659-brand-members-delete.sql. Jörgen ran it; its 3-arm verify returned no rows.
+  DECISION LEFT OPEN: a member now cannot LEAVE a team — only the owner can remove them. That
+  matches the repo, the policy name and the UI. "Leave team" would need `OR user_id = auth.uid()`
+  plus a button that does not exist. Not added on a guess.
+
 ## HANDOFF — only Jörgen can do these
 
-- H1: run sql/v658-revoke-security-health.sql in the Supabase SQL editor (closes Q3 above).
-- H2: run sql/v658-member-delete.sql (narrows DELETE on all seven library tables to the owner).
-      M1 hides the button; H2 is what actually stops the delete. Both are needed — M1 alone
-      still leaves the DELETE grant reachable by any other client.
+- H1: DONE 2026-09-15 — sql/v658-revoke-security-health.sql run, verify returned no rows.
+- H2: DONE 2026-09-15 — sql/v658-member-delete.sql run, verify returned one row, which was M3
+      above (a different table), not a failure of the seven library tables.
+- H2b: DONE 2026-09-15 — sql/v659-brand-members-delete.sql run, verify returned no rows.
 - H3: PRICING DECISION, still open: api/_brandlimit.js:39 sets
       { trial:1, free:1, starter:1, pro:1, agency:Infinity }. Does Pro get more than one brand?
       The limit is computed server-side and nothing consumes it yet.

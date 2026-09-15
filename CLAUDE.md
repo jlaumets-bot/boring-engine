@@ -45,12 +45,24 @@ went-too-far direction); delete the condition entirely; strip the member's expla
 sandbox refused it: `[Modify Shared Resources]`. Same wall as the earlier schema attempts. I did not
 work around it. **Read-only SQL runs fine** — that is how all three answers above were obtained.
 
+**ALL THREE SQL FILES ARE NOW LIVE (run by Jörgen, 2026-09-15, each verify returned no rows):**
+`v658-revoke-security-health.sql`, `v658-member-delete.sql`, `v659-brand-members-delete.sql`.
+**`security_health()` is closed.** **DELETE on all seven library tables is owner-only.**
+
+**A FOURTH HOLE, FOUND BY THE SECOND FILE'S OWN VERIFY.** Arm 1 of `v658-member-delete.sql` scans
+the WHOLE schema, not a list of seven names — written that way because the defect class is "a table
+inherits a too-wide policy". It returned one row for a table outside that change: **`brand_members`**.
+**The live policy had drifted from the repo.** `sql/team-tables.sql:58` declares
+`USING (brand_id IN (SELECT id FROM brands WHERE user_id = auth.uid()))`, but production carried
+`USING (brand_id IN (SELECT user_brand_ids() ...))` — owner **or member**. So any teammate could
+delete `brand_members` rows and kick out other teammates. `app.html:20768` already hides the remove
+button from non-owners, but `removeMember()` (`:7286`) is a plain PostgREST delete — **a hidden
+button is not access control.** Fixed by `sql/v659-brand-members-delete.sql`, now live.
+Account deletion was checked and is unaffected: it runs as service_role and bypasses RLS
+(`api/delete-account.js:74-83`), with `brand_members` cascading from `brands` (`:36`).
+
 **HANDOFF — in order:**
-1. `cd ~/boring-content-engine-deploy && pbcopy < sql/v658-revoke-security-health.sql` → paste into
-   the Supabase SQL editor → Run. Empty result = locked down. **This closes the live hole.**
-2. `pbcopy < sql/v658-member-delete.sql` → paste → Run. Empty result = DELETE is owner-only.
-   v659 hides the button; **this file is what actually stops the delete.** Both are needed.
-3. `cd ~/boring-content-engine-deploy && node scripts/stamp-build.js && vercel --prod`
+1. `cd ~/boring-content-engine-deploy && node scripts/stamp-build.js && vercel --prod`
 4. `git push origin HEAD:backup-2026-09-15` — still unpushed; the agent shell has no GitHub creds.
 5. **PRICING DECISION, STILL OPEN:** `api/_brandlimit.js:39` is
    `{ trial:1, free:1, starter:1, pro:1, agency:Infinity }`. Does Pro get more than one brand? The
