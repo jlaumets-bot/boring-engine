@@ -4,10 +4,44 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script>
-// Catch Supabase magic link redirects that land on the landing page instead of app.html
-if (window.location.hash.includes('access_token') || window.location.hash.includes('type=magiclink') || window.location.search.includes('code=')) {
-  window.location.replace('/app.html' + window.location.hash + window.location.search);
-}
+// Anything that lands on the LANDING page but belongs to the APP is forwarded to
+// /app.html with its query string AND its hash intact. Four cases:
+//
+//   1. Supabase magic link      /#access_token=…          (hash)
+//   2. Supabase magic link      /#type=magiclink…         (hash)
+//   3. Supabase PKCE exchange   /?code=…                  (search)
+//   4. Team invite              /?invite=…                (search)   ← case 4 was missing
+//
+// CASE 4 IS WHY THIS COMMENT EXISTS. app.html builds every invite link as
+// `window.location.origin + '/?invite=' + code` (app.html:7196, 7217, 7231) — i.e.
+// pointed at THIS page — and vercel.json rewrites only /auth/confirm, so nothing else
+// redirected it either. The invited person therefore landed on the marketing page, the
+// code was dropped on the floor, and the obvious next move — "Get started" — signed them
+// up as a brand-new user with their own empty brand. The invite banner, lookup_invite and
+// handleInviteCode all live in app.html and never ran, so the invite sat unused until it
+// expired 14 days later (sql/v655-invite-email-check.sql). Every invite link was broken.
+//
+// ORDER MATTERS: search FIRST, then hash. The previous version concatenated hash + search,
+// which for an invite link that has come back through Supabase auth
+// (/?invite=abc#access_token=…) produced '/app.html#access_token=…?invite=abc' — the query
+// string buried INSIDE the fragment, where `new URLSearchParams(window.location.search)`
+// (app.html:6681, 6716, 7998) can never see it. With only ever one of the two present, the
+// three original cases could not expose that ordering bug; adding case 4 does.
+//
+// `invite=` is matched with a real value ([?&]invite=<something>) rather than a bare
+// substring: a query that merely contains the letters (?myinvite=…) or an empty ?invite=
+// carries no code to redeem, so it stays on the marketing page rather than bouncing the
+// visitor into the app for nothing.
+(function () {
+  var s = window.location.search || '';
+  var h = window.location.hash || '';
+  if (h.indexOf('access_token') !== -1 ||
+      h.indexOf('type=magiclink') !== -1 ||
+      s.indexOf('code=') !== -1 ||
+      /[?&]invite=[^&#]/.test(s)) {
+    window.location.replace('/app.html' + s + h);
+  }
+})();
 </script>
 <title>Content Shrimp — Never wonder what to post again. A week of on-brand posts, in your voice.</title>
 <meta name="description" content="For people who have to post and don't know what. Talk about your brand for two minutes and it writes a week at a time — scripts, statements, carousels, micro-lectures, Q&amp;As — in your voice, from a brand brain that keeps learning how you talk.">

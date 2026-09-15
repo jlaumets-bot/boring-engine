@@ -2,6 +2,28 @@
 // DESIGN RULE: fail-open. If anything here errors (DB down, bad data), we return
 // { ok: true } so a metering bug can NEVER block content generation. Billing is
 // less important than the app working.
+//
+// ── WHY THERE ARE RESERVATIONS IN HERE ───────────────────────────────────────
+// Every limit in this file used to be computed from usage_events rows, and a row was
+// only written by logUsage() AFTER the work finished — up to 300s later (vercel.json's
+// longest maxDuration). Nothing sat between the read and that write. So N requests fired
+// at the same instant all ran checkLimit() before any of them had logged anything, all
+// read used=0, and all N passed: a 40-credit free account could run 300 concurrent
+// generations. The same stale read defeated the cost fuse and the 60/min burst limiter,
+// because both are derived from the same rows.
+//
+// The fix is a RESERVATION: checkLimit() writes a marker row into usage_events BEFORE it
+// reads, and then decides by RANK — it counts only the reservations ordered ahead of its
+// own, so a burst of N concurrent callers admits the first "remaining" of them and rejects
+// the rest, instead of admitting all N (or, with a naive reserve-then-compare, rejecting
+// all N including the one legitimate caller).
+//   marker shape : action = "hold:<realAction>:<8 hex>"  (no schema change, no new table)
+//   expiry       : HOLD_TTL_MS — a marker older than that counts for NOTHING, so a
+//                  function that was killed mid-flight cannot lock a user out forever
+//   reconcile    : logUsage() PATCHes the SAME row into the real event, so a completed
+//                  call is counted exactly once and never double-counts its own hold
+// Every step fails open and logs loudly: a reservation that cannot be written just degrades
+// this file to its previous read-only behaviour, it never blocks a generation.
 const https = require('https');
 
 // ── Config (tune freely; user-facing unit is "credits" ≈ "posts") ──────────────
@@ -72,7 +94,11 @@ const ACTION_CREDITS = {
   sharpen: 1
 };
 function creditsFor(action) {
-  return ACTION_CREDITS[action] != null ? ACTION_CREDITS[action] : 1;
+  // A reservation row carries "hold:<action>:<token>"; it must price as the action it holds,
+  // or an in-flight crawlbrand (3) would be reserved at the unknown-action default of 1.
+  const h = parseHoldAction(action);
+  const a = h ? h.base : action;
+  return ACTION_CREDITS[a] != null ? ACTION_CREDITS[a] : 1;
 }
 
 // ── Cost fuse (ARMED by default) ───────────────────────────────────────────────
@@ -132,7 +158,9 @@ const ACTION_COST = {
   healthping: 0.002
 };
 function costFor(action) {
-  return ACTION_COST[action] != null ? ACTION_COST[action] : 0.01;
+  const h = parseHoldAction(action);
+  const a = h ? h.base : action;
+  return ACTION_COST[a] != null ? ACTION_COST[a] : 0.01;
 }
 
 // ── Supabase REST helper (service role — bypasses RLS) ─────────────────────────
@@ -174,12 +202,22 @@ function setRequestBudget(ms) {
   return SB_TIMEOUT_MS;
 }
 
+// opts.timeoutMs — override the shared SB_TIMEOUT_MS for ONE call, without touching the module
+// global (which would race between concurrent requests inside a warm instance). Used by the
+// reservation write: scripts/verify/timeout-budgets.mjs derives the shared default from the
+// TIGHTEST endpoint that can reach Supabase (20s today), on a model of two sequential stalled
+// calls plus 1s to respond = 17s. The reservation adds a THIRD call to that chain, so at the
+// 8s default the worst case would be 25s and the platform would kill the function with a raw
+// 504. It gets HOLD_TIMEOUT_MS instead, which keeps the worst chain inside the floor — and a
+// reservation is best-effort anyway, so giving up on it quickly is the correct trade.
+//
 // opts.withHeaders — resolve { body, headers, status } instead of the parsed body alone.
 // Needed because PostgREST reports the TRUE row count only in the Content-Range response
 // header (with `Prefer: count=exact`); without it a truncated page is indistinguishable
 // from a complete one. Every existing caller passes no opts and is unaffected.
 function sbRequest(method, path, body, extraHeaders, opts) {
   const withHeaders = !!(opts && opts.withHeaders);
+  const timeoutMs = (opts && Number(opts.timeoutMs) > 0) ? Math.round(Number(opts.timeoutMs)) : null;
   return new Promise((resolve, reject) => {
     const base = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -210,14 +248,249 @@ function sbRequest(method, path, body, extraHeaders, opts) {
     // Same shape as httpsPost in api/_llm.js — destroy(err) makes the request emit 'error',
     // which the reject above already handles. Logged because a stall is currently invisible:
     // it is the one failure mode that produces no status, no body and no trace anywhere.
-    r.setTimeout(SB_TIMEOUT_MS, () => {
-      console.error('sbRequest TIMEOUT after ' + SB_TIMEOUT_MS + 'ms — ' + method + ' ' + path +
+    const budget = timeoutMs || SB_TIMEOUT_MS;
+    r.setTimeout(budget, () => {
+      console.error('sbRequest TIMEOUT after ' + budget + 'ms — ' + method + ' ' + path +
         ' (Supabase accepted the connection then went quiet; metering fails open)');
-      r.destroy(new Error('Supabase request timed out after ' + SB_TIMEOUT_MS + 'ms: ' + method + ' ' + path));
+      r.destroy(new Error('Supabase request timed out after ' + budget + 'ms: ' + method + ' ' + path));
     });
     if (data) r.write(data);
     r.end();
   });
+}
+
+// ── RESERVATIONS: what sits between the read and the write ────────────────────
+// A reservation is an ordinary usage_events row whose action is "hold:<action>:<token>".
+// It is written BEFORE the expensive work starts, so a concurrent checkLimit() can see it.
+//
+// WHY THIS SHAPE, and not the alternatives:
+//   * NO NEW TABLE — sql/ is not ours to change, and usage_events already has the two
+//     things this needs (an action and a timestamp) and is already read and written here.
+//   * A PENDING ROW THAT IS LATER COMPLETED, rather than a separate marker row that has to
+//     be deleted afterwards: logUsage() PATCHes this row's action from "hold:remix:ab12cd34"
+//     to "remix", so one call occupies exactly ONE row for its whole life. There is never a
+//     moment where both a hold and its completion are counted (no double-count), and never
+//     a moment where neither exists (no gap a second caller could slip through).
+//   * THE IDENTITY LIVES IN THE ACTION STRING, not in an id column. This file cannot assume
+//     usage_events has an "id" (there is no CREATE TABLE for it anywhere in sql/), and
+//     adding a column to the select would make PostgREST answer 400 if it were absent —
+//     which lands in getStatus's catch and switches metering OFF for everyone.
+//
+// EXPIRY IS NOT OPTIONAL. A function that is killed, times out or crashes never reconciles
+// its hold. A hold older than HOLD_TTL_MS counts for nothing at all, so the worst a dead
+// request can cost its owner is that action's credits for HOLD_TTL_MS. The TTL must exceed
+// the longest maxDuration in vercel.json (300s) plus the gate latency that precedes it, or a
+// request could still be legitimately running while its own reservation stopped counting.
+const HOLD_PREFIX = 'hold:';
+const HOLD_TTL_MS = (function () {
+  const n = Number(process.env.USAGE_HOLD_TTL_MS);
+  if (Number.isFinite(n) && n >= 60000 && n <= 3600000) return Math.round(n);
+  return 360000;   // 6 min > 300s maxDuration + gate latency
+})();
+// Kill switch. If reservations ever misbehave in production this turns the file back into
+// exactly what it was before them (read-only counting) without shipping new logic.
+const RESERVATIONS_ON = !(process.env.USAGE_RESERVATIONS === '0' ||
+                          process.env.USAGE_RESERVATIONS === 'off' ||
+                          process.env.USAGE_RESERVATIONS === 'false');
+
+// A reservation is best-effort and sits on the critical path of every gated request, so it gets
+// a much tighter budget than the shared 8s default (see sbRequest's opts.timeoutMs). If Supabase
+// is stalled this long, giving up and letting the request through unreserved is strictly better
+// than adding 8s to a chain the platform will kill.
+const HOLD_TIMEOUT_MS = 2500;
+
+// 8 hex chars. Long enough that two in-flight calls by the SAME user for the SAME action
+// inside one TTL colliding is ~1 in 4 billion; short enough that the longest action name we
+// register ("settingsexamples", 16 chars) yields a 30-character value, which fits even a
+// varchar(32) action column.
+function holdToken() {
+  let t = '';
+  for (let i = 0; i < 8; i++) t += ((Math.random() * 16) | 0).toString(16);
+  return t;
+}
+function holdActionFor(action, token) { return HOLD_PREFIX + action + ':' + token; }
+// { base, token } for a reservation row, null for an ordinary one. NEVER throws: it is called
+// from creditsFor(), which is called from everywhere.
+function parseHoldAction(a) {
+  if (typeof a !== 'string' || a.lastIndexOf(HOLD_PREFIX, 0) !== 0) return null;
+  const rest = a.slice(HOLD_PREFIX.length);
+  const i = rest.lastIndexOf(':');
+  if (i <= 0) return { base: rest, token: '' };
+  return { base: rest.slice(0, i), token: rest.slice(i + 1) };
+}
+function isHoldAction(a) { return parseHoldAction(a) != null; }
+
+// THE TOTAL ORDER every caller computes identically. Two concurrent callers rank themselves
+// against the same stored (created_at, action) pairs, so they agree on who is ahead of whom
+// without any lock. created_at is compared numerically (Postgres renders microseconds that
+// Date.parse truncates), and the action string — which carries a unique token — breaks ties.
+function holdCmp(aMs, aAct, bMs, bAct) {
+  if (aMs !== bMs) return aMs < bMs ? -1 : 1;
+  if (aAct === bAct) return 0;
+  return aAct < bAct ? -1 : 1;
+}
+
+// Holds created in this instance and not yet reconciled, so logUsage() can settle one without
+// all ~25 handlers having to thread it through by hand.
+//
+// THIS IS NOT A COUNTER AND IT IS NOT PART OF ANY LIMIT. It is a lookup table for reconciling
+// rows this same invocation wrote; nothing is ever admitted or rejected on the strength of it.
+// Serverless instances do not share memory, so an in-process counter could not enforce
+// anything across instances — all enforcement lives in the usage_events rows.
+const PENDING_HOLDS = new Map();     // 'userId\u0000action' -> [hold, ...] oldest first
+const PENDING_MAX = 500;
+function pendingKey(userId, action) { return String(userId) + '\u0000' + String(action); }
+function prunePending(nowMs) {
+  let n = 0;
+  for (const [k, list] of PENDING_HOLDS) {
+    const keep = list.filter(h => (nowMs - h.createdMs) < HOLD_TTL_MS);
+    if (!keep.length) PENDING_HOLDS.delete(k); else { PENDING_HOLDS.set(k, keep); n += keep.length; }
+  }
+  // Hard cap, so an instance that gates but never logs cannot grow this without bound.
+  while (n > PENDING_MAX) {
+    const k = PENDING_HOLDS.keys().next().value;
+    if (k === undefined) break;
+    n -= (PENDING_HOLDS.get(k) || []).length;
+    PENDING_HOLDS.delete(k);
+  }
+}
+function addPending(hold) {
+  if (!hold) return;
+  prunePending(Date.now());
+  const k = pendingKey(hold.userId, hold.action);
+  const list = PENDING_HOLDS.get(k) || [];
+  list.push(hold);
+  PENDING_HOLDS.set(k, list);
+}
+function takePending(userId, action) {
+  if (!userId || !action) return null;
+  prunePending(Date.now());
+  const k = pendingKey(userId, action);
+  const list = PENDING_HOLDS.get(k);
+  if (!list || !list.length) return null;
+  const h = list.shift();           // FIFO: settle the oldest, so a slow call is not starved
+  if (!list.length) PENDING_HOLDS.delete(k);
+  return h;
+}
+function dropPending(hold) {
+  if (!hold) return;
+  const k = pendingKey(hold.userId, hold.action);
+  const list = PENDING_HOLDS.get(k);
+  if (!list) return;
+  const i = list.findIndex(h => h.token === hold.token);
+  if (i >= 0) list.splice(i, 1);
+  if (!list.length) PENDING_HOLDS.delete(k);
+}
+
+// Reservations are best-effort. If the column shape refuses them (a CHECK constraint on
+// action, a too-narrow varchar) every request would otherwise keep paying for a doomed POST,
+// so the first hard failure disables them for the life of this instance and says so once.
+// The file then behaves exactly as it did before reservations existed: fail open.
+let HOLD_WRITES_OFF = false;
+let HOLD_WARNED = false;
+let HOLD_FAILS = 0;
+const HOLD_FAIL_LIMIT = 3;    // three IN A ROW: a blip is not a broken column
+function noteHoldFailure(why) {
+  HOLD_FAILS++;
+  if (HOLD_FAILS === 1) {
+    console.error('usage reservation write FAILED — ' + why +
+      ' | this call is NOT reserved, so concurrent requests are bounded only by rows that ' +
+      'have already finished (the pre-reservation behaviour). Generation is unaffected.');
+  }
+  if (HOLD_FAILS >= HOLD_FAIL_LIMIT && !HOLD_WRITES_OFF) {
+    HOLD_WRITES_OFF = true;
+    if (!HOLD_WARNED) {
+      HOLD_WARNED = true;
+      console.error('usage RESERVATIONS DISABLED for this instance after ' + HOLD_FAILS +
+        ' consecutive failures (last: ' + why + '). Concurrency control is OFF until this ' +
+        'instance is recycled; check that usage_events.action accepts a 30-character value.');
+    }
+  }
+}
+function noteHoldSuccess() { HOLD_FAILS = 0; }
+
+// Write the reservation. Returns the hold, or null if none could be placed — in which case
+// the caller proceeds exactly as it did before reservations existed.
+//
+// WHY created_at IS NOT SENT, and why that is the difference between "mostly" and "exactly".
+// The ordering key has to be the instant the row became VISIBLE to other readers, not the
+// instant this process decided to write it. If the client stamped its own time, 300 requests
+// fired together would all stamp ~the same millisecond and the order would collapse onto the
+// random token, while each request's read would see only whichever inserts happened to have
+// landed by then — so a request could rank itself ahead of rows it simply had not seen yet,
+// and the burst would over-admit. Letting Postgres stamp it (the column's default, which is
+// also what logUsage has always relied on) makes created_at the transaction's own clock:
+// every row ordered BEFORE ours necessarily committed before ours, therefore before the read
+// we issue after it — so the read cannot miss anything that outranks us.
+// Prefer: return=representation hands the stored row straight back, so learning our own
+// position costs no extra round trip.
+async function createHold(userId, action, brandId) {
+  if (!RESERVATIONS_ON || HOLD_WRITES_OFF || !userId || !action) return null;
+  if (isHoldAction(action)) return null;                 // never reserve a reservation
+  const token = holdToken();
+  const act = holdActionFor(action, token);
+  const localIso = new Date().toISOString();
+  try {
+    const back = await sbRequest('POST', '/rest/v1/usage_events', {
+      user_id: userId,
+      brand_id: brandId || null,
+      action: act,
+      credits: Math.round(creditsFor(action)),
+      input_tokens: null, output_tokens: null, model: null
+    }, { 'Prefer': 'return=representation' }, { timeoutMs: HOLD_TIMEOUT_MS });
+    const r = Array.isArray(back) ? back[0] : back;
+    const storedAt = (r && typeof r === 'object' && r.created_at) ? r.created_at : null;
+    if (!storedAt) {
+      // The row exists but we cannot know where it sits in the order, and every reader
+      // treats a row with no timestamp as expired — so it would hold nothing while still
+      // counting as clutter. Take it back and fall through to the old behaviour.
+      const orphan = { userId: userId, action: action, token: token, holdAction: act,
+                       createdAt: localIso, createdMs: Date.parse(localIso) };
+      noteHoldFailure('the reservation row came back without a created_at, so it cannot be ordered');
+      await releaseHold(orphan);
+      return null;
+    }
+    noteHoldSuccess();
+    const ms = Date.parse(storedAt);
+    return {
+      userId: userId, action: action, token: token,
+      holdAction: (typeof r.action === 'string' ? r.action : act),
+      createdAt: storedAt, createdMs: Number.isFinite(ms) ? ms : Date.now()
+    };
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    noteHoldFailure('could not write a reservation row: ' + msg);
+    // A TIMEOUT IS NOT A FAILED WRITE. The row may well have landed and we simply never saw the
+    // answer; left alone it would charge this user for work that is not going to happen until it
+    // expires. We know the exact action string we sent, so we can take it back without knowing
+    // anything the response would have told us. A 4xx really did reject the insert, so skip it.
+    if (!/^Supabase 4\d\d/.test(msg)) {
+      const maybe = { userId: userId, action: action, token: token, holdAction: act,
+                      createdAt: localIso, createdMs: Date.parse(localIso) };
+      // Deliberately not awaited: the caller is about to do real work, and this is cleanup.
+      Promise.resolve(releaseHold(maybe)).catch(() => {});
+    }
+    return null;
+  }
+}
+
+// Hand a reservation back immediately (the request was rejected, so the work never happens).
+// Best effort: if the delete fails the row simply expires, which is what the TTL is for.
+async function releaseHold(hold) {
+  if (!hold) return false;
+  dropPending(hold);
+  try {
+    await sbRequest('DELETE',
+      '/rest/v1/usage_events?user_id=eq.' + encodeURIComponent(hold.userId) +
+      '&action=eq.' + encodeURIComponent(hold.holdAction),
+      null, { 'Prefer': 'return=minimal' }, { timeoutMs: HOLD_TIMEOUT_MS });
+    return true;
+  } catch (e) {
+    console.error('releaseHold FAILED — user=' + hold.userId + ' action=' + hold.action +
+      ' — the reservation stays until it expires in ' + Math.round(HOLD_TTL_MS / 1000) + 's:',
+      (e && e.message) || e);
+    return false;
+  }
 }
 
 // ── The usage window ──────────────────────────────────────────────────────────
@@ -381,23 +654,51 @@ function contentRangeTotal(h) {
   return m ? Number(m[1]) : null;
 }
 
-async function usageThisPeriod(userId, periodStart) {
+// opts.hold — the caller's OWN reservation (see createHold). When it is given, this read
+// becomes a RANKING: reservations ordered ahead of ours are counted, ours and everything
+// behind it are not. That is what makes a burst of concurrent callers admit the first
+// "remaining" of them rather than all of them, without a lock and without a new table.
+// Without opts.hold (the frontend's /api/usage read) every live reservation is counted, so
+// what the user sees includes their own in-flight work.
+async function usageThisPeriod(userId, periodStart, opts) {
   const startIso = periodStart || periodStartISO();
+  const hold = (opts && opts.hold) || null;
   const base = `/rest/v1/usage_events?user_id=eq.${encodeURIComponent(userId)}` +
     `&created_at=gte.${encodeURIComponent(startIso)}&select=action,created_at&order=created_at.desc`;
   let credits = 0, cost = 0, recent = 0, seen = 0, total = null, complete = false;
-  const since = Date.now() - RATE_WINDOW_MS;
+  const nowMs = Date.now();
+  const since = nowMs - RATE_WINDOW_MS;
+  // A reservation older than this was abandoned by a function that died. It counts for
+  // nothing, so one crashed request can never lock an account out.
+  const holdFloor = nowMs - HOLD_TTL_MS;
+  let held = 0, holdsCounted = 0, holdsExpired = 0, holdsBehind = 0, ownHoldSeen = false;
   for (let page = 0; page < USAGE_MAX_PAGES; page++) {
     const r = await sbRequest('GET', `${base}&offset=${seen}&limit=${USAGE_PAGE_MAX}`, null,
       { 'Prefer': 'count=exact' }, { withHeaders: true });
     const rows = r && Array.isArray(r.body) ? r.body : [];
     if (total == null) total = contentRangeTotal(r && r.headers);
     for (const row of rows) {
+      const t = row.created_at ? Date.parse(row.created_at) : NaN;
+      const h = parseHoldAction(row.action);
+      if (h) {
+        // EXPIRED: the request that placed it is long dead. Free.
+        if (isNaN(t) || t < holdFloor) { holdsExpired++; continue; }
+        // OUR OWN: the caller adds its own "need" to the total, so counting the row too
+        // would charge this call twice for the same work.
+        if (hold && row.action === hold.holdAction) { ownHoldSeen = true; continue; }
+        // BEHIND US in the total order: that caller will see ours and rank itself after us.
+        // Counting it here would make two simultaneous callers each defer to the other and
+        // both be rejected — the failure mode this ranking exists to avoid.
+        if (hold && holdCmp(t, row.action, hold.createdMs, hold.holdAction) > 0) { holdsBehind++; continue; }
+        held += creditsFor(row.action);
+        holdsCounted++;
+      }
       credits += creditsFor(row.action);
       cost += costFor(row.action);
       // Burst counter, derived from the rows we already have — costs no extra round trip.
-      // Correct at any row count now that the newest rows come back first.
-      const t = row.created_at ? Date.parse(row.created_at) : NaN;
+      // Correct at any row count now that the newest rows come back first. In-flight
+      // reservations count here too, which is what makes the 60/min limiter see a burst
+      // while it is still happening instead of 300s after it ended.
       if (!isNaN(t) && t >= since) recent++;
     }
     seen += rows.length;
@@ -414,14 +715,15 @@ async function usageThisPeriod(userId, periodStart) {
       (total == null ? 'unknown' : total) + ' usage rows since ' + startIso +
       ' (hit the ' + USAGE_MAX_PAGES + '-page cap); the credit total below is a FLOOR, not the truth.');
   }
-  return { credits: Math.round(credits * 1000) / 1000, cost, recent, rows: seen, total, complete };
+  return { credits: Math.round(credits * 1000) / 1000, cost, recent, rows: seen, total, complete,
+           held: Math.round(held * 1000) / 1000, holdsCounted, holdsExpired, holdsBehind, ownHoldSeen };
 }
 async function usedThisPeriod(userId) {
   return (await usageThisPeriod(userId)).credits;
 }
 
 // Full snapshot for the frontend / gate. Never throws (fail-open shape).
-async function getStatus(userId) {
+async function getStatus(userId, opts) {
   try {
     const row = await getOrInitPlan(userId);
     const plan = effectivePlan(row);
@@ -429,7 +731,7 @@ async function getStatus(userId) {
     // The window the plan is really billed on (trial start / subscription anniversary),
     // falling back to the calendar month. See periodStartForRow.
     const periodStart = periodStartForRow(row, Date.now());
-    const u = await usageThisPeriod(userId, periodStart);
+    const u = await usageThisPeriod(userId, periodStart, opts);
     // Weights are fractional now, but `used` is shown to the user as "531/750" and is
     // compared against an integer limit — so round UP to a whole credit. Never rounds
     // down, so we can't under-report spend; costs the user at most one credit a month.
@@ -441,7 +743,12 @@ async function getStatus(userId) {
       trialDaysLeft = Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86400000));
     }
     return { ok: true, plan, used, limit, remaining: Math.max(0, limit - used), cost, costCap: COST_CAP_EUR,
-             recent: u.recent || 0, trialEndsAt, trialDaysLeft, periodStart, partial: !u.complete };
+             recent: u.recent || 0, trialEndsAt, trialDaysLeft, periodStart, partial: !u.complete,
+             // Additive diagnostics. "held" is how much of "used" is work that has STARTED but
+             // not finished — reservations, not completed events. Unknown fields are ignored by
+             // every existing consumer.
+             held: u.held || 0, holdsCounted: u.holdsCounted || 0,
+             holdsExpired: u.holdsExpired || 0, ownHoldSeen: !!u.ownHoldSeen };
   } catch (e) {
     // Fail-open: unknown status, treat as allowed.
     return { ok: true, unknown: true, plan: 'trial', used: 0, limit: PLAN_LIMITS.trial, remaining: PLAN_LIMITS.trial, cost: 0, costCap: COST_CAP_EUR, recent: 0, trialEndsAt: null, trialDaysLeft: null };
@@ -450,13 +757,34 @@ async function getStatus(userId) {
 
 // Gate a single action. Returns { ok } — ok:false ONLY when we positively know
 // the user is over their limit. Any error path returns ok:true (fail-open).
-async function checkLimit(userId, credits, action) {
+//
+// THE ORDER OF THE TWO STEPS BELOW IS THE WHOLE FIX. It reserves FIRST and reads SECOND:
+//
+//   reserve  a row lands in usage_events now, not 300 seconds from now when the work ends
+//   rank     the read counts the reservations ordered AHEAD of ours and adds our own need
+//
+// Ranking, rather than a plain "is the total over the limit", is deliberate. If every one of
+// 300 simultaneous callers reserved and then compared the whole total against the limit, all
+// 300 would see 300 reservations and all 300 would be rejected — including the one call the
+// user was entitled to. By counting only what is ahead of it, caller #k admits itself iff
+// k + need <= limit, so a burst admits exactly the allowance and rejects the overflow.
+//
+// opts.brandId  — stamped on the reservation row so it belongs to the right brand.
+// opts.hold     — a reservation the caller already placed (pass null to skip reserving).
+//
+// Everything about the reservation is best-effort: if it cannot be written we fall straight
+// back to the previous read-only behaviour rather than failing the caller.
+async function checkLimit(userId, credits, action, opts) {
+  let hold = null;
   try {
-    const s = await getStatus(userId);
-    if (s.unknown) return { ok: true };
+    hold = (opts && 'hold' in opts) ? opts.hold
+                                    : await createHold(userId, action, opts && opts.brandId);
+    const s = await getStatus(userId, { hold: hold });
+    if (s.unknown) { addPending(hold); return { ok: true, hold: hold }; }
     // Feature gate: paid-only tools on the free plan. Positive knowledge only —
     // any error path above already failed open.
     if (s.plan === 'free' && action && FREE_LOCKED_ACTIONS[action]) {
+      await releaseHold(hold);
       return {
         ok: false, reason: 'feature', feature: action,
         plan: s.plan, used: s.used, limit: s.limit, remaining: s.remaining, trialEndsAt: s.trialEndsAt
@@ -476,6 +804,9 @@ async function checkLimit(userId, credits, action) {
     // retry a second later. Positive knowledge only (0 rows read → 0 recent → never fires).
     const overRate = RATE_LIMIT_PER_MIN > 0 && (Number(s.recent) || 0) >= RATE_LIMIT_PER_MIN;
     if (overCredits || overCost || overRate) {
+      // Rejected, so the work will never happen: give the reservation back at once instead of
+      // making the user wait out the TTL for credits nothing ever spent.
+      await releaseHold(hold);
       // CONTRACT: `ok:false` + this shape is what every handler turns into its 402.
       // `reason` gains a 'rate' value; handlers that don't know it fall through to
       // their existing limit_reached 402, which still correctly blocks the request.
@@ -486,14 +817,54 @@ async function checkLimit(userId, credits, action) {
         plan: s.plan, used: s.used, limit: s.limit, remaining: s.remaining, trialEndsAt: s.trialEndsAt
       };
     }
-    return { ok: true, plan: s.plan, used: s.used, limit: s.limit, remaining: s.remaining };
+    // Admitted. Remember the reservation so logUsage() can turn it into the real event; if the
+    // handler never logs (it crashed, it timed out, it returned early), it expires by itself.
+    addPending(hold);
+    return { ok: true, plan: s.plan, used: s.used, limit: s.limit, remaining: s.remaining, hold: hold };
   } catch (e) {
-    return { ok: true };
+    // Fail-open, exactly as before — but keep the reservation reconcilable, so a call that was
+    // waved through by an error still settles into one honest row instead of two.
+    addPending(hold);
+    return { ok: true, hold: hold };
   }
 }
 
 // Record a billable action. Fire-and-forget; never throws.
+//
+// RECONCILIATION. If checkLimit() reserved for this (user, action) in this same invocation,
+// the row already exists as "hold:<action>:<token>" and this PATCHes it into the finished
+// event. That is what stops the reservation double-counting against the completed call: one
+// row, promoted in place, keeping its original created_at (which is when the work STARTED —
+// the correct instant for both the billing window and the burst window).
+// The hold can also be passed explicitly as evt.hold by a caller that has it to hand.
 async function logUsage(evt) {
+  const hold = (evt && evt.hold) || takePending(evt && evt.userId, evt && evt.action);
+  if (hold) {
+    try {
+      const back = await sbRequest('PATCH',
+        '/rest/v1/usage_events?user_id=eq.' + encodeURIComponent(hold.userId) +
+        '&action=eq.' + encodeURIComponent(hold.holdAction),
+        {
+          action: (evt && evt.action) || 'generate',
+          brand_id: (evt && evt.brandId) || null,
+          credits: Math.round(creditsFor(evt && evt.action)),
+          input_tokens: evt && evt.inputTokens != null ? evt.inputTokens : null,
+          output_tokens: evt && evt.outputTokens != null ? evt.outputTokens : null,
+          model: (evt && evt.model) || null
+        },
+        { 'Prefer': 'return=representation' });
+      // return=representation is load-bearing: a PATCH that matches nothing answers 204 and
+      // would look like success, silently losing the event.
+      if (Array.isArray(back) ? back.length : !!back) return;
+      console.error('logUsage: the reservation row for action=' + (evt && evt.action) +
+        ' user=' + (evt && evt.userId) + ' was gone (expired and swept, or deleted) — ' +
+        'inserting the completed event instead.');
+    } catch (e) {
+      console.error('logUsage: could not settle the reservation for action=' + (evt && evt.action) +
+        ' user=' + (evt && evt.userId) + ' — inserting the completed event instead; the stale ' +
+        'reservation expires in at most ' + Math.round(HOLD_TTL_MS / 1000) + 's:', (e && e.message) || e);
+    }
+  }
   try {
     await sbRequest('POST', `/rest/v1/usage_events`, {
       user_id: evt.userId,
@@ -647,9 +1018,14 @@ function claimedBrandId(req) {
 async function guard(req, action) {
   const user = await require('./_requireUser')(req);
   if (!user) return { user: null, over: false };
-  const billingUserId = await billingUserFor(user.id, claimedBrandId(req));
-  const gate = await checkLimit(billingUserId, creditsFor(action), action);
-  return { user, over: !gate.ok, gate, billingUserId };
+  const brandId = claimedBrandId(req);
+  const billingUserId = await billingUserFor(user.id, brandId);
+  // The reservation is placed inside checkLimit, against billingUserId — the same id every
+  // handler logs its usage row against, so the hold and its completion are always the same row.
+  const gate = await checkLimit(billingUserId, creditsFor(action), action, { brandId: brandId });
+  // `hold` is returned for a handler that wants to settle or release it explicitly; handlers
+  // that ignore it still reconcile, because logUsage() looks the hold up by (user, action).
+  return { user, over: !gate.ok, gate, billingUserId, hold: gate.hold || null };
 }
 
 module.exports = {
@@ -659,5 +1035,9 @@ module.exports = {
   billingUserFor, claimedBrandId,
   setRequestBudget,
   // Period window (pure, testable) + the billing snapshot the money path branches on.
-  periodStartISO, periodStartForRow, getPlanSnapshot, PAID_PLANS
+  periodStartISO, periodStartForRow, getPlanSnapshot, PAID_PLANS,
+  // Reservations — the concurrency control. Exported so a gate/harness can drive them
+  // directly and so a handler with a long tail of its own can release one early.
+  HOLD_PREFIX, HOLD_TTL_MS, RESERVATIONS_ON,
+  createHold, releaseHold, parseHoldAction, isHoldAction, holdActionFor
 };

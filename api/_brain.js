@@ -78,7 +78,12 @@ function dayMapText(bc) {
 // The old flat 300-char cut turned a 120-word spoken script into a third of itself — a useless
 // exemplar. Spoken formats get room to show their actual rhythm.
 const SPOKEN_EX_FORMATS = ['video', 'micro', 'qna'];
-const exampleCap = fmt => (SPOKEN_EX_FORMATS.indexOf(String(fmt || '').trim().toLowerCase()) >= 0 ? 1400 : 600);
+// Non-spoken winners were capped at 600, which is under what the app itself writes for them: a
+// carousel winner runs ~900 chars across its slides, so the exemplar handed back to the model
+// stopped mid-slide — the same "a third of a script is a useless exemplar" bug the spoken cap
+// already fixed, just one format later. 1000 clears a real carousel with headroom and still bounds
+// four examples at 4k, well inside the block's own budget.
+const exampleCap = fmt => (SPOKEN_EX_FORMATS.indexOf(String(fmt || '').trim().toLowerCase()) >= 0 ? 1400 : 1000);
 
 function approvedWinnersBlock(bc) {
   bc = bc || {};
@@ -127,7 +132,32 @@ function approvedWinnersBlock(bc) {
 function fullBrandBlock(bc, opts) {
   bc = bc || {};
   opts = opts || {};
-  const L = [];
+  // ── WHAT THE TOTAL CAP GIVES UP FIRST ───────────────────────────────────────
+  // Sections are collected with an explicit KEEP rank, not as a flat array, because the total cap
+  // below used to be a blind `body.slice(0, TOTAL_CAP)` over a FIXED ORDER — so it discarded the
+  // TAIL, and the tail is where the strongest signal lives. Measured on this renderer with nine
+  // free-text fields at ~2,500 chars each (well inside what the app's own writers produce —
+  // api/reviews.js alone emits 1,100-1,500), the loss order was: the taste signal, then ALL the
+  // approved winners, then the example content, then the voice memory, then "topics to avoid",
+  // then "words to avoid", then the brand vocabulary, then the customer reviews — while tagline,
+  // website, origin story and visual style were never touched once. That is the exact inverse of
+  // the value hierarchy this product sells.
+  // Worse than dropping: the cut landed INSIDE a section. Measured, the prompt ended
+  // "...THE BRAND'S OWN WORDS — the user took our draft and rewrote it into this. This is the
+  // single best evidence of how they actually write: it beats every d" — a heading promising the
+  // brand's own posts with ZERO posts beneath it.
+  //
+  // KEEP bands (higher survives longer). Whole sections are dropped, lowest rank first, so a
+  // section can never be cut in half and a dangling heading is structurally impossible.
+  //   96-100  identity + the brand's own words: name, held voice, approved winners
+  //   93-95   hard rules the user typed by hand: voice memory, avoid-words, banned topics
+  //   80-86   what the user explicitly taught: example content, vocabulary, taste signal, audience
+  //   60-70   this brand's own facts and its customers' words: USPs, product, pain, reviews, CTA
+  //   40-55   context: themes, calendar, category gripes, rivals, reputation, proof
+  //   22-30   presentation detail the model writes well without: origin, channels, visuals, tagline, website
+  // RENDER ORDER IS UNCHANGED — the winners still sit at the block's tail where every recency gate
+  // measures them. Only the DROP order is ranked.
+  const S = [];
   // Trim-and-drop is the ONLY way a value gets in. A whitespace-only textarea must never render a
   // bare "Customer pain points:" label — that teaches the model the brand has nothing to say there.
   // Every field here is CLIENT-SUPPLIED (getBrandContext posts the whole brand snapshot), and Grok's
@@ -142,53 +172,73 @@ function fullBrandBlock(bc, opts) {
       : String(v).trim();
     return s.length > FIELD_CAP ? s.slice(0, FIELD_CAP) : s;
   };
-  const add = (label, val, note) => {
+  const add = (label, val, note, keep) => {
     const s = clean(val);
     if (!s) return;
-    L.push(label + ': ' + s + (note ? '\n   -> ' + note : ''));
+    S.push({ keep: keep, text: label + ': ' + s + (note ? '\n   -> ' + note : '') });
   };
-  const block = (label, val, note) => { // multi-line fields read better starting on their own line
+  const block = (label, val, note, keep) => { // multi-line fields read better starting on their own line
     const s = clean(val);
     if (!s) return;
-    L.push(label + ':\n' + s + (note ? '\n   -> ' + note : ''));
+    S.push({ keep: keep, text: label + ':\n' + s + (note ? '\n   -> ' + note : '') });
   };
 
-  add('Brand', bc.brandName);
-  add('Tagline', bc.tagline);
-  add('Website', bc.website);
-  add('Target audience', bc.targetAudience, 'Write as if speaking directly to this person — their language, their situation, their pain.');
-  add('Voice / tones (NEVER contradict)', bc.tones, 'Hold this voice consistently in everything you write. It is this brand\'s voice, not a style to rotate through — never soften it toward a neutral, friendly explainer.');
-  block('What the brand is / key facts (use ONLY these — never invent products, prices, or ingredients)', bc.usps);
-  block('Product details (name the real product, never "our product")', bc.productDetails);
-  add('Content themes / communities', bc.communities, 'Every piece of content should connect to one of these.');
-  block('Weekly content calendar (each day has a LEAD theme)', dayMapText(bc), 'Use the day\'s theme as the LEAD angle, but do NOT make every post that day the same topic — roughly 60% on the lead theme and 40% from other days\' themes or evergreen brand angles, so one day still feels varied.');
-  add('Competitors', bc.competitors);
-  block('Recent competitor moves (what rivals just did — products, pricing, campaigns, posts)', bc.competitorMoves, 'Differentiate from, counter, or ride the same wave better than them.');
-  add('CTA style (how this brand asks for action)', bc.ctaStyle);
-  block('Origin story', bc.originStory);
-  block('Social proof (real numbers / press only — weave in for credibility)', bc.socialProof);
-  add('Active channels (where the brand shows up — tailor content to these)', bc.channels);
-  add('Visual style', bc.visualStyle);
-  block('Customer pain points (great for hooks — they stop the scroll)', bc.painPoints);
-  block('Market complaints — what people gripe about across this WHOLE category, not just this brand', bc.categoryGripes, 'Name the frustration, then show how this brand is different. It earns instant trust.');
-  block('Customer reviews — what real customers praise, complain about, and the exact phrases they use', bc.reviewInsights, 'Echo their real language, lead with the praise, answer the complaints head on.');
-  block('What the web says about this brand (reputation)', bc.webMentions, 'Amplify the real strengths, pre-empt the criticisms.');
-  add('Brand vocabulary — use these distinctive phrases/words naturally', bc.brandVocab);
-  add('Words & phrases to AVOID (never use)', bc.avoidWords);
-  add('Topics to AVOID', bc.bannedTopics);
-  block('Voice memory — durable brand rules learned from the user (obey ALL)', bc.coachNotes);
-  block('Example content the brand loved (MATCH this voice and rhythm — never copy verbatim)', bc.exampleContent);
+  add('Brand', bc.brandName, '', 100);
+  add('Tagline', bc.tagline, '', 24);
+  add('Website', bc.website, '', 22);
+  add('Target audience', bc.targetAudience, 'Write as if speaking directly to this person — their language, their situation, their pain.', 80);
+  add('Voice / tones (NEVER contradict)', bc.tones, 'Hold this voice consistently in everything you write. It is this brand\'s voice, not a style to rotate through — never soften it toward a neutral, friendly explainer.', 99);
+  block('What the brand is / key facts (use ONLY these — never invent products, prices, or ingredients)', bc.usps, '', 70);
+  block('Product details (name the real product, never "our product")', bc.productDetails, '', 68);
+  add('Content themes / communities', bc.communities, 'Every piece of content should connect to one of these.', 55);
+  block('Weekly content calendar (each day has a LEAD theme)', dayMapText(bc), 'Use the day\'s theme as the LEAD angle, but do NOT make every post that day the same topic — roughly 60% on the lead theme and 40% from other days\' themes or evergreen brand angles, so one day still feels varied.', 54);
+  add('Competitors', bc.competitors, '', 44);
+  block('Recent competitor moves (what rivals just did — products, pricing, campaigns, posts)', bc.competitorMoves, 'Differentiate from, counter, or ride the same wave better than them.', 46);
+  add('CTA style (how this brand asks for action)', bc.ctaStyle, '', 60);
+  block('Origin story', bc.originStory, '', 30);
+  block('Social proof (real numbers / press only — weave in for credibility)', bc.socialProof, '', 40);
+  add('Active channels (where the brand shows up — tailor content to these)', bc.channels, '', 28);
+  add('Visual style', bc.visualStyle, '', 26);
+  block('Customer pain points (great for hooks — they stop the scroll)', bc.painPoints, '', 66);
+  block('Market complaints — what people gripe about across this WHOLE category, not just this brand', bc.categoryGripes, 'Name the frustration, then show how this brand is different. It earns instant trust.', 50);
+  block('Customer reviews — what real customers praise, complain about, and the exact phrases they use', bc.reviewInsights, 'Echo their real language, lead with the praise, answer the complaints head on.', 64);
+  block('What the web says about this brand (reputation)', bc.webMentions, 'Amplify the real strengths, pre-empt the criticisms.', 42);
+  add('Brand vocabulary — use these distinctive phrases/words naturally', bc.brandVocab, '', 84);
+  add('Words & phrases to AVOID (never use)', bc.avoidWords, '', 94);
+  add('Topics to AVOID', bc.bannedTopics, '', 93);
+  block('Voice memory — durable brand rules learned from the user (obey ALL)', bc.coachNotes, '', 95);
+  block('Example content the brand loved (MATCH this voice and rhythm — never copy verbatim)', bc.exampleContent, '', 86);
   if (opts.examples !== false) {
     const winners = approvedWinnersBlock(bc);
-    if (winners) L.push(winners);
+    if (winners) S.push({ keep: 96, text: winners });
   }
   // Raw taste signal — favor what was recently approved, avoid what was dismissed.
   const signals = clean(bc.learnedSignals);
-  if (signals) L.push('Recent taste signal (favor the approved, avoid the dismissed): ' + signals.slice(0, 500));
+  if (signals) S.push({ keep: 82, text: 'Recent taste signal (favor the approved, avoid the dismissed): ' + signals.slice(0, 500) });
 
   const TOTAL_CAP = 30000; // ~20 capped fields could still stack; bound the sum too.
-  let body = L.join('\n');
-  if (body.length > TOTAL_CAP) body = body.slice(0, TOTAL_CAP);
+  // Drop WHOLE sections, cheapest first, until the body fits. Never a mid-section slice: the old
+  // blind slice left a heading claiming "the user took our draft and rewrote" with nothing under it.
+  // Ties break toward dropping the LATER-rendered section, so the result is deterministic.
+  const size = s => s.text.length + 1; // + the '\n' that joins it to the next section
+  let total = S.reduce((n, s) => n + size(s), 0);
+  if (total > TOTAL_CAP) {
+    const cheapestFirst = S.map((s, i) => [s, i]).sort((a, b) => (a[0].keep - b[0].keep) || (b[1] - a[1]));
+    let alive = S.length;
+    for (const [s] of cheapestFirst) {
+      if (total <= TOTAL_CAP || alive <= 1) break; // always render at least one section
+      s.dropped = true; alive--; total -= size(s);
+    }
+  }
+  let body = S.filter(s => !s.dropped).map(s => s.text).join('\n');
+  // Belt and braces: only reachable if ONE section is itself larger than the whole cap (every field
+  // is already capped at FIELD_CAP, and the winners block is capped by exampleCap, so it is not
+  // reachable today). Cut back to a LINE boundary so the section keeps its heading and whole lines
+  // under it rather than ending mid-sentence.
+  if (body.length > TOTAL_CAP) {
+    const nl = body.lastIndexOf('\n', TOTAL_CAP);
+    body = body.slice(0, nl > 0 ? nl : TOTAL_CAP);
+  }
   const trends = trendsBlock(bc);
   if (trends) body += (body ? '\n' : '') + trends;
   // v649 — HOW THEY ACTUALLY TALK. An unedited transcript of the founder speaking, recorded for this
@@ -414,7 +464,12 @@ const FORMAT_SPEC = {
   carousel: 'Instagram carousel. boldText = numbered slide texts; slide 1 forces the swipe. caption = the post caption.',
   static: 'Single image post. caption = 1-3 sentences in brand voice — this IS the writing.',
   blog: 'Answer-first article: the first 1-2 sentences answer the question directly, THEN supporting depth. Natural headers, real specifics, no fluff intro.',
-  meme: 'One deadpan line baked into the image — plain-language point first, no setup, no explanation.',
+  // "One DEADPAN line" prescribed a register to every brand, including the warm and the playful
+  // ones — the same class of default persona as the hardcoded "Alex Hormozi style" removed in v640,
+  // and it sat in SHAPE & TARGET LENGTH, the position closest to the task, where it outranked the
+  // brand's own stated tone. The SHAPE (one line, point first, no setup) is the real spec; the
+  // voice belongs to the brand.
+  meme: 'One line baked into the image — plain-language point first, no setup, no explanation. Deliver it in the brand\'s own voice from the BRAND PROFILE; do not default to deadpan or any other register the brand has not asked for.',
 };
 function formatSpec(fmt) { return FORMAT_SPEC[fmt] || ''; }
 
@@ -427,7 +482,29 @@ function outputViolations(text, bc) {
   const t = ' ' + String(text || '').toLowerCase().replace(/\s+/g, ' ') + ' ';
   const hits = [];
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const listFrom = v => String(v == null ? '' : v).split(/[\n,;|]+/).map(s => s.trim().toLowerCase()).filter(w => w.length >= 3).slice(0, 60);
+  // A FULL STOP IS A SEPARATOR TOO. People write these lists as sentences, not as comma-separated
+  // tokens. `Don't say "game changer". Don't say "hack".` used to split into ONE entry, which
+  // matched nothing — so a brand that typed its hardest rule in the most natural way got no
+  // enforcement at all, silently.
+  // AND PREFER WHAT THEY PUT IN QUOTES. Split or not, `don't say "game changer"` is still a clause,
+  // and a whole clause never appears in a draft. Where the user quoted the actual words, those
+  // words ARE the rule: use them and drop the sentence around them. The opening quote must follow
+  // a space or start the entry and the closing one must end it or be followed by punctuation, so
+  // the apostrophe in "don't" can never be read as a quote mark.
+  const listFrom = v => {
+    const QUOTED = /(?:^|\s)["“‘']([^"“”‘']{3,60})["”’'](?=$|[\s.,;:!?])/g;
+    const out = [];
+    for (const part of String(v == null ? '' : v).split(/[\n,;|.]+/)) {
+      const s = part.trim().toLowerCase();
+      if (s.length < 3) continue;
+      const quoted = [];
+      let m;
+      while ((m = QUOTED.exec(s))) { const w = m[1].trim(); if (w.length >= 3) quoted.push(w); }
+      QUOTED.lastIndex = 0;
+      if (quoted.length) out.push.apply(out, quoted); else out.push(s);
+    }
+    return out.slice(0, 60);
+  };
   const scan = (v, type) => {
     for (const w of listFrom(v)) {
       try { if (new RegExp('\\b' + esc(w) + '\\b', 'i').test(t)) hits.push({ type, hit: w }); } catch (e) {}

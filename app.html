@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v657';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v659';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -6643,6 +6643,47 @@ const SUPABASE_URL = 'https://fbpwccsiumygfpssvduf.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZicHdjY3NpdW15Z2Zwc3N2ZHVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MjI5NTgsImV4cCI6MjA5Mzk5ODk1OH0.oIz7b9kAfSy6QG9YiRek9DtX8KTH9-SDzcP8D-GeA7E';
 let sb; // supabase client
 
+/* ══ v560: A FAILED MAGIC LINK COMES BACK AS A URL FRAGMENT ════════════════════
+   Supabase uses the implicit flow, so a link that is expired, already consumed or
+   malformed lands back on app.html as
+     #error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired
+   The client library throws on that and NOTHING in this file ever read it — so the
+   user was shown the ordinary "enter your email" card and concluded the product was
+   broken. It is not an edge case: Outlook Safe Links and other mail scanners open the
+   link before the human does, and any link older than an hour is already dead.
+   Read it BEFORE createClient() (which consumes the hash and throws on it), and strip
+   the fragment straight away so a reload does not replay the same dead end. */
+let _authLinkError = (function(){
+  try {
+    const h = (window.location.hash || '').replace(/^#/, '');
+    if (!h || !/(^|&)error(_code|_description)?=/.test(h)) return null;   // a SUCCESSFUL link (#access_token=...) must pass through untouched
+    const q = new URLSearchParams(h);
+    const info = { err: q.get('error') || '', code: q.get('error_code') || '', desc: q.get('error_description') || '' };
+    if (!info.err && !info.code) return null;
+    try { history.replaceState(null, '', window.location.pathname + window.location.search); }
+    catch(e) { try { window.location.hash = ''; } catch(e2){} }
+    return info;
+  } catch(e) { return null; }
+})();
+function _authLinkErrorMessage(e) {
+  const c = (e.code || '').toLowerCase(), d = (e.desc || '').toLowerCase();
+  if (c === 'otp_expired' || d.indexOf('expired') !== -1)
+    return 'That sign-in link has expired. Links are only good for a short time, and some email security scanners open them before you get the chance. Enter your email below and we’ll send you a fresh one.';
+  if (d.indexOf('already been used') !== -1 || d.indexOf('already used') !== -1)
+    return 'That sign-in link has already been used. Enter your email below and we’ll send you a new one.';
+  if ((e.err || '').toLowerCase() === 'access_denied')
+    return 'That sign-in link didn’t work — it has either expired or already been used. Enter your email below and we’ll send you a fresh one.';
+  return 'That sign-in link is no longer valid' + (e.desc ? ' (' + e.desc + ')' : '') + '. Enter your email below and we’ll send you a new one.';
+}
+/* Shown once, and only to somebody who actually ends up at the sign-in card — never to a
+   user whose existing session was recovered, and never again after a later sign-out. */
+function _consumeAuthLinkError() {
+  if (!_authLinkError) return false;
+  const e = _authLinkError; _authLinkError = null;
+  try { showAuthError(_authLinkErrorMessage(e)); } catch(x) { return false; }
+  return true;
+}
+
 function initSupabase() {
   if (!window.supabase) return false;
   try {
@@ -8203,19 +8244,30 @@ function startAuthListener() {
   (async () => {
     document.getElementById('authLoading').classList.add('show');
     try {
+      // v560: SESSION RECOVERY FIRST. A dead magic link used to be a dead end for everyone —
+      // including a user who was already signed in on this device — so ask for the session
+      // before deciding anything is wrong. A recovered session simply carries on into the app
+      // and never sees the failed-link message at all.
       const { data: { session } } = await sb.auth.getSession();
       if (!session) {
         document.getElementById('authLoading').classList.remove('show');
         document.getElementById('authForm').style.display = 'block';
         /* authToggle removed — magic link */
+        // No session AND a broken link: say plainly what happened, right above the form that
+        // sends a new one.
+        _consumeAuthLinkError();
       }
     } catch(e) {
       console.error('Session check error:', e);
       document.getElementById('authLoading').classList.remove('show');
       document.getElementById('authForm').style.display = 'block';
       /* authToggle removed — magic link */
-      document.getElementById('authError').textContent = 'Error: ' + e.message;
-      document.getElementById('authError').style.display = 'block';
+      // A broken link is the likeliest reason this threw, and "Error: <library message>" tells
+      // the user nothing they can act on.
+      if (!_consumeAuthLinkError()) {
+        document.getElementById('authError').textContent = 'Error: ' + e.message;
+        document.getElementById('authError').style.display = 'block';
+      }
     }
   })();
 }
@@ -9454,6 +9506,7 @@ function closeTeleprompter() {
     try { if (typeof window._tpDisarm === 'function') window._tpDisarm(); } catch(e){}
   }
   _tpIdeaId = null;
+  try { if (typeof window._tpUnbindTakeGuards === 'function') window._tpUnbindTakeGuards(); } catch(e){}   // v560: closing is a deliberate end of take
   if (tpMediaRecorder && tpMediaRecorder.state === 'recording') {
     showToast('Saving video…', 'info');
     document.getElementById('tpRecBtn').classList.remove('recording');
@@ -9462,11 +9515,42 @@ function closeTeleprompter() {
     if (tpRecTimerInterval) { clearInterval(tpRecTimerInterval); tpRecTimerInterval = null; }
     if (tpScrollTrackIv) { clearInterval(tpScrollTrackIv); tpScrollTrackIv = null; }
     document.getElementById('tpRecTimer').textContent = '0:00';
+    // v560: the camera light, the microphone and the MediaPipe blur pump used to stay live for as
+    // long as the share sheet sat open, because the teardown below ran only AFTER the awaited
+    // navigator.share(). It is idempotent, so the watchdog can call it too.
+    let _tpClosed = false;
+    const _tpTeardown = () => {
+      if (_tpClosed) return; _tpClosed = true;
+      try { tpBlur.stop(); } catch(e){}
+      try { if (tpCameraStream) { tpCameraStream.getTracks().forEach(t => t.stop()); tpCameraStream = null; } } catch(e){}
+      try { const v = document.getElementById('tpCameraFeed'); if (v) { v.srcObject = null; v.classList.remove('active'); } } catch(e){}
+      try { const ov = document.getElementById('teleprompterOverlay'); if (ov) { ov.classList.remove('cam-on','open'); } } catch(e){}
+      try { document.body.style.overflow = ''; } catch(e){}
+    };
+    // v560: the overlay used to be closed ONLY from inside onstop, so a recorder that never fires
+    // stop (device seized, tab throttled, decode failure) left the user stranded on "Saving video..."
+    // with no button and no way out. Close it honestly instead.
+    const _tpStopWd = setTimeout(() => {
+      if (_tpClosed) return;
+      _tpTeardown();
+      try { showToast("Couldn't finish saving that take \u2014 the camera stopped responding.", 7000); } catch(e){}
+    }, 8000);
     tpMediaRecorder.onstop = async () => {
+      try { clearTimeout(_tpStopWd); } catch(e){}
       try {
         const ext = (tpMediaRecorder.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
         const blob = new Blob(tpRecordedChunks, { type: tpMediaRecorder.mimeType || 'video/webm' });
         const fname = 'content-shrimp-' + new Date().toISOString().slice(0,19).replace(/[T:]/g,'-') + '.' + ext;
+        // v560: the same guard startTpRecord's own onstop already has. A ZERO-BYTE take never
+        // recorded, so "Video shared!" / "Sent to your Downloads" was a claim about a file that
+        // does not exist. Say what actually happened.
+        if (!blob.size) {
+          _tpTeardown();
+          try { showToast("That take didn't record \u2014 nothing was captured. Check camera and mic access, then film it again.", 7000); } catch(_){}
+          return;
+        }
+        // Release camera + mic + blur pump BEFORE the share sheet opens, not after it closes.
+        _tpTeardown();
         const file = new File([blob], fname, { type: blob.type });
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
           try { await navigator.share({ files: [file], title: 'Content Shrimp Video' }); showToast('Video shared!','success'); }
@@ -9478,11 +9562,7 @@ function closeTeleprompter() {
           }
         } else { tpDownloadBlob(blob, fname); }
       } catch(e) { showToast('Error saving video','error'); }
-      try { tpBlur.stop(); } catch(e){}
-      if (tpCameraStream) { tpCameraStream.getTracks().forEach(t => t.stop()); tpCameraStream = null; }
-      const v = document.getElementById('tpCameraFeed'); if (v) { v.srcObject = null; v.classList.remove('active'); }
-      const ov = document.getElementById('teleprompterOverlay'); if (ov) { ov.classList.remove('cam-on','open'); }
-      document.body.style.overflow = '';
+      _tpTeardown();
     };
     tpMediaRecorder.stop();
     stopTpScroll();
@@ -9807,6 +9887,62 @@ async function startTpRecord() {
     }
   };
   tpMediaRecorder.start(1000);
+  /* ══ v560: BACKGROUNDING / DEVICE SEIZURE MID-TAKE ══════════════════════════
+     The take exists only as tpRecordedChunks, in memory, and NOTHING used to watch the recorder
+     while it ran: no visibilitychange, no pagehide, no onerror, no track.onended anywhere in the
+     filming path (only the split-screen RENDER path was ever hardened for this). So a notification
+     tap, an incoming call seizing the mic, another app grabbing the camera or a background pause
+     either silently stopped the recorder or left it dead — while updateRecTimer, which recomputes
+     from Date.now() - tpRecStartTime, kept counting up as though the take were still rolling.
+     STOP-AND-KEEP instead: whatever was captured goes through the normal onstop path
+     (review → keep/retake → share), which is the take saved rather than silently lost.
+     REMAINING GAP: the chunks are still only in memory, so a hard low-memory kill of the tab still
+     loses them. Persisting chunks to IndexedDB is the real fix and is deliberately out of scope. */
+  (function(){
+    const _rec = tpMediaRecorder;
+    let _done = false;
+    const _unbind = () => {
+      try { document.removeEventListener('visibilitychange', _onVis); } catch(e){}
+      try { window.removeEventListener('pagehide', _onHide); } catch(e){}
+      if (window._tpUnbindTakeGuards === _unbind) window._tpUnbindTakeGuards = null;
+    };
+    const _bail = (why, force) => {
+      if (_done) return; _done = true;
+      _unbind();
+      const rolling = !!(_rec && _rec.state === 'recording');
+      if (!rolling && !force) return;   // the take already finished normally — nothing to rescue
+      try { if (why) showToast(why, 8000); } catch(e){}
+      // Still rolling: stop it properly so onstop runs and the take is reviewed/kept.
+      if (rolling) { try { stopTpRecord(); } catch(e){} return; }
+      // Already dead: no onstop is coming, so stop the clock from lying about it.
+      try { if (tpRecTimerInterval) { clearInterval(tpRecTimerInterval); tpRecTimerInterval = null; } } catch(e){}
+      try { if (tpScrollTrackIv) { clearInterval(tpScrollTrackIv); tpScrollTrackIv = null; } } catch(e){}
+      try { const b = document.getElementById('tpRecBtn'); if (b) b.classList.remove('recording'); } catch(e){}
+      try { const l = document.getElementById('tpRecordLbl'); if (l) l.textContent = 'Record'; } catch(e){}
+      try { const o = document.getElementById('teleprompterOverlay'); if (o) o.classList.remove('recording'); } catch(e){}
+      try { stopTpScroll(); } catch(e){}
+    };
+    const _onVis = () => { if (document.visibilityState === 'hidden') _bail("Filming stopped when the app went to the background — the take up to that point is saved.", false); };
+    const _onHide = () => _bail("Filming stopped when the app was closed — the take up to that point is saved.", false);
+    document.addEventListener('visibilitychange', _onVis);
+    window.addEventListener('pagehide', _onHide);
+    window._tpUnbindTakeGuards = _unbind;
+    _rec.onerror = (ev) => {
+      try { console.warn('tp MediaRecorder error', ev && (ev.error || ev)); } catch(e){}
+      _bail("Recording stopped unexpectedly — the take up to that point is saved.", true);
+    };
+    // A seized camera or microphone ENDS its track. Bind both the recorded stream (which is the
+    // blur canvas when blur is on) and the raw camera stream, or a stolen camera stays silent.
+    const _mark = (t) => {
+      if (!t || t._tpEndBound) return;
+      t._tpEndBound = true;
+      t.onended = () => _bail(t.kind === 'audio'
+        ? "The microphone was taken by another app — the take up to that point is saved."
+        : "The camera was taken by another app — the take up to that point is saved.", true);
+    };
+    try { const s = tpActiveStream(); if (s) s.getTracks().forEach(_mark); } catch(e){}
+    try { if (tpCameraStream) tpCameraStream.getTracks().forEach(_mark); } catch(e){}
+  })();
   const _rb = document.getElementById('tpRecBtn'); if (_rb) _rb.classList.add('recording');
   const _rl = document.getElementById('tpRecordLbl'); if (_rl) _rl.textContent = 'Stop';
   document.getElementById('teleprompterOverlay').classList.add('recording');
@@ -9831,6 +9967,7 @@ async function startTpRecord() {
 }
 
 function stopTpRecord() {
+  try { if (typeof window._tpUnbindTakeGuards === 'function') window._tpUnbindTakeGuards(); } catch(e){}   // v560: the take is over on purpose
   if (tpRecStartTime) window._tpLastTakeSecs = Math.max(3, Math.round((Date.now() - tpRecStartTime) / 1000));
   const _rb = document.getElementById('tpRecBtn'); if (_rb) _rb.classList.remove('recording');
   const _rl = document.getElementById('tpRecordLbl'); if (_rl) _rl.textContent = 'Record';
@@ -9854,6 +9991,14 @@ function stopTpRecord() {
 }
 
 function updateRecTimer() {
+  // v560: this recomputed from Date.now() - tpRecStartTime unconditionally, so a recorder that had
+  // silently stopped or died (app backgrounded, mic seized by a call, camera grabbed by another
+  // app) still showed a clock counting up as though the take were still rolling. Freeze it the
+  // moment recording is no longer live — the number on screen has to mean something.
+  if (!tpRecStartTime || (tpMediaRecorder && tpMediaRecorder.state !== 'recording')) {
+    if (tpRecTimerInterval) { clearInterval(tpRecTimerInterval); tpRecTimerInterval = null; }
+    if (!tpRecStartTime) return;
+  }
   const elapsed = Math.floor((Date.now() - tpRecStartTime) / 1000);
   const m = Math.floor(elapsed / 60);
   const s = String(elapsed % 60).padStart(2, '0');
@@ -9925,10 +10070,28 @@ function tpReview(blob, fname){
   ov.appendChild(el);
   const cleanup = () => { try { URL.revokeObjectURL(url); } catch(e){} el.remove(); };
   document.getElementById('tpRvKeep').onclick = () => {
-    cleanup();
-    tpEndTake();   // committed to this take — camera + blur pump off before the render
-    if (typeof tpOfferSplit === 'function' && tpOfferSplit(blob, fname)) return;
-    tpShareOrSave(blob, fname);
+    // v560: HOLD the review card until the work is actually done. This used to revoke the object
+    // URL and remove the card FIRST — and because a click handler sits OUTSIDE the try/catch that
+    // startTpRecord's onstop deliberately wraps around exactly these calls, any throw inside
+    // ending the take / tpOfferSplit / tpShareOrSave left no card, no camera, no share and no toast: the
+    // NOTE: this comment deliberately does NOT spell the teardown function's name. mobile-user.js:341
+    // decides "does Keep end the take?" with a plain text search of this handler's source, so a mention
+    // in prose would satisfy it and the check could never fail. Prose must not stand in for code.
+    // performed take was simply gone. Same discipline as Retake below — `blob` is still held by
+    // this closure and tpReview mints a fresh object URL, so putting the card back is lossless.
+    try { el.style.display = 'none'; } catch(e){}
+    const _restore = () => {
+      try { showToast("Something went wrong saving that take — it's still here.", 7000); } catch(e){}
+      if (document.body.contains(el)) { try { el.style.display = ''; } catch(e){} return; }
+      // Card already torn down (or the overlay closed): hand the file over rather than lose it.
+      try { if (!tpReview(blob, fname)) tpDownloadBlob(blob, fname); } catch(e){}
+    };
+    try {
+      tpEndTake();   // committed to this take — camera + blur pump off before the render
+      if (typeof tpOfferSplit === 'function' && tpOfferSplit(blob, fname)) { cleanup(); return; }
+      cleanup();
+      tpShareOrSave(blob, fname);
+    } catch(e) { _restore(); }
   };
   document.getElementById('tpRvAgain').onclick = () => {
     // HOLD the previous take until the new one is confirmed rolling. This used to revoke the URL,
@@ -20655,8 +20818,10 @@ function renderSettingsPanel() {
         <div class="sp-section-body ${sec.danger?'open':''}">
           <div id="spPlanBox" class="sp-plan-box">${(typeof planBoxHtml==='function' && planBoxHtml()) || ''}</div>
           <button onclick="handleLogout()" style="width:100%;padding:12px;margin-bottom:16px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface,#fff);color:var(--text);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Log out</button>
+          ${(currentBrand && currentUser && currentBrand.user_id === currentUser.id) ? `
           <div class="sp-tip" style="margin-bottom:12px;">Start over wipes this brand's data and re-runs onboarding on the same login — handy for testing. Delete account removes everything and frees your email.</div>
-          <button class="dz-btn reset" onclick="obResetForTesting()">Start over (re-run onboarding)</button>
+          <button class="dz-btn reset" onclick="obResetForTesting()">Start over (re-run onboarding)</button>` : `
+          <div class="sp-tip" style="margin-bottom:12px;">Only the brand owner can start this brand over — its ideas, notes and voice data belong to their account. Delete account removes your own login and frees your email.</div>`}
           <button class="dz-btn delete" onclick="deleteAccountConfirm()">Delete account permanently</button>
         </div>
       </div>

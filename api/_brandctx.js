@@ -26,6 +26,11 @@
 // Everything else below is loaded from `brands` / `ideas` and is byte-equivalent to what
 // the client used to upload. The column mapping is the same one settingsToBrand() /
 // brandToSettings() use in app.html — if you add a brand field there, add it here.
+//
+//   5. EXEMPLAR SELECTION is byte-equivalent only when the caller passes `humanEdited`. Which
+//      approved posts the user REWROTE is derivable only from the client's localStorage edit
+//      signals, so the client sends those titles (`humanEditedTitles`). Without them this module
+//      can rank by recency alone, which is NOT what the client did — see approvedExamplesFrom.
 
 const store = require('./_publish/store');
 
@@ -46,18 +51,44 @@ function exampleFromIdea(i) {
 
 // EXACT mirror of app.html getApprovedExamples(fmt): lead with same-format winners (max 3),
 // fill with the two most recent others, cap at 4, drop anything with no text.
-// v640: `humanEdited` accepts the titles of posts the user actually REWROTE. That fact lives in
-// the client's localStorage edit signals, so this hydration cannot derive it — and without it every
-// winner is presented to the model as equal "approved" evidence, which is how the app ended up
-// telling Grok that its own unedited output was the truest statement of the brand's voice.
-// Rewritten posts are marked and sorted first; with no list the behaviour is exactly as before.
-function approvedExamplesFrom(sameFmtIdeas, otherFmtIdeas, humanEdited) {
+//
+// `humanEdited` carries the titles of posts the user actually REWROTE (the client derives them
+// from its localStorage edit signals and sends them as `humanEditedTitles`). Those words are
+// genuinely the founder's; every other "approved" post is one tap on text THIS APP wrote.
+//
+// THE BUG THIS FIXES — humanEdited used to arrive AFTER selection and only RE-ORDER the handful
+// already picked, while the picking itself was pure recency. The client does the opposite: it
+// moves the rewritten winners to the END of the array and then slices the TAIL, so the slice
+// LANDS ON them. Measured with 6 approved video posts where post 2 was hand-rewritten: the server
+// returned posts 4, 5, 6 and the founder's own words never reached the model at all; the client
+// returned 5, 6 and post 2. Two-stage damage, because with no edited example surviving selection
+// approvedWinnersBlock (api/_brain.js) also falls back to its WEAKER heading — the one telling the
+// model these posts were machine-written and that the brand description is the stronger signal.
+// So the product actively instructed the model to discount its only real voice evidence.
+//
+// Selection now happens HERE, on the full candidate list, exactly the way the client did it:
+// human-rewritten first, recency as the tiebreak among equals, same per-bucket counts as before.
+// `caps` names those counts explicitly ({same, other}) so adding candidates to the pool below can
+// never silently change how many exemplars come back. With no humanEdited list every candidate
+// ranks equal and the result is the plain most-recent set — byte-identical to the old behaviour.
+function approvedExamplesFrom(sameFmtIdeas, otherFmtIdeas, humanEdited, caps) {
   const norm = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase();
   const human = new Set((Array.isArray(humanEdited) ? humanEdited : []).map(norm).filter(Boolean));
+  const c = caps || {};
+  const sameCap = c.same == null ? 3 : c.same;
+  const otherCap = c.other == null ? 2 : c.other;
+  // Candidates arrive OLDEST-FIRST (the order app.html's `state` array holds). Move the rewritten
+  // ones to the end and take the TAIL — the literal shape of getApprovedExamples, so recency still
+  // decides within each group and the rewritten ones are what the slice lands on.
+  const pick = (rows, n) => {
+    if (!(n > 0)) return [];
+    const list = (rows || []).map(i => Object.assign({}, i, { _edited: human.has(norm(i && i.title)) }));
+    return list.filter(i => !i._edited).concat(list.filter(i => i._edited)).slice(-n);
+  };
   const out = []
-    .concat(sameFmtIdeas || [], otherFmtIdeas || [])
+    .concat(pick(sameFmtIdeas, sameCap), pick(otherFmtIdeas, otherCap))
     .slice(0, 4)
-    .map(i => Object.assign(exampleFromIdea(i), { edited: human.has(norm(i && i.title)) }))
+    .map(i => Object.assign(exampleFromIdea(i), { edited: !!(i && i._edited) }))
     .filter(e => e.text)
     .slice(0, 4);
   // Rewritten first — approvedWinnersBlock renders and labels the two groups differently.
@@ -210,26 +241,53 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
   }
 
   const APPROVED = 'status=in.(filming,done)';
-  const EX_COLS = 'select=title,format,hook,script,bold_text,caption';
+  // created_at travels so the merged candidate list below can be put back in true recency order.
+  // rowToIdea ignores it, so nothing it feeds ever sees the extra column.
+  const EX_COLS = 'select=title,format,hook,script,bold_text,caption,created_at';
   const f = String(fmt || '').trim();
 
   // Ordered created_at.desc + reversed == the tail of the client's `state` array, which is
   // append-ordered and re-persisted in that order. Two narrow queries (3 same-format, 2
   // other-format) reproduce getApprovedExamples' slice(-3)/slice(-2) exactly, without
   // dragging a whole idea library across the wire.
+  //
+  // HOW MANY WE RETURN IS UNCHANGED (3 same-format + 2 other, capped at 4; 4 when no format is
+  // known) — `EX_CAPS` is the single place that decides it, and the two recency queries below keep
+  // their original limits, so a brand with no rewritten posts issues byte-identical SQL.
+  const EX_CAPS = { same: f ? 3 : 4, other: f ? 2 : 0 };
+  const humanEdited = (Array.isArray(opts.humanEdited) ? opts.humanEdited : []).filter(Boolean).slice(0, 8);
+
   const sameQ = f
-    ? ideasPath(brandId, APPROVED + '&format=eq.' + encodeURIComponent(f) + '&' + EX_COLS + '&order=created_at.desc&limit=3')
-    : ideasPath(brandId, APPROVED + '&' + EX_COLS + '&order=created_at.desc&limit=4');
+    ? ideasPath(brandId, APPROVED + '&format=eq.' + encodeURIComponent(f) + '&' + EX_COLS + '&order=created_at.desc&limit=' + EX_CAPS.same)
+    : ideasPath(brandId, APPROVED + '&' + EX_COLS + '&order=created_at.desc&limit=' + EX_CAPS.same);
   const otherQ = f
-    ? ideasPath(brandId, APPROVED + '&format=neq.' + encodeURIComponent(f) + '&' + EX_COLS + '&order=created_at.desc&limit=2')
+    ? ideasPath(brandId, APPROVED + '&format=neq.' + encodeURIComponent(f) + '&' + EX_COLS + '&order=created_at.desc&limit=' + EX_CAPS.other)
     : null;
 
-  let brandRes, sameRows, otherRows, upRows, downRows, avoidRows;
+  // THE POSTS THE FOUNDER REWROTE, FETCHED BY NAME.
+  // Ranking by human provenance is worthless if the rewritten post was never fetched — and it
+  // usually is not, because the post someone took the trouble to rewrite is rarely one of the
+  // three most recent. Widening the recency window to cover it would mean dragging a large slice
+  // of the idea library across the wire on EVERY generate. The client already knows exactly which
+  // titles they are and sends at most eight, so ask for those eight directly: one extra, tiny
+  // query, and only for brands that actually have rewritten posts. Values are quoted and escaped
+  // because titles are user text (a comma or a quote in a title must not become a separator).
+  // If it fails, getRows() yields null -> [] and selection degrades to plain recency — the old
+  // behaviour, never an error.
+  const inList = vals => 'in.(' + vals
+    .map(v => '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"').join(',') + ')';
+  const editedQ = humanEdited.length
+    ? ideasPath(brandId, APPROVED + '&' + EX_COLS + '&title=' + encodeURIComponent(inList(humanEdited)) +
+        '&order=created_at.desc&limit=8')
+    : null;
+
+  let brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows;
   try {
-    [brandRes, sameRows, otherRows, upRows, downRows, avoidRows] = await Promise.all([
+    [brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows] = await Promise.all([
       store.rest('GET', '/brands?id=eq.' + encodeURIComponent(brandId) + '&select=' + BRAND_ROW_COLUMNS),
       getRows(sameQ),
       otherQ ? getRows(otherQ) : Promise.resolve([]),
+      editedQ ? getRows(editedQ) : Promise.resolve([]),
       getRows(ideasPath(brandId, APPROVED + '&select=title&order=created_at.desc&limit=8')),
       getRows(ideasPath(brandId, 'status=eq.dismissed&select=title&order=created_at.desc&limit=6')),
       getRows(ideasPath(brandId, 'select=title&order=created_at.desc&limit=40')),
@@ -245,9 +303,35 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
 
   // Winners: reverse each desc list back to oldest-first, then same+other, exactly as the
   // client does. A failed sub-query yields [] rather than a wrong exemplar set.
-  const same = (sameRows || []).slice().reverse().map(rowToIdea);
-  const other = (otherRows || []).slice().reverse().map(rowToIdea);
-  bc.approvedExamples = approvedExamplesFrom(same, other, opts.humanEdited);
+  // The rewritten posts are folded into whichever bucket their format belongs to, de-duplicated
+  // against the recency rows and re-sorted oldest-first, so approvedExamplesFrom sees the same
+  // shape of list the client's `state` array gave getApprovedExamples.
+  const merge = (recent, extra) => {
+    // Each list arrives created_at.desc; reversing it is what turned it into the client's
+    // oldest-first `state` order before this change, and it still is. Only when the two lists are
+    // actually merged, AND every row carries a created_at, is a sort needed to interleave them —
+    // so a caller (or a test double) whose rows have no timestamp keeps the old, correct order
+    // instead of being silently re-ordered by a comparator with nothing to compare.
+    const rows = (recent || []).slice().reverse();
+    // Nothing to merge (no rewritten posts, i.e. every brand that had none before) — return the
+    // reversed recency list untouched, so that path stays literally the code it always was.
+    if (!(extra && extra.length)) return rows.map(rowToIdea);
+    rows.push.apply(rows, (extra || []).slice().reverse());
+    if (rows.every(r => r && r.created_at)) {
+      rows.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    }
+    const seen = new Set(), out = [];
+    for (const r of rows) {
+      const k = JSON.stringify([r.title, r.format, r.hook, r.script, r.bold_text, r.caption, r.created_at]);
+      if (seen.has(k)) continue;
+      seen.add(k); out.push(rowToIdea(r));
+    }
+    return out;
+  };
+  const ed = editedRows || [];
+  const same = merge(sameRows, f ? ed.filter(r => r.format === f) : ed);
+  const other = merge(otherRows, f ? ed.filter(r => r.format !== f) : []);
+  bc.approvedExamples = approvedExamplesFrom(same, other, humanEdited, EX_CAPS);
 
   bc.learnedSignals = learnedSignalsFrom(
     (upRows || []).slice().reverse().map(r => r.title),
