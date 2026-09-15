@@ -2,6 +2,62 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-15 — v659. "Start over" is owner-only. The plan-escalation fear is DISPROVEN. One live hole left, and it is Jörgen's to close.
+**DEPLOY STATE: UNDEPLOYED.** Stamped `v659-6546330a+api.130db971` (was `v658-737567f9`). Committed
+as `65a091a`, working tree clean. **The deploy command has not been run** — see HANDOFF below.
+**48/48 GATES GREEN**, including the new one.
+
+**THE FIX.** `app.html:20821` rendered "Start over (re-run onboarding)" to everyone in the settings
+panel. `obResetForTesting()` (`:15047`) deletes on `brand_id` alone across all seven library tables
+(ideas, remixes, product_refs, competitors, prompt_history, notebook_notes, edit_signals), and until
+`sql/v658-member-delete.sql` runs, every teammate holds DELETE on all seven. One curious member
+wiped the owner's entire library behind a single confirm. The button is now inside an ownership
+ternary — `currentBrand.user_id === currentUser.id`, the same test already used 60 lines above to
+label the team list Owner/Member, and sound because every path assigning `currentBrand` selects `*`.
+A member now reads "Only the brand owner can start this brand over" instead of finding a gap.
+
+**NEW GATE `scripts/verify/start-over-owner-only.mjs`** — behavioural, not a grep. It brace-matches
+the real `${...}` interpolation out of `app.html`, compiles it with `new Function`, and renders it
+three times: owner MUST get the button, member MUST NOT, `(null,null)` MUST NOT. **Mutation-tested
+3 ways, 3 kills:** invert `===`→`!==` (caught as "the OWNER can no longer see it" — the
+went-too-far direction); delete the condition entirely; strip the member's explanation.
+`app.html` verified byte-identical afterwards via `cmp`; the harness restores in a shell EXIT trap.
+
+**LIVE DATABASE — THREE QUESTIONS ANSWERED AGAINST PRODUCTION, NOT THE REPO.** Full transcript in
+`.unlazy/member-safety/GATES.md`.
+* **Plan self-escalation: NOT POSSIBLE. The worry recorded on 09-13 is closed.** `pg_policies` for
+  `user_plans`, `usage_events`, `dfy_requests` returns exactly 4 rows and every one is read-only or
+  self-scoped: three `SELECT ... (auth.uid() = user_id)` plus `dfy_insert_own`. There is **no
+  UPDATE, no DELETE and no FOR ALL** on `user_plans` or `usage_events`. Under RLS a command with no
+  policy is denied, so plan and usage writes are service_role-only. No user can upgrade themselves
+  to Agency, and none can delete their own usage rows to reset the meter.
+* **RLS confirmed ON** (`relrowsecurity`) for brands, ideas, user_plans, usage_events, dfy_requests
+  — checked because a policy on an RLS-off table is decoration. `relforcerowsecurity` is false
+  everywhere, which is correct.
+* **`security_health()` IS STILL PUBLIC-EXECUTABLE. This is the one live hole.** `proacl` =
+  `{=X/postgres,postgres=X/...,anon=X/...,authenticated=X/...,service_role=X/...}` — the leading
+  `=X` is PUBLIC. Any signed-in user, and plausibly any anonymous caller (the anon key ships in
+  `app.html`), can `sb.rpc('security_health')` and read back which tables have RLS off and which
+  carry permissive policies. `/api/health` reduces all of that to booleans on purpose
+  (`api/health.js:126-139`); the RPC behind it leaks precisely what that endpoint withholds.
+
+**WHY I DID NOT RUN THE SQL MYSELF.** I tried, through the Supabase SQL editor's Monaco model. The
+sandbox refused it: `[Modify Shared Resources]`. Same wall as the earlier schema attempts. I did not
+work around it. **Read-only SQL runs fine** — that is how all three answers above were obtained.
+
+**HANDOFF — in order:**
+1. `cd ~/boring-content-engine-deploy && pbcopy < sql/v658-revoke-security-health.sql` → paste into
+   the Supabase SQL editor → Run. Empty result = locked down. **This closes the live hole.**
+2. `pbcopy < sql/v658-member-delete.sql` → paste → Run. Empty result = DELETE is owner-only.
+   v659 hides the button; **this file is what actually stops the delete.** Both are needed.
+3. `cd ~/boring-content-engine-deploy && node scripts/stamp-build.js && vercel --prod`
+4. `git push origin HEAD:backup-2026-09-15` — still unpushed; the agent shell has no GitHub creds.
+5. **PRICING DECISION, STILL OPEN:** `api/_brandlimit.js:39` is
+   `{ trial:1, free:1, starter:1, pro:1, agency:Infinity }`. Does Pro get more than one brand? The
+   limit is computed server-side and **nothing consumes it yet** (needs app.html + an RLS rule).
+6. `sql/v657-ideas-dedupe.sql` preview still not run — 5 duplicate idea groups in production.
+7. Unverified until the 05:35 cron fires: whether the X trends lane actually returns tweets.
+
 ## ▶▶ 2026-09-13 — FULL RECONCILIATION AFTER A LOST CHAT. Nothing was open. The record was, not the work.
 A Cowork task ("SHRIMP NEW") hit its context limit and became unopenable, taking the sense of
 where things stood with it. Reconstructed from this file, GATES.md, the live database, the live
