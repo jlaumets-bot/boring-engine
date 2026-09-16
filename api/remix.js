@@ -174,6 +174,39 @@ module.exports = async function handler(req, res) {
 
     if (!content) return res.status(500).json({ error: 'No content in response' });
     if (!remix) return res.status(500).json({ error: 'Failed to parse remix \u2014 try again', raw: content });
+
+    // v666 — RETURN STRINGS, NOTHING ELSE.
+    // `extractJson` only proves the reply PARSED; every field was then passed through raw. The
+    // client saves this object to localStorage AND Supabase and then renders it, so one reply with
+    // `"remixScript": 12345` or `"remixTitle": {...}` threw inside renderRemixResults BEFORE
+    // el.innerHTML was assigned — and because the bad row is persisted and re-read, the Create
+    // tab's results list stayed blank through every reload. Measured on the real client functions:
+    // 5 of 6 malformed shapes threw, each leaving the list untouched.
+    // app.html now coerces as well (escapeHtml / remixHasContent), which repairs rows already
+    // saved. This is the root: an endpoint should not hand its own client a shape it cannot render.
+    // Arrays are joined rather than dropped — a model that answers a script as a list of lines has
+    // still written the script, and losing it would be a worse bug than the crash.
+    remix = (function normalize(o, depth) {
+      const str = v => {
+        if (v == null) return '';
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        if (Array.isArray(v)) return v.map(x => str(x)).filter(Boolean).join('\n');
+        try { return Object.values(v).map(x => str(x)).filter(Boolean).join(' '); } catch (e) { return ''; }
+      };
+      const out = {};
+      for (const k of Object.keys(o || {})) {
+        const v = o[k];
+        if (k === 'seriesParts' && depth === 0) {
+          out[k] = Array.isArray(v) ? v.map(p => normalize(p && typeof p === 'object' ? p : { remixScript: p }, 1)) : [];
+        } else if (k === 'partNumber') {
+          out[k] = Number(v) || 0;                      // the one field the client renders as a number
+        } else {
+          out[k] = str(v);
+        }
+      }
+      return out;
+    })(remix, 0);
     // `brandContext.brandId` was never a key getBrandContext() produced, so this row was
     // always attributed to a null brand. A lean request finally names the brand — use it.
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the

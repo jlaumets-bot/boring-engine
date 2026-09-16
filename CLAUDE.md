@@ -2,6 +2,46 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-16 — v667. One malformed model reply could permanently brick the Create tab. It can't now.
+**DEPLOY STATE: UNDEPLOYED.** Stamped by `scripts/stamp-build.js` — see `sw.js`. **58 gates, 57 green.**
+No new SQL. `sql/v665-edit-signal-provenance.sql` is still the only one waiting.
+
+**1. THE BRICK (was SHIPS-BROKEN).** `/api/remix` returned `extractJson(content)` **raw** — proof the
+reply PARSED, never that its fields were strings. The client unshifts that object into `remixes`,
+saves it to **localStorage AND Supabase**, then renders it. `escapeHtml` was the ONE escaper in
+app.html that did not coerce (`str.replace(...)` on a bare parameter — `escHtml`, `escAttr` and
+`vlEscAttr` all did), and `remixHasContent` called `.trim()` on raw values. Measured on the real
+functions: **5 of 6 malformed shapes threw, each leaving `el.innerHTML` untouched.** The throw
+happens BEFORE the assignment, and the bad row is persisted and re-read — **so a reload never
+cleared it.** Fixed at both ends: `escapeHtml` + `remixHasContent` coerce (repairs rows already
+saved), and remix.js normalizes before returning (stops new ones). Arrays are JOINED, not dropped —
+a model that answers a script as a list of lines still wrote the script.
+
+**2. SHARPEN CLAIMED WORK IT DID NOT DO.** Every key falls back to the original when the model drops
+or blanks it, so the merge can return the input **byte for byte** — and it did so without the
+`unchanged` flag its own early-exit path sets and the client already reads. The user was told
+"Sharpened ✨", a taste signal was recorded for a rewrite that never happened, and a paid model call
+was presented as work. Now it tracks whether anything moved. It also coerces (same defect as remix).
+
+**3. `generate-ideas` ANSWERED 200 WITH BLANK "Untitled" CARDS.** A model that replies
+`{"ideas":[...]}` instead of a bare array — the commonest drift there is — hit `if (!Array.isArray)
+ideas = [ideas]`, which **wrapped the wrapper**: one card, title "Untitled", every field empty,
+returned as success and metered. Now unwrapped first (`ideas|results|items|posts|data`), fields
+coerced, and a batch holding no usable idea returns **502 instead of 200**, so nothing is metered
+and the client can say so.
+
+**NEW GATE `render-crash-proof.mjs`** — runs the real `remixHasContent` / `escapeHtml` /
+`renderRemixResults` against six malformed shapes, the real sharpen merge loop, and the real
+generate-ideas coercion + usable-idea test. 12 mutations, all caught.
+Note for the next session: `extractFn` by brace counting does NOT work on `renderRemixResults` —
+it is mostly template literals with nested `${}`. Top-level functions close with `}` at column 0.
+
+**NEXT:** `brainDistill` has no call site (auto-distilled rules enter Voice Memory unreviewed);
+coach chat prints raw `<brand_update>` JSON and freezes on a malformed suggestion; stale `emphasis`
+after Sharpen/Rewrite. Then connections (SerpAPI + Pexels fail with zero logs and zero health checks;
+`crawl-social` reads unfinished Apify runs and blames the user's profile; the cron heartbeats `ok`
+when every lane returns nothing), then controls. Money and security LAST, per Jörgen.
+
 ## ▶▶ 2026-09-16 — v666. The brain had stopped learning, and was quoting a stale competitor digest as news.
 **DEPLOY STATE: UNDEPLOYED.** Stamped by `scripts/stamp-build.js` — see `sw.js`. **57 gates, 56 green.**
 Ships on top of v665; the same `sql/v665-edit-signal-provenance.sql` is still the only SQL to run.

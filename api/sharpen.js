@@ -196,9 +196,34 @@ ${rulePrecedence()}`;
     // Only accept the keys we asked for; fall back to the original for any the model dropped/blanked,
     // so Sharpen can NEVER lose or blank the user's content.
     const sharpened = {};
+    let moved = false;
     for (const k of keys) {
       const v = parsed[k];
-      sharpened[k] = (v != null && String(v).trim()) ? v : content[k];
+      // v666: COERCE. `v` was returned raw, so a model that answered a field as a number or a list
+      // handed the client a shape it renders with string methods. Same defect class as api/remix.js.
+      sharpened[k] = (v != null && String(v).trim()) ? String(v) : content[k];
+      if (String(sharpened[k]) !== String(content[k] == null ? '' : content[k])) moved = true;
+    }
+
+    // v666 — SAY SO WHEN NOTHING CHANGED.
+    // Every key falls back to the original when the model drops or blanks it, so this loop can
+    // return the input BYTE FOR BYTE — and it did so without the `unchanged` flag the early-exit
+    // path at the top of this file sets. The client reads that flag (sharpenNow in app.html) and
+    // says "Already sharp — nothing to change". Without it the user is told "Sharpened ✨", a
+    // taste signal is recorded for a rewrite that never happened, and a paid model call is
+    // presented as work done. The flag is the difference between a light-touch editor that is
+    // honest about doing nothing and one that pretends.
+    if (!moved) {
+      let logBrandId0 = null;
+      const _bid0 = bc.brandId || bc.brand_id || null;
+      if (_bid0) {
+        try {
+          const store = require('./_publish/store');
+          if (await store.userCanAccessBrand(_g.user.id, _bid0)) logBrandId0 = _bid0;
+        } catch (e) {}
+      }
+      await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId0, action: 'sharpen', model: bc.engine || 'grok' });
+      return res.status(200).json({ sharpened, unchanged: true });
     }
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the

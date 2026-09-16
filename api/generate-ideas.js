@@ -468,6 +468,18 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
 
     // Robust parse — handles fences AND prose-wrapped JSON (esp. Claude).
     let ideas = extractJson(content);
+    // v666 — UNWRAP BEFORE WRAPPING.
+    // A model that answers `{"ideas":[...]}` instead of a bare array used to fall into the line
+    // below, which wrapped the WRAPPER: `[{ideas:[...]}]`. cleanIdeas then read `.title`, `.hook`
+    // and `.script` off an object that has none of them and produced ONE card titled "Untitled"
+    // with every field blank — returned as 200, metered, and shown to the person as their ideas.
+    // A wrapper is the single most common way a model drifts from "return a JSON array", so this
+    // is the difference between recovering the batch and charging for a blank card.
+    if (ideas && !Array.isArray(ideas)) {
+      for (const k of ['ideas', 'results', 'items', 'posts', 'data']) {
+        if (Array.isArray(ideas[k])) { ideas = ideas[k]; break; }
+      }
+    }
     // A single idea object (or a salvaged object-in-brackets) is valid — wrap it.
     if (ideas && !Array.isArray(ideas)) ideas = [ideas];
     if (!ideas) {
@@ -494,26 +506,55 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       .filter(Boolean)
       .slice(0, 6);
 
-    const cleanIdeas = (arr) => arr.map(idea => ({
+    // v666 — COERCE, AND THROW NOTHING AWAY.
+    // These fields were passed through raw, so a model that answered a script as a list of lines or
+    // a title as a number handed the client a shape it renders with string methods. Joining a list
+    // rather than dropping it matters: the model DID write the script, and losing it would be a
+    // worse bug than the crash. A bare string in the array becomes the script for the same reason.
+    const txt = v => {
+      if (v == null) return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      if (Array.isArray(v)) return v.map(txt).filter(Boolean).join('\n');
+      try { return Object.values(v).map(txt).filter(Boolean).join(' '); } catch (e) { return ''; }
+    };
+    const cleanIdeas = (arr) => arr.map(raw => {
+      const idea = (raw && typeof raw === 'object') ? raw : { script: txt(raw) };
+      return {
       day: validDays.includes(idea.day) ? idea.day : 'Bonus',
-      community: idea.community || '',
+      community: txt(idea.community),
       format: validFormats.includes(idea.format) ? idea.format : 'video',
       // Was `idea.tone || 'witty'` — three lines under a comment explaining that exact fallback had
       // been removed for inventing a voice. Settings tallies this field ("N ideas" per tone), so a
       // deadpan brand's whole library was being counted as witty. normTone keeps it inside the
       // brand's OWN tones, or empty when the brand set none.
       tone: normTone(idea.tone),
-      title: idea.title || 'Untitled',
-      hook: idea.hook || '',
-      script: idea.script || '',
+      title: txt(idea.title) || 'Untitled',
+      hook: txt(idea.hook),
+      script: txt(idea.script),
       emphasis: cleanEmphasis(idea.emphasis),
-      shots: idea.shots || '',
-      caption: idea.caption || '',
-      reelTitle: idea.reelTitle || '',
-      tags: idea.tags || '',
-      ...(idea.boldText ? { boldText: idea.boldText } : {})
-    }));
+      shots: txt(idea.shots),
+      caption: txt(idea.caption),
+      reelTitle: txt(idea.reelTitle),
+      tags: txt(idea.tags),
+      ...(txt(idea.boldText) ? { boldText: txt(idea.boldText) } : {})
+      };
+    });
     ideas = cleanIdeas(ideas);
+
+    // v666 — NEVER RETURN A BLANK CARD AS A SUCCESS.
+    // Every field above falls back to '' and the title to 'Untitled', so a reply the parser could
+    // not make sense of came back as 200 with cards that have a placeholder title and nothing in
+    // them. The person saw empty ideas, the call was metered, and nothing anywhere said the model
+    // had failed. An idea with no hook, script, caption or statement is not an idea.
+    const _usable = i => !!(i && (i.hook || i.script || i.caption || i.boldText || i.reelTitle ||
+                                 (i.title && i.title !== 'Untitled')));
+    const _kept = ideas.filter(_usable);
+    if (!_kept.length) {
+      console.error('generate-ideas: model reply parsed but held no usable idea; returning an error rather than blank cards');
+      return res.status(502).json({ error: "That came back empty — try again", raw: String(content || '').slice(0, 400) });
+    }
+    ideas = _kept;
 
     // ── Output guardrail: if the model slipped a hard brand-rule violation (an avoid-word or a banned
     // topic) into the batch, regenerate ONCE with the offenders named. Bounded to one retry, fully

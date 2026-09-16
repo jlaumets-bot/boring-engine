@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v666';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v667';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -19277,8 +19277,13 @@ async function remixContent() {
   }
 }
 
+// v666: coerce here too. This runs on EVERY render, before anything else, over rows loaded from
+// storage — so a saved remix with a numeric field threw `(...).trim is not a function` here and the
+// list never got as far as escaping anything.
 function remixHasContent(r) {
-  return !!(r && ((r.remixScript||'').trim() || (r.remixHook||'').trim() || (r.remixTitle||'').trim() || (r.seriesParts||[]).length));
+  const t = v => String(v == null ? '' : v).trim();
+  const parts = r && r.seriesParts;
+  return !!(r && (t(r.remixScript) || t(r.remixHook) || t(r.remixTitle) || (Array.isArray(parts) ? parts.length : 0)));
 }
 function renderRemixResults() {
   const el = document.getElementById('remixResults');
@@ -19360,9 +19365,17 @@ function renderRemixResults() {
   }).join('');
 }
 
+// v666 — COERCE. This was `str.replace(...)` on a bare parameter, so ANY non-string that is not
+// falsy — a number, an array, an object — threw `str.replace is not a function` and took down the
+// whole render it sat in. That is not theoretical: /api/remix returns the model's parsed JSON with
+// no shape check, the client saves it to localStorage AND Supabase and then renders it, so one
+// reply with `"remixScript": 12345` left the Create tab's results list permanently blank — the
+// throw happens before `el.innerHTML` is assigned, and the bad row is re-read on every load, so a
+// reload never clears it. Measured on the real functions: 5 of 6 malformed shapes threw.
+// Every sibling here (escHtml, escAttr, vlEscAttr) already coerced; this one was the outlier.
 function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  if (str == null || str === '') return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function removeRemix(idx) {
