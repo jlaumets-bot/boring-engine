@@ -4,7 +4,7 @@
 // changing BUILD makes this file byte-different, the browser detects a new worker, and `install`
 // pulls the fresh app.html into the SAME stable cache while the OLD copy keeps serving instantly.
 const CACHE = 'cs-shell';   // stable — never rename
-const BUILD = 'v661-834140e0';       // ← bump this string on every app.html/asset change to push an update
+const BUILD = 'v663-a4c382a3';       // ← bump this string on every app.html/asset change to push an update
 
 // Only the app shell is refreshed on update. Images/icons are cached lazily on first use (never
 // eagerly precached — on a very slow connection an eager 1.8MB precache saturates the pipe and is
@@ -31,20 +31,69 @@ const CORE = ['/app.html', '/manifest.json'];
 // user saw the current version" is the entire point.
 const ALWAYS_LIVE = ['/', '/index.html', '/terms.html', '/privacy.html', '/refunds.html'];
 
+// v663: the marker that says WHICH build's shell is actually in the cache. Without it nothing
+// could tell a successful update from a failed one — see the install handler below.
+const SHELL_MARK = '/__cs_shell_build';
 self.addEventListener('install', e => {
   self.skipWaiting();
   // Pull the fresh shell into the stable cache IN THE BACKGROUND. The currently-cached copy keeps
   // serving instantly the whole time, so this launch is never blocked. If the network is dead, the
   // per-URL catch swallows it and we simply keep the old copy — the app is never left empty/bricked.
+  /* v663: A FAILED SHELL DOWNLOAD USED TO FREEZE THE USER ON THE OLD APP FOREVER, AND THE APP
+     THEN TOLD THEM THEY WERE UP TO DATE.
+     Every failure here is swallowed by the per-URL catch, so install always "succeeds". activate
+     then finds a shell in the cache — the OLD one — and prunes as though the update landed. From
+     that moment nothing retries: there was no message/sync listener, the fetch handler below was
+     pure cache-first with no revalidation, and reg.update() now downloads a byte-identical sw.js,
+     so `updatefound` never fires again. The user taps the "New version ready · Refresh" banner,
+     gets the same old build, and "check for update" answers "You're on the latest ✓" — the exact
+     opposite of the truth. On a weak connection this compounds, and this product ships fixes daily.
+     Two things change. First, record whether the shell ACTUALLY arrived, so the app can tell the
+     difference. Second, see the fetch handler: the shell now revalidates in the background, so a
+     missed download heals itself on the next launch instead of never. */
   e.waitUntil(
-    caches.open(CACHE).then(c =>
-      Promise.allSettled(CORE.map(u =>
+    caches.open(CACHE).then(async c => {
+      let shellOk = false;
+      await Promise.allSettled(CORE.map(u =>
         fetch(u, { cache: 'reload' })
-          .then(r => (r && r.ok) ? c.put(u, r) : null)
+          .then(r => {
+            if (!r || !r.ok) return null;
+            if (u === '/app.html') shellOk = true;
+            return c.put(u, r);
+          })
           .catch(() => {})
-      ))
-    )
+      ));
+      // The marker is written ONLY when this build's shell really landed. A stale marker is worse
+      // than none: it is what would let the app claim an update it does not have.
+      try {
+        if (shellOk) await c.put(SHELL_MARK, new Response(BUILD, { headers: { 'content-type': 'text/plain' } }));
+        else await c.delete(SHELL_MARK).catch(() => {});
+      } catch (_) {}
+    })
   );
+});
+
+// v663: let the page ask what the cache actually holds, and ask for a retry. Both are cheap and
+// neither existed, which is why a stuck device had no way back short of a URL nobody knows.
+self.addEventListener('message', e => {
+  const msg = (e.data && e.data.type) || '';
+  if (msg === 'cs-shell-build') {
+    e.waitUntil((async () => {
+      let have = null;
+      try { const r = await caches.match(SHELL_MARK); if (r) have = (await r.text()).trim(); } catch (_) {}
+      try { (e.ports && e.ports[0]) && e.ports[0].postMessage({ build: BUILD, shell: have }); } catch (_) {}
+    })());
+  } else if (msg === 'cs-refetch-shell') {
+    e.waitUntil((async () => {
+      let ok = false;
+      try {
+        const c = await caches.open(CACHE);
+        const r = await fetch('/app.html', { cache: 'reload' });
+        if (r && r.ok) { await c.put('/app.html', r); await c.put(SHELL_MARK, new Response(BUILD, { headers: { 'content-type': 'text/plain' } })); ok = true; }
+      } catch (_) {}
+      try { (e.ports && e.ports[0]) && e.ports[0].postMessage({ ok: ok }); } catch (_) {}
+    })());
+  }
 });
 
 self.addEventListener('activate', e => {
@@ -84,6 +133,31 @@ self.addEventListener('fetch', e => {
   // launch (that background refetch would hog a 0.5KB/s connection and stall the generate calls the
   // user actually cares about). `caches.match` searches ALL caches, so a copy stashed under an older
   // cache name is still found during a migration. App updates arrive via the BUILD bump above, not here.
+  /* v663: THE SHELL — and only the shell — now revalidates in the background.
+     The comment above is right that a background refetch of EVERY asset would hog a 0.5KB/s line,
+     so this is deliberately limited to /app.html: one request per launch, after the response has
+     already been served from cache, so nothing the user is waiting on is delayed. It is what makes
+     a failed install heal itself instead of stranding the device on an old build forever. */
+  if (_path === '/app.html') {
+    e.respondWith((async () => {
+      const cached = await caches.match(e.request);
+      const revalidate = (async () => {
+        try {
+          const r = await fetch('/app.html', { cache: 'reload' });
+          if (r && r.ok) {
+            const c = await caches.open(CACHE);
+            await c.put('/app.html', r.clone());
+            await c.put(SHELL_MARK, new Response(BUILD, { headers: { 'content-type': 'text/plain' } }));
+          }
+          return r;
+        } catch (_) { return null; }
+      })();
+      if (cached) { e.waitUntil(revalidate); return cached; }
+      const fresh = await revalidate;
+      return fresh || fetch(e.request);
+    })());
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;

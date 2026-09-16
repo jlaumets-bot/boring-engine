@@ -334,7 +334,12 @@ section('FIX 4 — a failed ideas load must not read as an empty library');
     /__ideasLoadFailed/.test(NEW_LOAD_IDEAS) && !/console\.error\('Ideas load error:', error\); return \[\];/.test(NEW_LOAD_IDEAS));
 
   async function callLoad(error) {
-    const sbStub = { from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: error ? null : [], error: error ? { message: 'boom' } : null }) }) }) };
+    // v663: loadIdeasFromDB now ORDERS newest-first and PAGES with .range(), because an unordered
+    // unlimited select is silently truncated by PostgREST at db-max-rows and returns the OLDEST
+    // rows — so past ~1000 ideas a user's recent posts simply vanished from the app. The stub
+    // models the real chain; a short page ends the loop, exactly as the live code expects.
+    const page = { data: error ? null : [], error: error ? { message: 'boom' } : null };
+    const sbStub = { from: () => ({ select: () => ({ eq: () => ({ order: () => ({ range: () => Promise.resolve(page) }) }) }) }) };
     const fn = compile(NEW_LOAD_IDEAS, 'loadIdeasFromDB', {
       sb: sbStub, currentBrand: { id: 'b1' }, lsGet: () => '{}',
       normalizeIdeaStatus: s => s || 'pending', _ideaRowRecency: () => 0,
@@ -351,8 +356,15 @@ section('FIX 4 — a failed ideas load must not read as an empty library');
     /_ideasLoadFailed = true/.test(init) && /notifyIdeasLoadFailed\(\)/.test(init));
   const notify = extractFn('notifyIdeasLoadFailed');
   ok('the user is told nothing was deleted', /nothing was deleted/i.test(notify) && /showToast/.test(notify));
+  // v663: the ideas load must stay ordered and paged — see the stub note above.
+  ok('the ideas load is ordered newest-first',
+    /\.order\(\s*'created_at'\s*,\s*\{\s*ascending:\s*false\s*\}\s*\)/.test(NEW_LOAD_IDEAS));
+  ok('the ideas load pages instead of taking one truncated response',
+    /\.range\(/.test(NEW_LOAD_IDEAS) && /rows\.length < IDEA_PAGE/.test(NEW_LOAD_IDEAS));
+  // switchBrand's catch also clears the ideas-switch disarm now, so match on the two things that
+  // matter rather than on one exact adjacent pair of statements.
   ok('switchBrand reports the same failure',
-    /window\._ideasLoadFailed = true; notifyIdeasLoadFailed\(\);/.test(html));
+    /window\._ideasLoadFailed = true;[\s\S]{0,80}notifyIdeasLoadFailed\(\);/.test(html));
 }
 
 // ── FIX 5 ─────────────────────────────────────────────────────────────────────

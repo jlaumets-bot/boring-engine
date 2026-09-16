@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v661';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v663';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -50,7 +50,37 @@
       if(reg.installing) watch(reg.installing); // an update was already mid-download
       reg.addEventListener('updatefound', function(){ watch(reg.installing); });
       try{ reg.update().catch(function(){}); }catch(e){}
-      setTimeout(function(){ if(!done && !reg.installing) finish(false, "You're on the latest ✓ " + (window.APP_VERSION||'')); }, 4500);
+      /* v663: DO NOT CLAIM "you're on the latest" WITHOUT ASKING.
+         reg.update() finding no new bytes means only that sw.js has not changed since this device
+         last fetched it — which is ALSO exactly what a device stranded on an old build sees, because
+         its failed install left the new worker in place with the old shell still cached. The old line
+         told those users the reassuring opposite of the truth, and it was the last thing standing
+         between them and a fix.
+         Ask the worker what shell it actually holds. If the cache does not match the worker's build,
+         say so plainly and re-download rather than sending them away happy. */
+      setTimeout(function(){
+        if(done || reg.installing) return;
+        var sw = navigator.serviceWorker.controller;
+        if(!sw || typeof MessageChannel === 'undefined'){ finish(false, "You're on the latest ✓ " + (window.APP_VERSION||'')); return; }
+        var ch = new MessageChannel(), answered = false;
+        ch.port1.onmessage = function(ev){
+          if(answered) return; answered = true;
+          var d = ev.data || {};
+          if(d.shell && d.build && d.shell === d.build){ finish(false, "You're on the latest ✓ " + (window.APP_VERSION||'')); return; }
+          // The worker is on a newer build than the copy in the cache: the download failed earlier.
+          say('Your phone kept an old copy — re-downloading…');
+          var ch2 = new MessageChannel(), got = false;
+          ch2.port1.onmessage = function(ev2){
+            if(got) return; got = true;
+            if(ev2.data && ev2.data.ok){ try{ location.reload(); }catch(_){} }
+            else finish(false, 'Could not download it — check your connection and try again');
+          };
+          try{ sw.postMessage({ type:'cs-refetch-shell' }, [ch2.port2]); }catch(_){ finish(false, 'Could not download it — try again'); }
+          setTimeout(function(){ if(!got){ got = true; finish(false, 'Still downloading — reopen the app in a minute'); } }, 20000);
+        };
+        try{ sw.postMessage({ type:'cs-shell-build' }, [ch.port2]); }catch(_){ finish(false, "You're on the latest ✓ " + (window.APP_VERSION||'')); return; }
+        setTimeout(function(){ if(!answered){ answered = true; finish(false, "You're on the latest ✓ " + (window.APP_VERSION||'')); } }, 3000);
+      }, 4500);
       setTimeout(function(){ finish(false, 'Still downloading — reopen the app in a minute'); }, 150000);
     }).catch(function(){ try{ location.reload(); }catch(_){} });
   };
@@ -7031,6 +7061,46 @@ function renderBrandDropdown() {
 let _listLoadOk = { remixes: true, productRefs: true, bookmarks: true, promptHistory: true, notebook: true };
 function _markListLoad(k, ok) { try { _listLoadOk[k] = !!ok; } catch(e) {} }
 function _listLoaded(k) { try { return _listLoadOk[k] !== false; } catch(e) { return true; } }
+/* v663: A FAILED SAVE WAS SILENT ON THREE OF THE FIVE LISTS.
+   _replaceBrandRows correctly returns {ok:false, error} and a gate even verifies that it reports
+   the failure to its caller — but saveRemixes, saveProductRefs and saveBookmarks all threw that
+   result away, and PostgREST RESOLVES on an HTTP error rather than throwing, so their try/catch
+   could never fire either. The local mirrors are no help: loadRemixes and loadProductRefs are
+   never called on any live path, and bookmarks have no mirror at all.
+   So: add a bookmark category on a train, watch it appear, add three creators and their links,
+   reload — all gone, and nothing ever said a word. This tells the user instead. */
+/* v663: FIND THE RIGHT IDEAS ENTRY BY IDENTITY, NOT BY POSITION.
+   `idea.id` is an index into `state`, and the code assumed state[i] and IDEAS[i] are the same
+   post. They drift: autoRefillCheck and usePAAQuestion push into `state` only, while
+   sendRemixToPipeline and the Viral Lab push the SAME OBJECT into both arrays at different
+   indices. After one auto-refill, IDEAS[n] is a different post from state[n] — and because a
+   remix is pushed by reference, writing to IDEAS[id] wrote through to a live, visible card.
+   Reproduced in node: sharpening a refilled idea rewrote the user's remix card with the refill's
+   title, hook, script and caption, and the next save wrote that over the database. The user would
+   open the teleprompter on that card and perform the wrong script.
+   Match on the title the entry had BEFORE the rewrite, and only accept the positional entry when
+   it really is the same post. When nothing matches — a remix that lives only in `state` — there
+   is simply nothing in IDEAS to mirror, which is correct rather than a reason to guess. */
+function _ideasEntryByTitle(titleBefore, idx) {
+  try {
+    if (typeof IDEAS === 'undefined' || !Array.isArray(IDEAS)) return null;
+    const want = String(titleBefore || '').trim().toLowerCase();
+    if (!want) return null;
+    const at = IDEAS[idx];
+    if (at && String(at.title || '').trim().toLowerCase() === want) return at;   // aligned: same post
+    return IDEAS.find(x => x && String(x.title || '').trim().toLowerCase() === want) || null;
+  } catch (e) { return null; }
+}
+function _warnSaveFailed(label, res) {
+  try {
+    if (res && res.ok === false) {
+      if (typeof showToast === 'function')
+        showToast("Couldn't save your " + label + " — check your connection. Don't reload yet.", 9000);
+      try { console.error(label + ' save failed:', res.error); } catch(_){}
+    }
+  } catch(e) {}
+  return res;
+}
 function _warnListNotSaved(label) {
   try {
     if (typeof showToast === 'function')
@@ -7067,7 +7137,16 @@ async function switchBrand(brandId) {
   try {
     const { data, error } = await sb.from('brands').select('*').eq('id', brandId).single();
     if (myToken !== _switchSeq) return;                       // superseded during the brand fetch
-    if (error || !data) { showToast("Couldn't switch brand — check your connection and try again"); return; }   // v595: was a vague "Failed to load brand" with no next step
+    if (error || !data) {
+      // v663: PUT THE GATE BACK. _switchSeq was bumped at the top, and brandGate() returns false
+      // as soon as it moves — whether or not the brand actually changed. So a FAILED switch (which
+      // leaves the user exactly where they were) silently poisoned every generation already in
+      // flight: the batch came back, the gate was dead, the ideas were discarded and the status
+      // line said "You switched brand while these were generating, so they were not added."
+      // They had not switched. The credits were spent and the explanation was false.
+      if (_switchSeq === myToken) _switchSeq = myToken - 1;
+      showToast("Couldn't switch brand — check your connection and try again"); return;   // v595: was a vague "Failed to load brand" with no next step
+    }
     // v643 — DISARM THE LIST SAVES FOR THE WHOLE SWITCH WINDOW. `_listLoadOk` starts all-true and
     // was only ever set inside the parallel loads below, so between this line and those resolving
     // (a full loadIdeasFromDB await plus another round trip) `currentBrand` is already the NEW
@@ -7078,12 +7157,20 @@ async function switchBrand(brandId) {
     // new brand's entire list and replaced it with the previous brand's. Marking them unloaded
     // here makes the existing guard refuse the save and tell the user, instead of destroying data.
     _listLoadOk = { remixes: false, productRefs: false, bookmarks: false, promptHistory: false, notebook: false };
+    // v663: IDEAS NEEDED THE SAME DISARM AND DID NOT HAVE IT. The five lists above are protected
+    // for the switch window; `state` was not. currentBrand becomes B on the next line, but `state`
+    // still holds brand A's ideas until the awaited loadIdeasFromDB below returns — and nothing
+    // blocks the screen in between ("Switching brand..." is a toast, and no re-render happens
+    // until the end). Brand A's cards stay visible and tappable. One tap on ✓ runs saveIdeasToDB,
+    // which captures brand id B with brand A's rows, and files A's entire library under B —
+    // permanently, because the later cleanup only deletes titles it is currently writing.
+    window._ideasSwitching = true;
     currentBrand = data;
     try { localStorage.setItem('cs_last_brand', brandId); } catch(e){}   // v576: remember for next reload
     migrateLegacyLS();                 // one-time, non-destructive; seeds this brand's namespace
     settings = brandToSettings(currentBrand);
     // Reload all data for this brand
-    try { const dbIdeas = await loadIdeasFromDB(); if (myToken !== _switchSeq) return; IDEAS.length = 0; const seen = new Set(); dbIdeas.forEach(i => { const k = i.title.toLowerCase().trim(); if (!seen.has(k)) { seen.add(k); IDEAS.push(i); } }); state = IDEAS.map((idea, i) => ({ ...idea, id: i })); reconcileLocalStatus(state); window._ideasLoadFailed = false; } catch(e) { IDEAS.length = 0; state = []; window._ideasLoadFailed = true; notifyIdeasLoadFailed(); }
+    try { const dbIdeas = await loadIdeasFromDB(); if (myToken !== _switchSeq) return; IDEAS.length = 0; const seen = new Set(); dbIdeas.forEach(i => { const k = i.title.toLowerCase().trim(); if (!seen.has(k)) { seen.add(k); IDEAS.push(i); } }); state = IDEAS.map((idea, i) => ({ ...idea, id: i })); reconcileLocalStatus(state); window._ideasLoadFailed = false; window._ideasSwitching = false; } catch(e) { IDEAS.length = 0; state = []; window._ideasLoadFailed = true; window._ideasSwitching = false; notifyIdeasLoadFailed(); }
     // v595: these six loads are INDEPENDENT — running them sequentially made a brand switch take
     // as long as all of them added together, which on a slow connection reads as "Switching brand…"
     // hanging forever (QA run #3). Run them in parallel; each still falls back to empty on its own.
@@ -7152,13 +7239,38 @@ async function switchBrand(brandId) {
     switchView('ideas');
     applyFeatureLocks();
     showToast('Switched to ' + (settings.brandName || 'brand'));
-  } catch(e) { if (myToken === _switchSeq) showToast('Error switching brand: ' + e.message); }
+  } catch(e) {
+    // v663: same restore as the failure return above, and never put a raw exception on screen.
+    window._ideasSwitching = false;
+    if (myToken === _switchSeq) {
+      _switchSeq = myToken - 1;
+      showToast("Couldn't finish opening that brand — check your connection and try again.", 7000);
+    }
+    try { console.error('switchBrand failed:', e); } catch(_){}
+  }
 }
 
 async function addNewBrand() {
   document.getElementById('brandDropdown').classList.remove('open');
-  // The free plan covers ONE brand — more brands is a paid feature.
-  if (typeof csIsFree==='function' && csIsFree() && (allBrands||[]).length >= 1) { showFeatureLock('multibrand'); return; }
+  /* v663: COUNT BRANDS YOU OWN, NOT BRANDS YOU CAN SEE — and ask the server when it has answered.
+     This counted `allBrands`, which loadAllBrandsFromDB fills with brands you OWN *and* brands you
+     merely BELONG TO (the `_owned` tag is set two lines apart, at :6926-6927, and was not consulted).
+     So someone invited to a teammate's brand, who owns NOTHING, was shown the upgrade wall the
+     first time they tried to make a brand of their own — and there was no other route, because
+     having a brand at all means onboarding never fires for them. A brand-new user was being asked
+     to pay for their first brand.
+     The server already says the opposite, in so many words: api/_brandlimit.js states "Membership
+     of somebody else's brand is not ownership and does not count against a seat's own allowance"
+     and "ONBOARDING IS NEVER BLOCKED. A user with no brands gets their first one". /api/usage has
+     been returning `brands.canCreate` all along and nothing read it. Now it does, and the count
+     below is the fallback for when that answer has not arrived. */
+  const _ownedCount = (allBrands || []).filter(b => b && b._owned === true).length;
+  const _srv = (typeof csUsage === 'object' && csUsage && csUsage.brands) ? csUsage.brands : null;
+  // The server's answer wins when it is a real one. `unknown` means it could not read the plan or
+  // the count, and it deliberately fails open — so fall through to the local count rather than
+  // treating "we don't know" as "no".
+  if (_srv && _srv.unknown !== true && _srv.canCreate === false && _ownedCount >= 1) { showFeatureLock('multibrand'); return; }
+  if (!_srv && typeof csIsFree==='function' && csIsFree() && _ownedCount >= 1) { showFeatureLock('multibrand'); return; }
   // Reset state for new brand
   currentBrand = null;
   settings = defaultSettings();
@@ -7469,9 +7581,10 @@ async function saveBrandToDB() {
         // this flag sends Quick Post back to the old upload-everything path.
         try { window._brandSaveOk = false; } catch(e) {}
         debugLog('Brand UPDATE error: ' + JSON.stringify(error));
+        try { window._brandSaveLastError = String(error.message || ''); } catch(_){}   // v663: so obFinish can tell a plan limit from a network problem
         alert('Brand save error: ' + (error.message || JSON.stringify(error)));
       } else {
-        try { window._brandSaveOk = true; } catch(e) {}
+        try { window._brandSaveOk = true; window._brandSaveLastError = ''; } catch(e) {}
         debugLog('Brand updated OK');
       }
     } else if (_brandLoadFailed) {
@@ -7504,11 +7617,13 @@ async function saveBrandToDB() {
         } else {
           try { window._brandSaveOk = false; } catch(e) {}
           debugLog('saveBrand: retry session refresh failed');
-          alert('Brand save error: ' + (error.message || JSON.stringify(error)));
+          try { window._brandSaveLastError = String(error.message || ''); } catch(_){}   // v663: so obFinish can tell a plan limit from a network problem
+        alert('Brand save error: ' + (error.message || JSON.stringify(error)));
         }
       } else if (error) {
         try { window._brandSaveOk = false; } catch(e) {}
         debugLog('Brand INSERT error: ' + JSON.stringify(error));
+        try { window._brandSaveLastError = String(error.message || ''); } catch(_){}   // v663: so obFinish can tell a plan limit from a network problem
         alert('Brand save error: ' + (error.message || JSON.stringify(error)));
       } else {
         try { window._brandSaveOk = true; } catch(e) {}
@@ -7577,6 +7692,14 @@ function notifyIdeasLoadFailed() {
   } catch(e) {}
 }
 function saveIdeasToDB() {
+  // v663: refuse while a brand switch is still loading this brand's ideas. Capturing at queue time
+  // (below) closes the window for a save queued BEFORE the switch; it cannot help a save queued
+  // DURING it, because by then the captured brand id is already the new brand while `state` is
+  // still the old brand's. Same shape, same remedy as _listLoaded() for the other five lists.
+  if (window._ideasSwitching) {
+    try { showToast("Still opening that brand — give it a second and tap again.", 4000); } catch(e){}
+    return;
+  }
   // Snapshot WHICH BRAND and WHAT CONTENT at QUEUE time, synchronously.
   // The chained callback used to read the `currentBrand` and `state` globals at INVOCATION
   // time — i.e. whenever the previous save happened to finish. switchBrand assigns
@@ -7764,7 +7887,31 @@ function _ideaRowRecency(r) {
 }
 async function loadIdeasFromDB() {
   if (!currentBrand) return [];
-  const { data, error } = await sb.from('ideas').select('*').eq('brand_id', currentBrand.id);
+  /* v663: ORDER AND PAGE IT. This was one unordered, unlimited select, and PostgREST silently
+     truncates every response at `db-max-rows` (1000 by default) — WITH NO ORDER IT RETURNS THE
+     OLDEST ROWS FIRST. So past 1000 ideas the app loaded the oldest thousand, the newest ideas
+     simply did not exist in `state`, and the sort below (client-side) ran on the wrong thousand.
+     Nothing errored: the load "succeeded", so the user's recently approved posts just vanished
+     from Film & Post with no message at all. The next save then rewrote that oldest thousand,
+     freezing the library there permanently.
+     It is reachable: there is no way to delete an idea, dismissed ideas stay in `state` and are
+     rewritten on every save, and auto-refill adds two rows per approval.
+     This repo already diagnosed and fixed exactly this in api/_usage.js — order newest-first and
+     page until a short page comes back. Same remedy, applied where the user's content lives. */
+  const IDEA_PAGE = 1000;
+  let data = [], error = null;
+  for (let _page = 0; _page < 25; _page++) {
+    const from = _page * IDEA_PAGE;
+    const r = await sb.from('ideas').select('*')
+      .eq('brand_id', currentBrand.id)
+      .order('created_at', { ascending: false })
+      .range(from, from + IDEA_PAGE - 1);
+    if (r.error) { error = r.error; break; }
+    const rows = r.data || [];
+    data = data.concat(rows);
+    if (rows.length < IDEA_PAGE) break;   // short page = the end
+    if (_page === 24) console.warn('Ideas load: stopped at 25 pages (' + data.length + ' rows) — there may be more.');
+  }
   // A failed LOAD is not an empty library. Returning [] made the caller set state = [] and
   // render the normal empty state — so the user saw their approved posts "deleted".
   // Throw so the caller can say "couldn't load" instead of silently lying.
@@ -7967,7 +8114,10 @@ async function saveProductRefsToDB() {
 
 async function loadProductRefsFromDB() {
   if (!currentBrand) return [];
-  const { data, error } = await sb.from('product_refs').select('*').eq('brand_id', currentBrand.id);
+  // v663: ordered, like every other list loader. Unordered, PostgREST returns the OLDEST rows and
+  // truncates at db-max-rows — and _replaceBrandRows then deletes what it did not read back, so an
+  // unordered read is the dangerous direction here, not just an incomplete one.
+  const { data, error } = await sb.from('product_refs').select('*').eq('brand_id', currentBrand.id).order('created_at', { ascending: false });
   if (error) { console.error('Product refs load error:', error); throw new Error(error.message || 'product_refs load failed'); }
   return (data || []).map(r => ({ name: r.name, thumb: r.data_url }));
 }
@@ -8107,12 +8257,28 @@ async function initApp() {
       try { promptHistory = await loadPromptHistoryFromDB(); _markListLoad('promptHistory', true); } catch(e) { promptHistory = []; _markListLoad('promptHistory', false); }
     } else {
       debugLog('initApp: no brand — fresh user, showing onboarding');
+      /* v663: CLEAR EVERYTHING, NOT MOST OF IT.
+         handleLogout does not reload the page and clears no brand state, so on a shared laptop the
+         next person to sign in inherited whatever was still in memory. This branch reset five
+         globals and missed four — and addNewBrand, which faces the same situation, clears all of
+         them, which is what shows this was an omission rather than a decision.
+         What leaked: the previous account's notebook, their IDEAS, and — because loadTeamData is
+         only called when a brand exists — their teammates and their PENDING INVITES' EMAIL
+         ADDRESSES, shown under the new user's own brand.
+         Worse than showing it: _listLoadOk was left all-true from the previous session, so the
+         guard built to stop a stale list overwriting a real one was open. The new user's first
+         notebook edit wrote the previous user's notes into their own brand's rows. */
       settings = defaultSettings();
       state = [];
+      IDEAS.length = 0;
       remixes = [];
       productRefs = [];
       bookmarkCategories = [];
       promptHistory = [];
+      notebookNotes = [];
+      try { teamMembers = []; teamInvites = []; } catch(_) {}
+      // Nothing below has been loaded for THIS user yet, so nothing may be written back as if it had.
+      _listLoadOk = { remixes: false, productRefs: false, bookmarks: false, promptHistory: false, notebook: false };
     }
 
     // Load blog posts from localStorage
@@ -15732,9 +15898,14 @@ function nbSaveNote() {
   notebookNotes.unshift({ id: 'nb'+Date.now(), text: txt, createdAt: Date.now() });
   input.value = '';
   input.style.height = '';   // v593: reset the auto-grown height so the empty composer isn't left tall
-  saveNotebookToDB();
+  // v663: only say "Saved" once it is. This fired unconditionally, so on the not-loaded path the
+  // user got the honest warning toast and then a "Saved to your Brand Notebook" contradicting it
+  // one line later — and on a failed write they got the reassuring half only.
+  Promise.resolve(saveNotebookToDB()).then(function(r){
+    if (r && r.ok === false) { _warnSaveFailed('notebook note', r); return; }
+    if (typeof showToast === 'function') showToast('Saved to your Brand Notebook');
+  }).catch(function(e){ _warnSaveFailed('notebook note', { ok: false, error: e }); });
   renderNotebook();
-  if (typeof showToast === 'function') showToast('Saved to your Brand Notebook');
 }
 
 // v593: auto-grow the Notebook + Idea Catcher boxes. They had a fixed height and no growth, so a
@@ -16843,10 +17014,9 @@ function applyViralRewrite(id){
   // so a later reload can revert an in-place edit. Update the matching IDEAS entry too
   // (idea.id === its array index) so the replace sticks. Belt-and-braces.
   try{
-    if(typeof IDEAS!=='undefined' && Array.isArray(IDEAS)){
-      const src = IDEAS[id] || IDEAS.find(x=>x && x.title===beforeHook) || null;
-      if(IDEAS[id]) _RWK.forEach(k=>{ if(nw[k]!==undefined && nw[k]!==null && String(nw[k]).trim()!=='') IDEAS[id][k] = nw[k]; });
-    }
+    // v663: was IDEAS[id] — a position, which stops being this post after any auto-refill.
+    const src = _ideasEntryByTitle(_titleBefore, id);
+    if(src && src !== i) _RWK.forEach(k=>{ if(nw[k]!==undefined && nw[k]!==null && String(nw[k]).trim()!=='') src[k] = nw[k]; });
   }catch(e){}
   // Learning signal: the user picked the viral version over the original. This is a
   // strong taste signal — feed it into the same brand-memory loop as manual edits.
@@ -16949,7 +17119,9 @@ function sharpenIdea(id, btn){
   const _titleBefore = String(i.title || '');
   sharpenNow({ kind:'post', format:i.format||'', content, btn, apply:(nw)=>{
     Object.keys(nw).forEach(k=>{ if(nw[k]!=null && String(nw[k]).trim()) i[k]=nw[k]; });
-    try{ if(typeof IDEAS!=='undefined' && Array.isArray(IDEAS) && IDEAS[id]) Object.keys(nw).forEach(k=>{ if(nw[k]!=null && String(nw[k]).trim()) IDEAS[id][k]=nw[k]; }); }catch(e){}
+    // v663: was IDEAS[id]. See _ideasEntryByTitle — a positional write here rewrote whichever
+    // post happened to sit at that index, which after a refill is somebody else's card.
+    try{ const _src = _ideasEntryByTitle(_titleBefore, id); if(_src && _src !== i) Object.keys(nw).forEach(k=>{ if(nw[k]!=null && String(nw[k]).trim()) _src[k]=nw[k]; }); }catch(e){}
     // Sharpen can rewrite the title, and the DB cleanup only drops rows by the titles it writes —
     // so without this the pre-sharpen version survives and reappears as a duplicate on reload.
     try{ _dropRenamedIdeaRow(_titleBefore, i.title); }catch(e){}
@@ -18444,14 +18616,14 @@ function loadRemixes() {
 }
 function saveRemixes() {
   lsSet(REMIXES_KEY, JSON.stringify(remixes));
-  saveRemixesToDB();
+  Promise.resolve(saveRemixesToDB()).then(r => _warnSaveFailed('remixes', r)).catch(e => _warnSaveFailed('remixes', { ok: false, error: e }));
 }
 function loadProductRefs() {
   try { const r = JSON.parse(lsGet(REFS_KEY) || '[]'); return Array.isArray(r) ? r : []; } catch(e) { return []; }
 }
 function saveProductRefs() {
   lsSet(REFS_KEY, JSON.stringify(productRefs));
-  saveProductRefsToDB();
+  Promise.resolve(saveProductRefsToDB()).then(r => _warnSaveFailed('reference photos', r)).catch(e => _warnSaveFailed('reference photos', { ok: false, error: e }));
 }
 
 function resizeImage(dataUrl, maxSize) {
@@ -19413,7 +19585,9 @@ function remixCreatorPost(i){
   }catch(e){ showToast('Opened Remix'); }
 }
 
-function saveBookmarks() { saveBookmarksToDB(); }
+function saveBookmarks() {
+  Promise.resolve(saveBookmarksToDB()).then(r => _warnSaveFailed('bookmarks', r)).catch(e => _warnSaveFailed('bookmarks', { ok: false, error: e }));
+}
 
 function addBmCategory() {
   const inp = document.getElementById('bmNewCatName');
@@ -22472,6 +22646,25 @@ async function obFinish() {
     // other place that re-enables the button) never runs. Restore it here too, in
     // case obShowWizard itself throws below.
     try { obResetFinishBtn(); } catch(_) {}
+    /* v663: DO NOT BLAME THE CONNECTION FOR A PLAN LIMIT, AND DO NOT REOPEN A WIZARD THAT WILL
+       SPEND CREDITS AND FAIL AGAIN.
+       saveBrandToDB already alerts with the database's own sentence — including the brand-limit
+       trigger's "Your plan includes N brand(s) and you already have N. Upgrade your plan to add
+       another brand." Three lines later this fired a SECOND alert contradicting it, then reopened
+       onboarding at step 1 with a live "Build my brand brain" button. Retrying re-ran the website
+       crawl, spent another 3 credits, and failed identically. There was no upgrade button on that
+       path and no way out except reloading the page.
+       A limit is not a network problem, so say the right thing and offer the one action that
+       actually helps. */
+    const _msg = String((e && e.message) || '') + ' ' + String((typeof window !== 'undefined' && window._brandSaveLastError) || '');
+    const _isLimit = /\bplan includes\b|\bUpgrade your plan\b|\bbrand limit\b/i.test(_msg);
+    if (_isLimit) {
+      try {
+        if (typeof showFeatureLock === 'function') showFeatureLock('multibrand');
+        else alert(_msg);
+      } catch(_) { try { alert(_msg); } catch(__) {} }
+      return;   // no wizard, no re-crawl, no second contradicting alert
+    }
     alert("We couldn't save your brand just now — please check your connection and try again.");
     try { obShowWizard(); } catch(_) {}   // re-open onboarding so they can retry
     return;                                // do NOT proceed to generate on an unsaved brand
