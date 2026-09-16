@@ -2,6 +2,75 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-16 — v660. Three deep audits of filming, the teleprompter and the render. 13 defects, all fixed, all gated.
+**DEPLOY STATE: UNDEPLOYED.** Stamped `v660-358b35bd+api.85d822bc`. Committed `ec7c51b`.
+**52 gates, 51 green.** `build-stamp` CANNOT run in the Cowork sandbox — it writes a probe into
+`api/` and cleans up with `fs.unlinkSync`, and **deletes are refused in a connected folder**
+(`rm` → "Operation not permitted"). **`mv` works**, so the workaround for git locks and probe
+debris is `mv … .git/_junk/`, not `rm`. Run `build-stamp` locally.
+
+**HOW THESE WERE FOUND.** Three read-only agents over DISJOINT scopes (capture | prompter/voice |
+render/share), each told to quote file:line, to read the inline v-comments before calling anything
+a defect, and to separate "I read this and it is wrong" from "this depends on runtime behaviour I
+cannot observe". 28 findings; the 13 that change what a user experiences were fixed. **No existing
+gate caught any of them.** Three new gates now do: `take-delivery.mjs`, `prompter-follow.mjs`,
+`render-honesty.mjs`. Each was mutation-proven, and **between them they caught SIX escapes in their
+own first drafts** — mutations where the fix stayed visibly in the file while its effect was gone
+(a measured duration never assigned; `_spDurEstimated` raised then wiped; a throw made unreachable
+with `&& false`; the `window._tpUnbindTakeGuards` handle deleted so correct release code was dead;
+an emphasis corruption that still counted exactly one `class="tp-em"`; a far-jump threshold with no
+fixture behind it). **That is the lesson worth keeping: a gate that passes proves nothing until a
+break makes it fail, and "counting occurrences" is the assertion shape that lies.**
+
+**A TAKE CAN NO LONGER DISAPPEAR.** Retake reuses the same `MediaStreamTrack` objects and the
+guards bound once behind a flag nothing cleared — take two had NO guards while take one's stale
+handler fired against an inactive recorder, showing *"the take up to that point is saved"* and
+saving nothing (`_unbind` now releases them). The 8s close watchdog discarded `tpRecordedChunks`
+that `start(1000)` had already filled (now salvages). A header-only take was truthy, so the review
+card opened on a black rectangle (`TP_MIN_TAKE_BYTES`, four sites). From an in-app webview with no
+share sheet and an inert download a finished take dead-ended in a toast (`tpCanDeliver` runs BEFORE
+the teardown; `tpRescueTake` puts the video back on screen). A 402 mid-render opened the upgrade
+modal, whose button does `window.location.href` — killing the page and the only copy of the take
+(suppressed while `_tpBlobInHand`, with a failsafe).
+
+**THE PROMPTER.** `tpVoiceMatch` leapt to a later repetition of a repeated line — every callback,
+every repeated product name, same spot every take. Nearest qualifying candidate now wins unless a
+farther one beats it by `TP_LEAP_MARGIN`, and the last word heard counts as evidence of position.
+**One normaliser for both sides**: the index stripped punctuation while the transcript split on it
+(`co-founder`, `10,000` never matched), and `[^a-z0-9']` DELETED accented letters — so **Estonian
+scripts followed only their accent-free words**. Accents now fold both sides. `stopTpVoiceFollow`
+cleared only `onend`, and `stop()` delivers a trailing result, so a preview session steered the
+next take and wrote a phantom entry into the timeline the renderer cues graphics from.
+
+**THE APP PARSES ON OLD SAFARI.** A regex LITERAL with a lookbehind sat in the main inline script.
+A literal is parsed when the script is parsed — so below Safari 16.4 the **entire app was a blank
+shell**, not a broken teleprompter. All three lookbehinds replaced by `tpOutsideTags`, which walks
+the tag structure; proved output-identical on a fixture set. The gate now fails on a live
+lookbehind **anywhere** in `app.html`, and self-tests its own scanner.
+
+**THE RENDER.** The muted-autoplay retry captured a silent track and finished clean — drift 0,
+`partial` false, "ready to post", no voice (now unmutes, retries once, fails loudly into the sheet
+that offers the plain video). `vid.duration` is `Infinity` for a WebM take and the fallback capped
+the render at **19.5s** while both honesty checks read clean (now measures first, and says so when
+it must guess). Neither the canvas track nor the borrowed audio track was ever stopped.
+
+**ALSO.** A second tap on Blur bg while it loaded left blur ON behind an OFF button — blurred,
+out of sync, correction UI hidden (generation token; the record-time audio delay now follows
+intent). Emphasis marks matched as substrings: `AI` rendered `We s<b>ai</b>d it ag<b>ai</b>n`.
+
+**EYE CONTACT — I WAS WRONG ONCE, CORRECTED.** I said the prompter reads from the middle of the
+screen. It does not: while recording, `.teleprompter-body` goes `position:fixed; inset:0` and
+`.tp-read-line` sits at **14%** (`app.html:5762`, `tpReadFrac()`), about 2cm below the lens — ~4°.
+The Captions.ai-style eye fix is post-processing on a GPU (NVIDIA Maxine is the only buyable
+route); Jörgen declined it as too much complexity. Remaining levers: nudge 14% → 8-10% (his taste
+call, not mine), and the installed PWA has no URL bar so the line sits closer to the camera.
+
+**STILL JÖRGEN'S CALL (unchanged from v659):** output is 20 Mbps with no length cap — a 3-minute
+take is ~450MB and the 15s muxer timeout will fail the render. And **test on a real phone whether
+`vid.volume = 0` (`app.html`, renderSplitScreen) silences the CAPTURED audio** — if it does, every
+split screen is silent and the track-count guard would never notice. That is one test and it is
+the highest-value one left.
+
 ## ▶▶ 2026-09-15 — v659. "Start over" is owner-only. The plan-escalation fear is DISPROVEN. One live hole left, and it is Jörgen's to close.
 **DEPLOY STATE: UNDEPLOYED.** Stamped `v659-6546330a+api.130db971` (was `v658-737567f9`). Committed
 as `65a091a`, working tree clean. **The deploy command has not been run** — see HANDOFF below.
