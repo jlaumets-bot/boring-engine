@@ -40,8 +40,21 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ rules: [] });
     }
 
-    const editLines = edits.slice(-15).map(e =>
+    /* v665: SEPARATE WHAT THE USER TYPED FROM WHAT THE MODEL REWROTE.
+       Every edit used to be rendered under "HOW THE USER EDITED OUR DRAFTS (strongest signal —
+       their real voice)", including the ones produced by the Sharpen and Viral-twist buttons,
+       whose `after` is the MODEL's own text. So the distiller mined the model's prose for
+       "durable voice rules" and wrote them into Voice Memory, where they render near the top of
+       every future prompt. That is the system learning its own average and calling it the brand.
+       The AI-authored ones are still useful — the user CHOSE that version over the draft — but
+       they are a preference signal, not evidence of how the person writes, and the prompt now
+       says which is which. Signals with no `by` predate the tagging and are treated as typed. */
+    const typedEdits = edits.filter(e => !e || e.by !== 'ai');
+    const chosenEdits = edits.filter(e => e && e.by === 'ai');
+    const editLines = typedEdits.slice(-15).map(e =>
       `• ${cap(e.field, EDIT_FIELD_CAP)}: AI wrote "${(e.before||'').slice(0,160)}" → user changed to "${(e.after||'').slice(0,160)}"`).join('\n');
+    const chosenLines = chosenEdits.slice(-8).map(e =>
+      `• ${cap(e.field, EDIT_FIELD_CAP)}: they preferred "${(e.after||'').slice(0,160)}" over "${(e.before||'').slice(0,160)}"`).join('\n');
     const dismissLines = dismissals.slice(-15).map(d =>
       `• rejected a ${cap(d.format, FORMAT_CAP)} — reason: ${cap(d.reason, REASON_CAP) || 'unspecified'}${d.title ? ` ("${cap(d.title, TITLE_CAP)}")` : ''}`).join('\n');
     const approveLines = approvals.slice(-15).map(a =>
@@ -49,8 +62,11 @@ module.exports = async function handler(req, res) {
 
     const prompt = `You maintain the living brand-voice memory for ${brandName}. Below are recent real signals from the user reviewing AI-generated content. Your job: find DURABLE PATTERNS and write them as permanent voice rules — the kind that should shape every future post.
 
-HOW THE USER EDITED OUR DRAFTS (strongest signal — their real voice):
+HOW THE USER EDITED OUR DRAFTS IN THEIR OWN WORDS (strongest signal — their real voice):
 ${editLines || '(none)'}
+
+WHICH OF OUR OWN REWRITES THEY PREFERRED (a taste signal about direction — these are NOT the user's writing, so never treat them as their voice):
+${chosenLines || '(none)'}
 
 WHAT THEY REJECTED:
 ${dismissLines || '(none)'}

@@ -99,10 +99,35 @@ function approvedExamplesFrom(sameFmtIdeas, otherFmtIdeas, humanEdited, caps) {
 function learnedSignalsFrom(approvedTitles, dismissedTitles) {
   const up = (approvedTitles || []).filter(Boolean);
   const down = (dismissedTitles || []).filter(Boolean);
-  let s = '';
-  if (up.length) s += 'Recently APPROVED (favor topics/angles like these): ' + up.join(' · ');
-  if (down.length) s += (s ? '  |  ' : '') + 'Recently DISMISSED (avoid these): ' + down.join(' · ');
-  return s.slice(0, 500);
+  /* v665: BUDGET BOTH HALVES, AND NEVER CUT MID-HEADING.
+     This built APPROVED first, then DISMISSED, then blind-sliced the whole thing at 500 — so the
+     approved half always won the budget and the dismissed half was always what got cut. Measured
+     against titles at the length this app's own generator produces: 0 of 6 dismissed titles
+     survived, and the string ended on the bare fragment "Recently DISMISSED (avoid these" with
+     nothing under it. Every "no" the user had given was invisible to the gatherer, so the app
+     kept proposing the angles they kept rejecting — and the prompt carried a dangling heading,
+     the exact failure _brain.js was rewritten to make impossible.
+     Now each half gets its own share, whole titles are dropped rather than cut in half, and a
+     heading is only written if something survives to sit under it. */
+  const HALF = 240;
+  const packed = (arr) => {
+    const out = [];
+    let used = 0;
+    for (const raw of arr) {
+      const t = String(raw).trim();
+      if (!t) continue;
+      const cost = t.length + (out.length ? 3 : 0);   // ' · '
+      if (used + cost > HALF) break;
+      out.push(t); used += cost;
+    }
+    return out;
+  };
+  const upKeep = packed(up);
+  const downKeep = packed(down);
+  const parts = [];
+  if (upKeep.length) parts.push('Recently APPROVED (favor topics/angles like these): ' + upKeep.join(' · '));
+  if (downKeep.length) parts.push('Recently DISMISSED (avoid these): ' + downKeep.join(' · '));
+  return parts.join('  |  ');
 }
 
 // The 30 brand-context keys getBrandContext() produces, minus the four the client still
@@ -255,7 +280,41 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
   // known) — `EX_CAPS` is the single place that decides it, and the two recency queries below keep
   // their original limits, so a brand with no rewritten posts issues byte-identical SQL.
   const EX_CAPS = { same: f ? 3 : 4, other: f ? 2 : 0 };
-  const humanEdited = (Array.isArray(opts.humanEdited) ? opts.humanEdited : []).filter(Boolean).slice(0, 8);
+  // WHICH POSTS THE FOUNDER REWROTE — FROM THE DATABASE, NOT FROM ONE DEVICE.
+  //
+  // v665. This list used to arrive ONLY in the request body (`humanEditedTitles`), derived from
+  // the caller's localStorage. Two consequences, both measured in the source:
+  //   * api/send-daily.js has no client, so it could never send it — and that is the ONE post the
+  //     app pushes unprompted every day. With no rewritten exemplar surviving selection,
+  //     approvedWinnersBlock (api/_brain.js) falls back to its WEAKER heading: the one telling the
+  //     model these posts were machine-written and the brand description is the stronger signal.
+  //     The app's most visible output was the one actively told to discount the real voice.
+  //   * a second device knew nothing about rewrites made on the first.
+  // `edit_signals` has carried a durable copy of every rewrite since sql/edit-signals.sql, so the
+  // knowledge was already there — nothing read it. Now it does, and ONLY when the caller sent
+  // nothing, so a request that DOES carry the client's list issues byte-identical queries.
+  //
+  // `authored_by=is.null` keeps out signals the MODEL wrote (Sharpen and Viral twist record a
+  // before/after whose `after` is the model's own rewrite). Rows written before that column
+  // existed are null and count as human — the same conservative reading the client uses, and the
+  // reason the query must not fail when the column is missing: getRows yields null, the second
+  // read runs unfiltered, and if that fails too selection degrades to plain recency — the old
+  // behaviour, never an error.
+  let humanEdited = (Array.isArray(opts.humanEdited) ? opts.humanEdited : []).filter(Boolean).slice(0, 8);
+  if (!humanEdited.length) {
+    const sigPath = q => '/edit_signals?brand_id=eq.' + encodeURIComponent(brandId) + '&' + q;
+    const COLS = 'select=title&title=not.is.null&order=created_at.desc&limit=40';
+    let sigRows = await getRows(sigPath('authored_by=is.null&' + COLS));
+    if (sigRows == null) sigRows = await getRows(sigPath(COLS));   // column not added yet
+    const seen = new Set();
+    for (const r of (sigRows || [])) {
+      const t = clean(r && r.title);
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      if (seen.size >= 8) break;
+    }
+    humanEdited = Array.from(seen);
+  }
 
   const sameQ = f
     ? ideasPath(brandId, APPROVED + '&format=eq.' + encodeURIComponent(f) + '&' + EX_COLS + '&order=created_at.desc&limit=' + EX_CAPS.same)

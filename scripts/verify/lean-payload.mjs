@@ -145,10 +145,31 @@ for (let i = 0; i < LIB; i++) {
 }
 
 const HAND_TREND = 'HANDTAUGHT_the 3am shift-worker hydration angle';
+
+// v665 — A REWRITTEN POST, AND A SHARPENED ONE, IN BOTH STORES.
+// Provenance ranking is the strongest thing the brand brain does and this fixture never exercised
+// it: with no edit signals anywhere, client and server both fell back to plain recency and agreed
+// for the wrong reason. Two signals now:
+//   * idea 4 was REWRITTEN BY HAND. It is approved but far outside the recency window, so it can
+//     only reach the exemplars through provenance ranking — client via localStorage, server via
+//     the edit_signals table.
+//   * idea 7 was SHARPENED. `after` is the MODEL's rewrite, so it must be counted on NEITHER side.
+// The parity check then proves the two paths agree on a case where agreeing is hard.
+const EDITED_IDX = 4, SHARPENED_IDX = 7;
+const editedAfter = 'Script body ' + EDITED_IDX + ' a real spoken sentence that runs on.';
+const sharpenedAfter = 'Script body ' + SHARPENED_IDX + ' a real spoken sentence that runs on.';
+const EDIT_SIGNALS = [
+  { ts: 1, title: IDEAS[EDITED_IDX].title, format: IDEAS[EDITED_IDX].format,
+    field: 'Script', before: 'the draft we wrote', after: editedAfter },
+  { ts: 2, by: 'ai', title: IDEAS[SHARPENED_IDX].title, format: IDEAS[SHARPENED_IDX].format,
+    field: 'sharpen:script', before: 'the draft we wrote', after: sharpenedAfter },
+];
+
 const LS = {
   brand_trends: JSON.stringify([{ text: HAND_TREND, ts: Date.now() }]),
   auto_trends_dismissed: JSON.stringify(['autotrend_dismissed battery electrolyte breakthrough']),
   tv_recent: JSON.stringify(['Recent quick post ' + S('tvRecent')]),
+  edit_signals: JSON.stringify(EDIT_SIGNALS),
 };
 
 // ── drive the real client code ───────────────────────────────────────────────
@@ -242,6 +263,17 @@ function dbRows(pathStr) {
   if (pathStr.startsWith('/brands')) return { status: 200, data: [BRAND_ROW] };
   const q = pathStr.slice(pathStr.indexOf('?') + 1);
   const p = new URLSearchParams(q);
+  // v665: edit_signals is its own table. It used to fall through to the IDEAS branch below, which
+  // answered a title query with library titles — so the server "discovered" eight rewritten posts
+  // that never existed and the parity check failed for a reason that was purely the stub's.
+  if (pathStr.startsWith('/edit_signals')) {
+    let sig = EDIT_SIGNALS.map(x => ({ title: x.title, authored_by: x.by === 'ai' ? 'ai' : null }));
+    if (p.get('authored_by') === 'is.null') sig = sig.filter(r => r.authored_by === null);
+    if (p.get('title') === 'not.is.null') sig = sig.filter(r => r.title);
+    if (p.get('order') === 'created_at.desc') sig = sig.slice().reverse();
+    const sl = Number(p.get('limit') || 0);
+    return { status: 200, data: sl ? sig.slice(0, sl) : sig };
+  }
   let rows = IDEAS.slice();
   const st = p.get('status');
   if (st === 'in.(filming,done)') rows = rows.filter(r => r.status === 'filming' || r.status === 'done');
@@ -249,6 +281,14 @@ function dbRows(pathStr) {
   const f = p.get('format');
   if (f && f.startsWith('eq.')) rows = rows.filter(r => r.format === f.slice(3));
   if (f && f.startsWith('neq.')) rows = rows.filter(r => r.format !== f.slice(4));
+  // v665: the by-name lookup the provenance path depends on. Without it the stub returns the
+  // recency rows for that query and the rewritten post can never reach the exemplars.
+  const tq = p.get('title');
+  if (tq && tq.startsWith('in.(')) {
+    const want = new Set((tq.slice(4, -1).match(/"(?:[^"\\]|\\.)*"/g) || [])
+      .map(v => v.slice(1, -1).replace(/\\(.)/g, '$1')));
+    rows = rows.filter(r => want.has(r.title));
+  }
   if (p.get('order') === 'created_at.desc') rows = rows.slice().reverse();
   const lim = Number(p.get('limit') || 0);
   if (lim) rows = rows.slice(0, lim);
@@ -308,6 +348,7 @@ if (promptFull && promptLean) {
 
 // ── (c2) object-level: hydrated context vs the object the client used to send ─
 const bctx = require_('./_brandctx.js');
+const BRAIN = require_('./_brain.js');
 const hyd = await bctx.loadBrandContext(BRAND_ROW.id, { userId: 'user-1' }, FMT);
 check('server-side hydration failed outright', hyd.ok, hyd.reason);
 if (hyd.ok) {
@@ -316,6 +357,28 @@ if (hyd.ok) {
   const diffs = [];
   for (const k of Object.keys(clientBc)) {
     if (k === 'dayMap') continue;                    // client-sent, identical by construction
+    // v665 — approvedExamples is compared BY WHAT REACHES THE MODEL, not by array order.
+    // The two sides deliberately order this list differently: the server hands rewritten posts
+    // back first (api/_brandctx.js), the client leaves them where the slice landed. Neither order
+    // survives — approvedWinnersBlock (api/_brain.js) re-groups into edited-then-plain before
+    // rendering, so array order cannot change one word of the prompt while the SET and the
+    // `edited` flags decide everything, including which of the two headings is used. Comparing
+    // the rendered block is therefore both the honest check and the stricter one: it still fails
+    // if either side picks a different post or loses a provenance flag.
+    if (k === 'approvedExamples') {
+      const rc = BRAIN.approvedWinnersBlock({ approvedExamples: clientBc[k] });
+      const rs = BRAIN.approvedWinnersBlock({ approvedExamples: serverBc[k] });
+      if (rc !== rs) {
+        diffs.push('approvedExamples renders differently (client ' + JSON.stringify(rc.slice(0, 90)) +
+                   ' | server ' + JSON.stringify(rs.slice(0, 90)) + ')');
+      }
+      // And the fixture must actually be exercising provenance, or this proves nothing.
+      if (!/THE BRAND'S OWN WORDS/.test(rc)) {
+        diffs.push('approvedExamples: neither side found the rewritten post, so the provenance ' +
+                   'path is untested and the agreement above is an accident');
+      }
+      continue;
+    }
     const a = JSON.stringify(clientBc[k]), b = JSON.stringify(serverBc[k]);
     if (a !== b) diffs.push(k + ' (client ' + String(a).slice(0, 70) + ' | server ' + String(b).slice(0, 70) + ')');
   }

@@ -165,6 +165,36 @@ function fullBrandBlock(bc, opts) {
   // cost more than a month of honest use. Cap per field AND on the total; both are far above any real
   // brand's content, so a legitimate user can never notice.
   const FIELD_CAP = 4000;
+  // v665 — VOICE MEMORY NEEDS ITS OWN, LINE-AWARE BUDGET.
+  // Voice Memory (`coachNotes`) is one field holding MANY rules, one per line, appended over time.
+  // It went through the same `clean()` as every other field: slice(0, 4000), keeping the FRONT.
+  // Measured with this file's own code at the app's own soft cap of 60 rules (BRAIN_RULES_SOFT_CAP,
+  // app.html) at the length the distiller actually writes (~110 chars):
+  //     rules that reached the model INTACT: 36 of 60   |  dropped: 24
+  //     the section ended mid-word: 'Rule 37: never say "leverage" or "unlock" when ta'
+  // while the app's own toast told the user "Voice Memory is at 60 rules" and the heading told the
+  // model to "obey ALL". Two lies in one prompt: 24 rules the user believed were in force were not
+  // in the prompt at all, and the 37th was a fragment the model still had to obey.
+  // Now: a budget that fits the soft cap whole, and a cut that lands on a LINE boundary so a rule is
+  // either fully present or fully absent — never half a rule. On overflow the NEWEST lines are kept,
+  // because a later rule is the user's correction of an earlier one; and when anything is dropped the
+  // model is TOLD so, instead of being handed a short list labelled as the complete one.
+  const VOICE_MEMORY_CAP = 9000;
+  const packLines = (v, cap) => {
+    const s = String(v == null ? '' : v).trim();
+    const lines = s.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return { text: '', dropped: 0, total: 0 };
+    const keep = [];
+    let used = 0;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const cost = lines[i].length + (keep.length ? 1 : 0);
+      if (used + cost > cap) break;
+      keep.unshift(lines[i]); used += cost;
+    }
+    // A single line longer than the whole budget would otherwise render nothing at all.
+    if (!keep.length) keep.push(lines[lines.length - 1].slice(0, cap));
+    return { text: keep.join('\n'), dropped: lines.length - keep.length, total: lines.length };
+  };
   const clean = v => {
     if (v == null) return '';
     const s = Array.isArray(v)
@@ -206,7 +236,11 @@ function fullBrandBlock(bc, opts) {
   add('Brand vocabulary — use these distinctive phrases/words naturally', bc.brandVocab, '', 84);
   add('Words & phrases to AVOID (never use)', bc.avoidWords, '', 94);
   add('Topics to AVOID', bc.bannedTopics, '', 93);
-  block('Voice memory — durable brand rules learned from the user (obey ALL)', bc.coachNotes, '', 95);
+  const vm = packLines(bc.coachNotes, VOICE_MEMORY_CAP);
+  if (vm.text) S.push({ keep: 95, text:
+    'Voice memory — durable brand rules learned from the user (obey ALL)' +
+    (vm.dropped ? ' — the ' + vm.text.split('\n').length + ' most recent of ' + vm.total + ' rules; the older ones did not fit' : '') +
+    ':\n' + vm.text });
   block('Example content the brand loved (MATCH this voice and rhythm — never copy verbatim)', bc.exampleContent, '', 86);
   if (opts.examples !== false) {
     const winners = approvedWinnersBlock(bc);
@@ -214,7 +248,23 @@ function fullBrandBlock(bc, opts) {
   }
   // Raw taste signal — favor what was recently approved, avoid what was dismissed.
   const signals = clean(bc.learnedSignals);
-  if (signals) S.push({ keep: 82, text: 'Recent taste signal (favor the approved, avoid the dismissed): ' + signals.slice(0, 500) });
+  // v665 — DO NOT BLIND-SLICE THIS. `learnedSignalsFrom` (api/_brandctx.js) and its client twin
+  // `getLearnedSignalsCompact` (app.html) already budget the approved and dismissed halves against
+  // each other and drop WHOLE titles. Re-slicing their output at 500 undid that: measured at 8
+  // approved + 6 dismissed titles of this app's own generated length, the budgeter returned 502
+  // chars and this line cut it to 500, ending '...listicle number 3 nobody asked f' — a title cut
+  // mid-word, the exact failure the budgeter was written to remove. The cap stays (this value can
+  // arrive from the client) but sits ABOVE the budgeter's own maximum, and cuts on a ' \u00b7 ' item
+  // boundary so a crafted oversize string still loses whole items rather than half a title.
+  const SIGNAL_CAP = 700;
+  if (signals) {
+    let sig = signals;
+    if (sig.length > SIGNAL_CAP) {
+      const b = sig.lastIndexOf(' \u00b7 ', SIGNAL_CAP);
+      sig = b > 0 ? sig.slice(0, b) : sig.slice(0, SIGNAL_CAP);
+    }
+    S.push({ keep: 82, text: 'Recent taste signal (favor the approved, avoid the dismissed): ' + sig });
+  }
 
   const TOTAL_CAP = 30000; // ~20 capped fields could still stack; bound the sum too.
   // Drop WHOLE sections, cheapest first, until the body fits. Never a mid-section slice: the old

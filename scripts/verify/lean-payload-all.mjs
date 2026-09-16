@@ -174,10 +174,26 @@ for (let i = 0; i < LIB; i++) {
 }
 
 const HAND_TREND = 'HANDTAUGHT_the 3am shift-worker hydration angle';
+
+// v665 — a post the user REWROTE, and one the model SHARPENED, in both stores. See the same
+// fixture note in lean-payload.mjs: with no edit signals anywhere, both sides fell back to plain
+// recency and agreed for the wrong reason, leaving the strongest thing the brand brain does
+// completely untested. Idea 4 is approved but far outside the recency window, so it can only
+// reach the exemplars through provenance ranking. Idea 7's `after` is the MODEL's rewrite and
+// must count on neither side.
+const EDITED_IDX = 4, SHARPENED_IDX = 7;
+const EDIT_SIGNALS = [
+  { ts: 1, title: IDEAS[EDITED_IDX].title, format: IDEAS[EDITED_IDX].format, field: 'Script',
+    before: 'the draft we wrote', after: 'Script body ' + EDITED_IDX + ' a real spoken sentence that runs on.' },
+  { ts: 2, by: 'ai', title: IDEAS[SHARPENED_IDX].title, format: IDEAS[SHARPENED_IDX].format, field: 'sharpen:script',
+    before: 'the draft we wrote', after: 'Script body ' + SHARPENED_IDX + ' a real spoken sentence that runs on.' },
+];
+
 const LS = {
   brand_trends: JSON.stringify([{ text: HAND_TREND, ts: Date.now() }]),
   auto_trends_dismissed: JSON.stringify(['autotrend_dismissed battery electrolyte breakthrough']),
   tv_recent: JSON.stringify(['Recent quick post ' + S('tvRecent')]),
+  edit_signals: JSON.stringify(EDIT_SIGNALS),
 };
 
 // ── drive the real client code ───────────────────────────────────────────────
@@ -417,6 +433,17 @@ function dbRows(pathStr) {
   if (pathStr.startsWith('/brands')) return { status: 200, data: [BRAND_ROW] };
   const q = pathStr.slice(pathStr.indexOf('?') + 1);
   const p = new URLSearchParams(q);
+  // v665: edit_signals is its own table. It used to fall through to the IDEAS branch below, which
+  // answered a title query with library titles — so the server "discovered" rewritten posts that
+  // never existed.
+  if (pathStr.startsWith('/edit_signals')) {
+    let sig = EDIT_SIGNALS.map(x => ({ title: x.title, authored_by: x.by === 'ai' ? 'ai' : null }));
+    if (p.get('authored_by') === 'is.null') sig = sig.filter(r => r.authored_by === null);
+    if (p.get('title') === 'not.is.null') sig = sig.filter(r => r.title);
+    if (p.get('order') === 'created_at.desc') sig = sig.slice().reverse();
+    const sl = Number(p.get('limit') || 0);
+    return { status: 200, data: sl ? sig.slice(0, sl) : sig };
+  }
   let rows = IDEAS.slice();
   const st = p.get('status');
   if (st === 'in.(filming,done)') rows = rows.filter(r => r.status === 'filming' || r.status === 'done');
@@ -424,6 +451,13 @@ function dbRows(pathStr) {
   const f = p.get('format');
   if (f && f.startsWith('eq.')) rows = rows.filter(r => r.format === f.slice(3));
   if (f && f.startsWith('neq.')) rows = rows.filter(r => r.format !== f.slice(4));
+  // v665: the by-name lookup the provenance path depends on.
+  const tq = p.get('title');
+  if (tq && tq.startsWith('in.(')) {
+    const want = new Set((tq.slice(4, -1).match(/"(?:[^"\\]|\\.)*"/g) || [])
+      .map(v => v.slice(1, -1).replace(/\\(.)/g, '$1')));
+    rows = rows.filter(r => want.has(r.title));
+  }
   if (p.get('order') === 'created_at.desc') rows = rows.slice().reverse();
   const lim = Number(p.get('limit') || 0);
   if (lim) rows = rows.slice(0, lim);
@@ -515,8 +549,23 @@ if (hyd.ok) {
   // most-recent four. A format-matched server set here would be a silent swap of the exemplars.
   const clientBc = C.getBrandContext();
   const serverBc = Object.assign({}, hyd.bc, { recentTrends: C.getRecentTrends() });
+  const BRAIN = require_('./_brain.js');
   const diffs = [];
   for (const k of Object.keys(clientBc)) {
+    // v665 — compare approvedExamples BY WHAT REACHES THE MODEL, not by array order. The two sides
+    // order this list differently on purpose (the server returns rewritten posts first), and
+    // approvedWinnersBlock re-groups into edited-then-plain before rendering, so array order cannot
+    // change one word of the prompt. Comparing the rendered block is the stricter check: it still
+    // fails if either side picks a different post or loses a provenance flag.
+    if (k === 'approvedExamples') {
+      const rc = BRAIN.approvedWinnersBlock({ approvedExamples: clientBc[k] });
+      const rs = BRAIN.approvedWinnersBlock({ approvedExamples: serverBc[k] });
+      if (rc !== rs) diffs.push('approvedExamples renders differently (client ' +
+        JSON.stringify(rc.slice(0, 90)) + ' | server ' + JSON.stringify(rs.slice(0, 90)) + ')');
+      if (!/THE BRAND'S OWN WORDS/.test(rc)) diffs.push('approvedExamples: neither side found the ' +
+        'rewritten post, so the provenance path is untested and the agreement above is an accident');
+      continue;
+    }
     const a = JSON.stringify(clientBc[k]), b = JSON.stringify(serverBc[k]);
     if (a !== b) diffs.push(k + ' (client ' + String(a).slice(0, 70) + ' | server ' + String(b).slice(0, 70) + ')');
   }

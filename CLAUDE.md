@@ -2,6 +2,56 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-16 — v665. The brand brain stopped learning from itself, and stopped lying about what it knows.
+**DEPLOY STATE: UNDEPLOYED.** Stamped `v665-50cd6e31+api.edb2a33f`. **56 gates, 55 green**
+(`build-stamp` cannot run in the sandbox — see the v660 entry).
+**ONE SQL FILE TO RUN: `sql/v665-edit-signal-provenance.sql`** (idempotent, adds two columns. The
+app works without it — the insert retries without the columns and the read falls back — but the
+fix is only ON once it is run.)
+
+**1. THE LAUNDERING.** Tapping **Sharpen** or **Viral twist** wrote a taste signal whose `after`
+is the *model's* rewrite. `getApprovedExamples` matched that text back against the approved post,
+marked it human-rewritten, and handed it to the model under *"THE BRAND'S OWN WORDS — beats every
+description of the voice above"* — the strongest position in the prompt. **The model was being
+trained on its own output, and it got worse every time someone tapped Sharpen.** All three writers
+now tag `by:'ai'` (the first pass tagged two; the gate found the third), the consumer filters them,
+and the distiller's prompt splits "what they TYPED" from "which of OUR rewrites they PREFERRED".
+
+**2. VOICE MEMORY WAS SILENTLY HALF-DELIVERED.** `coachNotes` is many rules in one field, appended
+over time, and went through the same `slice(0, 4000)` as every other field — **keeping the front**.
+Measured at the app's own cap of 60 rules: **36 of 60 reached the model, and rule 37 arrived cut
+mid-word** — while the toast said *"Voice Memory is at 60 rules"* and the heading said *"obey ALL"*.
+Now `VOICE_MEMORY_CAP = 9000` with a LINE-aware cut: a rule is whole or absent, overflow keeps the
+NEWEST (a later rule is the user's correction), and the heading says *"the N most recent of M"*
+instead of passing a short list off as the complete one.
+
+**3. MY OWN v665 FIX HAD THE SAME BUG DOWNSTREAM.** `learnedSignalsFrom` was rewritten to budget
+the approved and dismissed halves and drop whole titles — and then `_brain.js` re-sliced its output
+at 500. Measured: the budgeter returned 502 chars, the slice cut it to 500, ending
+`'...listicle number 3 nobody asked f'`. Cap is now 700 and cuts on a ` · ` item boundary.
+
+**4. PROVENANCE WAS DEVICE-LOCAL.** "Which posts the founder rewrote" reached the server only as
+`humanEditedTitles` in a request body, from localStorage. **`api/send-daily.js` has no client** —
+so the one post the app pushes unprompted every day always fell back to the *weaker* heading, the
+one telling the model these posts were machine-written. A second device knew nothing either.
+`edit_signals` has held a durable copy all along and nothing read it. Now `loadBrandContext` reads
+it (title + `authored_by is null`) **only when the caller sent nothing**, so an ordinary request
+issues byte-identical queries.
+
+**NEW GATES.** `brain-field-budgets.mjs` (runs the real `fullBrandBlock`; 5 mutations caught) and
+`brain-provenance.mjs` (runs the real `loadBrandContext` against a stubbed PostgREST; 6 mutations
+caught, including the untagged third writer). **`lean-payload*.mjs` were vacuous on this path** —
+their fixtures had no edit signals at all, so client and server agreed by both falling back to
+recency. Both now carry a rewritten post and a sharpened one, and compare `approvedExamples` by
+**what `approvedWinnersBlock` renders**, not array order (the two sides order it differently on
+purpose and the renderer re-groups anyway) — a stricter check that still fails on a different post
+or a lost provenance flag.
+
+**STILL OPEN IN THE BRAIN** (next, in this order): the distill trigger starves after 60 lifetime
+edits and a failed/402 distill still advances the watermark; `brainSummaryFrom` (`api/_trends.js`
+:311-331) blind-slices at 1200 and drops banned topics + learned signals; `competitorMoves` has no
+TTL; `brainDistill` has no call site, so auto-distilled rules enter Voice Memory unreviewed.
+
 ## ▶▶ 2026-09-16 — v661. A take now has a maximum length. Jörgen's decision, not a guess.
 **DEPLOY STATE: UNDEPLOYED.** Stamped `v661-834140e0+api.85d822bc`. **53 gates, 52 green**
 (`build-stamp` cannot run in the sandbox — see the v660 entry).

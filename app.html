@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v664';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v665';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -14118,9 +14118,11 @@ function tvApplyTwist(){
   try {
     if (typeof saveEditSignals === 'function') {
       const sig = [];
-      if (nw.hook && nw.hook !== beforeHook) sig.push({ ts: Date.now(), format: i.format, field: 'hook (viral twist)', before: beforeHook, after: nw.hook });
+      // v665: `by:'ai'` — see the note in sharpenIdea. `nw` is the model's rewrite; the user
+      // chose it, but did not write it, and the brain must not be told otherwise.
+      if (nw.hook && nw.hook !== beforeHook) sig.push({ ts: Date.now(), by: 'ai', format: i.format, field: 'hook (viral twist)', before: beforeHook, after: nw.hook });
       const afterBody = nw.boldText || nw.script || '';
-      if (afterBody && afterBody !== beforeBody) sig.push({ ts: Date.now(), format: i.format, field: 'body (viral twist)', before: beforeBody, after: afterBody });
+      if (afterBody && afterBody !== beforeBody) sig.push({ ts: Date.now(), by: 'ai', format: i.format, field: 'body (viral twist)', before: beforeBody, after: afterBody });
       if (sig.length) saveEditSignals(sig);
     }
   } catch(e) {}
@@ -14173,7 +14175,13 @@ function tvCaptureEdits(idea) {
     // statement of the voice" were mostly the model's own unedited output fed back to it.
     idea.humanEdited = true;
     if (fieldId === 'tvBold' && idea.format === 'statement') idea.boldText = after;
-    signals.push({ ts: Date.now(), format: idea.format, field: (el.previousElementSibling?.querySelector('span')?.textContent || fieldId), before, after });
+    // v665: carry the TITLE. Which posts the founder rewrote was knowledge only THIS DEVICE held —
+    // the server could derive it only from `humanEditedTitles` in the request body, so the daily
+    // push (api/send-daily.js, which has no client to send it) always fell back to the WEAKER
+    // heading that tells the model these posts were machine-written, and a second device knew
+    // nothing about rewrites made on the first. The durable copy below now carries the title, so
+    // the server can look the post up by name exactly as the client's list does.
+    signals.push({ ts: Date.now(), title: String(idea.title || ''), format: idea.format, field: (el.previousElementSibling?.querySelector('span')?.textContent || fieldId), before, after });
   });
   // Belt and braces: capturing a taste signal is a nice-to-have; it must never be able to
   // stop the post it was captured from being approved and saved.
@@ -14194,7 +14202,20 @@ function saveEditSignals(newOnes) {
   // best-effort durable copy (own brand only; safe if table missing)
   try {
     if (currentBrand && sb) {
-      sb.from('edit_signals').insert(newOnes.map(x => ({ brand_id: currentBrand.id, format: x.format, field: x.field, before_text: x.before, after_text: x.after }))).then(()=>{}, ()=>{});
+      const _base = x => ({ brand_id: currentBrand.id, format: x.format, field: x.field, before_text: x.before, after_text: x.after });
+      // v665: `authored_by` and `title`. Two columns sql/v665-edit-signal-provenance.sql adds.
+      // `authored_by: null` means a person typed it — the same conservative reading the local
+      // store uses for rows written before AI-authored signals were tagged.
+      // The retry matters: if the SQL has not been run yet, PostgREST rejects the whole insert for
+      // an unknown column, and taste signals would stop being saved durably until it is. So a
+      // failure falls back to the columns that have always existed rather than losing the row.
+      const _rows = newOnes.map(x => Object.assign(_base(x), {
+        authored_by: x && x.by === 'ai' ? 'ai' : null,
+        title: String((x && x.title) || '') || null,
+      }));
+      sb.from('edit_signals').insert(_rows).then(r => {
+        if (r && r.error) sb.from('edit_signals').insert(newOnes.map(_base)).then(()=>{}, ()=>{});
+      }, () => { try { sb.from('edit_signals').insert(newOnes.map(_base)).then(()=>{}, ()=>{}); } catch(e) {} });
     }
   } catch(e) {}
 }
@@ -17119,9 +17140,14 @@ function applyViralRewrite(id){
   try{
     if(typeof saveEditSignals === 'function'){
       const sig = [];
-      if(nw.hook && nw.hook !== beforeHook) sig.push({ ts:Date.now(), format:i.format, field:'hook (viral twist)', before:beforeHook, after:nw.hook });
+      // v665: `by:'ai'` — the THIRD viral-twist writer, and the one the first pass missed.
+      // `nw` is the model's rewrite. The user chose it; they did not write it. Untagged, this text
+      // matched back against the approved post in getApprovedExamples and was handed to the model
+      // as the brand's own words — the model learning from its own output at the strongest
+      // position in the prompt.
+      if(nw.hook && nw.hook !== beforeHook) sig.push({ ts:Date.now(), by:'ai', format:i.format, field:'hook (viral twist)', before:beforeHook, after:nw.hook });
       const afterBody = nw.boldText || nw.script || '';
-      if(afterBody && afterBody !== beforeBody) sig.push({ ts:Date.now(), format:i.format, field:'body (viral twist)', before:beforeBody, after:afterBody });
+      if(afterBody && afterBody !== beforeBody) sig.push({ ts:Date.now(), by:'ai', format:i.format, field:'body (viral twist)', before:beforeBody, after:afterBody });
       if(sig.length) saveEditSignals(sig);
     }
   }catch(e){}
@@ -17191,7 +17217,14 @@ async function sharpenNow(opts){
         ['hook','script','boldText','answer','caption','statement','title'].forEach(k=>{
           const _b = content[k], _a = _nw[k];
           if(_b!=null && _a!=null && String(_b).trim() && String(_a).trim() && String(_b)!==String(_a)){
-            _sig.push({ ts:Date.now(), format:(o.format||''), field:'sharpen:'+k, before:String(_b).slice(0,160), after:String(_a).slice(0,160) });
+            // v665: `by:'ai'`. The `after` here is the MODEL's rewrite, not anything the user typed.
+            // Without this tag, getApprovedExamples matched that text back against the approved post
+            // and marked it human-rewritten — so a post the user never touched was handed to the
+            // model under "THE BRAND'S OWN WORDS … beats every description of the voice above".
+            // That is the model training on its own output, at the strongest position in the prompt,
+            // and it got worse every time someone used the Sharpen button. The signal is still worth
+            // keeping as a taste signal (they chose this version); it is not evidence of their voice.
+            _sig.push({ ts:Date.now(), by:'ai', format:(o.format||''), field:'sharpen:'+k, before:String(_b).slice(0,160), after:String(_a).slice(0,160) });
           }
         });
         if(_sig.length) saveEditSignals(_sig.slice(0,3));
@@ -21566,10 +21599,35 @@ function getLearnedSignalsCompact(){
     const st = Array.isArray(state) ? state : [];
     const up = st.filter(i=>i.status==='filming'||i.status==='done').slice(-8).map(i=>i.title).filter(Boolean);
     const down = st.filter(i=>i.status==='dismissed').slice(-6).map(i=>i.title).filter(Boolean);
-    let s='';
-    if(up.length) s += 'Recently APPROVED (favor topics/angles like these): ' + up.join(' · ');
-    if(down.length) s += (s?'  |  ':'') + 'Recently DISMISSED (avoid these): ' + down.join(' · ');
-    return s.slice(0,500);
+  /* v665: BUDGET BOTH HALVES, AND NEVER CUT MID-HEADING.
+       This built APPROVED first, then DISMISSED, then blind-sliced the whole thing at 500 — so the
+       approved half always won the budget and the dismissed half was always what got cut. Measured
+       against titles at the length this app's own generator produces: 0 of 6 dismissed titles
+       survived, and the string ended on the bare fragment "Recently DISMISSED (avoid these" with
+       nothing under it. Every "no" the user had given was invisible to the gatherer, so the app
+       kept proposing the angles they kept rejecting — and the prompt carried a dangling heading,
+       the exact failure _brain.js was rewritten to make impossible.
+       Now each half gets its own share, whole titles are dropped rather than cut in half, and a
+       heading is only written if something survives to sit under it. */
+    const HALF = 240;
+    const packed = (arr) => {
+      const out = [];
+      let used = 0;
+      for (const raw of arr) {
+        const t = String(raw).trim();
+        if (!t) continue;
+        const cost = t.length + (out.length ? 3 : 0);   // ' · '
+        if (used + cost > HALF) break;
+        out.push(t); used += cost;
+      }
+      return out;
+    };
+    const upKeep = packed(up);
+    const downKeep = packed(down);
+    const parts = [];
+    if (upKeep.length) parts.push('Recently APPROVED (favor topics/angles like these): ' + upKeep.join(' · '));
+    if (downKeep.length) parts.push('Recently DISMISSED (avoid these): ' + downKeep.join(' · '));
+    return parts.join('  |  ');
   }catch(e){ return ''; }
 }
 // Top approved posts as few-shot exemplars for GENERATION — the strongest voice signal is real winners.
@@ -21589,6 +21647,13 @@ function getApprovedExamples(fmt){
     let _editedText = [];
     try {
       _editedText = (JSON.parse(lsGet('edit_signals') || '[]') || [])
+        // v665: EXCLUDE SIGNALS THE MODEL WROTE. Sharpen and Viral twist record a before/after
+        // whose `after` is the model's own text; matching that back against an approved post
+        // marked it as the founder's own writing. Only text a person actually typed is evidence
+        // of how they write. Signals from before this change carry no `by`, and are treated as
+        // human — they predate the AI-authored ones being tagged, and the older store is mostly
+        // genuine typing, so assuming human is the conservative reading of old data.
+        .filter(s => !s || s.by !== 'ai')
         .map(s => String((s && s.after) || '').replace(/\s+/g,' ').trim())
         .filter(t => t.length > 25);            // short fragments match too loosely to be evidence
     } catch(e) {}
