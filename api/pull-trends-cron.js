@@ -97,11 +97,30 @@ module.exports = async function handler(req, res) {
     // so trends never refreshed and every brand kept its stale auto_trends — which is why the
     // v600b "sources" fix never showed up in the UI. maxDuration is now 300; this budget stops
     // us cleanly at 270s so we always heartbeat and report, instead of dying mid-batch.
-    const BUDGET_MS = 270000, _cronT0 = Date.now();
+    /* v662: THE BUDGET WAS CHECKED BETWEEN BATCHES ONLY, SO IT DID NOT BIND.
+       Production, 2026-09-16 05:35: `GET /api/pull-trends-cron 504 — Vercel Runtime Timeout Error:
+       Task timed out after 300 seconds`. A 504 is the worst possible outcome here, because the
+       function dies BEFORE store.heartbeat() — so nothing is recorded, /api/health goes red with
+       `never-run`-shaped silence, and the next run learns nothing from this one. The whole reason
+       the heartbeat exists is to make a bad run legible, and a timeout skips it.
+       The old guard only asked "am I past 270s?" at a batch BOUNDARY. A batch that starts at 260s
+       and takes 50s sails straight past 300. Each brand runs several Apify lanes with
+       waitForFinish=40 (api/_trends.js), and when Apify queues a run (status=READY, seen in the
+       same logs) those 40 seconds are spent waiting and produce nothing — so a slow batch is the
+       normal case on a bad day, not the edge.
+       TWO GUARDS NOW, because either alone still overruns:
+         1. RESERVE — do not START a batch unless enough time remains to finish a worst-case one.
+         2. RACE — never let a batch outlive the time actually left, whatever it is doing.
+       The race abandons in-flight lane work, which is safe: every brand's work is wrapped in its
+       own try/catch and writes only at the end, so an abandoned brand simply is not updated and
+       is picked up next run. Losing one brand's refresh beats losing the whole run's record. */
+    const BUDGET_MS = 270000, WORST_BATCH_MS = 75000, _cronT0 = Date.now();
+    const _left = () => BUDGET_MS - (Date.now() - _cronT0);
     for (let i = 0; i < due.length; i += CONC) {
-      if (Date.now() - _cronT0 > BUDGET_MS) { ranOut = true; skipped += (due.length - i); break; }
+      if (_left() <= WORST_BATCH_MS) { ranOut = true; skipped += (due.length - i); break; }
       const batch = due.slice(i, i + CONC);
-      await Promise.all(batch.map(async (b) => {
+      let _batchT = null;
+      const _work = Promise.all(batch.map(async (b) => {
         try {
           const kws = deriveKeywords(b);
           if (!kws.length) { skipped++; return; }
@@ -173,6 +192,20 @@ module.exports = async function handler(req, res) {
           console.error('pull-trends-cron: brand ' + (b && b.id) + ' (' + ((b && b.brand_name) || 'unnamed') + ') failed — ' + ((e && e.message) || e));
         }
       }));
+      // Guard 2. Whatever the batch is waiting on, it does not get to spend time this function
+      // does not have. `_over` is a sentinel rather than a rejection so nothing here can throw.
+      const _over = await Promise.race([
+        _work.then(() => false),
+        new Promise(r => { _batchT = setTimeout(() => r(true), Math.max(1000, _left())); }),
+      ]);
+      try { if (_batchT) clearTimeout(_batchT); } catch (_) {}
+      if (_over) {
+        ranOut = true;
+        skipped += (due.length - i);
+        console.error('pull-trends-cron: batch at index ' + i + ' outlived the run budget — abandoning it so the heartbeat still gets written. ' +
+                      'Brands in that batch are unchanged and will be picked up next run.');
+        break;
+      }
     }
 
     if (ranOut) console.log('pull-trends-cron: ran out of budget after ' + (Date.now() - _cronT0) + 'ms — updated ' + updated + ', ' + skipped + ' left for the next run');
