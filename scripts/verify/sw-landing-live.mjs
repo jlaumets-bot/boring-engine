@@ -86,7 +86,28 @@ function handled(url, method = 'GET') {
 
 // The pages with no service worker of their own: if the worker answers for one of these, the
 // visitor has no way left to obtain a newer copy.
-const LEGAL = ['/terms.html', '/privacy.html', '/refunds.html'];
+/* v663: DERIVED, NOT A LIST OF THREE NAMES I HAPPENED TO THINK OF.
+   This gate hardcoded terms/privacy/refunds — so when /faq.html was added, linked from the
+   index.html footer and carrying no service worker of its own, it was pinned on every device that
+   ever viewed it and no gate noticed. A hardcoded list can only ever catch the pages someone
+   already remembered. The rule is structural: any top-level .html linked from index.html that has
+   no serviceWorker registration of its own CANNOT ask for a newer copy of itself, so it must be in
+   ALWAYS_LIVE. Derive that set from the repo and the next page added is covered for free. */
+const LEGAL = (() => {
+  const idx = fs.readFileSync(idxPath, "utf8");
+  const linked = new Set();
+  for (const m of idx.matchAll(/href=["']\/([a-z0-9\-]+\.html)["']/gi)) linked.add(m[1]);
+  const out = [];
+  for (const f of [...linked].sort()) {
+    if (f === 'app.html' || f === 'index.html') continue;   // the shell, and index itself
+    const full = path.join(root, f);
+    if (!fs.existsSync(full)) continue;
+    // A page that registers its own worker can fetch a newer copy of itself; one that does not, cannot.
+    if (/serviceWorker/.test(fs.readFileSync(full, 'utf8'))) continue;
+    out.push('/' + f);
+  }
+  return out;
+})();
 
 const mustBeLive = [
   [`${ORIGIN}/`, 'the bare root — the URL people type'],
@@ -146,11 +167,23 @@ for (const p of LEGAL) {
     fail(`${p} now registers a service worker — re-check whether it can refresh itself before trusting this gate`);
   }
 }
-// And they must be reachable, or none of this matters. app.html's footer links all three.
+// And they must be reachable, or none of this matters.
+// v663: this required EVERY page to be linked from app.html, which was true only because the list
+// was the three legal pages. /faq.html is reached from the landing page, not from inside the app —
+// that makes it no less able to pin itself, which is the whole point. So the reachability check is
+// "a user can get there from somewhere", and the app's own legal obligations keep a check of their
+// own, named, rather than riding on a list that now means something broader.
 const appHtml = fs.readFileSync(path.join(root, 'app.html'), 'utf8');
+const idxHtml = fs.readFileSync(idxPath, 'utf8');
 for (const p of LEGAL) {
+  if (!appHtml.includes(`href="${p}"`) && !idxHtml.includes(`href="${p}"`)) {
+    fail(`nothing links ${p} any more — if the page is gone, take it out of ALWAYS_LIVE; if the link moved, confirm the new path is covered`);
+  }
+}
+// The legal pages specifically must stay reachable from INSIDE the app, where the user agreed to them.
+for (const p of ['/terms.html', '/privacy.html', '/refunds.html']) {
   if (!appHtml.includes(`href="${p}"`)) {
-    fail(`app.html no longer links ${p} — if the link moved, confirm the new path is in ALWAYS_LIVE too`);
+    fail(`app.html no longer links ${p} — the app has to link its own terms, privacy policy and refund policy`);
   }
 }
 

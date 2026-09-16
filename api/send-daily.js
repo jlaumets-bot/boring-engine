@@ -102,7 +102,31 @@ module.exports = async function handler(req, res) {
         // the subscriber still gets their ping, it just carries nothing out of a brand they
         // are not entitled to.
         const brandId = await authorizedBrandId(sub);
-        if (sub.brand_id && !brandId) brandDenied++;
+        if (sub.brand_id && !brandId) {
+          brandDenied++;
+          /* v663: A REMOVED TEAM MEMBER GOT A DAILY PUSH FOREVER, WITH NO WAY TO STOP IT.
+             removeMember deletes only the brand_members row. Nothing touches push_subscriptions,
+             and the owner could not delete that row anyway — its RLS is auth.uid() = user_id. The
+             orphan still matched the due filter (which looks only at the hour and last_sent_at), so
+             authorizedBrandId correctly withheld the brand's CONTENT and the generic "Time to make
+             something" went out regardless. Worse, the ex-member's app no longer lists that brand,
+             so disableDailyPush's brand-scoped delete can never match the row: there is no switch
+             anywhere in the product that turns it off.
+             The subscription was made for a brand this person can no longer reach, so it has no
+             remaining purpose. Delete it — service_role can, which is the whole reason this runs
+             here rather than in the app. A genuine self-brand row never reaches this branch,
+             because authorizedBrandId only returns null when the access check said NO. */
+          try {
+            const _d = await sbDelete(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+              '/rest/v1/push_subscriptions?id=eq.' + encodeURIComponent(sub.id));
+            console.error('send-daily: removed orphan subscription ' + sub.id + ' — user ' + sub.user_id +
+              ' no longer has access to brand ' + sub.brand_id + ' (delete status ' + ((_d && _d.status) || '?') + ')');
+          } catch (e) {
+            console.error('send-daily: could not remove orphan subscription ' + sub.id + ': ' + ((e && e.message) || e));
+          }
+          skipped++;
+          continue;   // no ping for a brand they were removed from
+        }
         // Cap this subscriber's generation so it can never overrun the budget: we always
         // keep >= 15s of the slice for the push + the last_sent_at write. Measured AFTER the
         // access check so its round trips come out of THIS slice rather than the run's tail.

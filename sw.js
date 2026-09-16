@@ -4,7 +4,7 @@
 // changing BUILD makes this file byte-different, the browser detects a new worker, and `install`
 // pulls the fresh app.html into the SAME stable cache while the OLD copy keeps serving instantly.
 const CACHE = 'cs-shell';   // stable — never rename
-const BUILD = 'v663-a4c382a3';       // ← bump this string on every app.html/asset change to push an update
+const BUILD = 'v664-c3c172f6';       // ← bump this string on every app.html/asset change to push an update
 
 // Only the app shell is refreshed on update. Images/icons are cached lazily on first use (never
 // eagerly precached — on a very slow connection an eager 1.8MB precache saturates the pipe and is
@@ -29,7 +29,15 @@ const CORE = ['/app.html', '/manifest.json'];
 // forever: updated terms, an updated privacy policy or a changed refund window never reached them,
 // while the origin served the current text to everyone else. These are the documents where "the
 // user saw the current version" is the entire point.
-const ALWAYS_LIVE = ['/', '/index.html', '/terms.html', '/privacy.html', '/refunds.html'];
+// v663: /faq.html was missed, one door over from the pages this comment is about. It is linked
+// from the index.html footer, it is in the sitemap, and it carries no service-worker code of its
+// own — so it was pinned on a device the first time that device viewed it, exactly like the legal
+// pages were. Someone who read the FAQ once kept that FAQ forever: a rewritten pricing answer or a
+// changed "does it post for me?" never reached them while everyone else saw the current text.
+// THE RULE, so the next page added does not repeat this: every top-level .html that is linked from
+// index.html and has no service worker of its own belongs here. scripts/verify/sw-landing-live.mjs
+// now derives the list from index.html rather than hardcoding three names.
+const ALWAYS_LIVE = ['/', '/index.html', '/terms.html', '/privacy.html', '/refunds.html', '/faq.html'];
 
 // v663: the marker that says WHICH build's shell is actually in the cache. Without it nothing
 // could tell a successful update from a failed one — see the install handler below.

@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v663';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v664';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -7389,19 +7389,42 @@ async function copyInviteLink(code) {
 
 async function revokeInvite(inviteId) {
   try {
-    await sb.from('brand_invites').delete().eq('id', inviteId);
+    // v663: same as removeMember — a refused or failed delete was completely silent, and the
+    // invite link stayed live for its full 14 days while the owner believed it was dead.
+    const r = await sb.from('brand_invites').delete().eq('id', inviteId).select('id');
+    if (r && r.error) throw new Error(r.error.message || 'the database refused it');
+    if (!r || !r.data || !r.data.length) {
+      alert("That invite was not revoked — the database refused it. Only the brand owner can revoke invites, and the link is still live.");
+      return;
+    }
     await loadTeamData();
     renderSettingsPanel();
-  } catch(e) { alert('Failed to revoke invite: ' + e.message); }
+  } catch(e) {
+    try { console.error('revokeInvite failed:', e); } catch(_){}
+    alert("Couldn't revoke that invite — check your connection and try again. Assume the link is still live.");
+  }
 }
 
 async function removeMember(memberId) {
   if (!confirm('Remove this team member?')) return;
   try {
-    await sb.from('brand_members').delete().eq('id', memberId);
+    /* v663: LOOK AT THE RESULT. PostgREST RESOLVES {data:null,error} on an HTTP error rather than
+       throwing, and an RLS refusal comes back as ZERO ROWS AND NO ERROR — so this catch could
+       never fire and nothing checked either outcome. loadTeamData then redrew the member in the
+       same place, which reads as a refresh glitch, and the owner walked away believing access was
+       revoked when it was not. deleteBrand was hardened for exactly this shape; these were not. */
+    const r = await sb.from('brand_members').delete().eq('id', memberId).select('id');
+    if (r && r.error) throw new Error(r.error.message || 'the database refused it');
+    if (!r || !r.data || !r.data.length) {
+      alert("That member was not removed — the database refused it. Only the brand owner can remove people.");
+      return;
+    }
     await loadTeamData();
     renderSettingsPanel();
-  } catch(e) { alert('Failed to remove member: ' + e.message); }
+  } catch(e) {
+    try { console.error('removeMember failed:', e); } catch(_){}
+    alert("Couldn't remove that member — check your connection and try again.");
+  }
 }
 
 // Returns { ok, retryable, message } — never a bare boolean. Every failure used to return false
@@ -7417,7 +7440,15 @@ async function handleInviteCode(code) {
     if (error) { debugLog('Redeem error: ' + JSON.stringify(error)); return TRANSIENT; }
     if (!brandId) {
       debugLog('Invite not found or already used');
-      return { ok: false, retryable: false, message: 'That invite link is no longer valid — it may have been used already. Ask for a fresh one.' };
+      /* v663: redeem_invite returns a bare null for FOUR different situations — bad code, already
+         used, expired, and "this invite is addressed to a different email address" — and this
+         collapsed all four into "it may have been used already. Ask for a fresh one."
+         The fourth is the common one and the advice is wrong for it: Alice invites bob@acme.com,
+         Bob opens the link signed in as his Gmail address, and is told to ask for a fresh invite
+         that will fail in exactly the same way. The invite banner even greeted him by brand name
+         first, because lookup_invite does no email check. Name the likely cause so the one thing
+         that fixes it — signing in with the address it was sent to — is actually sayable. */
+      return { ok: false, retryable: false, message: "That invite didn't work. It may have been used or expired \u2014 or it was sent to a different email address than the one you're signed in with. Check which address it went to, or ask for a fresh invite." };
     }
     debugLog('Successfully joined brand via invite');
     return { ok: true, retryable: false, brandId, message: "You've joined the brand you were invited to ✓" };
@@ -12349,7 +12380,16 @@ function renderPipeline() {
   const content = document.getElementById('pipelineContent');
 
   const counts = {};
-  STAGES.forEach(s => { counts[s] = state.filter(i=>i.status===s).length; });
+  /* v663: THE DONE COUNT NOW MATCHES THE DONE LIST.
+     The count was unfiltered while the Done panel below hides anything finished more than 30 days
+     ago. Someone four months in, with every Done post older than that, saw a tab badge reading
+     "62 Done" next to "No Done ideas". The Ideas screen explains its hidden items; this one said
+     nothing, so the only reading available was that the app had lost them. Count what is shown,
+     and say plainly below that the rest are kept. */
+  const _doneCutoff = Date.now() - 30 * 24 * 3600 * 1000;
+  const _inStage = (i, s) => i.status === s && (s !== 'done' || !i.doneAt || i.doneAt > _doneCutoff);
+  STAGES.forEach(s => { counts[s] = state.filter(i => _inStage(i, s)).length; });
+  const _doneHidden = state.filter(i => i.status === 'done' && i.doneAt && i.doneAt <= _doneCutoff).length;
 
   stages.innerHTML = STAGES.map(s =>
     `<button class="pipeline-stage-tab s-${s} ${activePipelineStage===s?'active':''}" onclick="setPipelineStage('${s}')">
@@ -12360,10 +12400,16 @@ function renderPipeline() {
   let items = state.filter(i=>i.status===activePipelineStage);
   items.sort((a,b)=>((b.approvedAt||b.doneAt||0)-(a.approvedAt||a.doneAt||0)));
   if (activePipelineStage === 'done') {
-    const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
-    items = items.filter(i => !i.doneAt || i.doneAt > cutoff); // archive done >30 days (data kept)
+    items = items.filter(i => !i.doneAt || i.doneAt > _doneCutoff); // archive done >30 days (data kept)
   }
   if(!items.length) {
+    // v663: when the list is empty ONLY because of the 30-day window, say so — "No Done ideas"
+    // next to four months of finished work reads as data loss.
+    if (activePipelineStage === 'done' && _doneHidden > 0) {
+      content.innerHTML = renderEmptyState('📂', 'Nothing finished in the last 30 days',
+        _doneHidden + ' older post' + (_doneHidden === 1 ? ' is' : 's are') + ' still saved — this tab just shows the last 30 days.');
+      return;
+    }
     content.innerHTML = renderEmptyState('📂', `No ${STAGE_LABELS[activePipelineStage]} ideas`, 'Approved ideas move Ready → Film & Post → Done here.');
     return;
   }
@@ -15333,13 +15379,26 @@ async function setMotivationReminders(on) {
   // every brand and rewrote every brand's row. lsSet/lsGet namespace by brand (bkey).
   lsSet('motivation-on', on ? '1' : '0');
   const _bid = (currentBrand && currentBrand.id) || null;   // read before the await
+  // v663: the rollback below is a per-brand lsSet AFTER an await, so it needs the same gate every
+  // other post-await brand write in this file has — otherwise a failed save on brand A would flip
+  // brand B's switch back.
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
   try {
     if (sb && currentUser) {
       // `.is()` not `.eq()` for a null brand — PostgREST rejects brand_id=eq.null.
       const _q = sb.from('push_subscriptions').update({ motivation_on: on }).eq('user_id', currentUser.id);
-      await (_bid ? _q.eq('brand_id', _bid) : _q.is('brand_id', null));
+      // v663: read the result — supabase-js resolves on an HTTP error instead of throwing, so this
+      // reported success on a failed write exactly like the two toggles above it.
+      const _r = await (_bid ? _q.eq('brand_id', _bid) : _q.is('brand_id', null)).select('id');
+      if (_r && _r.error) throw new Error(_r.error.message || 'could not save that setting');
     }
-  } catch (e) {}
+  } catch (e) {
+    try { console.error('setMotivationReminders failed:', e); } catch(_){}
+    if (!_sameBrand || _sameBrand()) lsSet('motivation-on', on ? '0' : '1');   // put the switch back where it really is
+    if (typeof showToast === 'function') showToast("Couldn't save that — check your connection and try again.", 7000);
+    try { if (typeof renderSettingsPanel === 'function') renderSettingsPanel(); } catch(_){}
+    return;
+  }
   if (typeof showToast === 'function') showToast(on ? 'Motivation reminders on' : 'Motivation reminders off');
 }
 
@@ -15383,14 +15442,19 @@ async function enableDailyPush() {
       let _delQ = sb.from('push_subscriptions').delete().eq('user_id', currentUser.id);
       if (_endpoint) _delQ = _delQ.eq('subscription->>endpoint', _endpoint);
       await (_pushBrandId ? _delQ.eq('brand_id', _pushBrandId) : _delQ.is('brand_id', null));
-      await sb.from('push_subscriptions').insert({
+      // v663: read the result. supabase-js does NOT throw on an HTTP error unless throwOnError is
+      // set, so this resolved to {data:null,error} and fell straight through to lsSet + the "ping
+      // on" toast. On a dropped connection the user got "Daily idea ping on — every day at 09:00",
+      // a toggle that stayed checked forever (it reads localStorage), and no notification, ever.
+      const _ins = await sb.from('push_subscriptions').insert({
         user_id: currentUser.id,
         brand_id: _pushBrandId,
         subscription: _subJson,
         send_hour: hour,
         tz_offset_min: new Date().getTimezoneOffset(),
         motivation_on: lsGet('motivation-on') !== '0'
-      });
+      }).select('id');
+      if (_ins && _ins.error) throw new Error(_ins.error.message || 'could not save the reminder');
     }
     // Past the gate, so currentBrand.id === _pushBrandId and bkey() resolves to the pinned brand.
     lsSet('daily-push-on', '1');
@@ -15485,19 +15549,51 @@ async function disableDailyPush() {
   // mid-unsubscribe deleted the OTHER brand's subscription row.
   const _bid = (currentBrand && currentBrand.id) || null;
   const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+  let _ok = false, _err = null;
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
-    if (sub) await sub.unsubscribe();
-    // v643 — was .eq('user_id') ALONE, so switching the daily ping off while on brand B also
-    // deleted brand A's subscription (and every other device's row, since the subscription is
-    // per-device). enableDailyPush already inserts one row per (user_id, brand_id); the delete
-    // must match that. `.is()` not `.eq()` for a null brand — PostgREST rejects brand_id=eq.null.
+    /* v663: READ THE ENDPOINT BEFORE UNSUBSCRIBING, AND SCOPE THE DELETE BY IT.
+       The v643 comment below already worked out that the push ENDPOINT is the device and that the
+       delete has to match it — enableDailyPush does exactly that. Here only the brand half of that
+       fix landed, so turning the ping off deleted the row for EVERY DEVICE on this brand: switch
+       it off on your phone and the iPad stops pinging too, with the iPad's toggle still showing ON.
+       There is a second half. sub.unsubscribe() destroys the device's ONE push endpoint, which is
+       shared by every brand's row on that device — so switching off on brand B also silently
+       killed brand A's pings on this phone, and A's toggle still read ON. The only honest fix is
+       to unsubscribe from the device only when no OTHER brand on it still wants the ping. */
+    const _subJson = sub ? sub.toJSON() : null;
+    const _endpoint = (_subJson && _subJson.endpoint) || (sub && sub.endpoint) || '';
     if (sb && currentUser) {
-      const _q = sb.from('push_subscriptions').delete().eq('user_id', currentUser.id);
-      await (_bid ? _q.eq('brand_id', _bid) : _q.is('brand_id', null));
+      let _q = sb.from('push_subscriptions').delete().eq('user_id', currentUser.id);
+      if (_endpoint) _q = _q.eq('subscription->>endpoint', _endpoint);
+      const _res = await (_bid ? _q.eq('brand_id', _bid) : _q.is('brand_id', null)).select('id');
+      // PostgREST RESOLVES on an HTTP error rather than throwing, so without reading .error this
+      // could not tell a successful delete from a failed one — and it then told the user it was off.
+      if (_res && _res.error) { _err = _res.error; }
+      else {
+        _ok = true;
+        // Does any other brand on THIS device still want the ping? If so, keep the subscription.
+        let _others = 0;
+        try {
+          let _cq = sb.from('push_subscriptions').select('id').eq('user_id', currentUser.id);
+          if (_endpoint) _cq = _cq.eq('subscription->>endpoint', _endpoint);
+          const _cr = await _cq;
+          if (!_cr.error) _others = (_cr.data || []).length;
+          else _others = 1;   // could not tell → keep the subscription; a stray ping beats a dead one
+        } catch (_) { _others = 1; }
+        if (sub && _others === 0) { try { await sub.unsubscribe(); } catch (_) {} }
+      }
+    } else if (sub) {
+      try { await sub.unsubscribe(); } catch (_) {}
+      _ok = true;
     }
-  } catch (e) {}
+  } catch (e) { _err = e; }
+  if (!_ok) {
+    try { console.error('disableDailyPush failed:', _err); } catch (_) {}
+    showToast("Couldn't turn the daily ping off — check your connection and try again.", 8000);
+    return;   // the toggle stays ON, which is the truth
+  }
   // Per-brand flag: only clear it if this is still the brand that was switched off.
   if (!_sameBrand || _sameBrand()) lsSet('daily-push-on', '0');
   showToast('Daily idea ping off');
@@ -21337,6 +21433,7 @@ function renderSettingsPanel() {
               </div>
             `).join('')}
 
+            ${currentBrand?.user_id === currentUser?.id ? `
             <label class="sp-label" style="margin-top:16px;">Invite by Email</label>
             <div class="sp-invite-row">
               <input class="sp-input" id="spInviteEmail" type="email" placeholder="teammate@company.com" onkeydown="if(event.key==='Enter'){event.preventDefault();inviteByEmail();}">
@@ -21345,7 +21442,13 @@ function renderSettingsPanel() {
 
             <label class="sp-label" style="margin-top:12px;">Or share an invite link</label>
             <button class="sp-invite-btn secondary" onclick="generateInviteLink()" style="width:100%;margin-top:4px;">Generate Invite Link</button>
-            <span id="spInviteCopied" class="sp-copied" style="display:none;">Copied!</span>
+            <span id="spInviteCopied" class="sp-copied" style="display:none;">Copied!</span>` : `
+            <!-- v663: inviting is owner-only in the database (sql/security-fixes-batch2.sql replaced
+                 the INSERT policy and says so outright), but the whole invite UI was rendered to
+                 everyone. A member typing a colleague's address and tapping Send got a raw
+                 PostgREST string in an alert box: "new row violates row-level security policy for
+                 table brand_invites" — a machine error for what is simply not their job. -->
+            <div class="sp-tip" style="margin-top:16px;">Only the brand owner can invite people to this brand.</div>`}
 
             ${teamInvites.length > 0 ? `
               <label class="sp-label" style="margin-top:16px;">Pending Invites</label>
