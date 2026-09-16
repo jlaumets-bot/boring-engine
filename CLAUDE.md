@@ -2,6 +2,41 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-16 — v661. A take now has a maximum length. Jörgen's decision, not a guess.
+**DEPLOY STATE: UNDEPLOYED.** Stamped `v661-834140e0+api.85d822bc`. **53 gates, 52 green**
+(`build-stamp` cannot run in the sandbox — see the v660 entry).
+
+**THE PROBLEM.** `videoBitsPerSecond: 20_000_000` is about **150 MB per filmed minute**, and
+there was no limit of any kind. Three minutes is ~450 MB: the split-screen render must flush a
+file that size through the muxer inside a 15-second timeout, which a mid-range phone misses — so
+the build fails *after* the person has waited it out with the screen held awake. Most share
+targets also refuse a file that big, and the chunks live only in memory until the take ends, so
+the longest take is the one most likely to be lost to the phone reclaiming the tab.
+
+**THE DECISION WAS HIS.** Offered "cap the length, drop the bitrate, or both", he said **cap the
+length**. So the bitrate is untouched.
+
+**`TP_MAX_TAKE_MS = 180000` (3 min), `TP_WARN_TAKE_MS = 150000` (warn 30s before).**
+Three minutes covers every short-form format the app writes scripts for. **TO CHANGE IT, CHANGE
+THOSE TWO CONSTANTS AND NOTHING ELSE** — file size is ~2.5 MB per second, so 180s ~ 450 MB,
+120s ~ 300 MB, 90s ~ 225 MB. If files under 200 MB matter more than long takes, set 90000.
+
+**IT STOPS, IT NEVER DISCARDS.** The cap calls the ordinary `stopTpRecord()`, so the take goes
+through review → keep/retake → share exactly as if they had tapped Stop. `tpClearTakeLimit()` is
+called from **every** path that stops the recording clock, so a timer from a finished take can
+never end a later one.
+
+**GATE `scripts/verify/take-length-cap.mjs`.** Its important arm is DERIVED, not a list: every
+line that clears `tpRecTimerInterval` is a place a take ends, so each must also cancel the cap —
+a teardown path added later that forgets fails the gate by itself. Mutation-tested 6 ways, all
+caught: cap raised to 10 min (file too big); warning moved to 1s before the cut; cap discards
+instead of stopping; cap fires without checking a take is live; `stopTpRecord` forgets to cancel
+it; cap declared but never armed. `app.html` verified byte-identical afterwards.
+
+**STILL OPEN — ONE TEST ONLY JÖRGEN CAN RUN:** does `vid.volume = 0` in `renderSplitScreen`
+silence the CAPTURED audio? If it does, **every split screen is silent** and the track-count
+guard would never notice. Record one split screen and listen. Highest-value check left.
+
 ## ▶▶ 2026-09-16 — v660. Three deep audits of filming, the teleprompter and the render. 13 defects, all fixed, all gated.
 **DEPLOY STATE: UNDEPLOYED.** Stamped `v660-358b35bd+api.85d822bc`. Committed `ec7c51b`.
 **52 gates, 51 green.** `build-stamp` CANNOT run in the Cowork sandbox — it writes a probe into

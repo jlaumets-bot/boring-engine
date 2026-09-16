@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v660';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v661';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -8451,6 +8451,29 @@ let tpMediaRecorder = null, tpRecordedChunks = [], tpRecTimerInterval = null, tp
 // at or under this is not a take, and telling the user it recorded is a lie they only discover
 // when they try to post it.
 const TP_MIN_TAKE_BYTES = 8192;
+/* v661: A TAKE HAS A MAXIMUM LENGTH NOW.
+   videoBitsPerSecond is 20_000_000, so a take costs roughly 150 MB PER MINUTE and there was no
+   limit of any kind. Three minutes is ~450 MB: the split-screen render then has to flush a file
+   that size through the muxer inside a 15-second timeout, which a mid-range phone misses, so the
+   whole render fails after the person has waited out the build with the screen held awake. Even
+   when it does flush, most share targets refuse a file that big. And the chunks live only in
+   memory until the take ends, so a long take is also the one most likely to be killed by the
+   phone reclaiming the tab.
+   THE CAP STOPS THE TAKE, IT NEVER DISCARDS IT — it calls the ordinary stop, so the recording
+   goes through review → keep/retake → share exactly as if the person had tapped Stop themselves.
+   A warning lands first so the cut never arrives mid-sentence unannounced.
+   TO CHANGE THE LIMIT, CHANGE THESE TWO LINES AND NOTHING ELSE. At 20 Mbps the file size is
+   about 2.5 MB per second: 180s ~ 450 MB, 120s ~ 300 MB, 90s ~ 225 MB. Three minutes covers
+   every short-form format the app writes scripts for (Reels, TikTok, Shorts); if you want files
+   comfortably under 200 MB, set the max to 90000. */
+const TP_MAX_TAKE_MS = 180000;    // hard stop: 3 minutes
+const TP_WARN_TAKE_MS = 150000;   // "wrap up" warning: 30 seconds before the stop
+let tpMaxTakeT = null, tpWarnTakeT = null;
+// Cleared from every path that ends a take, so a finished take can never stop a later one.
+function tpClearTakeLimit(){
+  try { if (tpMaxTakeT) { clearTimeout(tpMaxTakeT); tpMaxTakeT = null; } } catch(e){}
+  try { if (tpWarnTakeT) { clearTimeout(tpWarnTakeT); tpWarnTakeT = null; } } catch(e){}
+}
 
 function defaultSettings() {
   return {
@@ -9518,6 +9541,7 @@ function closeTeleprompter() {
     { const _rl = document.getElementById('tpRecordLbl'); if (_rl) _rl.textContent = 'Record'; }
     document.getElementById('teleprompterOverlay').classList.remove('recording');
     if (tpRecTimerInterval) { clearInterval(tpRecTimerInterval); tpRecTimerInterval = null; }
+    tpClearTakeLimit();
     if (tpScrollTrackIv) { clearInterval(tpScrollTrackIv); tpScrollTrackIv = null; }
     document.getElementById('tpRecTimer').textContent = '0:00';
     // v560: the camera light, the microphone and the MediaPipe blur pump used to stay live for as
@@ -9981,6 +10005,7 @@ async function startTpRecord() {
       if (rolling) { try { stopTpRecord(); } catch(e){} return; }
       // Already dead: no onstop is coming, so stop the clock from lying about it.
       try { if (tpRecTimerInterval) { clearInterval(tpRecTimerInterval); tpRecTimerInterval = null; } } catch(e){}
+      tpClearTakeLimit();
       try { if (tpScrollTrackIv) { clearInterval(tpScrollTrackIv); tpScrollTrackIv = null; } } catch(e){}
       try { const b = document.getElementById('tpRecBtn'); if (b) b.classList.remove('recording'); } catch(e){}
       try { const l = document.getElementById('tpRecordLbl'); if (l) l.textContent = 'Record'; } catch(e){}
@@ -10029,6 +10054,19 @@ async function startTpRecord() {
   tpScrollTrackIv = setInterval(_sampleScroll, 150);
   updateRecTimer();
   tpRecTimerInterval = setInterval(updateRecTimer, 1000);
+  // v661: arm the length cap alongside the clock. Both timers are cleared by tpClearTakeLimit()
+  // on every path that ends a take.
+  tpClearTakeLimit();
+  tpWarnTakeT = setTimeout(() => {
+    try { showToast('Wrap up \u2014 filming stops automatically in 30 seconds.', 6000); } catch(e){}
+  }, TP_WARN_TAKE_MS);
+  tpMaxTakeT = setTimeout(() => {
+    try {
+      if (!(tpMediaRecorder && tpMediaRecorder.state === 'recording')) return;
+      showToast('That is the longest take the phone can turn into a video \u2014 saved what you filmed.', 7000);
+      stopTpRecord();   // the ordinary stop: review, keep or retake, exactly as if they tapped it
+    } catch(e){}
+  }, TP_MAX_TAKE_MS);
   return true;
 }
 
@@ -10040,6 +10078,7 @@ function stopTpRecord() {
   stopTpScroll();
   document.getElementById('teleprompterOverlay').classList.remove('recording');
   if (tpRecTimerInterval) { clearInterval(tpRecTimerInterval); tpRecTimerInterval = null; }
+  tpClearTakeLimit();
   if (tpScrollTrackIv) { clearInterval(tpScrollTrackIv); tpScrollTrackIv = null; }
   document.getElementById('tpRecTimer').textContent = '0:00';
   if (tpMediaRecorder && tpMediaRecorder.state !== 'inactive') {
@@ -10063,6 +10102,7 @@ function updateRecTimer() {
   // moment recording is no longer live — the number on screen has to mean something.
   if (!tpRecStartTime || (tpMediaRecorder && tpMediaRecorder.state !== 'recording')) {
     if (tpRecTimerInterval) { clearInterval(tpRecTimerInterval); tpRecTimerInterval = null; }
+    tpClearTakeLimit();   // v661: recording is no longer live — a pending cap must not fire later
     if (!tpRecStartTime) return;
   }
   const elapsed = Math.floor((Date.now() - tpRecStartTime) / 1000);
