@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// GATE: nothing the brand brain sends the model is ever cut in half, and a list the model is told
-//       to "obey ALL" of is never quietly shortened behind the user's back.
+// GATE: the brand brain never sends the model something it has quietly shortened, cut in half, or
+//       mislabelled. Three shapes of the same lie: a rule list the model is told to "obey ALL" of
+//       that is missing a quarter of its rules, a title cut mid-word, and a months-old competitor
+//       digest rendered under the heading "what rivals JUST did".
 //
 // WHY THIS EXISTS
 //   Two measured failures, both found by EXECUTING api/_brain.js rather than reading it:
@@ -121,6 +123,88 @@ if (line3 && !/padded out$/.test(line3)) {
       '. It must lose whole items, not half of one.');
 }
 
+// ── 5. the trends gatherer's brain summary loses whole PARTS, cheapest first ────────────────
+// Same defect, different file: api/_trends.js ended on `.join(' | ').slice(0, 1200)` over a string
+// built in fixed order, so the LAST parts were always the ones lost — and the last two are the two
+// that matter most to what this summary is for. It exists to SCOPE a web search and filter what
+// comes back; losing "avoid / off-topic" loses the filter itself, which is what stops a
+// peptide-research brand being handed celebrity headlines. Measured on a brand with every field
+// filled at ordinary length, the old code dropped both and ended mid-word.
+const { brainSummaryFrom } = require(path.join(root, 'api/_trends.js'));
+const rep = (w, n) => Array.from({ length: n }, (_, i) => w + i).join(', ');
+const FULL = {
+  brandName: 'Peptide Labs', communities: rep('research peptide community ', 6),
+  targetAudience: rep('longevity researcher ', 6), usps: rep('third-party tested batch ', 6),
+  competitors: rep('RivalBrand ', 10), painPoints: rep('worries about purity ', 6),
+  coachNotes: rep('never use the word unlock ', 9),
+  learnedSignals: 'Recently APPROVED (favor topics/angles like these): ' + rep('Approved title ', 6) +
+                  '  |  Recently DISMISSED (avoid these): ' + rep('Dismissed title ', 5),
+  bannedTopics: 'celebrity gossip, crypto, weight-loss before-and-afters, MLM',
+};
+const summary = brainSummaryFrom(FULL);
+if (!/RivalBrand|Pain points/.test(summary) === false && summary.length < 400) {
+  bad('brainSummaryFrom produced almost nothing for a fully-filled brand — the fixture is not exercising it.');
+}
+if (!/Avoid \/ off-topic for it/.test(summary)) {
+  bad('the trends brain summary drops "Avoid / off-topic for it" — the only part that says what to ' +
+      'THROW AWAY. Without it the gatherer can scope a search but not filter the results, which is ' +
+      'the exact complaint this summary was written to fix.');
+}
+if (!/Recent behavior/.test(summary)) {
+  bad('the trends brain summary drops the approved/dismissed behaviour, so gathering stops improving with use.');
+}
+// Whole parts only: every rendered part must still end where its own per-part cap put it, never mid-word.
+const lastPart = summary.split(' | ').pop() || '';
+if (/[A-Za-z]$/.test(lastPart) && !FULL.bannedTopics.endsWith(lastPart.split(': ').pop() || '\u0000')) {
+  // Only a real mid-word cut fails: the final part must match a complete source value.
+  const vals = Object.values(FULL).map(v => String(v));
+  const tailVal = lastPart.slice(lastPart.indexOf(': ') + 2);
+  if (!vals.some(v => v.startsWith(tailVal))) {
+    bad('the trends brain summary ends mid-value: ' + JSON.stringify(lastPart.slice(-60)));
+  }
+}
+// It must still be capped — this string is sent on every trend pull, for every brand.
+if (summary.length > 1700) bad('the trends brain summary is no longer capped: ' + summary.length + ' chars.');
+
+// ── 6. "Recent competitor moves" must actually be recent ───────────────────────────────────
+// The cron refreshes this weekly, but nothing ever EXPIRED it. If the refresh stops succeeding —
+// the XAI key is rotated out, the competitors field is cleared, the pulse returns '' — the last
+// digest is carried forward untouched and rendered under "Recent competitor moves (what rivals
+// just did)" with "Differentiate from, counter, or ride the same wave better than them." Telling
+// the model to counter a campaign that ended months ago is worse than saying nothing.
+const { contextFromBrandRow } = require(path.join(root, 'api/_brandctx.js'));
+const DAY = 86400000;
+const moves = age => contextFromBrandRow({ brand_name: 'A', auto_trends: age === null
+  ? { competitorMoves: 'Rival launched X' }
+  : { competitorMoves: 'Rival launched X', compAt: Date.now() - age } }).competitorMoves;
+if (!moves(3 * DAY)) {
+  bad('a competitor digest three days old is discarded — the expiry is so tight the feature never works.');
+}
+if (moves(120 * DAY)) {
+  bad('a competitor digest 120 days old still reaches the model under "what rivals JUST did", and the ' +
+      'prompt tells the model to counter it. The cron refreshes weekly, so that digest means the ' +
+      'refresh has been failing for months with nothing saying so.');
+}
+if (moves(null)) {
+  bad('a competitor digest with no timestamp is treated as fresh. An unknown age is not evidence of freshness.');
+}
+// And it must still render when it IS fresh, or the check above is satisfied by deleting the feature.
+if (!/Recent competitor moves/.test(B.fullBrandBlock({ brandName: 'A', competitorMoves: 'Rival launched X' }, {}))) {
+  bad('fullBrandBlock no longer renders competitorMoves at all.');
+}
+// The client applies the SAME expiry (app.html getCompetitorMoves). If the two drift, the legacy
+// full-context path uploads a digest the lean path would have dropped, and lean-payload.mjs's
+// field-for-field comparison starts failing for a reason that looks like a payload bug.
+const srvAge = (fs.readFileSync(path.join(root, 'api/_brandctx.js'), 'utf8')
+  .match(/COMP_MAX_AGE_MS\s*=\s*([^;]+);/) || [])[1];
+const cliAge = (appSrc.match(/CM_MAX_AGE_MS\s*=\s*([^;]+);/) || [])[1];
+if (!cliAge) bad('app.html has no CM_MAX_AGE_MS, so the client no longer expires the competitor digest ' +
+                 'and will upload one the server would have dropped.');
+else if (!srvAge) bad('api/_brandctx.js has no COMP_MAX_AGE_MS.');
+else if (eval(srvAge) !== eval(cliAge)) {
+  bad(`the client and server competitor-digest expiries have drifted: client ${cliAge.trim()}, server ${srvAge.trim()}.`);
+}
+
 if (fails.length) {
   console.error('FAIL:');
   fails.forEach(f => console.error('  - ' + f));
@@ -128,5 +212,7 @@ if (fails.length) {
 }
 console.log(`brand-brain field budgets verified: all ${SOFT_CAP} Voice Memory rules reach the model whole, ` +
             'overflow drops whole rules newest-first and says so in the heading, and the taste signal ' +
-            'budgeter\'s output is never re-sliced.');
+            'budgeter\'s output is never re-sliced. The trends brain summary keeps its filter and its ' +
+            'behaviour signal, dropping cheaper parts whole instead of blind-slicing the tail. A ' +
+            'competitor digest older than the expiry is dropped rather than shown as "what rivals just did".');
 console.log('PASS');

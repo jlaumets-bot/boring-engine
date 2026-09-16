@@ -2,6 +2,49 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-16 — v666. The brain had stopped learning, and was quoting a stale competitor digest as news.
+**DEPLOY STATE: UNDEPLOYED.** Stamped by `scripts/stamp-build.js` — see `sw.js`. **57 gates, 56 green.**
+Ships on top of v665; the same `sql/v665-edit-signal-provenance.sql` is still the only SQL to run.
+
+**1. AUTO-LEARNING SWITCHED ITSELF OFF AT 60 EDITS.** `brainAutoDistill` fires when
+`since = total - brain_last_distill_count >= 4`, and `total` counted `edit_signals.length` — a list
+`saveEditSignals` caps at the newest **60**. Past 60 lifetime edits `total` is pinned at its ceiling,
+`since` can never reach 4 again, and **the brand brain stops learning forever**, silently, on exactly
+the accounts using the app the most. `brain_edit_total` is now a lifetime tally that only rises.
+
+**2. A FAILED DISTILL ATE THE SIGNALS.** The watermark advanced as soon as a response arrived, before
+anything checked it contained rules — so a **402 (over the plan limit)** or a 5xx marked those edits
+learned and they were never revisited. Work done while over the limit was burned. Only
+`resp.ok && Array.isArray(data.rules)` advances it now; the COOLDOWN still advances either way, or a
+failing endpoint gets re-called on every render.
+
+**3. THE TRENDS GATHERER LOST ITS FILTER.** `brainSummaryFrom` (`api/_trends.js`) ended on
+`.join(' | ').slice(0, 1200)` over a fixed-order string, so the LAST parts always went. Measured on a
+fully-filled brand: **`Recent behavior` and `Avoid / off-topic for it` both MISSING**, ending mid-word.
+That summary exists to scope a web search and filter the results — losing "avoid / off-topic" loses
+the filter, which is the whole reason a peptide brand stops getting celebrity headlines. Now ranked
+drops of WHOLE parts (cap 1600); the filter ranks just under the niche itself.
+
+**4. "RECENT COMPETITOR MOVES" COULD BE MONTHS OLD.** The cron REFRESHES weekly; nothing ever
+EXPIRED it. If the refresh stops succeeding (XAI key rotated, competitors field cleared, pulse
+returns ''), the last digest is carried forward forever and rendered as *"what rivals just did"* with
+*"Differentiate from, counter, or ride the same wave better than them"* — and told to the person as
+*"A competitor just made a move worth a reaction"*. **`COMP_MAX_AGE_MS` / `CM_MAX_AGE_MS` = 28 days**,
+one constant each side, and a gate fails if they drift. A missing `compAt` means unknown age, which
+is not freshness. The competitor pulse PANEL is untouched — it prints the digest's real age.
+
+**NEW GATE `brain-learning-loop.mjs`** runs the real `brainCountNewSignals` / `saveEditSignals` /
+`brainAutoDistill` against a fake localStorage and a fake fetch. 4 mutations, all caught.
+`brain-field-budgets.mjs` grew sections 5 and 6 (3 more mutations caught).
+**`data-integrity-p1p8.mjs`'s saveEditSignals stub was key-blind** — it recorded whatever the last
+`lsSet` wrote, whatever key — so adding a second stored value broke two assertions for a reason
+unrelated to what they test. Fixed, plus a new assertion on the lifetime tally.
+
+**STILL OPEN IN THE BRAIN:** `brainDistill` has no call site, so auto-distilled rules enter Voice
+Memory unreviewed. Then: generation contracts (`remix.js:191` raw JSON -> `escapeHtml` throws and
+**permanently bricks the Create tab** — SHIPS-BROKEN, do this next), connections, controls. Money and
+security LAST, per Jörgen.
+
 ## ▶▶ 2026-09-16 — v665. The brand brain stopped learning from itself, and stopped lying about what it knows.
 **DEPLOY STATE: UNDEPLOYED.** Stamped `v665-50cd6e31+api.edb2a33f`. **56 gates, 55 green**
 (`build-stamp` cannot run in the sandbox — see the v660 entry).

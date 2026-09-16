@@ -308,25 +308,64 @@ async function pullXTrends(keywords, token, maxAgeHours) {
 // Compact brand-brain summary used to SCOPE + relevance-filter incoming info AT THE SOURCE.
 // Relevance should come from the brain — this is how we hand the brain to the search. Tolerant of both
 // the cron brand row (target_audience, voice_extra.painPoints) and the frontend getBrandContext() shape.
+// v665 — DROP WHOLE PARTS, CHEAPEST FIRST. This ended on `.join(' | ').slice(0, 1200)`, a blind
+// cut on a string built in a fixed order — so the LAST parts were always the ones lost, and the
+// last two are the two that matter most to this function's actual job. Measured on a brand with
+// every field filled at ordinary length (1200 chars of a 2200-char summary):
+//     MISSING  Recent behavior — favor the APPROVED topics, steer clear of the DISMISSED
+//     MISSING  Avoid / off-topic for it
+//     ends with: "...never use the word unlock 5, never use the word unlock 6, ne"
+// This string exists to SCOPE a web search and filter what comes back. Losing "avoid / off-topic"
+// is losing the filter itself — it is exactly what stops a peptide-research brand being handed
+// celebrity and wellness headlines, which is the complaint this summary was written to fix. And
+// losing the approved/dismissed behaviour means gathering stops improving with use.
+// RENDER ORDER IS UNCHANGED — only the DROP order is ranked, same discipline as fullBrandBlock
+// in api/_brain.js. A part is whole or absent; the summary never ends mid-word.
+const SUMMARY_CAP = 1600;
 function brainSummaryFrom(o) {
   if (!o || typeof o !== 'object') return '';
   const ve = (o.voice_extra && typeof o.voice_extra === 'object') ? o.voice_extra : o;
   const parts = [];
-  const push = (label, v, max) => { const s = Array.isArray(v) ? v.join(', ') : v; if (s && String(s).trim()) parts.push(label + ': ' + String(s).replace(/\s+/g, ' ').trim().slice(0, max || 180)); };
-  push('Brand', o.brandName || o.brand_name);
-  push('Niche/communities', o.communities);
-  push('Audience', o.targetAudience || o.target_audience);
-  push('What it offers', o.usps);
-  push('Competitors (look for gap / differentiator angles vs these)', ve.competitors || o.competitors);
-  push('Pain points it speaks to', ve.painPoints || o.painPoints);
+  const push = (label, v, max, keep) => {
+    const s = Array.isArray(v) ? v.join(', ') : v;
+    if (s && String(s).trim()) parts.push({ keep: keep == null ? 50 : keep,
+      text: label + ': ' + String(s).replace(/\s+/g, ' ').trim().slice(0, max || 180) });
+  };
+  push('Brand', o.brandName || o.brand_name, 180, 100);
+  push('Niche/communities', o.communities, 180, 95);          // what the search is even about
+  push('Audience', o.targetAudience || o.target_audience, 180, 80);
+  push('What it offers', o.usps, 180, 65);
+  push('Competitors (look for gap / differentiator angles vs these)', ve.competitors || o.competitors, 180, 50);
+  push('Pain points it speaks to', ve.painPoints || o.painPoints, 180, 75);
   // Voice Memory = the LEARNED, ever-evolving rules (distilled from what the brand approves / dismisses /
   // edits). Weighting it here is what makes GATHERING relevance improve over time, not just WRITING.
-  push('Learned rules to weight (what this brand keeps vs rejects)', ve.coachNotes || o.coachNotes, 280);
+  push('Learned rules to weight (what this brand keeps vs rejects)', ve.coachNotes || o.coachNotes, 280, 55);
   // Raw ever-evolving behavior: favor topics/angles the brand recently APPROVED, avoid the DISMISSED.
   // This is what makes gathering both LEARN and RANK by demonstrated preference, not just static fields.
-  push('Recent behavior — favor the APPROVED topics, steer clear of the DISMISSED', ve.learnedSignals || o.learnedSignals, 340);
-  push('Avoid / off-topic for it', ve.bannedTopics || o.bannedTopics || ve.avoidWords || o.avoidWords);
-  return parts.join(' | ').slice(0, 1200);
+  push('Recent behavior — favor the APPROVED topics, steer clear of the DISMISSED', ve.learnedSignals || o.learnedSignals, 340, 70);
+  // THE FILTER. Ranked just under the niche itself: without it this summary can only say what to
+  // look for, never what to throw away — and it was the first thing the old blind slice deleted.
+  push('Avoid / off-topic for it', ve.bannedTopics || o.bannedTopics || ve.avoidWords || o.avoidWords, 180, 92);
+
+  const size = s => s.text.length + 3;   // + the ' | ' that joins it to the next part
+  let total = parts.reduce((n, s) => n + size(s), 0);
+  if (total > SUMMARY_CAP) {
+    // Ties break toward dropping the LATER part, so the result is deterministic.
+    const cheapestFirst = parts.map((s, i) => [s, i]).sort((a, b) => (a[0].keep - b[0].keep) || (b[1] - a[1]));
+    let alive = parts.length;
+    for (const [s] of cheapestFirst) {
+      if (total <= SUMMARY_CAP || alive <= 1) break;   // always keep at least one part
+      s.dropped = true; alive--; total -= size(s);
+    }
+  }
+  const out = parts.filter(s => !s.dropped).map(s => s.text).join(' | ');
+  // Only reachable if ONE part is longer than the whole budget, which the per-part caps above
+  // already prevent. Cut on a part boundary rather than mid-word if it ever is.
+  if (out.length > SUMMARY_CAP) {
+    const b = out.lastIndexOf(' | ', SUMMARY_CAP);
+    return out.slice(0, b > 0 ? b : SUMMARY_CAP);
+  }
+  return out;
 }
 
 async function pullGrokTrends(keywords, maxAgeHours, brainObj) {

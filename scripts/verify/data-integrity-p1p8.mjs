@@ -645,14 +645,21 @@ section('P8 — photo size cap, stale stage tab, doneAt, state[id] guards, saveE
 {
   // ── saveEditSignals: BEHAVIOURAL, with a control ──────────────────────────────
   const sigSrc = extractFn('saveEditSignals');
+  // v665: the stub is now KEY-AWARE. It used to record whatever the last lsSet wrote, whatever key
+  // it was for — so the moment saveEditSignals started keeping a second value (the lifetime edit
+  // tally brainCountNewSignals needs) these assertions read that instead of the signal list and
+  // failed for a reason that had nothing to do with what they test.
   const runSig = (src, name, stored) => {
-    let saved = null;
+    const wrote = {};
     const fn = compile(src, name, {
-      lsGet: () => stored, lsSet: (k, v) => { saved = v; },
+      lsGet: k => (k === 'edit_signals' ? stored : (k in wrote ? wrote[k] : null)),
+      lsSet: (k, v) => { wrote[k] = String(v); },
       currentBrand: null, sb: null, Date, console: { error() {} },
     });
-    try { fn([{ field: 'hook', before: 'a', after: 'b' }]); return { threw: false, saved }; }
-    catch (e) { return { threw: true, error: e, saved }; }
+    const out = { wrote, get saved() { return wrote.edit_signals == null ? null : wrote.edit_signals; } };
+    try { fn([{ field: 'hook', before: 'a', after: 'b' }]); out.threw = false; }
+    catch (e) { out.threw = true; out.error = e; }
+    return out;
   };
   const OLD_SIG = `function saveEditSignals_OLD(newOnes) {
     let arr = [];
@@ -671,6 +678,14 @@ section('P8 — photo size cap, stale stage tab, doneAt, state[id] guards, saveE
   const newNormal = runSig(sigSrc, 'saveEditSignals', '[{"field":"old"}]');
   ok('NEW saveEditSignals still appends to a healthy list',
     !newNormal.threw && JSON.parse(newNormal.saved).length === 2);
+  // v665 — THE LIFETIME TALLY. `edit_signals` is capped at the newest 60, and brainCountNewSignals
+  // used its length as "how much has this brain been taught". So at 60 lifetime edits the count
+  // stopped rising, `since` could never reach the auto-distill threshold again, and the brand brain
+  // stopped learning FOREVER on the accounts using the app most. saveEditSignals must keep a tally
+  // that only grows. (The behaviour is proved end to end in brain-learning-loop.mjs; this is the
+  // writer's own half.)
+  ok('saveEditSignals keeps a lifetime edit tally that outlives the 60-signal cap',
+    newNormal.wrote.brain_edit_total === '1', JSON.stringify(newNormal.wrote.brain_edit_total));
 
   // the approval path must not be abortable by it
   ok('[structural] tvCaptureEdits cannot abort an approval on a signal failure',

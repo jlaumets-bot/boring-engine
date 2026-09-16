@@ -159,6 +159,11 @@ function dayCommunitiesFrom(dayRotation, communities) {
   return Object.assign({}, DAY_COMMUNITIES_DEFAULT);
 }
 
+// The cron refreshes the competitor pulse every 7 days (COMP_STALE_MS in api/pull-trends.js and
+// api/pull-trends-cron.js). This is the separate, harder limit: how old a digest may be and still
+// be shown to the model as "recent".
+const COMP_MAX_AGE_MS = 28 * 24 * 3600 * 1000;
+
 function contextFromBrandRow(b) {
   const v = (b && b.voice_extra) || {};
   const at = (b && b.auto_trends) || {};
@@ -188,7 +193,18 @@ function contextFromBrandRow(b) {
     coachNotes: v.coachNotes || '',
     voiceSample: v.voiceSample || '',   // v649 — the founder's spoken transcript; the lean path must carry it or Quick Post loses the voice
     voiceLog: Array.isArray(v.voiceLog) ? v.voiceLog.slice(-8) : [],   // v650 — recent things they said into the app's mics
-    competitorMoves: at.competitorMoves || '',
+    // v665 — "RECENT competitor moves" MUST ACTUALLY BE RECENT.
+    // The cron REFRESHES this weekly but nothing ever EXPIRES it: if the refresh stops succeeding
+    // — the XAI key is rotated out, the competitors field is cleared, the pulse returns '' — the
+    // last digest is carried forward untouched, run after run, and rendered to the model under
+    // "Recent competitor moves (what rivals just did — products, pricing, campaigns, posts)" with
+    // "Differentiate from, counter, or ride the same wave better than them." A digest from months
+    // ago is not just useless there, it is actively wrong: the app tells the model to counter a
+    // campaign that ended. Four weeks is generous against a weekly refresh — anything older means
+    // the refresh has failed roughly four times running, and silence is more honest than a stale
+    // claim. `compAt` of 0 means the age is unknown, which is not evidence of freshness.
+    competitorMoves: (at.competitorMoves && (Date.now() - (+at.compAt || 0)) <= COMP_MAX_AGE_MS)
+      ? at.competitorMoves : '',
     dayRotation: dayCommunitiesFrom(b.day_rotation, b.communities),
     // The app is Grok-only; app.html's getEngine() hard-returns this.
     engine: 'grok',

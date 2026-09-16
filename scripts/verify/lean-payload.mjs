@@ -63,6 +63,7 @@ const CLIENT_SRC = [
   grabLine('DAYS'), grabLine('DAY_COMMUNITIES_DEFAULT'), grabLine('DELIVERY_FORMATS'),
   grabLine('VL_TREND_TTL_MS'), grabLine('VL_TREND_CAP'), grabLine('CS_AVOID_MARK'),
   grabFn('defaultSettings'), grabFn('brandToSettings'), grabFn('getDayCommunities'),
+  grabLine('CM_MAX_AGE_MS'), grabFn('getCompetitorMoves'),
   grabFn('getEngine'), grabFn('getLearnedSignalsCompact'), grabFn('getApprovedExamples'),
   grabFn('getTrendStore'), grabFn('_atDismissed'), grabFn('getAutoTrends'), grabFn('getRecentTrends'),
   grabFn('getBrandContext'), grabFn('_tvBcFieldCount'), grabFn('_tvAvoidLocal'),
@@ -114,6 +115,9 @@ const BRAND_ROW = {
   auto_trends: {
     at: Date.now(),
     competitorMoves: pad('competitorMoves', 800),
+    // v665: a digest with no `compAt` is of unknown age and BOTH sides now drop it — the fixture
+    // has to say when this one was gathered or it tests the expiry instead of the payload.
+    compAt: Date.now(),
     items: [
       { text: 'AUTOTREND_kept sodium loading goes mainstream', ts: Date.now() },
       { text: 'AUTOTREND_dismissed battery electrolyte breakthrough', ts: Date.now() },

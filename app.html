@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v665';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v666';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -9155,8 +9155,17 @@ function switchView(view) {
 
 // ===== STATS =====
 function brainCountNewSignals() {
+  // v665 — THE COUNTER USED TO STOP GROWING, AND AUTO-LEARNING STOPPED WITH IT.
+  // `edit_signals` is capped at the newest 60 (saveEditSignals' slice(-60)), so this length stops
+  // rising at 60. `since` is `total - brain_last_distill_count`, and once total is pinned at its
+  // ceiling `since` can never reach 4 again — so on any account past 60 lifetime edits, the brand
+  // brain quietly stopped learning forever, with nothing on screen to say so. The people it
+  // stopped working for are precisely the people using the app most.
+  // `brain_edit_total` is a lifetime tally that only ever increases. Falling back to the stored
+  // list's length keeps existing accounts working until their next edit seeds the tally.
   let edits = 0;
   try { edits = JSON.parse(lsGet('edit_signals') || '[]').length; } catch(e) {}
+  try { edits = Math.max(edits, +(lsGet('brain_edit_total') || 0) || 0); } catch(e) {}
   const dismissed = state.filter(i => i.status === 'dismissed' && i.dismissReason).length;
   const approvedReasons = state.filter(i => i.approveReason).length;
   const total = edits + dismissed + approvedReasons;
@@ -9216,8 +9225,16 @@ async function brainAutoDistill() {
     const data = await resp.json();
     if (!_sameBrand()) return;   // v643: the rules belong to the brand that produced the signals
     const rules = (data && data.rules) || [];
-    try { lsSet('brain_last_distill_count', String(counts.total)); } catch(e) {}
+    // v665 — ONLY A SUCCESSFUL DISTILL CONSUMES THE SIGNALS.
+    // The watermark used to advance here unconditionally. So a 402 (over the plan limit), a 5xx,
+    // or any reply without a `rules` array marked those signals as already-learned and they were
+    // never looked at again: the edits made while someone was over their limit were silently
+    // burned. The COOLDOWN still advances either way — otherwise a consistently failing endpoint
+    // would be re-called on every render — but the signals stay unconsumed and are picked up on
+    // the next run.
+    const distilled = resp.ok && Array.isArray(data && data.rules);
     try { lsSet('brain_last_distill_time', String(Date.now())); } catch(e) {}
+    if (distilled) { try { lsSet('brain_last_distill_count', String(counts.total)); } catch(e) {} }
     if (rules.length) {
       const lines = (settings.coachNotes || '').split('\n').map(l => l.trim()).filter(Boolean);
       let added = 0, skipped = 0;
@@ -14199,6 +14216,12 @@ function saveEditSignals(newOnes) {
   try { arr = arr.concat(Array.isArray(newOnes) ? newOnes : [newOnes]).slice(-60); }   // recency cap
   catch(e) { arr = Array.isArray(newOnes) ? newOnes.slice(-60) : []; }
   try { lsSet('edit_signals',JSON.stringify(arr)); } catch(e) {}
+  // v665: the lifetime tally brainCountNewSignals needs. `arr` is capped at 60, so its length
+  // cannot be the measure of how much the brain has been taught.
+  try {
+    const n = Array.isArray(newOnes) ? newOnes.length : 1;
+    lsSet('brain_edit_total', String((+(lsGet('brain_edit_total') || 0) || 0) + n));
+  } catch(e) {}
   // best-effort durable copy (own brand only; safe if table missing)
   try {
     if (currentBrand && sb) {
@@ -21586,7 +21609,7 @@ function getBrandContext(fmt) {
     // Pass the target format where the caller knows it — without it, format-matching is
     // bypassed and a statement can be written against four approved videos.
     approvedExamples: getApprovedExamples(fmt),
-    competitorMoves: (typeof currentBrand!=='undefined' && currentBrand && currentBrand.auto_trends && currentBrand.auto_trends.competitorMoves) || '',
+    competitorMoves: getCompetitorMoves(),
     recentTrends: getRecentTrends(),
     dayRotation: getDayCommunities(),
     engine: getEngine(),
@@ -21629,6 +21652,26 @@ function getLearnedSignalsCompact(){
     if (downKeep.length) parts.push('Recently DISMISSED (avoid these): ' + downKeep.join(' · '));
     return parts.join('  |  ');
   }catch(e){ return ''; }
+}
+// v665 — "RECENT competitor moves" MUST ACTUALLY BE RECENT.
+// The cron refreshes this weekly but nothing ever EXPIRED it: if the refresh stops succeeding —
+// the XAI key is rotated out, the competitors field is cleared, the pulse returns '' — the last
+// digest is carried forward untouched. It then reaches the model under "Recent competitor moves
+// (what rivals just did)" with "Differentiate from, counter, or ride the same wave better than
+// them", and reaches the PERSON as "A competitor just made a move worth a reaction". Both are
+// telling them to react to a campaign that ended.
+// MUST MATCH COMP_MAX_AGE_MS in api/_brandctx.js — the server drops the same digest on the lean
+// path, and lean-payload.mjs compares the two contexts field for field.
+// The Competitor pulse PANEL does not use this: it prints the digest's real age beside it, so it
+// is honest at any age. This is for the two places that assert freshness.
+const CM_MAX_AGE_MS = 28 * 24 * 3600 * 1000;
+function getCompetitorMoves() {
+  try {
+    const at = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.auto_trends) || {};
+    if (!at.competitorMoves) return '';
+    // compAt 0 means the age is unknown, which is not evidence of freshness.
+    return (Date.now() - (+at.compAt || 0)) <= CM_MAX_AGE_MS ? at.competitorMoves : '';
+  } catch (e) { return ''; }
 }
 // Top approved posts as few-shot exemplars for GENERATION — the strongest voice signal is real winners.
 function getApprovedExamples(fmt){
@@ -23578,7 +23621,8 @@ setTimeout(() => {
       var trends = (typeof getAutoTrends==='function') ? getAutoTrends() : null;
       var titem = (trends && trends.items && trends.items.length) ? (trends.items[0].text||'') : '';
       if (titem) return { text:'Trending in your niche right now: "'+_clipSug(titem,80)+'". Want a post that rides it while it\'s hot?', action:{ label:'Ride this trend →', fn:function(){ try{ switchView('viral'); }catch(e){} } } };
-      var cm = (typeof currentBrand!=='undefined' && currentBrand && currentBrand.auto_trends && currentBrand.auto_trends.competitorMoves) || '';
+      // v665: expired digests do not get to say "just". See getCompetitorMoves.
+      var cm = (typeof getCompetitorMoves==='function') ? getCompetitorMoves() : '';
       if (cm){ var first=_cmFirstMove(cm); if(first) return { text:'A competitor just made a move worth a reaction: '+first+' Want an angle?', action:{ label:'Work out an angle 🎙', fn:function(){ mascotAskCoach('A competitor did this: '+first+'. Give me a sharp, on-brand angle to respond with.'); } } }; }
       var st = (typeof state!=='undefined' && Array.isArray(state)) ? state : [];
       var pending = st.filter(function(i){ return i && i.status==='pending'; }).length;
