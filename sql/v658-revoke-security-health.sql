@@ -105,7 +105,14 @@ begin
       ('lookup_invite',         array['anon','authenticated']),
       ('redeem_invite',         array['authenticated']),
       ('pin_brand_id',          array[]::text[]),
-      ('brands_pin_ownership',  array[]::text[])
+      ('brands_pin_ownership',  array[]::text[]),
+      -- v659: added by sql/v659-brand-limit.sql. brands_enforce_limit is a trigger function
+      -- (callable only as a trigger); brand_limit_for is a pure lookup that leaks nothing, but
+      -- both arrive on the PostgreSQL default PUBLIC EXECUTE grant like everything else here, and
+      -- scripts/verify/invite-link-owner-delete.mjs fails until every function in sql/** is named
+      -- in this file. RE-RUN THIS FILE after running sql/v659-brand-limit.sql.
+      ('brand_limit_for',       array[]::text[]),
+      ('brands_enforce_limit',  array[]::text[])
     ) as t(fn, keep)
   loop
     -- Overloads are handled by looping over pg_proc rather than typing a signature:
@@ -174,7 +181,9 @@ with expected(fn, allowed) as (
          ('lookup_invite',        array['anon','authenticated','service_role']),
          ('redeem_invite',        array['authenticated','service_role']),
          ('pin_brand_id',         array['service_role']),
-         ('brands_pin_ownership', array['service_role'])
+         ('brands_pin_ownership', array['service_role']),
+         ('brand_limit_for',      array['service_role']),
+         ('brands_enforce_limit', array['service_role'])
 ),
 fns as (
   select p.oid, p.proname, p.proowner,
@@ -209,6 +218,6 @@ join fns f on f.proname = e.fn
 where not has_function_privilege(r.oid, f.oid, 'EXECUTE')
   -- pin_brand_id / brands_pin_ownership fire as triggers, not as calls; service_role is
   -- granted them for symmetry only, so do not fail if that grant is absent.
-  and not (e.fn in ('pin_brand_id','brands_pin_ownership'))
+  and not (e.fn in ('pin_brand_id','brands_pin_ownership','brand_limit_for','brands_enforce_limit'))
 
 order by 1, 2;

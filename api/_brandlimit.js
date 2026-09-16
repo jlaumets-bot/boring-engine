@@ -28,15 +28,24 @@
 const store = require('./_publish/store');
 
 // Brands a plan may OWN. From the pricing page, which is what the company actually sells:
-// Free is "40 posts a month, one brand", Pro is a bigger allowance with no multi-brand claim,
-// and "Multiple brands & seats for your team" is listed only under Agency. The trial is "Try Pro
-// free for 7 days", so it inherits Pro's.
+// Free is "40 posts a month, one brand" (index.html:702). Pro is sold as TWO brands —
+// "2 brands on one account" (index.html:715) — and "Multiple brands & seats for your team" is
+// listed only under Agency (index.html:729), which is why Agency alone is unbounded. The trial is
+// "Try Pro free for 7 days" (index.html:695), so it inherits Pro's: `trial` and `pro` must carry
+// the SAME number, always, or a trialist gets less than the thing they are trialling.
+// `starter` stays at one: it is a plan KEY only, never sold anywhere in the product
+// (STRIPE-SETUP.md:35 — "exists as a plan key in the code but is not offered anywhere in the
+// app"), so there is no promise to honour until somebody decides what it sells.
 //
 // THIS TABLE IS THE POLICY. It is deliberately the only place a brand count is decided — change
-// it here and every caller changes with it. NOTE that today's client rule is looser than this
-// (it only ever locks `free`), so pointing app.html at this WILL tighten trial/starter/pro from
-// unlimited to one: that is a product decision, and it is this line, not a rewrite.
-const BRAND_LIMITS = { trial: 1, free: 1, starter: 1, pro: 1, agency: Infinity };
+// it here and every caller changes with it. But it is only HALF of the promise: the other half is
+// the Pro card in index.html, and if the two drift apart the price page is selling something the
+// server will not give. scripts/verify/brand-limit-wire.mjs fails when the number here is not
+// stated on that card, in either direction.
+// NOTE that today's client rule is looser than this (it only ever locks `free`), so pointing
+// app.html at this WILL tighten starter from unlimited to one and trial/pro from unlimited to
+// two: that is a product decision, and it is this line, not a rewrite.
+const BRAND_LIMITS = { trial: 2, free: 1, starter: 1, pro: 2, agency: Infinity };
 // Unknown plan names fall back to the free allowance, matching _usage.limitFor.
 function brandLimitFor(plan) {
   return BRAND_LIMITS[plan] != null ? BRAND_LIMITS[plan] : BRAND_LIMITS.free;

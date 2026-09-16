@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v659';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v660';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -8446,6 +8446,11 @@ function clearBrandLocalCache(){
 // Teleprompter state
 let tpScrolling = false, tpInterval = null, tpFontSize = 32, tpCameraStream = null;
 let tpMediaRecorder = null, tpRecordedChunks = [], tpRecTimerInterval = null, tpRecStartTime = null, tpScrollTrackIv = null;
+// v660: the floor that separates "a container header and no frames" from "a real take".
+// videoBitsPerSecond is 20_000_000, so even a fraction of a second is hundreds of KB; a take
+// at or under this is not a take, and telling the user it recorded is a lie they only discover
+// when they try to post it.
+const TP_MIN_TAKE_BYTES = 8192;
 
 function defaultSettings() {
   return {
@@ -9530,13 +9535,32 @@ function closeTeleprompter() {
     // v560: the overlay used to be closed ONLY from inside onstop, so a recorder that never fires
     // stop (device seized, tab throttled, decode failure) left the user stranded on "Saving video..."
     // with no button and no way out. Close it honestly instead.
+    // v660: SALVAGE BEFORE GIVING UP. The recorder was started with start(1000), so by the time
+    // this fires tpRecordedChunks already holds one Blob per second of the take. The old body
+    // tore the camera down and dropped them, telling a user who had just filmed three minutes
+    // that nothing could be saved — while a playable file sat in memory. Assemble exactly what
+    // the normal path assembles and hand it over; only report a loss if there is truly nothing.
+    let _tpSalvaged = false;
     const _tpStopWd = setTimeout(() => {
       if (_tpClosed) return;
+      let _sb = null, _sn = '';
+      try {
+        const _ext = (tpMediaRecorder && (tpMediaRecorder.mimeType || '').includes('mp4')) ? 'mp4' : 'webm';
+        _sb = new Blob(tpRecordedChunks, { type: (tpMediaRecorder && tpMediaRecorder.mimeType) || 'video/webm' });
+        _sn = 'content-shrimp-' + new Date().toISOString().slice(0,19).replace(/[T:]/g,'-') + '.' + _ext;
+      } catch(e){ _sb = null; }
       _tpTeardown();
+      if (_sb && _sb.size > TP_MIN_TAKE_BYTES) {
+        _tpSalvaged = true;
+        try { showToast("The camera stopped responding, so we saved what was filmed up to that point.", 7000); } catch(e){}
+        try { tpShareOrSave(_sb, _sn); } catch(e){ try { tpDownloadBlob(_sb, _sn); } catch(e2){} }
+        return;
+      }
       try { showToast("Couldn't finish saving that take \u2014 the camera stopped responding.", 7000); } catch(e){}
     }, 8000);
     tpMediaRecorder.onstop = async () => {
       try { clearTimeout(_tpStopWd); } catch(e){}
+      if (_tpSalvaged) return;   // the watchdog already handed this take over; do not share it twice
       try {
         const ext = (tpMediaRecorder.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
         const blob = new Blob(tpRecordedChunks, { type: tpMediaRecorder.mimeType || 'video/webm' });
@@ -9544,7 +9568,11 @@ function closeTeleprompter() {
         // v560: the same guard startTpRecord's own onstop already has. A ZERO-BYTE take never
         // recorded, so "Video shared!" / "Sent to your Downloads" was a claim about a file that
         // does not exist. Say what actually happened.
-        if (!blob.size) {
+        // v660: was `!blob.size`, which only caught an EXACTLY zero-byte take. A recorder that
+        // emitted a container header and no frames yields a few hundred bytes — truthy — so the
+        // user got the "Filmed ✓" beat and a review card playing a black rectangle. At 20 Mbps
+        // nothing real is under a few KB, so a floor separates "header only" from "a take".
+        if (blob.size <= TP_MIN_TAKE_BYTES) {
           _tpTeardown();
           try { showToast("That take didn't record \u2014 nothing was captured. Check camera and mic access, then film it again.", 7000); } catch(_){}
           return;
@@ -9797,15 +9825,30 @@ try { const _lv = parseInt(localStorage.getItem('tp_lipsync_ms'), 10); if (_lv >
 // the stream the recorder + preview should use: blurred when active, else raw
 function tpActiveStream(){ return (tpBlur.on && tpBlur.outStream && tpBlur.ready()) ? tpBlur.outStream : tpCameraStream; }
 function tpSyncBlurBtn(){ const b = document.getElementById('tpBlurBtn'); if (b) b.classList.toggle('on', !!(tpBlur.wanted && tpBlur.on)); }
+/* v660: TAPPING "BLUR BG" TWICE WHILE IT LOADS LEFT BLUR PERMANENTLY ON BEHIND AN OFF BUTTON.
+   start() awaits a MediaPipe script from a CDN — seconds on mobile data — and had no
+   cancellation check after that await, while this function had no re-entrancy guard. Tap on,
+   change your mind, tap off: stop() runs, then the still-pending start() resolves, builds the
+   segmenter anyway and sets on = true. tpSyncBlurBtn shows OFF because it reads `wanted`. At
+   Record, `if (tpBlur.on)` then applies the 90-320ms audio delay and tpActiveStream() hands the
+   recorder the blur canvas — so the take comes out blurred and out of sync from a button that
+   says off, and the lip-sync correction UI is hidden because it is gated on `wanted`. The only
+   remedy was to film it again.
+   A generation token fixes both halves: a later call invalidates an earlier one, and the
+   earlier one tears down whatever it built instead of installing it. */
+let _tpBlurGen = 0;
 async function tpApplyBlurPreference(){
+  const gen = ++_tpBlurGen;
+  const stale = () => gen !== _tpBlurGen;
   const v = document.getElementById('tpCameraFeed');
   if (tpBlur.wanted && tpCameraStream) {
     const out = await tpBlur.start(tpCameraStream);
+    if (stale()) { try { tpBlur.stop(); } catch(e){} return; }   // a newer tap already decided
     // v537: don't trust blur until real segmented frames are actually flowing —
     // a stalled/failed segmenter would record a near-static canvas against live
     // audio (= "doesn't blur" AND "voice ahead of lips"). Wait, then verify.
     let ready = false;
-    if (out) { for (let i = 0; i < 30 && !(ready = tpBlur.ready()); i++) { await new Promise(r => setTimeout(r, 100)); } }
+    if (out) { for (let i = 0; i < 30 && !(ready = tpBlur.ready()); i++) { await new Promise(r => setTimeout(r, 100)); if (stale()) { try { tpBlur.stop(); } catch(e){} return; } } }
     if (out && ready) {
       if (v) v.srcObject = out;   // preview the blur only once it's genuinely running
     } else {
@@ -9818,6 +9861,10 @@ async function tpApplyBlurPreference(){
     tpBlur.stop();
     if (v && tpCameraStream) v.srcObject = tpCameraStream;
   }
+  if (stale()) return;
+  // v660: the button and the engine must never disagree. If a race still left blur running
+  // while the user wants it off, stop it here rather than letting it reach the recorder.
+  if (!tpBlur.wanted && tpBlur.on) { try { tpBlur.stop(); } catch(e){} if (v && tpCameraStream) v.srcObject = tpCameraStream; }
   tpSyncBlurBtn();
 }
 async function tpToggleBgBlur(btn){
@@ -9831,7 +9878,10 @@ async function tpToggleBgBlur(btn){
 async function startTpRecord() {
   if (!(await tpEnsureCamera(false))) return false;
   if (tpBlur.wanted && !tpBlur.on) { try { await tpApplyBlurPreference(); } catch(e){} }
-  if (tpBlur.on) { try { await tpBlur.applyRecordAudio(); } catch(e){} }   // v544: delayed audio under the Record gesture (fixes lips lagging voice)
+  // v660: `on && wanted`, never `on` alone. The audio delay exists to compensate for the blur
+  // pipeline; applying it to a take that is NOT being blurred puts the voice behind the lips
+  // for no reason, and the correction UI is gated on `wanted` so the user cannot undo it.
+  if (tpBlur.on && tpBlur.wanted) { try { await tpBlur.applyRecordAudio(); } catch(e){} }   // v544: delayed audio under the Record gesture (fixes lips lagging voice)
   tpRecordedChunks = [];
   window._tpVoiceTimeline = [];   // v484: fresh take → fresh word timings
   const mimeTypes = ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
@@ -9863,14 +9913,14 @@ async function startTpRecord() {
       blob = new Blob(tpRecordedChunks, { type: tpMediaRecorder.mimeType || 'video/webm' });
       fname = 'content-shrimp-' + new Date().toISOString().slice(0,19).replace(/[T:]/g,'-') + '.' + ext;
       // Only celebrate a take that exists — see the zero-byte branch below.
-      if (blob.size && typeof tpShowFilmed === 'function') tpShowFilmed();
+      if (blob.size > TP_MIN_TAKE_BYTES && typeof tpShowFilmed === 'function') tpShowFilmed();
       // v479: review FIRST — nobody nails take one. Keep it → (v478) split-screen offer
       // → share. Retake → straight back to filming, nothing saved, nothing shared.
       if (typeof tpReview === 'function' && tpReview(blob, fname)) return;
       // A ZERO-BYTE take never recorded. tpReview correctly refuses it (returns false) — and the
       // old code then fell straight through to tpOfferSplit, which puts a "Filmed ✓" sheet over a
       // take that does not exist. Say what actually happened instead.
-      if (!blob.size) {
+      if (blob.size <= TP_MIN_TAKE_BYTES) {
         if (typeof tpEndTake === 'function') tpEndTake();
         try { showToast("That take didn't record — nothing was captured. Check camera and mic access, then film it again.", 7000); } catch(_){}
         return;
@@ -9901,9 +9951,24 @@ async function startTpRecord() {
   (function(){
     const _rec = tpMediaRecorder;
     let _done = false;
+    // v660: every track this take marked, so the marks can be RELEASED again. A Retake
+    // deliberately keeps the camera alive, so take 2 reuses the very same MediaStreamTrack
+    // objects. Without this list the `_tpEndBound` flag below is permanent: take 2 gets no
+    // track guards at all, and take 1's stale onended still fires — its `_done` is false and
+    // its `_rec` is inactive, so it shows "the take up to that point is saved" and then saves
+    // nothing, because the `rolling` test reads the OLD recorder. The take is lost with a
+    // message claiming the opposite. See scripts/verify/take-guards-rebind.mjs.
+    const _marked = [];
     const _unbind = () => {
       try { document.removeEventListener('visibilitychange', _onVis); } catch(e){}
       try { window.removeEventListener('pagehide', _onHide); } catch(e){}
+      try {
+        _marked.forEach(t => {
+          try { if (t.onended) t.onended = null; } catch(e){}
+          try { delete t._tpEndBound; } catch(e){ try { t._tpEndBound = false; } catch(e2){} }
+        });
+        _marked.length = 0;
+      } catch(e){}
       if (window._tpUnbindTakeGuards === _unbind) window._tpUnbindTakeGuards = null;
     };
     const _bail = (why, force) => {
@@ -9936,6 +10001,7 @@ async function startTpRecord() {
     const _mark = (t) => {
       if (!t || t._tpEndBound) return;
       t._tpEndBound = true;
+      _marked.push(t);
       t.onended = () => _bail(t.kind === 'audio'
         ? "The microphone was taken by another app — the take up to that point is saved."
         : "The camera was taken by another app — the take up to that point is saved.", true);
@@ -10045,7 +10111,10 @@ function tpEndTake(){
   try { const ov = document.getElementById('teleprompterOverlay'); if (ov) ov.classList.remove('cam-on'); } catch(e){}
 }
 function tpReview(blob, fname){
-  if (!blob || !blob.size) return false;
+  // v660: a header-only take (a few hundred bytes) used to be truthy here, so the review card
+  // opened on a <video> that shows black and will not play, with "Keep it →" as the only exit.
+  if (!blob || blob.size <= TP_MIN_TAKE_BYTES) return false;
+  tpHoldTake();
   const ov = document.getElementById('teleprompterOverlay');
   if (!ov || !ov.classList.contains('open')) return false;   // closed mid-record → just save
   document.querySelectorAll('.tp-review').forEach(x => x.remove());
@@ -10143,12 +10212,20 @@ function tpShareOrSave(blob, fname){
   // at a black overlay showing their script with no camera, with the page behind it scroll-locked.
   // Safe on every path that reaches here: the recorder is inactive by now, so closeTeleprompter()
   // takes its short branch (stopTpCamera + remove .open + restore overflow + stopTpScroll).
+  // v660: decide whether this device can take the file BEFORE tearing down the UI that holds it.
+  // On a browser with neither a file share sheet nor a working download, closing first left the
+  // take unreachable; now it goes straight to the rescue sheet with the video still playable.
+  if (!tpCanDeliver(blob, fname)) {
+    try { if (typeof closeTeleprompter === 'function') closeTeleprompter(); } catch(e){}
+    tpRescueTake(blob, fname);
+    return;   // still held: the rescue sheet releases it when the user says they saved it
+  }
   try { if (typeof closeTeleprompter === 'function') closeTeleprompter(); } catch(e){}
   try {
     const file = new File([blob], fname, { type: blob.type });
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], title: 'Content Shrimp Video' })
-        .then(() => showToast('Filmed ✓ — your post is ready to share', 'success'))
+        .then(() => { tpReleaseTake(); showToast('Filmed ✓ — your post is ready to share', 'success'); })
         .catch(err => {
           // A dismissed share sheet is not a failure: don't "save" it behind their back and don't
           // claim anything. Keep the bytes reachable and offer the share again.
@@ -10323,6 +10400,7 @@ function spTickStop(){
 }
 
 function tpOfferSplit(blob, fname){
+  tpHoldTake();   // v660: held until the take is actually delivered — see tpHoldTake()
   const id = window._tpSplitIdeaId;
   // `_spIdea` resolves BOTH lanes: a Pipeline idea via state[id], and a Quick Post via '_tv'.
   // Using it here (not just state[id]) matters: a Quick Post lives only in memory, so a sharpen
@@ -10567,6 +10645,18 @@ function spBrandPalette(){
   return { panel, text, muted, eyebrow: muted, accent, accentText: cmContrastText(accent),
            chipBg: cmMixColor(panel, '#FFFFFF', 0.5), duotone: panel, seam: muted };
 }
+/* v660: STOP EVERY TRACK THE RENDER OPENED.
+   Neither the canvas capture track nor the audio track borrowed from the <video> element was
+   ever stopped, on any path. A live track sourced from an element keeps that detached <video>
+   and its whole decode pipeline alive after the object URL is revoked, and a live canvas track
+   keeps a 1440x2560 canvas reachable. "Try the split again" twice left three of each alive for
+   the life of the page — and on a phone that is what gets the tab reaped, which takes the
+   recording with it, because the take lives only in memory. */
+function _spReleaseRender(stream, cap, vid){
+  const stop = (s) => { try { if (s && s.getTracks) s.getTracks().forEach(t => { try { t.stop(); } catch(e){} }); } catch(e){} };
+  stop(stream); stop(cap);
+  try { if (vid && vid.srcObject) vid.srcObject = null; } catch(e){}
+}
 function renderSplitScreen(videoBlob, beats, onProgress){
   return new Promise(async (resolve, reject) => {
     // v507/v531: hoisted so ANY failure path can clean up. `_alive` is the frame loop's kill flag:
@@ -10575,7 +10665,7 @@ function renderSplitScreen(videoBlob, beats, onProgress){
     // video), but on a browser WITHOUT rVFC the requestAnimationFrame fallback kept compositing
     // full-resolution frames for the life of the page — on a phone, exactly while the user is
     // sharing. Declared out here so the outer catch can reach it.
-    let _vid = null, _rec = null, _wl = null, _alive = true;
+    let _vid = null, _rec = null, _wl = null, _alive = true, _stream = null, _capRef = null;   // v660: refs so the catch path can release the tracks too
     try {
       // v531: an empty graphics track would render layers[-1] = undefined → the
       // no-layer fallback paints cream for the whole clip = a "split" with zero
@@ -10639,10 +10729,12 @@ function renderSplitScreen(videoBlob, beats, onProgress){
       // exactly like the live audio track.
       let stream;
       try { stream = cv.captureStream(30); } catch(e) { stream = cv.captureStream(); }
+      _stream = stream;
       const pushFrame = () => {};   // no-op — auto capture pulls frames on its own clock
       let _cap = null;
       try {
         _cap = vid.captureStream ? vid.captureStream() : (vid.mozCaptureStream ? vid.mozCaptureStream() : null);
+        _capRef = _cap;
         if (_cap) _cap.getAudioTracks().forEach(t => stream.addTrack(t));
       } catch(e) {}
       // DO NOT SHIP SILENCE AS "ready to post". Audio only reaches the render by being copied off
@@ -10677,13 +10769,58 @@ function renderSplitScreen(videoBlob, beats, onProgress){
       try {
         await _limit(vid.play(), 8000, 'starting playback');
       } catch(playErr) {
-        // autoplay with sound can be refused if the tap's activation expired —
-        // retry muted so at least the video renders (audio may be lost)
-        vid.muted = true;
-        await _limit(vid.play(), 8000, 'starting playback');
+        /* v660: THE MUTED RETRY USED TO SHIP SILENCE AND CALL IT DONE.
+           A muted media element captures a silent audio track, so this retry walked straight
+           around the "do not ship silence" guard twenty lines above — which had already run,
+           and which only counts tracks, not whether they carry signal. The build then finished
+           normally: drift probe clean, `partial` false, "Your split screen ✓ ready to post",
+           and a video with no voice in it. It is reachable in the ordinary case, not an edge:
+           the tap that starts this is followed by a beats fetch and up to six photo fetches, so
+           playback begins 20-60 seconds after the gesture, by which time the activation has
+           expired on engines that require one.
+           Unmuting and retrying costs one more attempt; if sound genuinely cannot play, fail
+           into the loud sheet that already offers "Just save the plain video" instead of
+           handing over a silent one. */
+        vid.muted = false;
+        let _played = false;
+        try { await _limit(vid.play(), 4000, 'starting playback'); _played = true; } catch(e2){}
+        if (!_played) {
+          throw new Error('this phone would not play the take with its sound on, so the split screen would come out silent');
+        }
+      }
+      // Belt and braces: whatever route got us here, the element must not be muted when the
+      // recorder opens, or the audio track already on `stream` carries nothing.
+      if (vid.muted) {
+        throw new Error('the take could only be played silently, so the split screen would come out silent');
       }
       // graphics run for the whole take: stretch the beats across the clip
-      const dur = isFinite(vid.duration) && vid.duration > 0 ? vid.duration : beats.length * PER;
+      /* v660: A NON-FINITE DURATION USED TO CUT THE VIDEO SHORT IN SILENCE.
+         MediaRecorder WebM carries no Duration element, so for a take recorded as WebM (any
+         device where isTypeSupported('video/mp4') is false) vid.duration is Infinity. The old
+         fallback was beats.length * PER — at most 6 * 3.25 = 19.5 seconds — and the frame loop
+         exits on t >= dur, so a 60-second take rendered 19.5 seconds and stopped. Both honesty
+         checks were blind to it: `partial` compares dur against lastT (which equals dur on this
+         path) and the drift probe measures the output against lastT too, so drift read 0.
+         SEEK TO THE END FIRST — the standard way to force a browser to compute the real
+         duration of a stream-recorded blob — and only fall back to the estimate if that fails,
+         in which case say so out loud rather than quietly producing a third of the video. */
+      let dur = (isFinite(vid.duration) && vid.duration > 0) ? vid.duration : 0;
+      if (!dur) {
+        try {
+          await _limit(new Promise((res, rej) => {
+            const done = () => { vid.removeEventListener('durationchange', onDur); res(); };
+            const onDur = () => { if (isFinite(vid.duration) && vid.duration > 0) done(); };
+            vid.addEventListener('durationchange', onDur);
+            try { vid.currentTime = 1e101; } catch(e) { rej(e); }
+          }), 4000, 'measuring the take');
+          if (isFinite(vid.duration) && vid.duration > 0) dur = vid.duration;
+        } catch(e) {}
+        try { vid.currentTime = 0; } catch(e){}
+      }
+      if (!dur) {
+        dur = beats.length * PER;
+        window._spDurEstimated = true;   // surfaced on the result sheet — never claim a full render
+      } else { window._spDurEstimated = false; }
       const per = Math.max(1.6, dur / beats.length);
       // v483 A/V SYNC: pre-render each beat's graphics ONCE. Laying out text every
       // frame made the draw loop slower than real time, so the picture fell behind
@@ -10828,6 +10965,7 @@ function renderSplitScreen(videoBlob, beats, onProgress){
       } catch(e) { drift = 0; }
       try { if (_probeUrl) { URL.revokeObjectURL(_probeUrl); _probeUrl = null; } } catch(e){}   // timeout path
       try { if (_wl) { _wl.release(); _wl = null; } } catch(e){}
+      _spReleaseRender(stream, _cap, vid);
       // v531: a PARTIAL render (watchdog gave up mid-clip, kept what it had)
       // passes the drift probe cleanly — blob length matches consumed footage —
       // so a half-length video shipped as "ready to post". Flag it.
@@ -10837,8 +10975,9 @@ function renderSplitScreen(videoBlob, beats, onProgress){
       // v507: a cancelled or failed render must not leave the take playing out
       // loud in a detached element, or the recorder running — or the frame loop compositing.
       _alive = false;
-      try { if (_vid) { _vid.pause(); URL.revokeObjectURL(_vid.src); _vid.src = ''; } } catch(_){}
       try { if (_rec && _rec.state !== 'inactive') _rec.stop(); } catch(_){}
+      try { _spReleaseRender(_stream, _capRef, _vid); } catch(_){}
+      try { if (_vid) { _vid.pause(); URL.revokeObjectURL(_vid.src); _vid.src = ''; } } catch(_){}
       try { if (_wl) _wl.release(); } catch(_){}
       reject(e);
     }
@@ -11100,6 +11239,95 @@ function _tpDownloadsInert(a) {
     return /FBAN|FBAV|Instagram|Line\/|Twitter|TikTok|Snapchat|MicroMessenger/i.test(ua);
   } catch (e) { return false; }
 }
+/* v660: A FILMED TAKE LIVES ONLY IN MEMORY, so nothing may navigate the page while we hold it.
+   The split-screen build fetches up to six stock photos through /api/stock-photo. A user who has
+   just hit their post limit gets 402 on all six, and the GLOBAL fetch wrapper answers any /api/
+   402 by opening the upgrade modal — whose Upgrade button does window.location.href = <stripe>.
+   That navigation destroys the page, and the recording with it: the blob lives only in the
+   tpOfferSplit closure, with no autosave anywhere. So while a take is in hand the modal is
+   suppressed and the user is simply told, without being offered a button that eats their video.
+   The failsafe timer exists because a stuck flag would silently disable upgrade prompts. */
+function tpHoldTake(){
+  try {
+    window._tpBlobInHand = true;
+    clearTimeout(window._tpHoldT);
+    window._tpHoldT = setTimeout(function(){ window._tpBlobInHand = false; }, 900000);
+  } catch(e){}
+}
+function tpReleaseTake(){
+  try { window._tpBlobInHand = false; clearTimeout(window._tpHoldT); } catch(e){}
+}
+/* v660: THE LAST RESORT, so a finished take can never dead-end.
+   Before this, a user who opened the app from an Instagram or Facebook link could film, tap
+   "Keep it", and land in a state with NO share sheet (the in-app webview exposes none) and NO
+   working download (_tpDownloadsInert matches that webview). tpShareOrSave had already called
+   closeTeleprompter(), so every surface holding the blob was gone and all they got was a toast
+   telling them to "use Share" — with no Share button anywhere on the screen. 120 seconds later
+   the object URL was revoked and the recording was unreachable for good.
+   This keeps the bytes on screen, playable, with the one gesture that DOES work in those
+   webviews: press and hold the video and save it. Nothing is revoked until they dismiss it. */
+function tpRescueTake(blob, fname) {
+  try {
+    const prev = document.getElementById('tpRescue');
+    if (prev) { try { URL.revokeObjectURL(prev.dataset.u || ''); } catch(e){} prev.remove(); }
+    const url = URL.createObjectURL(blob);
+    const el = document.createElement('div');
+    el.id = 'tpRescue';
+    el.dataset.u = url;
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#16130F;color:#F9F6EA;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:22px;font-family:inherit;overflow:auto;';
+    const h = document.createElement('div');
+    h.style.cssText = 'font-size:16px;font-weight:700;text-align:center;';
+    h.textContent = 'Your video is here — save it before you close this';
+    const sub = document.createElement('div');
+    sub.style.cssText = 'font-size:13px;line-height:1.5;opacity:.8;text-align:center;max-width:32ch;';
+    sub.textContent = 'This browser will not save files on its own. Press and hold the video, then choose Save. Opening contentshrimp.com in Safari or Chrome instead of this in-app browser avoids this next time.';
+    const v = document.createElement('video');
+    v.src = url; v.controls = true; v.playsInline = true; v.setAttribute('playsinline','');
+    v.style.cssText = 'max-width:100%;max-height:52vh;border-radius:14px;background:#000;';
+    el.appendChild(h); el.appendChild(v); el.appendChild(sub);
+    // Offer the share sheet too when the browser has one at all — some webviews share a URL
+    // even when they refuse files, and a working share is strictly better than a long-press.
+    if (navigator.share) {
+      const sb = document.createElement('button');
+      sb.style.cssText = 'padding:13px 22px;border:none;border-radius:999px;background:#E7DAF9;color:#16130F;font:700 15px inherit;font-family:inherit;cursor:pointer;';
+      sb.textContent = 'Try the share sheet';
+      sb.onclick = function(){
+        try {
+          const f = new File([blob], fname, { type: blob.type });
+          if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f], title: 'Content Shrimp Video' }).catch(function(){});
+          else navigator.share({ title: 'Content Shrimp Video' }).catch(function(){});
+        } catch(e){}
+      };
+      el.appendChild(sb);
+    }
+    const cb = document.createElement('button');
+    cb.style.cssText = 'padding:11px 20px;border:1.5px solid rgba(249,246,234,.3);border-radius:999px;background:transparent;color:#F9F6EA;font:700 14px inherit;font-family:inherit;cursor:pointer;';
+    cb.textContent = 'I saved it — close';
+    cb.onclick = function(){
+      tpReleaseTake();
+      try { v.pause(); v.removeAttribute('src'); v.load(); } catch(e){}
+      try { URL.revokeObjectURL(url); } catch(e){}
+      try { el.remove(); } catch(e){}
+    };
+    el.appendChild(cb);
+    document.body.appendChild(el);
+    return true;
+  } catch (e) {
+    try { console.error('tpRescueTake failed', e); } catch(_){}
+    return false;
+  }
+}
+// Is there any way at all to hand this file to the user on this device?
+function tpCanDeliver(blob, fname) {
+  try {
+    const f = new File([blob], fname, { type: blob.type });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [f] })) return true;
+  } catch(e){}
+  try {
+    const a = document.createElement('a');
+    return !_tpDownloadsInert(a);
+  } catch(e){ return true; }   // unknown → assume yes; the rescue sheet is for the KNOWN-dead case
+}
 // Returns TRUE only when the download is something this browser actually performs. Callers use
 // that to decide whether it is safe to revoke the blob and close the sheet.
 function tpDownloadBlob(blob, fname) {
@@ -11112,9 +11340,11 @@ function tpDownloadBlob(blob, fname) {
   // is what made a lost take unrecoverable.
   setTimeout(() => { try { document.body.removeChild(a); } catch(e){} URL.revokeObjectURL(url); }, _inert ? 120000 : 500);
   if (_inert) {
-    showToast("This browser can't save the file on its own — use Share to keep this video. Don't close this screen yet.", 9000);
+    // v660: a toast is not a recovery. Put the video back on screen where it can be saved.
+    tpRescueTake(blob, fname);
     return false;
   }
+  tpReleaseTake();
   showToast('Sent to your Downloads — check your Files app if you do not see it', 6000);
   return true;
 }
@@ -11134,7 +11364,65 @@ function toggleTpScroll() {
 // like "a judge cannot enforce them" got nothing at all.
 const TP_STRESS_A = "(never|nothing|nobody|none|zero|cannot|can['\u2019]t|won['\u2019]t|doesn['\u2019]t|don['\u2019]t|isn['\u2019]t|aren['\u2019]t|wasn['\u2019]t|didn['\u2019]t|not|no)";
 const TP_STRESS_B = "(only|every|always|all|most|worst|best|first|last|instead|without|unless|until|actually|before|after|even|still|must)";
-function tpStressRx(src){ return new RegExp('(?<!<[^>]*)\\b' + src + '\\b', 'gi'); }
+/* v660: NO LOOKBEHIND ANYWHERE IN THIS FILE.
+   These three regexes used `(?<!<[^>]*)` to avoid rewriting the insides of HTML tags. One of
+   them was a regex LITERAL, and a literal is parsed when the script is parsed — so on a browser
+   without lookbehind the whole inline <script> was a SyntaxError and NOTHING in the app ran:
+   no ideas list, no sign-in, a blank shell. Lookbehind shipped in Safari 16.4, so every device
+   capped below that (iPhone 6s/7/SE1) lost the entire product because of a teleprompter nicety.
+   The other two were `new RegExp`, which fails later but still throws out of tpEmphasise →
+   tpFormatScript → openTeleprompter, so tapping Film did nothing and said nothing.
+   Walking the tag structure instead is both portable and more correct: a variable-length
+   lookbehind is not universally supported even where lookbehind exists.
+   tpOutsideTags applies a regex ONLY to the text between tags, never inside one. */
+function tpOutsideTags(html, rx, fn, once){
+  const str = String(html);
+  let out = '', i = 0, done = false;
+  while (i < str.length) {
+    const lt = str.indexOf('<', i);
+    const seg = lt < 0 ? str.slice(i) : str.slice(i, lt);
+    if (seg) {
+      if (done) out += seg;
+      else {
+        const rep = seg.replace(rx, fn);
+        if (once && rep !== seg) done = true;
+        out += rep;
+      }
+    }
+    if (lt < 0) break;
+    const gt = str.indexOf('>', lt);
+    if (gt < 0) { out += str.slice(lt); break; }
+    out += str.slice(lt, gt + 1);
+    i = gt + 1;
+  }
+  return out;
+}
+/* v660: ONE NORMALISER FOR BOTH SIDES, and it stops throwing away non-English letters.
+   The script index stripped punctuation (joining "co-founder" into "cofounder") while the
+   spoken transcript replaced it with a space (splitting it into "co" and "founder"), so the two
+   could never agree. Chrome's speech API writes numbers with separators ("10,000") and
+   hyphenates common compounds, so this was the normal case, not an edge — the prompter simply
+   froze on any product name with a hyphen or any figure.
+   Worse for this product: [^a-z0-9'] DELETED every accented letter, so "hädavajalik" indexed as
+   "hdavajalik" while the transcript split it into "h" and "davajalik". Estonian, Finnish,
+   German, French, Polish — every script with a diacritic matched only on its accent-free words,
+   which is why voice-follow "just stopped working" on non-English scripts.
+   Folding the accent (NFD, drop the combining marks) makes "hädavajalik" -> "hadavajalik" on
+   BOTH sides, and dropping the separator instead of splitting on it makes "co-founder" and
+   "10,000" one token on both sides. */
+function tpNormWord(w){
+  let x = String(w == null ? '' : w).toLowerCase();
+  try { x = x.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch(e){}
+  return x.replace(/[^a-z0-9']/g, '');
+}
+// Split a heard phrase the same way the script index splits the script: separators INSIDE a
+// word (hyphen, comma, apostrophe, full stop between digits) join it; whitespace splits it.
+function tpNormWords(text){
+  let x = String(text == null ? '' : text).toLowerCase();
+  try { x = x.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch(e){}
+  return x.split(/\s+/).map(w => w.replace(/[^a-z0-9']/g, '')).filter(Boolean);
+}
+function tpStressRx(src){ return new RegExp('\\b' + src + '\\b', 'gi'); }
 function tpEscape(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 // Break one sentence into speakable lines: ~7 words, cut at natural joints.
 function tpSenseLines(sentence){
@@ -11165,21 +11453,36 @@ function tpEmphasise(html, emphasis){
     marks.forEach(m => {
       const esc = tpEscape(String(m).trim());
       if (esc.length < 2) return;
-      const rx = new RegExp('(?<!<[^>]*)' + esc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      if (rx.test(out)) out = out.replace(rx, m2 => '<b class="tp-em">' + m2 + '</b>');
+      /* v660: WORD-BOUNDED. This matched as a plain substring, so a two-letter mark bolded
+         letter-pairs inside unrelated words: the mark "AI" on "We said it again and it will
+         fail" rendered "We s<b>ai</b>d it ag<b>ai</b>n and it will f<b>ai</b>l". The marks come
+         from the model (api/generate-ideas.js asks for short verbatim phrases, including flip
+         words like not/never), so short ones are the normal case, not the edge. Underlining
+         random fragments makes the one reading aid on screen untrustworthy at the exact moment
+         the person is on camera and cannot stop to work out why. \b is only meaningful next to
+         a word character, so it is added only on the side where the mark actually starts or
+         ends with one — otherwise a mark like "$24" or "(really)" would never match again. */
+      const lit = esc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pre = /^[A-Za-z0-9_]/.test(esc) ? '\\b' : '';
+      const post = /[A-Za-z0-9_]$/.test(esc) ? '\\b' : '';
+      let rx;
+      try { rx = new RegExp(pre + lit + post, 'i'); } catch(e){ return; }
+      out = tpOutsideTags(out, rx, m2 => '<b class="tp-em">' + m2 + '</b>', true);
     });
     return out;
   }
   // heuristic: hard numbers first, then the words that flip a sentence's meaning.
   // Budget keeps the density honest — mark everything and emphasis means nothing.
   let budget = ((out.replace(/<[^>]*>/g, '').trim().match(/\S+/g) || []).length >= 7) ? 2 : 1;
-  out = out.replace(/(?<!<[^>]*)\b(\d[\d.,]*\s?(?:%|mg|g|kg|k|x|\u20ac|\$)?)\b/gi, m => {
+  // v660: built with new RegExp and applied via tpOutsideTags — see the note on tpStressRx.
+  // As a LITERAL with a lookbehind this line took the entire application down on older Safari.
+  out = tpOutsideTags(out, new RegExp('\\b(\\d[\\d.,]*\\s?(?:%|mg|g|kg|k|x|\u20ac|\\$)?)\\b', 'gi'), m => {
     if (budget <= 0) return m;
     budget--; return '<b class="tp-em">' + m + '</b>';
   });
   [TP_STRESS_A, TP_STRESS_B].forEach(src => {
     if (budget <= 0) return;
-    out = out.replace(tpStressRx(src), m => {
+    out = tpOutsideTags(out, tpStressRx(src), m => {
       if (budget <= 0) return m;
       budget--; return '<b class="tp-em">' + m + '</b>';
     });
@@ -11288,7 +11591,7 @@ function tpBuildVoiceIndex(){
   el.dataset.voiceIndexed = '1';
   tpVoiceLastAdvanceDone = false;
   tpVoiceWords = Array.from(el.querySelectorAll('.tp-w')).map(node => ({
-    node, key: node.textContent.toLowerCase().replace(/[^a-z0-9']/g, '')
+    node, key: tpNormWord(node.textContent)
   })).filter(w => w.key);
   tpVoiceCursor = 0;
   return tpVoiceWords.length > 0;
@@ -11307,10 +11610,14 @@ function tpWordNear(a, b){
 }
 // v603: words too common to prove WHERE you are in the script — a match on these must not
 // move the prompter on its own. Anything else (>=4 chars, not filler) counts as evidence.
+// v660: how much better a FARTHER match must be before it is allowed to overrule the place the
+// speaker appears to be reading. Two content words: enough that a genuine skip still lands,
+// small enough that one lucky extra match on a repeated line cannot move them.
+const TP_LEAP_MARGIN = 2;
 const TP_STOPWORDS = new Set(['the','a','an','and','or','but','so','to','of','in','on','at','it','its','is','are','was','were','be','been','i','you','your','my','we','our','they','their','that','this','these','those','for','with','as','if','then','than','from','have','has','had','do','does','did','not','no','just','can','will','what','when','how','all','out','up','one','get','got','like','about','into','more','some','because']);
 function TP_CONTENT_WORD(w){ return !!w && w.length >= 3 && !TP_STOPWORDS.has(w); }   // >=3: 'way','fix','key' are real evidence; filler is excluded by the stoplist, not by length
 function tpVoiceMatch(heard){
-  const spoken = String(heard).toLowerCase().replace(/[^a-z0-9' ]/g, ' ').split(/\s+/).filter(Boolean);
+  const spoken = tpNormWords(heard);
   if (!spoken.length) return -1;
   const tail = spoken.slice(-6);
   const from = tpVoiceCursor, to = Math.min(tpVoiceWords.length, tpVoiceCursor + 45);
@@ -11322,29 +11629,57 @@ function tpVoiceMatch(heard){
   // v603: score only CONTENT words. Filler ("the", "you", "and") appears everywhere in a script,
   // so two of them matching 30 words ahead used to be enough to accept that position — the
   // prompter would jump to a line further down while you were still reading the current one.
-  let best = -1, bestHits = 0, bestDist = 1e9;
+  /* v660: A REPEATED LINE USED TO THROW THE SPEAKER A PARAGRAPH AHEAD.
+     The search starts at `from = tpVoiceCursor`, so words the speaker has ALREADY been credited
+     for cannot score at the position they are actually reading — but they score in full at a
+     later repetition of the same phrase. The old rule let `hits` beat distance unconditionally,
+     so the later repetition simply won. v603's "prefer the nearest" only applied on EQUAL
+     evidence, which the truncated window makes impossible.
+     Reproduced: script "Your brand needs a system. Not another tool. Your brand needs a system
+     that films itself." with the cursor at 2 and "your brand needs a system" heard returns the
+     SECOND copy — the prompter scrolls past eleven words while the speaker is still on line one.
+     Every callback, every rule-of-three, every repeated product name does this, at the same spot.
+     THE RULE NOW: the nearest candidate that clears its own threshold wins, and a farther one
+     may overrule it only by a clear margin of content words. A real skip still works — when the
+     speaker genuinely jumps ahead the near candidate scores nothing and does not qualify. */
+  const need = (tpVoiceCursor === 0 && !tpVoiceLastAdvanceDone) ? 1 : 2;
+  const cands = [];
+  const lastHeard = tail[tail.length - 1];
   for (let i = from; i < to; i++) {
-    let cur = i, hits = 0, last = -1;
+    let cur = i, hits = 0, last = -1, endsAtTail = false;
     for (let j = 0; j < tail.length; j++) {
       for (let k = cur; k < Math.min(cur + 3, tpVoiceWords.length); k++) {
         if (tpWordNear(tpVoiceWords[k].key, tail[j])) {
           if (TP_CONTENT_WORD(tail[j])) hits++;    // filler matches don't earn a jump
+          if (j === tail.length - 1) endsAtTail = true;
           last = k; cur = k + 1; break;
         }
       }
     }
     if (last < 0) continue;
+    // v660: THE LAST WORD SPOKEN IS THE BEST EVIDENCE OF WHERE THEY ARE NOW, so a candidate
+    // that reaches it counts for one more. Without this the matcher lost on scripts whose
+    // current position happens to be mostly filler: on "Stop guessing what to post. Stop
+    // guessing what works." with the cursor mid-line, the RIGHT place scored a single content
+    // word ("post") because "what" and "to" are stopwords, while the repeat further down
+    // scored two ("stop", "guessing") and won — skipping the speaker past a whole sentence.
+    // The right place was the one that matched the word they had just said.
+    if (endsAtTail && TP_CONTENT_WORD(lastHeard)) hits++;
     const dist = last - from;
-    // v603: on equal evidence prefer the NEAREST match, not the furthest. Lagging is
-    // recoverable — you keep reading; jumping ahead loses your place completely.
-    if (hits > bestHits || (hits === bestHits && dist < bestDist)) { bestHits = hits; best = last + 1; bestDist = dist; }
+    // v603: a big leap forward must be earned — 3+ content words, not 2. Judged PER CANDIDATE
+    // now, so a far candidate cannot borrow a near candidate's lower bar.
+    if (hits >= ((dist > 18) ? Math.max(need, 3) : need)) cands.push({ end: last + 1, hits: hits, dist: dist });
   }
-  // v497: from a standing start, one confident word is enough — we can only move
-  // forward, so there's nothing to jitter back to. After that, two as before.
-  const need = (tpVoiceCursor === 0 && !tpVoiceLastAdvanceDone) ? 1 : 2;
-  // v603: a big leap forward must be earned — 3+ content words, not 2.
-  const needHere = (bestDist > 18) ? Math.max(need, 3) : need;
-  return (best > 0 && bestHits >= needHere) ? best : -1;
+  if (!cands.length) return -1;
+  let near = cands[0];
+  for (const c of cands) if (c.dist < near.dist || (c.dist === near.dist && c.hits > near.hits)) near = c;
+  let win = near;
+  for (const c of cands) {
+    if (c.dist <= near.dist) continue;
+    if (c.hits < near.hits + TP_LEAP_MARGIN) continue;   // not decisive enough to move their eyes
+    if (c.hits > win.hits || (c.hits === win.hits && c.dist < win.dist)) win = c;
+  }
+  return win.end > 0 ? win.end : -1;
 }
 function tpVoiceScrollTo(idx){
   if (tpVoiceBridge) { clearInterval(tpVoiceBridge); tpVoiceBridge = null; }   // v497
@@ -11376,7 +11711,7 @@ function tpVoiceScrollTo(idx){
 // dividing the clip evenly (iOS, voice-follow off, or a silent take).
 // Where in the script does this cue start? Returns a word index, or -1.
 function tpCueWordIndex(cue, from){
-  const words = String(cue||'').toLowerCase().replace(/[^a-z0-9' ]/g,' ').split(/\s+/).filter(Boolean);
+  const words = tpNormWords(cue);
   if (!words.length || !tpVoiceWords.length) return -1;
   const need = Math.max(2, Math.ceil(words.length * 0.6));
   for (let i = Math.max(0, from); i < tpVoiceWords.length; i++) {
@@ -11459,7 +11794,7 @@ function tpBeatTimesByPosition(beats, dur){
 function tpBeatTimesFromVoice(beats, dur){
   const tl = window._tpVoiceTimeline;
   if (!tl || tl.length < 3 || !tpVoiceWords.length) return null;
-  const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9' ]/g,' ').split(/\s+/).filter(Boolean);
+  const norm = s => tpNormWords(s);
   const timeAtWord = idx => {
     for (let i = 0; i < tl.length; i++) if (tl[i].w >= idx) {
       if (i === 0) return Math.max(0, tl[0].t * (idx / Math.max(1, tl[0].w)));
@@ -11583,7 +11918,20 @@ function startTpVoiceFollow(){
 function stopTpVoiceFollow(){
   if (tpVoiceBridge) { clearInterval(tpVoiceBridge); tpVoiceBridge = null; }
   if (tpVoiceWatch) { clearInterval(tpVoiceWatch); tpVoiceWatch = null; }
-  if (tpVoiceRec) { try { tpVoiceRec.onend = null; tpVoiceRec.stop(); } catch(e){} tpVoiceRec = null; }
+  // v660: clear onresult and onerror TOO, not just onend. stop() (unlike abort()) finalises and
+  // DELIVERS what the recogniser heard, and these handlers read module-level state rather than
+  // the recogniser they belong to. So a trailing result from the preview session landed after
+  // the take had started, with tpVoiceCursor freshly reset to 0, and scroll-targeted whatever
+  // the user said while checking their pace — the take opened a paragraph down the script. The
+  // same trailing error called tpVoiceFallback, which stopped the NEW recogniser, silently
+  // killing voice-follow for the whole take. It also pushed a bogus entry into
+  // _tpVoiceTimeline, which the split-screen renderer treats as ground truth for cueing
+  // graphics. abort() rather than stop() because nothing wants that trailing result.
+  if (tpVoiceRec) {
+    try { tpVoiceRec.onend = null; tpVoiceRec.onresult = null; tpVoiceRec.onerror = null; tpVoiceRec.onstart = null; } catch(e){}
+    try { if (typeof tpVoiceRec.abort === 'function') tpVoiceRec.abort(); else tpVoiceRec.stop(); } catch(e){}
+    tpVoiceRec = null;
+  }
   const ov = document.getElementById('teleprompterOverlay'); if (ov) ov.classList.remove('voice-follow');
 }
 // Recognition died mid-take \u2014 keep filming, just go back to timed scrolling.
@@ -16930,6 +17278,12 @@ async function connToken(){ try{ const { data:{ session } } = await sb.auth.getS
       if (_resp && _resp.status === 402 && _u.indexOf('/api/') !== -1) {
         _resp.clone().json().then(function(d){
           if (!d) return;
+          // v660: never open a modal that can navigate the page away while a filmed take is
+          // held only in memory. See tpHoldTake().
+          if (window._tpBlobInHand) {
+            try { if (typeof showToast === 'function') showToast("You're out of posts this month — save this video first, then upgrade.", 7000); } catch(e){}
+            return;
+          }
           if (d.error === 'feature_locked' && typeof showFeatureLock === 'function') showFeatureLock(d.feature || '');
           else if (d.error === 'limit_reached' && typeof showUpgrade === 'function') showUpgrade(d);
         }).catch(function(){});

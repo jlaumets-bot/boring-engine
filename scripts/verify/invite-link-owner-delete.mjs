@@ -289,7 +289,13 @@ for (const [name, body] of [[REVOKE_FILE, revokeSql], [DELETE_FILE, deleteSql]])
   // String literals are blanked first: the verify itself SAYS the words "revoke" and
   // "grant" inside its detail strings, and a positional scan that counted those would
   // conclude the file ends with a mutation.
-  const scan = body.toLowerCase().replace(/'[^']*'/g, m => ' '.repeat(m.length));
+  // v660: strip -- line comments BEFORE blanking string literals. A lone apostrophe in an
+  // English comment ("PostgreSQL's default grant") makes the literal-blanking regex pair the
+  // wrong quotes, which shifts every offset after it and reports a read-only verify as a
+  // mutation. The gate then fails on prose rather than on SQL, which teaches people to ignore it.
+  const scan = body.toLowerCase()
+    .replace(/--[^\n]*/g, m => ' '.repeat(m.length))
+    .replace(/'[^']*'/g, m => ' '.repeat(m.length));
   const lastSelect = scan.lastIndexOf('select');
   const lastDdl = Math.max(
     scan.lastIndexOf('create policy'),
