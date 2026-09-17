@@ -2,6 +2,79 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-17 — v672. SIX PARALLEL DEEP AUDITS. Batch 1 of the findings: the four that DESTROY WORK.
+**DEPLOY STATE: pending this session's deploy — the agent writes the verified stamp here.**
+**65 gates, 64 green.** No new SQL.
+
+**THE ONE FACT BEHIND ALL FOUR:** supabase-js does **NOT** throw on an HTTP error, and a row-level
+security refusal is not an error at all — PostgREST matches **zero rows** and resolves cleanly. So
+`const { error } = await sb.from(t).update(...)` **cannot see the one failure that matters.** Only
+`.select()` and a row count can. Every DELETE in app.html was hardened for this; these four were not.
+
+**1. `saveBrandToDB` REPORTED SUCCESS ON A REFUSED WRITE — the whole brand voice, gone on reload.**
+The single write in the file checking only `error`. The brands UPDATE policy stops matching the
+moment the owner removes you, or the brand is deleted on another device — tab still open, person
+still typing. `settings` is rebuilt FROM THE DATABASE on every load, so everything they filled in was
+on screen for an hour and **empty after a reload, with nothing ever said.** Worse: `_brandSaveOk`
+stayed **true**, which keeps the lean path on — so every generation in between was served from the
+**stale** row while the screen showed the new one.
+
+**2. SHARPEN / VIRAL REWRITE DELETED THE OLD POST BEFORE WRITING THE NEW ONE.** A rename drops the
+superseded row, and that DELETE was issued on the line *before* the save and never sequenced with it
+(`_dropRenamedIdeaRow` is async and was not awaited, so its DELETE hit the wire first). A dropped
+connection in between **destroys the post**: old row gone, new row never written. The localStorage
+snapshot holds status fields only, **no content**, so nothing can bring it back — and the user is
+shown *"your latest work is only on this device"*, which is false. `_saveThenDropRenamedRow` now
+writes first and only drops once the save resolves; a refused save keeps BOTH rows, which
+`loadIdeasFromDB` dedups anyway. Far better than neither.
+
+**3. `deleteBrand` DELETED THE PARENT FIRST, so "and everything in it" was a lie.** Every child
+policy reads through the `brands` row, so once it is gone every child delete matches zero rows — and
+there is **no ON DELETE CASCADE** for these tables (`api/delete-account.js:33-38` says so and gets
+the order right; `obResetForTesting` does too). Every idea, note, remix, reference photo and taste
+signal stayed in the database **forever, unreachable by any account**, so it could never be deleted
+through the app either. The code even logged that this had happened and shrugged. Children are swept
+first now, and if a table cannot be cleared it **refuses to delete the brand at all** rather than
+stranding the rest.
+
+**4. THE IDEAS CLEANUP DETECTED A SILENT REFUSAL AND TOLD NOBODY.** It set
+`window._ideasCleanupSilentFail` — **read nowhere** (one grep hit: the assignment). This runs on
+EVERY approve / dismiss / mark-done. It matters most for a **TEAM MEMBER**: the DELETE policy is
+owner-only (`sql/v658-member-delete.sql`), so for them the refusal is not a glitch, **it is every
+save**, each leaving another full copy of the library. The screen looks right (the read dedups by
+title, newest first), so the only symptom is the table growing until the 25-page read cap silently
+truncates the library. Now warned once per session — `_replaceBrandRows` already did this.
+
+**A SUBAGENT CLAIM I HAD TO CORRECT.** The data audit reported `_replaceBrandRows` as silently
+duplicating. **It is not** — it `.select()`s, counts, logs, AND toasts *"Saved — but the old copy
+couldn't be cleared…"*. The agent missed the check. **The ideas path was the genuinely silent one.**
+Verify every delegated finding against the code before acting on it.
+
+**NEW GATE `write-refusal-honesty.mjs`** — runs the real functions against a fake supabase-js whose
+refusals behave like RLS (resolve, no error, zero rows). 8 mutations, all caught.
+
+**THE PRESENCE-CHECK LESSON, NOW THE FIFTH TIME.** `/showToast/` passed a mutation that replaced the
+guard with `if (false) showToast(...)`, leaving the name in place. So did `/_ideasDupWarned/`. And an
+over-wide branch window swallowed a *neighbouring* block that happened to contain the same
+assignment. **Never assert that a NAME appears. Assert the call is reachable, and cut the window at
+the branch's own `return`.**
+
+**STILL OPEN FROM THE SIX AUDITS — next batches, roughly in severity order:**
+- `viral-rewrite` returns raw model JSON → an array field lands on an idea → `renderIdeas` throws
+  mid-map → **the Ideas tab is dead for the rest of the session.** (`remix`/`sharpen`/`generate-ideas`
+  were hardened in v666-v667; the three `viral-*` endpoints were missed.)
+- Settings example chips die on an apostrophe — HTML-escaped where they need JS-escaping, and a
+  SHIPPED constant ("What's included") hits it.
+- `_llm.js` retries up to 4× **inside** the caller's `timeoutMs`, so every documented budget is
+  5× optimistic → platform kills with no log. `timeout-budgets.mjs` encodes the same wrong model.
+- The `by:'ai'` filter is missing at TWO more edit-signal readers, so the model's own prose still
+  reaches the prompt as the founder's voice on the path that actually runs.
+- `getRecentTrends` ships the 16 OLDEST trends and the nightly cron's feed reaches no prompt at all.
+- Carousel slides are built from the DESIGN NOTES, not the copy. `caption` is rendered on no card.
+- `emphasis` is never persisted, so v669's teleprompter fix only helps within one session.
+- `reconcileLocalStatus` lets a stale device snapshot outrank the database — undo silently reverted.
+- Stripe webhook answers 200 on a failed event fetch → Stripe never retries → **paid, never granted.**
+
 ## ▶▶ 2026-09-17 — THE DEAD-CODE SWEEP. I did NOT delete anything, and that is the finding.
 **NO VERSION BUMP, NO DEPLOY — `app.html` is byte-unchanged.** One new gate; `scripts/` is in
 `.vercelignore`, so nothing user-facing moved. **64 gates, 63 green.**

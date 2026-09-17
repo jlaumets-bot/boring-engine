@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v671';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v672';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -6949,6 +6949,29 @@ async function loadAllBrandsFromDB() {
 // so both survive and the user sees the version they thought they had replaced sitting next to
 // the new one. It accumulates: every title-changing refine leaves another permanent orphan.
 // ideaRedoRun already does exactly this; these callers were the ones that never got it.
+// v672 — WRITE FIRST, THEN DROP. Sharpen / Viral rewrite / Redo can rename a post, and the old row
+// was deleted on the line BEFORE the save that writes the new one — the two were never sequenced
+// (`_dropRenamedIdeaRow` is async and was not awaited, so its DELETE was on the wire first).
+// A backgrounded tab, a dropped connection or an expired JWT in between destroyed the post outright:
+// old version deleted, new version never landed. The localStorage snapshot holds only status fields,
+// no content, so nothing could bring it back — and the user was shown "your latest work is only on
+// this device", which was false, it was gone from the account too.
+// This is the same WRITE-BEFORE-DELETE rule `_saveIdeasToDBNow` and `_replaceBrandRows` already
+// state in their own comments; these three call sites predate it.
+function _saveThenDropRenamedRow(oldTitle, newTitle) {
+  let saved;
+  try { saved = saveIdeasToDB(); } catch (e) { console.error('save failed, keeping the old row:', e); return; }
+  Promise.resolve(saved).then(r => {
+    // Only drop the superseded row once the replacement is actually written. A refused or failed
+    // save leaves BOTH rows, which loadIdeasFromDB dedups by title anyway — far better than neither.
+    if (r && r.ok === false) {
+      console.error('_saveThenDropRenamedRow: the save did not succeed, so the old row is being kept.');
+      return;
+    }
+    return _dropRenamedIdeaRow(oldTitle, newTitle);
+  }).catch(e => console.error('_saveThenDropRenamedRow:', e));
+}
+
 async function _dropRenamedIdeaRow(oldTitle, newTitle) {
   try {
     if (!currentBrand || !sb) return;
@@ -7605,7 +7628,30 @@ async function saveBrandToDB() {
     const brandData = settingsToBrand();
     debugLog('saveBrand: user=' + currentUser.id + ' existing=' + (currentBrand?.id || 'none'));
     if (currentBrand) {
-      const { error } = await sb.from('brands').update(brandData).eq('id', currentBrand.id);
+      // v672 — `.select('id')` IS REQUIRED HERE. This was the ONE write in this file that checked
+      // only `error`. A PostgREST/RLS refusal does NOT throw and does NOT set `error` — it resolves
+      // with ZERO ROWS (the comment at _replaceBrandRows says exactly this, and every delete in the
+      // file was hardened for it; this update was missed). The brands UPDATE policy is
+      // `user_id = auth.uid() OR id IN (select brand_id from brand_members …)`, so the row stops
+      // being writable the moment the owner removes this user, or the brand is deleted from another
+      // device — with the tab still open and the person still typing.
+      // What that cost: `settings` is rebuilt FROM THE DATABASE on every load, so the whole brand
+      // voice they just filled in was on screen for an hour and gone on reload, with nothing ever
+      // having said a word. Worse, `_brandSaveOk` stayed TRUE, which keeps the lean path on — so
+      // every generation in between was served from the STALE row while the screen showed the new one.
+      let { data: _wrote, error } = await sb.from('brands').update(brandData).eq('id', currentBrand.id).select('id');
+      if (!error && (!_wrote || !_wrote.length)) {
+        try { window._brandSaveOk = false; } catch(e) {}
+        try { window._brandSaveLastError = 'refused'; } catch(_) {}
+        console.error('saveBrandToDB: the brands UPDATE matched ZERO rows with no error — the database ' +
+          'refused it. Nothing was saved.');
+        try {
+          if (typeof showToast === 'function') showToast(
+            "That didn't save — the database refused it. You may have been removed from this brand, or " +
+            "it was deleted somewhere else. Copy anything you just typed before reloading.", 12000);
+        } catch(e) {}
+        return;
+      }
       if (error) {
         // Quick Post now reads the brand brain from the database instead of uploading it.
         // If the row is NOT current, reading it would write a post against stale facts, so
@@ -7842,7 +7888,25 @@ async function _saveIdeasToDBNow(brandId, rows) {
         console.error('Ideas cleanup removed ' + ((killed && killed.length) || 0) + ' of ' +
           slice.length + ' superseded rows with NO error — the database refused it silently, so ' +
           'the library now holds duplicates.');
+        // v672 — TELL THE PERSON. `window._ideasCleanupSilentFail` was set here and READ NOWHERE
+        // (one grep hit in the whole file: this line). `_replaceBrandRows` shows a toast for the
+        // identical situation; the ideas path, which runs on EVERY approve / dismiss / mark-done,
+        // said nothing at all. It matters most for a TEAM MEMBER: the DELETE policy is owner-only
+        // (sql/v658-member-delete.sql), so for them the refusal is not a glitch, it is every save —
+        // and each one leaves another full copy of the library behind. The screen looks right
+        // (loadIdeasFromDB dedups by title, newest first), so the only symptom is the table growing
+        // until the 25-page read cap truncates the library. Say it once per session: repeating it on
+        // every approve would train them to ignore it.
         window._ideasCleanupSilentFail = true;
+        if (!window._ideasDupWarned) {
+          window._ideasDupWarned = true;
+          try {
+            if (typeof showToast === 'function') showToast(
+              "Saved — but the database wouldn't clear the previous copy, so this brand's library is " +
+              "collecting duplicates behind the scenes. Your screen is correct. If you're on someone " +
+              "else's brand as a team member, the owner needs to clear them.", 10000);
+          } catch (e) {}
+        }
       }
     }
   }
@@ -15884,6 +15948,33 @@ async function deleteBrand(brandId, name) {
         .eq('user_id', currentUser.id).eq('brand_id', brandId).select('id');
       _pushKilled = !!(_pk && _pk.length);
     } catch (e) { console.error('deleteBrand: could not clear push_subscriptions:', e); }
+    // v672 — CHILDREN FIRST. This used to delete the `brands` row and sweep its children AFTER.
+    // Every child policy is `brand_id in (select id from brands where user_id = auth.uid())`, so
+    // once the parent row is gone EVERY child delete matches zero rows — and there is no
+    // `on delete cascade` from `brands(id)` for these tables (api/delete-account.js:33-38 says so
+    // outright, and gets the order right; obResetForTesting gets it right too). The confirm the
+    // user answered promises "and everything in it — ideas, notes, bookmarks, brand voice", and in
+    // fact every one of those rows stayed in the database forever, now unreachable by ANY account,
+    // so it could never be deleted through the app either. The code even logged that it had
+    // happened and shrugged.
+    const tables = ['ideas','remixes','notebook_notes','product_refs','competitors','prompt_history','edit_signals','brand_autopublish','publish_jobs','brand_connections'];
+    let leftover = null, sweptRows = 0;
+    for (const t of tables) {
+      let err = null, killed = null;
+      try { ({ data: killed, error: err } = await sb.from(t).delete().eq('brand_id', brandId).select('id')); } catch (e) { err = e; }
+      if (!err) { sweptRows += (killed || []).length; continue; }
+      const msg = String((err && (err.message || err.msg)) || err || '');
+      // A table this install simply does not have is not a failure worth stopping for.
+      if (/does not exist|schema cache|could not find|relation .* does not exist|404/i.test(msg)) continue;
+      console.error('deleteBrand: could not clear ' + t + ':', err);
+      leftover = t;
+      break;
+    }
+    if (leftover) {
+      // Stop BEFORE the parent. Deleting it now would strand whatever is left, permanently.
+      throw new Error("couldn't clear this brand's " + leftover + ", so nothing was deleted — try again in a moment");
+    }
+
     let gone = null, error = null;
     // Fire-and-forget elsewhere in this file resolves rather than rejects; do the same here so a
     // thrown builder error cannot skip the guard below.
@@ -15907,21 +15998,8 @@ async function deleteBrand(brandId, name) {
     // system was removed) but their ROWS still exist, so they stay in the sweep. (It was
     // 'publish_connections' here — a table name that exists nowhere else in the repo or backend;
     // the real one is brand_connections, still referenced by api/health.js.)
-    const tables = ['ideas','remixes','notebook_notes','product_refs','competitors','prompt_history','edit_signals','brand_autopublish','publish_jobs','brand_connections'];
-    let leftover = '';
-    let sweptRows = 0;
-    for (const t of tables) {
-      let err = null, gone = null;
-      try { ({ data: gone, error: err } = await sb.from(t).delete().eq('brand_id', brandId).select('id')); } catch (e) { err = e; }
-      if (!err) { sweptRows += (gone || []).length; continue; }
-      // A table this install simply does not have is not a failure worth stopping for.
-      const msg = String((err && (err.message || err.msg)) || err || '');
-      if (/does not exist|schema cache|could not find|relation .* does not exist|404/i.test(msg)) continue;
-      console.error('deleteBrand: could not clear ' + t + ':', err);
-      leftover = t;
-      break;
-    }
-    if (!leftover && sweptRows === 0) console.warn('deleteBrand: the child sweep removed 0 rows — the brand row is gone, so its children are no longer visible to delete. They are orphaned unless the database cascades.');
+    // v672: the sweep now runs BEFORE the parent delete (see above), so there is nothing left to
+    // do here. The old copy of this loop lived here and could only ever remove zero rows.
     try { if (localStorage.getItem('cs_last_brand') === brandId) localStorage.removeItem('cs_last_brand'); } catch (e) {}
     // drop this brand's local caches so nothing bleeds into the next one.
     // Not every per-brand key is `<base>::<brandId>`: the notebook cache is written as
@@ -15937,15 +16015,11 @@ async function deleteBrand(brandId, name) {
       renderSettingsPanel();
       renderBrandDropdown();
     } catch (e) { console.error('deleteBrand: redraw failed after the delete succeeded:', e); }
-    // The brand IS gone either way — say so, but never claim a clean sweep we did not perform.
-    // sweptRows === 0 means the database reported removing nothing, so its stored content may
-    // still exist server-side; it is unreachable from this account, and that is all we can honestly
-    // promise. Only a confirmed non-zero sweep gets the unqualified tick.
-    showToast(leftover
-      ? 'Deleted "' + name + '" ✓ — some leftover data couldn\'t be cleared, but nothing is reachable from your account any more.'
-      : (sweptRows === 0
-          ? 'Deleted "' + name + '" ✓ — it\'s gone from your account. Some of its stored content may remain on the server; nothing is reachable from here.'
-          : 'Deleted "' + name + '" ✓'), 7000);
+    // v672: the sweep now runs BEFORE the parent, and refuses to delete the brand at all if a table
+    // could not be cleared — so reaching here means the children really were removed and the
+    // confirm's promise ("and everything in it") is true. `sweptRows === 0` now simply means the
+    // brand had no content, which is not a caveat worth putting in front of anyone.
+    showToast('Deleted "' + name + '" ✓' + (sweptRows ? ' — ' + sweptRows + ' item' + (sweptRows === 1 ? '' : 's') + ' removed' : ''), 7000);
   } catch (e) {
     // `removed` is the honest discriminator: false means the brand row was never removed, so
     // nothing downstream ran either. Only then can we promise nothing was deleted.
@@ -17253,8 +17327,7 @@ function applyViralRewrite(id){
   try{ const _b = document.getElementById('viralTwist-'+id); if(_b) _b.innerHTML=''; }catch(e){}
   // "Replace this idea" can rewrite the title, and the DB cleanup only drops rows by the titles it
   // writes — so without this the pre-twist version survives and reappears as a duplicate.
-  try{ _dropRenamedIdeaRow(_titleBefore, i.title); }catch(e){}
-  try{ saveIdeasToDB(); }catch(e){}
+  try{ _saveThenDropRenamedRow(_titleBefore, i.title); }catch(e){}   // v672: write first, then drop
   if(typeof showToast==='function') showToast('Replaced with the viral version ✓', 3000);
   // Keep it open + force a full Ideas re-render so the new content is unmistakably shown.
   try{ if(typeof expandedIds!=='undefined' && expandedIds && expandedIds.add) expandedIds.add(id); }catch(e){}
@@ -17351,8 +17424,7 @@ function sharpenIdea(id, btn){
     try{ const _src = _ideasEntryByTitle(_titleBefore, id); if(_src && _src !== i) { Object.keys(nw).forEach(k=>{ if(nw[k]!=null && String(nw[k]).trim()) _src[k]=nw[k]; }); tpPruneEmphasis(_src); } }catch(e){}
     // Sharpen can rewrite the title, and the DB cleanup only drops rows by the titles it writes —
     // so without this the pre-sharpen version survives and reappears as a duplicate on reload.
-    try{ _dropRenamedIdeaRow(_titleBefore, i.title); }catch(e){}
-    try{ saveIdeasToDB(); }catch(e){}
+    try{ _saveThenDropRenamedRow(_titleBefore, i.title); }catch(e){}   // v672: write first, then drop
     try{ if(typeof expandedIds!=='undefined' && expandedIds && expandedIds.add) expandedIds.add(id); }catch(e){}
     if(typeof renderIdeas==='function') renderIdeas(); else if(typeof refreshCurrentView==='function') refreshCurrentView();
   }});
