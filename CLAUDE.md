@@ -3,7 +3,7 @@
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
 ## ▶▶ 2026-09-17 — v672. SIX PARALLEL DEEP AUDITS. Batch 1 of the findings: the four that DESTROY WORK.
-**DEPLOY STATE: pending this session's deploy — the agent writes the verified stamp here.**
+**DEPLOY STATE: LIVE** (deployed and verified 2026-09-17 by the agent — contentshrimp.com/api/health returned `v672-28657680+api.d2035ce6`, matching the stamp, 22/22 checks green).
 **65 gates, 64 green.** No new SQL.
 
 **THE ONE FACT BEHIND ALL FOUR:** supabase-js does **NOT** throw on an HTTP error, and a row-level
