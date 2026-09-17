@@ -2,6 +2,57 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-17 — v671. Buttons that looked dead, and a panel with a heading over an empty box.
+**DEPLOY STATE: pending this session's deploy — the agent writes the verified stamp here.**
+**63 gates, 62 green.** No new SQL.
+
+**1. THREE DOWNLOAD BUTTONS COULD DO NOTHING AT ALL, SILENTLY.** `canvas.toBlob` hands back
+**NULL** when the browser cannot encode — on a phone that is the ordinary low-memory case, not an
+exotic one. `URL.createObjectURL(null)` **THROWS**, so `stmtDownload` / `staticDownload` rejected
+*before* their own toast: no file, no message, nothing. **"I pressed it and nothing happened"** is
+the hardest failure for a person to report and the hardest to find. Each of the three also (a) never
+added the `<a>` to the document, which **Firefox ignores**, and (b) revoked the object URL on the
+very next line, which can cancel a download that has not started.
+**`memeDownload` already had all three right.** That code is now shared as `canvasDownloadPng`, and
+"Downloaded!" is only said when a file really reached the browser. The carousel's **Download All**
+additionally used to lose EVERY remaining slide when one slide failed to encode — it now counts what
+actually saved and says *"Saved 7 of 10"*.
+
+**2. THE VIRAL TWIST PANEL DREW A HEADING OVER AN EMPTY BOX.** `data.twist` only has to be TRUTHY to
+reach the renderer, so a reply of `{}` produced the panel title "⚡ Viral angles" with nothing under
+it — the **same dangling-heading failure the prompt budgets were rewritten to make impossible**,
+this time on screen. It now counts what survived and says so instead.
+
+**3. THREE CONTROLS GAVE UP IN TOTAL SILENCE.** `viralTwist`, `viralRewrite` and
+`applyViralRewrite` each had a bare `if(!i) return;` — tap the button, nothing happens, nothing to
+report. `sharpenIdea` one screen over already said "Could not find that idea".
+
+**NEW GATE `download-honesty.mjs`.** The download arm RUNS the real functions against a fake canvas
+in three modes (encodes / returns null / throws) — a source scan would have caught none of it. The
+silent-bail arm is DERIVED (any bare `if(!i) return;` fails). The empty-twist arm EXTRACTS the
+survivor-count expression and EXECUTES it against six shapes. 11 mutations, all caught.
+
+**ONE MUTATION DELIBERATELY NOT PINNED, AND WHY.** Deleting the explicit `if (!blob)` check does not
+fail the gate — and that is correct, not an escape: `createObjectURL(null)` throws, the inner
+try/catch turns it into an honest message, and the button still behaves. The explicit check only
+buys a more accurate sentence. **What is pinned is the behaviour**, never the shape: never silent,
+never a false "Downloaded!", never success without a blob. Recording this because the opposite
+mistake — pinning a shape — is what made `backend-fixes.mjs` fail on formatting in v670.
+
+**THE RECURRING LESSON, NOW FOUR TIMES IN TWO DAYS:** a PRESENCE check on source text proves
+nothing. `/addedRules/`, `/tpPruneEmphasis/`, `/_vtCount/` all passed mutations that left the name
+in place and broke the behaviour. **Extract the expression and run it**, even if the harness is
+three stubs.
+
+**THE BRIDGE DROPPED MID-SHIP ON THIS ONE.** The code edits and the new gate survived on disk; the
+version bump, the stamp, the commit and the deploy did not. Recovery was: re-bump, re-run the whole
+suite (60/60), then stamp → commit → deploy → verify → push. **The working tree is the safe place to
+be interrupted** — nothing is half-applied, because the stamp is the LAST step before deploying.
+
+**NEXT:** ~41 dead functions (`brainDistill` and its review card are three of them — see v669).
+Then money (holds never released → free work) and security (IPv6 SSRF bypass in `_safeurl.js:68`),
+which Jörgen has deferred to last.
+
 ## ▶▶ 2026-09-17 — v670. Three integrations were failing in ways that blamed the user or looked healthy.
 **DEPLOY STATE: LIVE** (deployed and verified 2026-09-17 by the agent — contentshrimp.com/api/health returned `v670-68b5d064+api.d2035ce6`, matching the stamp, 22/22 checks green).
 **62 gates, 61 green.** No new SQL. `app.html` unchanged except the version bump — this is a backend round.
