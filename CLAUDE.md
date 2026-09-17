@@ -3,7 +3,7 @@
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
 ## ▶▶ 2026-09-17 — v670. Three integrations were failing in ways that blamed the user or looked healthy.
-**DEPLOY STATE: pending this session's deploy — the agent writes the verified stamp here.**
+**DEPLOY STATE: LIVE** (deployed and verified 2026-09-17 by the agent — contentshrimp.com/api/health returned `v670-68b5d064+api.d2035ce6`, matching the stamp, 22/22 checks green).
 **62 gates, 61 green.** No new SQL. `app.html` unchanged except the version bump — this is a backend round.
 
 **1. `crawl-social` TOLD PEOPLE THEIR OWN PROFILE WAS PRIVATE WHEN IT WASN'T.** Apify's
