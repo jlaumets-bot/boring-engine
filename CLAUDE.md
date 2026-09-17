@@ -3,7 +3,7 @@
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
 ## ▶▶ 2026-09-17 — v671. Buttons that looked dead, and a panel with a heading over an empty box.
-**DEPLOY STATE: pending this session's deploy — the agent writes the verified stamp here.**
+**DEPLOY STATE: LIVE** (deployed and verified 2026-09-17 by the agent — contentshrimp.com/api/health returned `v671-76c5695a+api.d2035ce6`, matching the stamp, 22/22 checks green).
 **63 gates, 62 green.** No new SQL.
 
 **1. THREE DOWNLOAD BUTTONS COULD DO NOTHING AT ALL, SILENTLY.** `canvas.toBlob` hands back
