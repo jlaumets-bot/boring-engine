@@ -192,8 +192,21 @@ function structural() {
   check(/catch\s*\(e\)\s*\{[\s\S]{0,300}failed\+\+/.test(cron), 'pull-trends-cron.js increments a separate `failed` counter');
   check(/console\.error\([^)]*pull-trends-cron: brand[\s\S]{0,200}b\.id/.test(cron), 'pull-trends-cron.js logs the brand id in the catch');
   check(/console\.error\([\s\S]{0,200}e && e\.message/.test(cron), 'pull-trends-cron.js logs the error message in the catch');
-  check(/heartbeat\([^)]*failed[^)]*\)/s.test(cron), 'pull-trends-cron.js reports `failed` in the heartbeat');
-  check(/res\.status\(200\)\.json\(\{[^}]*failed[^}]*\}\)/.test(cron), 'pull-trends-cron.js returns `failed` alongside `skipped`');
+  // v670: these two used to match the literal inline shape
+  // `heartbeat('...', h, { considered, updated, skipped, failed, ranOut })`. When the cron grew
+  // per-lane counts and skip REASONS, those fields moved into a named `_meta` object and both
+  // assertions failed while `failed` was still being reported — a gate failing on formatting, which
+  // is worse than useless because it trains you to ignore it. Check the FACT instead: whatever
+  // object the heartbeat and the response are built from must carry `failed` and `skipped`.
+  const cronMeta = (cron.match(/const _meta = \{[\s\S]*?\};/) || [])[0] ||
+                   (cron.match(/heartbeat\([^,]+,[^,]+,\s*(\{[\s\S]*?\})\s*\)/) || [])[1] || '';
+  check(/\bfailed\b/.test(cronMeta) && /\bskipped\b/.test(cronMeta),
+    'pull-trends-cron.js reports `failed` and `skipped` in what the heartbeat records');
+  check(/heartbeat\('pull-trends-cron'[^)]*\)/.test(cron),
+    'pull-trends-cron.js still writes a heartbeat');
+  const cronResp = (cron.match(/return res\.status\(200\)\.json\(([\s\S]*?)\);/) || [])[1] || '';
+  check(/\bfailed\b|_meta/.test(cronResp),
+    'pull-trends-cron.js returns `failed` alongside `skipped` in its response');
 
   console.log('\n[4] STRUCTURAL — extract-article guards its response');
   const ea = read('extract-article.js');

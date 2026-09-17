@@ -2,6 +2,63 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-17 — v670. Three integrations were failing in ways that blamed the user or looked healthy.
+**DEPLOY STATE: pending this session's deploy — the agent writes the verified stamp here.**
+**62 gates, 61 green.** No new SQL. `app.html` unchanged except the version bump — this is a backend round.
+
+**1. `crawl-social` TOLD PEOPLE THEIR OWN PROFILE WAS PRIVATE WHEN IT WASN'T.** Apify's
+`waitForFinish` is a **CEILING, not a promise** — it answers after at most `RUN_WAIT_S` seconds
+whether or not the scrape finished, and the run object carries `defaultDatasetId` from the moment it
+is **CREATED**. So a slow actor meant reading a dataset that was empty or half-written, finding
+fewer than three captions, and saying:
+> "Found fewer than 3 readable posts on that profile — is it public and active?"
+
+A false claim about **their own account**. They go and check privacy settings that were never the
+problem, find nothing, and conclude the feature is broken. `runResult.data.status` said exactly what
+happened and **nothing read it**. Now: still RUNNING/READY → one extra short wait if the budget
+genuinely allows, then **503 "taking longer than usual, try again"**; FAILED/ABORTED/TIMED-OUT →
+502; and the "is it public?" line survives for the ONE case where it is true — a SUCCEEDED run.
+
+**2. THE TRENDS CRON HEARTBEAT `ok` WITH EVERY SOURCE DEAD.** `skipped` lumped three things
+together: no keywords (a brand that is not set up), no items (every source returned nothing), and
+out of budget. **Only the middle one can mean the app is broken**, and it was invisible — a run
+where every source failed for every brand reported `{ok:true, updated:0, skipped:30}` with a green
+heartbeat, so `/api/health` stayed green while the trends feed silently stopped updating for
+everyone. This is the **third** road to the same silent death in this one file (see the two earlier
+comments there). `pullAllTrends` has always returned per-lane counts on `items.lanes` and **nothing
+read them** — they are the difference between "Apify is down" and "Grok is down". Now: reasons are
+counted separately, lane totals are logged and ride in the heartbeat, and every-source-silent
+across every brand that was actually TRIED heartbeats `error`.
+
+**3. THE GROK WEB-SEARCH LANE FAILED IN TOTAL SILENCE.** Five of six exits in `callGrokSearch`
+resolved `null` with no log; `pullGrokTrends` turned that into an empty lane, absent from the feed
+and indistinguishable from a quiet day. Every exit now names its reason, and non-200 moved from
+`console.log` to `console.error` — it is a failure, and that is the line you grep for.
+
+**NEW GATE `connections-honesty.mjs`.** Its crawl-social and cron arms are EXECUTED against stubs;
+the logging arm is DERIVED — every `return []` / `resolve(null)` in either search function must log
+in the same statement. **The gate immediately found three MORE silent exits** in `pullGrokTrends`
+that the hand-written fix had missed (no keywords, `require('./_llm')` failing, no export). 8
+mutations, all caught.
+
+**THREE MUTATIONS ESCAPED THE FIRST VERSION OF THAT GATE — the pattern is always the same: an
+assertion that is satisfied by the WRONG thing.**
+- Accepting `502 or 503` let a deleted "still running" branch pass, because the generic
+  not-SUCCEEDED branch answered 502 and looked fine. Fixed: **503 exactly**, plus the wording.
+- Testing only all-or-nothing meant `- skipNoKeywords` was never load-bearing. Fixed: a MIXED case
+  (20 brands not set up, all 10 tried got nothing).
+- `/heartbeat\([^)]*_meta|lanes: laneTotals/` — an alternation satisfied by the heartbeat call
+  alone. Fixed: extract the `_meta` literal and require `lanes:` inside it.
+
+**ALSO FIXED A GATE THAT FAILED ON FORMATTING.** `backend-fixes.mjs` asserted the literal inline
+shape `heartbeat(..., { considered, updated, skipped, failed, ranOut })`. Moving those fields into a
+named `_meta` broke it while `failed` was still being reported. **A gate that fails on formatting is
+worse than useless — it trains you to ignore it.** It now extracts whatever object the heartbeat
+records and requires the FIELDS.
+
+**NEXT:** controls — `stmtDownload`/`staticDownload` say "Downloaded!" without checking `toBlob`
+returned null; the Ideas-card viral lane bails silently; ~41 dead functions. Money and security LAST.
+
 ## ▶▶ 2026-09-17 — v669. The teleprompter's reading aid vanished after every rewrite, silently, mid-take.
 **DEPLOY STATE: LIVE** (deployed and verified 2026-09-17 by the agent — contentshrimp.com/api/health returned `v669-9ff37922+api.a8d9ba9e`, matching the stamp, 22/22 checks green).
 **61 gates, 60 green.** No new SQL.

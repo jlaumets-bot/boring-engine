@@ -370,10 +370,13 @@ function brainSummaryFrom(o) {
 
 async function pullGrokTrends(keywords, maxAgeHours, brainObj) {
   const kw = (Array.isArray(keywords) ? keywords : []).map(k => String(k || '').trim()).filter(Boolean).slice(0, 3);
-  if (!kw.length) return [];
+  // v670: three more exits that used to be silent. The first is a legitimate no-op the caller
+  // usually screens out; the other two mean the module is broken, which must never be quiet.
+  if (!kw.length) { console.error('trends: grok lane skipped — no usable keywords for this brand'); return []; }
   let callGrokSearch;
-  try { ({ callGrokSearch } = require('./_llm')); } catch (_) { return []; }
-  if (!callGrokSearch) return [];
+  try { ({ callGrokSearch } = require('./_llm')); }
+  catch (e) { console.error('trends: grok lane cannot load ./_llm — ' + ((e && e.message) || e)); return []; }
+  if (!callGrokSearch) { console.error('trends: grok lane loaded ./_llm but it exports no callGrokSearch'); return []; }
   const days = Math.max(1, Math.ceil(clampWindow(maxAgeHours) / 24));
   const niche = kw.join(', ');
   const brain = brainSummaryFrom(brainObj);
@@ -382,12 +385,19 @@ Return 8-12 items that are DIRECTLY relevant to THIS brand — recent news, stud
 Newest and most on-topic first. EVERY item must be traceable: include the direct URL of the page you actually opened in search. Never invent, guess, shorten or reconstruct a URL — if you do not have the real link for an item, leave it out entirely and return a different one instead.
 Return ONLY a JSON array, no prose or markdown fences:
 [{"text":"the trend or headline in one clear line, max 18 words","source":"publication or @handle","url":"https://the-exact-page-you-read"}]`;
+  // v670 — every exit below used to return [] in silence, so the Grok lane could contribute
+  // nothing for weeks and the only symptom was a slightly thinner trends feed. callGrokSearch now
+  // logs its own failures; these are the ones that happen AFTER a successful call.
   let raw = null;
-  try { raw = await callGrokSearch(prompt, { maxTokens: 1200 }); } catch (_) { return []; }
-  if (!raw) return [];
+  try { raw = await callGrokSearch(prompt, { maxTokens: 1200 }); }
+  catch (e) { console.error('trends: grok lane threw — ' + ((e && e.message) || e)); return []; }
+  if (!raw) return [];   // callGrokSearch has already said why
   let arr = null;
   try { const m = String(raw).match(/\[[\s\S]*\]/); arr = JSON.parse(m ? m[0] : raw); } catch (_) { arr = null; }
-  if (!Array.isArray(arr)) return [];
+  if (!Array.isArray(arr)) {
+    console.error('trends: grok lane returned text that is not a JSON array — ' + String(raw).replace(/\s+/g, ' ').slice(0, 220));
+    return [];
+  }
   const out = [];
   for (const it of arr) {
     const text = String((it && it.text) || '').replace(/\s+/g, ' ').trim();
@@ -418,7 +428,8 @@ async function pullCompetitorPulse(competitors, opts = {}) {
   let p = callGrokSearch(prompt, { maxTokens: 700 });
   if (opts.timeoutMs && opts.timeoutMs > 0) p = Promise.race([p, new Promise(r => setTimeout(() => r(null), opts.timeoutMs))]);
   let digest = null;
-  try { digest = await p; } catch (_) { return ''; }
+  try { digest = await p; } catch (e) { console.error('trends: competitor pulse threw — ' + ((e && e.message) || e)); return ''; }
+  if (digest == null) console.error('trends: competitor pulse came back empty (timed out, or grok-search failed — see its own log line)');
   return (digest && String(digest).trim()) ? String(digest).trim() : '';
 }
 

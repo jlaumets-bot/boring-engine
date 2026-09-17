@@ -93,6 +93,16 @@ module.exports = async function handler(req, res) {
     // systematic breakage reported {ok:true, updated:0, skipped:30} with an 'ok' heartbeat and
     // not one log line — which is exactly how this cron died silently for days at a time.
     let updated = 0, skipped = 0, failed = 0, ranOut = false;
+    // v670 — WHY a brand was skipped, and WHICH LANE went quiet.
+    // `skipped` lumped three different things together: no keywords (a brand that is not set up),
+    // no items (every source returned nothing), and out of budget. Only the middle one can mean
+    // the app is broken, and it was invisible — so a run where EVERY source failed for EVERY brand
+    // reported {ok:true, updated:0, skipped:30} with an 'ok' heartbeat, which is the exact silent
+    // death this file has already been fixed for twice, reached by a third road.
+    // `pullAllTrends` has always returned per-lane counts on `items.lanes` (api/_trends.js) and
+    // NOTHING read them. They are the difference between "Apify is down" and "Grok is down".
+    let skipNoKeywords = 0, skipNoItems = 0;
+    const laneTotals = { grok: 0, news: 0, x: 0 };
     // This cron was killed by the 120s platform limit on 7 of 7 days (Vercel runtime errors),
     // so trends never refreshed and every brand kept its stale auto_trends — which is why the
     // v600b "sources" fix never showed up in the UI. maxDuration is now 300; this budget stops
@@ -123,7 +133,7 @@ module.exports = async function handler(req, res) {
       const _work = Promise.all(batch.map(async (b) => {
         try {
           const kws = deriveKeywords(b);
-          if (!kws.length) { skipped++; return; }
+          if (!kws.length) { skipped++; skipNoKeywords++; return; }
           // Normalize competitors onto b.competitors so brainSummaryFrom(o.competitors) — used by
           // pullGrokTrends for gap-angle scoping — and the pulse below both see the real value.
           b.competitors = (b.competitors_text || (b.voice_extra && b.voice_extra.competitors) || '').toString().trim();
@@ -141,7 +151,20 @@ module.exports = async function handler(req, res) {
           // 5th arg = the brand row itself, so Grok web-search scopes + relevance-filters against the
           // full brain (niche, audience, USPs, pain points, avoid) — not just the thin derived keywords.
           const items = await pullAllTrends(kws, process.env.APIFY_API_TOKEN, undefined, undefined, b);
-          if (!items.length) { skipped++; return; }
+          // v670: record the per-lane counts BEFORE the empty check — that is the whole point of
+          // them, and the empty case is exactly when they matter.
+          try {
+            const L = items && items.lanes;
+            if (L) { laneTotals.grok += (L.grok || 0); laneTotals.news += (L.news || 0); laneTotals.x += (L.x || 0); }
+          } catch (_) {}
+          if (!items.length) {
+            skipped++; skipNoItems++;
+            const L = (items && items.lanes) || {};
+            console.error('pull-trends-cron: brand ' + b.id + ' (' + (b.brand_name || 'unnamed') +
+              ') got NOTHING from any source — lanes grok=' + (L.grok || 0) + ' news=' + (L.news || 0) +
+              ' x=' + (L.x || 0) + ' keywords=' + kws.length);
+            return;
+          }
           // Velocity: compare against the brand's PREVIOUS pull to flag what's newly
           // rising, and sort hottest-first (scoreTrends uses the items' real recency).
           const prevTexts = ((b.auto_trends && Array.isArray(b.auto_trends.items)) ? b.auto_trends.items : []).map(i => i && i.text).filter(Boolean);
@@ -210,10 +233,28 @@ module.exports = async function handler(req, res) {
 
     if (ranOut) console.log('pull-trends-cron: ran out of budget after ' + (Date.now() - _cronT0) + 'ms — updated ' + updated + ', ' + skipped + ' left for the next run');
     if (failed) console.error('pull-trends-cron: ' + failed + ' of ' + due.length + ' brand(s) FAILED this run (see the per-brand errors above)');
-    // A run where nothing updated but brands failed is NOT healthy — say so in the heartbeat.
-    const _health = (failed && !updated) ? 'error' : 'ok';
-    await store.heartbeat('pull-trends-cron', _health, { considered: due.length, updated, skipped, failed, ranOut });
-    return res.status(200).json({ ok: true, considered: due.length, updated, skipped, failed, ranOut });
+    console.log('pull-trends-cron: lanes this run — grok=' + laneTotals.grok + ' news=' + laneTotals.news +
+      ' x=' + laneTotals.x + ' | updated=' + updated + ' skipped=' + skipped +
+      ' (noKeywords=' + skipNoKeywords + ', noItems=' + skipNoItems + ') failed=' + failed);
+
+    // v670 — EVERY SOURCE SILENT IS A FAILURE, NOT A SKIP.
+    // A run where brands were due, none failed outright, and not one of them got a single item
+    // from any source is a systematic breakage (a rejected Apify token, a dead RSS host, Grok
+    // returning null) — not thirty independent no-ops. It used to heartbeat 'ok', so /api/health
+    // stayed green while the trends feed quietly stopped updating for everyone.
+    // A brand with no keywords is NOT evidence of that: it simply is not set up yet.
+    const _triedBrands = due.length - skipNoKeywords - (ranOut ? Math.max(0, skipped - skipNoKeywords - skipNoItems) : 0);
+    const _allSilent = _triedBrands > 0 && updated === 0 && skipNoItems >= _triedBrands;
+    if (_allSilent) {
+      console.error('pull-trends-cron: EVERY source returned nothing for all ' + _triedBrands +
+        ' brand(s) that were actually tried — lanes grok=' + laneTotals.grok + ' news=' + laneTotals.news +
+        ' x=' + laneTotals.x + '. That is a systematic failure, not a quiet day.');
+    }
+    const _health = ((failed && !updated) || _allSilent) ? 'error' : 'ok';
+    const _meta = { considered: due.length, updated, skipped, failed, ranOut,
+                    skipNoKeywords, skipNoItems, lanes: laneTotals, allSilent: _allSilent };
+    await store.heartbeat('pull-trends-cron', _health, _meta);
+    return res.status(200).json(Object.assign({ ok: !_allSilent }, _meta));
   } catch (e) {
     console.error('pull-trends-cron error:', e);
     return res.status(500).json({ error: 'cron failed' });

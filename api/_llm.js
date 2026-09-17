@@ -166,7 +166,12 @@ function extractResponsesText(b) {
 function callGrokSearch(prompt, opts = {}) {
   return new Promise((resolve) => {
     const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey || !prompt) return resolve(null);
+    // v670 — SAY WHY IT RETURNED NOTHING. Five of the six exits below resolved null with no log at
+    // all, so a rejected key, a socket drop, a timeout or an unparseable body were indistinguishable
+    // from "the search found nothing" — and the caller (pullGrokTrends) turns null into an empty
+    // lane, which is simply absent from the trends feed. Silent, permanent, and undiagnosable.
+    if (!apiKey) { console.error('grok-search: no XAI_API_KEY — the web-search lane is off'); return resolve(null); }
+    if (!prompt) { console.error('grok-search: called with an empty prompt'); return resolve(null); }
     const model = process.env.XAI_SEARCH_MODEL || 'grok-4.6';
     const tool = { type: 'web_search' };
     if (Array.isArray(opts.allowedDomains) && opts.allowedDomains.length) tool.filters = { allowed_domains: opts.allowedDomains.slice(0, 5) };
@@ -183,12 +188,21 @@ function callGrokSearch(prompt, opts = {}) {
       let data = '';
       resp.on('data', c => data += c);
       resp.on('end', () => {
-        if (resp.statusCode !== 200) { console.log('grok-search http ' + resp.statusCode + ': ' + String(data).slice(0, 160)); return resolve(null); }
-        try { resolve(extractResponsesText(JSON.parse(data))); } catch (_) { resolve(null); }
+        // console.ERROR, not log: this is a failure, and it is the line someone greps for.
+        if (resp.statusCode !== 200) { console.error('grok-search: http ' + resp.statusCode + ' — ' + String(data).slice(0, 300)); return resolve(null); }
+        try {
+          const text = extractResponsesText(JSON.parse(data));
+          if (!text) console.error('grok-search: 200 but no text in the response body — ' + String(data).slice(0, 200));
+          resolve(text);
+        } catch (e) {
+          console.error('grok-search: 200 with an unparseable body — ' + (e && e.message) + ' — ' + String(data).slice(0, 200));
+          resolve(null);
+        }
       });
     });
-    r.on('error', () => resolve(null));
-    r.setTimeout(90000, () => { r.destroy(); resolve(null); }); // agentic search can take longer than a chat call
+    r.on('error', (e) => { console.error('grok-search: request failed — ' + (e && e.message)); resolve(null); });
+    // agentic search can take longer than a chat call
+    r.setTimeout(90000, () => { console.error('grok-search: timed out after 90s'); r.destroy(); resolve(null); });
     r.write(body); r.end();
   });
 }

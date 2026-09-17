@@ -70,7 +70,36 @@ module.exports = async function handler(req, res) {
     }
 
     // Run the scraper and wait
-    const runResult = await apifyRequest('POST', `/v2/acts/${encodeURIComponent(actorId)}/runs?waitForFinish=${RUN_WAIT_S}`, apiToken, input, RUN_TIMEOUT_MS);
+    let runResult = await apifyRequest('POST', `/v2/acts/${encodeURIComponent(actorId)}/runs?waitForFinish=${RUN_WAIT_S}`, apiToken, input, RUN_TIMEOUT_MS);
+
+    // v670 — READ THE RUN'S STATUS. `waitForFinish` is a CEILING, not a promise: Apify answers
+    // after at most RUN_WAIT_S seconds whether or not the scrape finished, and the run object
+    // carries `defaultDatasetId` from the moment it is CREATED. So on a slow actor this code took
+    // the id of a run still in progress, read a dataset that was empty or half-written, found
+    // fewer than three captions, and answered:
+    //     "Found fewer than 3 readable posts on that profile — is it public and active?"
+    // That is a false statement about the PERSON'S OWN ACCOUNT. They go and check their privacy
+    // settings, find nothing wrong, and conclude the feature is broken — while the real cause was
+    // a scrape that simply had not finished.
+    const runId = runResult && runResult.data && runResult.data.id;
+    let runStatus = (runResult && runResult.data && runResult.data.status) || 'UNKNOWN';
+
+    // One more short wait if it is still going and the budget genuinely allows it. After the first
+    // wait we are ~RUN_WAIT_S in; the dataset read and the model still need DATASET_TIMEOUT_MS +
+    // LLM_MIN_MS, so only spend what is left beyond that.
+    if ((runStatus === 'RUNNING' || runStatus === 'READY') && runId) {
+      const spare = FN_BUDGET_MS - (Date.now() - _t0) - DATASET_TIMEOUT_MS - LLM_MIN_MS;
+      if (spare > 8000) {
+        const extraS = Math.min(20, Math.floor(spare / 1000) - 3);
+        console.log('crawl-social: run ' + runId + ' still ' + runStatus + ' after ' + RUN_WAIT_S + 's — waiting ' + extraS + 's more');
+        try {
+          const again = await apifyRequest('GET', `/v2/actor-runs/${encodeURIComponent(runId)}?waitForFinish=${extraS}`,
+            apiToken, null, (extraS + 4) * 1000);
+          if (again && again.data && again.data.status) { runResult = again; runStatus = again.data.status; }
+        } catch (e) { /* keep what we have; the status check below decides */ }
+      }
+    }
+
     const datasetId = runResult && runResult.data && runResult.data.defaultDatasetId;
     if (!datasetId) {
       // apifyRequest has already logged the real status + body head, so a renamed
@@ -94,6 +123,22 @@ module.exports = async function handler(req, res) {
       .slice(0, 40);
 
     if (captions.length < 3) {
+      // v670 — ONLY BLAME THE PROFILE WHEN THE SCRAPE ACTUALLY FINISHED.
+      // A run that is still going, or that failed on Apify's side, tells us nothing about whether
+      // the profile is public. Saying "is it public and active?" in those cases sends the person
+      // to check settings that were never the problem.
+      if (runStatus === 'RUNNING' || runStatus === 'READY') {
+        console.error('crawl-social: run ' + runId + ' still ' + runStatus + ' at read time — ' +
+          captions.length + ' captions so far (platform=' + platform + ')');
+        return res.status(503).json({ error: "That profile is taking longer than usual to read — give it a minute and try again.", runStatus });
+      }
+      if (runStatus !== 'SUCCEEDED') {
+        console.error('crawl-social: run ' + runId + ' ended ' + runStatus + ' with ' + captions.length +
+          ' captions (platform=' + platform + ')');
+        return res.status(502).json({ error: "Couldn't read that profile right now — try again in a minute.", runStatus });
+      }
+      console.log('crawl-social: run ' + runId + ' SUCCEEDED but only ' + captions.length +
+        ' usable captions (platform=' + platform + ') — reporting it as a profile problem');
       return res.status(404).json({ error: 'Found fewer than 3 readable posts on that profile — is it public and active?' });
     }
 
