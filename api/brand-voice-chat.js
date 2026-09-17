@@ -146,19 +146,73 @@ If they haven't set the basics yet (brand name, audience), start there before an
       max_tokens: 800
     });
 
-    // Extract the structured blocks the coach may append (robust parser handles prose-wrapped JSON).
+    // v668 — A BLOCK WITH NO CLOSING TAG MUST STILL BE PARSED, AND MUST STILL BE HIDDEN.
+    // Both the extractor and the stripper required a closing tag. `max_tokens` is 800 here and the
+    // coach has to fit prose plus up to three blocks inside it, so being cut off mid-block is
+    // ordinary, not exotic. When it happened the stripper matched nothing and the chat bubble
+    // showed the person the raw tag and raw JSON:
+    //     "Here is why.\n<brand_update>\n{\"field\":\"tagline\",\"value\":\"Boring works\"..."
+    // — and the suggestion was lost even when its JSON had arrived complete and only the tag was
+    // missing. Now a block runs to its closing tag OR to the end of the reply: it is always cut out
+    // of what the person reads, and its contents are still handed to the parser.
+    const takeBlocks = (name) => {
+      const openTag = '<' + name + '>', closeTag = '</' + name + '>';
+      const bodies = [];
+      let from = 0;
+      for (;;) {
+        const open = content.indexOf(openTag, from);
+        if (open < 0) break;
+        const close = content.indexOf(closeTag, open + openTag.length);
+        const bodyEnd = close < 0 ? content.length : close;
+        bodies.push({ text: content.slice(open + openTag.length, bodyEnd),
+                      start: open, end: close < 0 ? content.length : close + closeTag.length });
+        from = close < 0 ? content.length : close + closeTag.length;
+      }
+      return bodies;
+    };
+    const spans = [];
+    const firstBody = (name) => {
+      const found = takeBlocks(name);
+      for (const b of found) spans.push([b.start, b.end]);
+      return found.length ? found[0].text : null;
+    };
+    const rawUpdate = firstBody('brand_update');
+    const rawAction = firstBody('assistant_action');
+    const rawMemory = firstBody('coach_memory');
+
+    // v668 — VALIDATE THE SUGGESTION BEFORE SENDING IT.
+    // This was `extractJson(...) || null` — whatever shape the model produced went to the client as
+    // a suggestion card. bvRenderMessages then does `s.field.replace(...)` to build the label, so a
+    // suggestion with no `field`, or a numeric or object one, threw inside the messages `.map()` and
+    // `container.innerHTML` was never assigned. Measured on the real function: 3 of 5 shapes killed
+    // the render, and because messages are persisted the coach window stayed dead through reloads.
+    // A field name is an identifier, and a value is text. Anything else is not a suggestion.
+    const validSuggestion = (j) => {
+      if (!j || typeof j !== 'object' || Array.isArray(j)) return null;
+      const field = typeof j.field === 'string' ? j.field.trim() : '';
+      if (!/^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(field)) return null;
+      const flat = v => Array.isArray(v)
+        ? v.map(flat).filter(Boolean).join(', ')
+        : (v == null || typeof v === 'object' ? '' : String(v));
+      const value = flat(j.value).slice(0, 4000);
+      if (!value.trim()) return null;
+      const out = { field, value };
+      if (['set', 'append', 'replace'].includes(j.action)) out.action = j.action;
+      return out;
+    };
+
     let suggestion = null, action = null, memory = null;
-    try { const m = content.match(/<brand_update>\s*(\{[\s\S]*?\})\s*<\/brand_update>/); if (m) suggestion = extractJson(m[1]) || null; } catch (e) {}
+    try { if (rawUpdate) suggestion = validSuggestion(extractJson(rawUpdate)); } catch (e) {}
     try {
-      const m = content.match(/<assistant_action>\s*(\{[\s\S]*?\})\s*<\/assistant_action>/);
-      if (m) { const a = extractJson(m[1]); if (a && ['write_post','generate_ideas','pull_trends','scan_brand'].includes(a.type)) action = { type: a.type, label: String(a.label || '').slice(0, 40) }; }
+      const a = rawAction ? extractJson(rawAction) : null;
+      if (a && ['write_post','generate_ideas','pull_trends','scan_brand'].includes(a.type)) action = { type: a.type, label: String(a.label || '').slice(0, 40) };
     } catch (e) {}
-    try { const m = content.match(/<coach_memory>\s*(\{[\s\S]*?\})\s*<\/coach_memory>/); if (m) { const mj = extractJson(m[1]); if (mj && mj.note) memory = String(mj.note).slice(0, 200); } } catch (e) {}
-    const cleanContent = content
-      .replace(/<brand_update>[\s\S]*?<\/brand_update>/g, '')
-      .replace(/<assistant_action>[\s\S]*?<\/assistant_action>/g, '')
-      .replace(/<coach_memory>[\s\S]*?<\/coach_memory>/g, '')
-      .trim();
+    try { const mj = rawMemory ? extractJson(rawMemory) : null; if (mj && mj.note) memory = String(mj.note).slice(0, 200); } catch (e) {}
+
+    // Cut the spans out back-to-front so earlier offsets stay valid.
+    let cleanContent = content;
+    spans.sort((a, b) => b[0] - a[0]).forEach(([a, b]) => { cleanContent = cleanContent.slice(0, a) + cleanContent.slice(b); });
+    cleanContent = cleanContent.trim();
 
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'voicechat' });
     return res.status(200).json({ reply: cleanContent, suggestion, action, memory });

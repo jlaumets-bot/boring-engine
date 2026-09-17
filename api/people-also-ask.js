@@ -32,19 +32,45 @@ module.exports = async function handler(req, res) {
     const fetchKeyword = (keyword) => new Promise((resolve) => {
       const params = new URLSearchParams({ engine: 'google', q: keyword, api_key: apiKey, num: '10' });
       const url = `https://serpapi.com/search.json?${params.toString()}`;
+      // v668 — SAY SOMETHING WHEN IT FAILS. Every failure path here resolved to a silent
+      // `{status:0, body:{}}`. A revoked key (401), an exhausted search quota (429) or an outage
+      // was indistinguishable from "Google had no questions for this keyword", left NOTHING in the
+      // runtime logs, and — see below — still charged the user. SerpAPI puts the reason in
+      // `body.error`, so it is worth carrying into the log line.
       const req = https.get(url, (resp) => {
         let data = '';
         resp.on('data', chunk => data += chunk);
         resp.on('end', () => {
-          try { resolve({ keyword, status: resp.statusCode, body: JSON.parse(data) }); }
-          catch (e) { resolve({ keyword, status: resp.statusCode, body: {} }); }
+          let body = {};
+          try { body = JSON.parse(data); }
+          catch (e) { console.error('paa: serpapi returned unparseable body for ' + JSON.stringify(keyword) + ' (status ' + resp.statusCode + ')'); }
+          if (resp.statusCode !== 200) {
+            console.error('paa: serpapi ' + resp.statusCode + ' for ' + JSON.stringify(keyword) +
+              (body && body.error ? ' — ' + String(body.error).slice(0, 200) : ''));
+          }
+          resolve({ keyword, status: resp.statusCode, body });
         });
       });
-      req.on('error', () => resolve({ keyword, status: 0, body: {} }));
-      req.setTimeout(12000, () => { req.destroy(); resolve({ keyword, status: 0, body: {} }); });
+      req.on('error', (e) => { console.error('paa: serpapi request failed for ' + JSON.stringify(keyword) + ' — ' + (e && e.message)); resolve({ keyword, status: 0, body: {} }); });
+      req.setTimeout(12000, () => { console.error('paa: serpapi timed out after 12s for ' + JSON.stringify(keyword)); req.destroy(); resolve({ keyword, status: 0, body: {} }); });
     });
 
     const results = await Promise.all(keywords.slice(0, 5).map(fetchKeyword));
+
+    // v668 — A SEARCH THAT NEVER RAN IS NOT A SEARCH THAT FOUND NOTHING.
+    // When every call failed, `questions` came out [] and this still answered 200. The client's
+    // check is `resp.ok && data.questions`, and an empty ARRAY is truthy — so it stored the empty
+    // list, rendered "no questions", never set its error flag, and logUsage below charged for it.
+    // A bad key or an exhausted quota therefore looked like a working feature with nothing to say,
+    // permanently. Now: some failed is logged; ALL failed is an error, and nothing is metered.
+    const failed = results.filter(r => r.status !== 200);
+    if (failed.length) {
+      console.error('paa: ' + failed.length + ' of ' + results.length + ' serpapi calls failed (statuses: ' +
+        failed.map(r => r.status).join(', ') + ')');
+    }
+    if (failed.length === results.length) {
+      return res.status(502).json({ error: "Couldn't reach the search service — try again in a minute.", searchFailed: true });
+    }
 
     // SerpAPI shapes drift. An item without a usable `question`/`query` is SKIPPED, not
     // pushed — before, a single missing field threw a TypeError at the .toLowerCase()

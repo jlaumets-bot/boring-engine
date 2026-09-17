@@ -46,13 +46,26 @@ module.exports = async function handler(req, res) {
 
   // one Pexels search → best usable photo, or null. Kept small so we can try
   // several query variants (broaden-and-retry) without blowing the time budget.
+  // v668 — the last transport failure this request saw, so the caller can tell a search that
+  // FAILED from a search that legitimately found nothing. Both used to answer {empty:true}.
+  let _pexelsFail = null;
   async function pexelsPick(key, query, intent){
     try {
       const sr = await fetch('https://api.pexels.com/v1/search?per_page=15&orientation=landscape&query=' + encodeURIComponent(query), {
         headers: { Authorization: key },
         signal: AbortSignal.timeout(8000)
       });
-      if (!sr.ok) return null;
+      if (!sr.ok) {
+        // v668 — SAY SOMETHING. This was a bare `return null`, so a revoked key (401) or an
+        // exhausted quota (the free tier is 200 requests an HOUR, and one split-screen render can
+        // ask for several photos) was indistinguishable from "no good photo for this beat" — with
+        // nothing in the runtime logs and nothing in /api/health, which only checks that a key
+        // EXISTS. The beat rendered text-only forever and nobody ever found out why.
+        _pexelsFail = 'http_' + sr.status;
+        console.error('stock-photo: pexels ' + sr.status + ' for ' + JSON.stringify(query) +
+          (sr.status === 401 ? ' — the key is rejected' : sr.status === 429 ? ' — rate limited (free tier is 200/hour)' : ''));
+        return null;
+      }
       const data = await sr.json();
       const photos = (data && Array.isArray(data.photos)) ? data.photos : [];
       // pick the candidate whose OWN description best matches the beat's words;
@@ -67,7 +80,11 @@ module.exports = async function handler(req, res) {
         if (score > bestScore) { bestScore = score; best = { src, by: (photo && photo.photographer) || 'Pexels' }; }
       });
       return best;
-    } catch(e) { return null; }
+    } catch(e) {
+      _pexelsFail = (e && e.name === 'TimeoutError') ? 'timeout' : 'network';
+      console.error('stock-photo: pexels search failed for ' + JSON.stringify(query) + ' — ' + (e && (e.name + ': ' + e.message)));
+      return null;
+    }
   }
 
   try {
@@ -94,13 +111,22 @@ module.exports = async function handler(req, res) {
       hit = await pexelsPick(key, vq, intent);
       if (hit) break;
     }
-    if (!hit) return res.status(200).json({ empty: true });
+    // Still 200 + empty so the beat renders text-only rather than breaking the render — but the
+    // REASON travels, so a caller (and a human reading the logs) can tell a working search that
+    // found nothing from a search that never happened.
+    if (!hit) return res.status(200).json({ empty: true, reason: _pexelsFail || 'no_match' });
 
     // stream the bytes through (size-capped)
     const ir = await fetch(hit.src, { signal: AbortSignal.timeout(14000) });
-    if (!ir.ok) return res.status(200).json({ empty: true });
+    if (!ir.ok) {
+      console.error('stock-photo: pexels image fetch ' + ir.status + ' for ' + hit.src);
+      return res.status(200).json({ empty: true, reason: 'image_http_' + ir.status });
+    }
     const buf = Buffer.from(await ir.arrayBuffer());
-    if (!buf.length || buf.length > 4 * 1024 * 1024) return res.status(200).json({ empty: true });
+    if (!buf.length || buf.length > 4 * 1024 * 1024) {
+      console.error('stock-photo: pexels image unusable (' + buf.length + ' bytes) for ' + hit.src);
+      return res.status(200).json({ empty: true, reason: 'image_size' });
+    }
 
     // METER IT — the other half of the gate above. Without this, `used` never moves and the
     // limit can never be reached. Logged only once we hold a real photo, so a miss

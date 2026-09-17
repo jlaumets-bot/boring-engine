@@ -2,6 +2,54 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-17 — v668. The coach chat could die and stay dead. Two integrations were failing invisibly.
+**DEPLOY STATE: UNDEPLOYED.** Stamped by `scripts/stamp-build.js` — see `sw.js`. **60 gates, 59 green.**
+No new SQL. Jörgen ran `sql/v665-edit-signal-provenance.sql` on 2026-09-17 — **provenance is live.**
+
+**1. THE COACH CHAT COULD DIE PERMANENTLY.** `bvRenderMessages` builds the suggestion label with
+`s.field.replace(...)`, and `s.field` arrives straight from the model — api/brand-voice-chat.js sent
+`extractJson(...) || null` with no shape check. A suggestion with no field, or a numeric or object
+one, threw **inside the messages `.map()`**, so `container.innerHTML` was never assigned and the
+whole chat stopped rendering. Messages are persisted, so **it stayed dead through reloads**.
+Measured on the real function: **3 of 5 shapes killed it.** Server validates now (field must be an
+identifier, value must be text, list values joined); client guards too, which repairs conversations
+already saved.
+
+**2. THE COACH SHOWED THE PERSON ITS OWN MACHINE BLOCKS.** Both the extractor and the stripper
+required a CLOSING tag. `max_tokens` is 800 with prose plus up to three blocks to fit, so being cut
+off mid-block is ordinary. When it happened the stripper matched nothing and the bubble read
+`Here is why.\n<brand_update>\n{"field":"tagline",...` — and the suggestion was thrown away even
+when only the TAG was missing and its JSON was complete. A block now runs to its closing tag OR to
+the end of the reply: always hidden, still parsed.
+
+**3. PEXELS FAILED WITH ZERO EVIDENCE.** Every failure path in `pexelsPick` was a bare `return null`
+inside `catch(e){return null}`, and the caller answered `200 {empty:true}` — **the same answer as
+"no good photo for this beat"**. A revoked key (401) or an exhausted quota (**the free tier is 200
+requests an HOUR**, and one split-screen render asks for several) made every beat render text-only
+forever with nothing in the logs. `/api/health` only checked the key EXISTS, which stays true while
+it is being rejected. Now every status and every network failure is logged, and the reason travels
+in the response.
+
+**4. SERPAPI FAILED, AND CHARGED FOR IT.** Same silence, worse ending: when EVERY call failed,
+`questions` came out `[]` and the endpoint answered **200**. The client tests
+`resp.ok && data.questions` — **an empty array is truthy** — so it stored the empty list, rendered
+"no questions", never set its error flag, and `logUsage` charged. A dead key looked like a working
+feature with nothing to say. Now: partial failures logged, all-failed returns **502 BEFORE
+metering**. Added `config_serpapi_key` to `/api/health` — it had **no check at all**.
+
+**NEW GATES** `coach-chat-contract.mjs` (5 mutations caught) and `silent-integrations.mjs`
+(6 caught). **The first version of silent-integrations MISSED a mutation** — it only exercised HTTP
+statuses, never the `catch` branch, so "stop flagging a dropped connection" escaped. Fixed by adding
+timeout + dropped-connection cases. Worth remembering: a gate that tests one branch of a try/catch
+tests half the failure surface.
+
+**NEXT:** `brainDistill` has no call site (auto-distilled rules enter Voice Memory unreviewed);
+stale `emphasis` after Sharpen/Rewrite. Then the rest of connections — `crawl-social` reads
+UNFINISHED Apify runs and blames the user's profile; the trends cron heartbeats `ok` when every lane
+returned nothing (`items.lanes` is computed and discarded); Grok web-search returns null silently.
+Then controls (`stmtDownload`/`staticDownload` say "Downloaded!" without checking `toBlob` null;
+~41 dead functions). Money and security LAST, per Jörgen.
+
 ## ▶▶ 2026-09-16 — v667. One malformed model reply could permanently brick the Create tab. It can't now.
 **DEPLOY STATE: UNDEPLOYED.** Stamped by `scripts/stamp-build.js` — see `sw.js`. **58 gates, 57 green.**
 No new SQL. `sql/v665-edit-signal-provenance.sql` is still the only one waiting.

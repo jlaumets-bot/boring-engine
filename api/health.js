@@ -113,6 +113,10 @@ module.exports = async function handler(req, res) {
   // without a check here nobody ever finds out. (stock-photo answers 200 {empty:true} on every
   // failure; the X trends lane returns [] with no token; Stripe checkout needs live price IDs.)
   add('config_pexels_key', !!process.env.PEXELS_API_KEY);        // no key ⇒ split-screen beats render text-only
+  // v668: SerpAPI had NO check here at all, despite being exactly the kind this block is for.
+  // Without a key /api/people-also-ask answers 500 on every call and "Real questions people ask"
+  // is dead — a whole panel, with nothing anywhere saying why.
+  add('config_serpapi_key', !!process.env.SERPAPI_KEY);          // no key ⇒ "Real questions people ask" is dead
   add('config_apify_token', !!process.env.APIFY_API_TOKEN);      // no token ⇒ X/Twitter trends lane silently empty
   add('config_stripe_prices', !!(process.env.STRIPE_PRICE_PRO && process.env.STRIPE_PRICE_AGENCY));
 

@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v667';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v668';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -24562,9 +24562,16 @@ function bvRenderMessages() {
   container.innerHTML = startersHtml + bvState.messages.map((m, i) => {
     let html = `<div class="bv-msg ${m.role === 'user' ? 'user' : 'ai'}">${escHtml(m.content).replace(/\n/g, '<br>')}`;
     // Check if there's a pending suggestion on this message
-    if (m.suggestion && m.suggestionPending) {
+    // v668: `s.field` arrives from the model. It used to go straight into `.replace(...)`, so a
+    // suggestion with no field, or a numeric or object one, threw INSIDE this `.map()` — and
+    // `container.innerHTML` below is never assigned when the map throws, so the whole coach chat
+    // stopped rendering. Messages are persisted, so it stayed dead through reloads. Measured on this
+    // function: 3 of 5 malformed shapes killed it. api/brand-voice-chat.js now validates the shape
+    // before sending it; this is the half that repairs conversations already saved.
+    const _sf = m.suggestion && typeof m.suggestion.field === 'string' ? m.suggestion.field.trim() : '';
+    if (m.suggestion && m.suggestionPending && _sf) {
       const s = m.suggestion;
-      const fieldLabel = s.field === 'coachNotes' ? 'Voice Memory' : s.field.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase());
+      const fieldLabel = _sf === 'coachNotes' ? 'Voice Memory' : _sf.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase());
       html += `<div class="bv-suggestion">
         <div class="bv-suggestion-label">Suggested update</div>
         <div class="bv-suggestion-field">${escHtml(fieldLabel)}</div>
