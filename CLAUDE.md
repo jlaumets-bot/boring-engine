@@ -3,8 +3,21 @@
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
 ## ▶▶ 2026-09-17 — v668. The coach chat could die and stay dead. Two integrations were failing invisibly.
-**DEPLOY STATE: UNDEPLOYED.** Stamped by `scripts/stamp-build.js` — see `sw.js`. **60 gates, 59 green.**
+**DEPLOY STATE: LIVE** (verified 2026-09-17 — contentshrimp.com/api/health reported `v668-71e414bf+api.a8d9ba9e`, 22/22 checks green). Stamped by `scripts/stamp-build.js` — see `sw.js`. **60 gates, 59 green.**
 No new SQL. Jörgen ran `sql/v665-edit-signal-provenance.sql` on 2026-09-17 — **provenance is live.**
+
+**THE REPO AND PRODUCTION HAD DIVERGED — FIXED 2026-09-17.** `vercel --prod` deploys the LOCAL
+FOLDER and stamps the deployment with local git metadata, so Vercel's dashboard showed
+`githubCommitSha` values that **did not exist on GitHub**. GitHub's `main` was still at `b6fd2ad`
+(**v655, 13 Sept**) while production ran v668 — 15 commits and 13 versions apart. **Any
+GitHub-triggered deploy would have rolled production back to v655.** `main` and
+`backup-2026-09-17` are now pushed and in sync. THE RULE: after a `vercel --prod`, push. A green
+dashboard row is not a backup.
+**Pushing needs Jörgen's Mac** — the mounted-folder sandbox has no git credentials
+("could not read Username for 'https://github.com'"). Use the desktop-commander MCP
+(`start_process`, `cd ~/boring-content-engine-deploy && git push ...`); that runs on the Mac with
+his keychain. Vercel + GitHub MCP tools work from anywhere and are how to VERIFY a deploy:
+`web_fetch_vercel_url` on `https://contentshrimp.com/api/health` returns the live build stamp.
 
 **1. THE COACH CHAT COULD DIE PERMANENTLY.** `bvRenderMessages` builds the suggestion label with
 `s.field.replace(...)`, and `s.field` arrives straight from the model — api/brand-voice-chat.js sent
@@ -51,7 +64,7 @@ Then controls (`stmtDownload`/`staticDownload` say "Downloaded!" without checkin
 ~41 dead functions). Money and security LAST, per Jörgen.
 
 ## ▶▶ 2026-09-16 — v667. One malformed model reply could permanently brick the Create tab. It can't now.
-**DEPLOY STATE: UNDEPLOYED.** Stamped by `scripts/stamp-build.js` — see `sw.js`. **58 gates, 57 green.**
+**DEPLOY STATE: LIVE** (verified 2026-09-17 — contentshrimp.com/api/health reported `v668-71e414bf+api.a8d9ba9e`, 22/22 checks green). Stamped by `scripts/stamp-build.js` — see `sw.js`. **58 gates, 57 green.**
 No new SQL. `sql/v665-edit-signal-provenance.sql` is still the only one waiting.
 
 **1. THE BRICK (was SHIPS-BROKEN).** `/api/remix` returned `extractJson(content)` **raw** — proof the
@@ -91,7 +104,7 @@ after Sharpen/Rewrite. Then connections (SerpAPI + Pexels fail with zero logs an
 when every lane returns nothing), then controls. Money and security LAST, per Jörgen.
 
 ## ▶▶ 2026-09-16 — v666. The brain had stopped learning, and was quoting a stale competitor digest as news.
-**DEPLOY STATE: UNDEPLOYED.** Stamped by `scripts/stamp-build.js` — see `sw.js`. **57 gates, 56 green.**
+**DEPLOY STATE: LIVE** (verified 2026-09-17 — contentshrimp.com/api/health reported `v668-71e414bf+api.a8d9ba9e`, 22/22 checks green). Stamped by `scripts/stamp-build.js` — see `sw.js`. **57 gates, 56 green.**
 Ships on top of v665; the same `sql/v665-edit-signal-provenance.sql` is still the only SQL to run.
 
 **1. AUTO-LEARNING SWITCHED ITSELF OFF AT 60 EDITS.** `brainAutoDistill` fires when
@@ -134,7 +147,7 @@ Memory unreviewed. Then: generation contracts (`remix.js:191` raw JSON -> `escap
 security LAST, per Jörgen.
 
 ## ▶▶ 2026-09-16 — v665. The brand brain stopped learning from itself, and stopped lying about what it knows.
-**DEPLOY STATE: UNDEPLOYED.** Stamped `v665-50cd6e31+api.edb2a33f`. **56 gates, 55 green**
+**DEPLOY STATE: LIVE** (verified 2026-09-17 — contentshrimp.com/api/health reported `v668-71e414bf+api.a8d9ba9e`, 22/22 checks green). Stamped `v665-50cd6e31+api.edb2a33f`. **56 gates, 55 green**
 (`build-stamp` cannot run in the sandbox — see the v660 entry).
 **ONE SQL FILE TO RUN: `sql/v665-edit-signal-provenance.sql`** (idempotent, adds two columns. The
 app works without it — the insert retries without the columns and the read falls back — but the
