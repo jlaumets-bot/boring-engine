@@ -2,6 +2,51 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-17 — THE DEAD-CODE SWEEP. I did NOT delete anything, and that is the finding.
+**NO VERSION BUMP, NO DEPLOY — `app.html` is byte-unchanged.** One new gate; `scripts/` is in
+`.vercelignore`, so nothing user-facing moved. **64 gates, 63 green.**
+
+**THE COUNT WAS WRONG, AND MY FIRST TWO SCANS WERE WORSE.** The standing note said "~41 dead
+functions". The real number is **33**, out of 764 declared, totalling 558 lines.
+**Scan attempt 1 and 2 both reported 139** — including `escapeHtml`, which has **36 real call
+sites**. Cause: stripping `/* */` across app.html blanked **191,214 characters, 13% of the file**.
+**CLAUDE.md v669 says in as many words not to do this and I did it anyway.** The rule, for the third
+time: app.html is HTML + CSS + JS; a file-wide block-comment strip mis-pairs on CSS blocks and on
+`*/` inside strings. Strip WHOLE-LINE `//` only (measured: zero damage), and accept over-counting
+references — for a deletion task, over-counting under-reports dead code, which is the safe direction.
+
+**WHY NOTHING WAS DELETED.** Two reasons, both found by checking instead of assuming:
+1. **The meme, blog and product-reference tools are DELIBERATELY shelved.** `CS_SHELVED =
+   { blog: true, meme: true }`, and the comment beside it says *"every view, renderer, endpoint and
+   table stays intact. Flip a flag to false to revive."* Their markup was removed and the JS kept
+   ON PURPOSE. Deleting it would destroy the revive path Jörgen built.
+2. **The prompt-builder / Quick Scenes cluster is a closed loop with no way in.** Its container
+   `quickScenesContainer` is not created anywhere, so `renderQuickScenes` hits
+   `if (!container) return;` on every call and none of its buttons ever render — and every caller of
+   every other function in the cluster sits INSIDE it (app.html:20048-20337). Inert, not broken.
+**558 lines of regression risk for zero user-visible benefit is a bad trade.** If Jörgen wants it
+gone, it is one focused session with this list in hand.
+
+**WHAT THE SWEEP ACTUALLY FOUND — AND THE NEW GATE.** 296 distinct element ids are read; **15 are
+never created by anything**. All 15 are inert today, each for a reason now written down. But
+`getElementById` returns null and nearly every reader is null-guarded, so **the next one will not
+announce itself**: rename an id in the markup, miss one reader, and that reader silently does
+nothing forever. That is this app's worst failure shape — a control that renders and does not work.
+**`ghost-elements.mjs`** pins it: any read with no producer fails unless it is in a reviewed list
+that states why it cannot matter. **The list is checked both ways** — an entry that stops being a
+ghost also fails, so a stale allowlist can't hide the next real one.
+Mutations caught: renaming `brainLearnSlot` in the markup (reader left behind), introducing a new
+ghost read, and an element coming back while its allowlist entry stayed.
+
+**ONE FALSE POSITIVE I CAUGHT ON MYSELF, WORTH THE WARNING.** `renderUsagePill` reads `csUsagePill`,
+which does not exist — and that is **correct**: it does `var old = getElementById('csUsagePill');
+if (old) old.remove();`, deliberately clearing an element an OLDER build rendered. Reading a thing
+in order to delete it if present is not a bug. **I nearly reported the plan-usage display as broken.
+Read the function before calling it a defect.**
+
+**NEXT:** money (holds never released → free work) and security (IPv6 SSRF bypass in
+`_safeurl.js:68`) — the two Jörgen deferred to last, and now the only things left on the list.
+
 ## ▶▶ 2026-09-17 — v671. Buttons that looked dead, and a panel with a heading over an empty box.
 **DEPLOY STATE: LIVE** (deployed and verified 2026-09-17 by the agent — contentshrimp.com/api/health returned `v671-76c5695a+api.d2035ce6`, matching the stamp, 22/22 checks green).
 **63 gates, 62 green.** No new SQL.
