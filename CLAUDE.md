@@ -3,7 +3,7 @@
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
 ## ▶▶ 2026-09-17 — v669. The teleprompter's reading aid vanished after every rewrite, silently, mid-take.
-**DEPLOY STATE: pending this session's deploy — see the line the agent writes after verifying.**
+**DEPLOY STATE: LIVE** (deployed and verified 2026-09-17 by the agent — contentshrimp.com/api/health returned `v669-9ff37922+api.a8d9ba9e`, matching the stamp, 22/22 checks green).
 **61 gates, 60 green.** No new SQL.
 
 **1. STALE STRESS MARKS KILLED THE ONE READING AID ON THE FILMING SCREEN.** `emphasis` is the
