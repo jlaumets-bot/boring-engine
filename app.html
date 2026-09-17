@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v668';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v669';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -9238,16 +9238,28 @@ async function brainAutoDistill() {
     if (rules.length) {
       const lines = (settings.coachNotes || '').split('\n').map(l => l.trim()).filter(Boolean);
       let added = 0, skipped = 0;
+      const addedRules = [];   // v669: what was added, so the person can be told
       rules.forEach(r => {
         const t = (r.rule || '').trim();
         if (!t || lines.some(l => l.toLowerCase() === t.toLowerCase())) return;
         if (lines.length >= BRAIN_RULES_SOFT_CAP) { skipped++; return; }   // stop adding; never evict
-        lines.push(t); added++;
+        lines.push(t); added++; addedRules.push(t);
       });
       if (added) {
         settings.coachNotes = lines.join('\n');   // v634: no slice \u2014 nothing the user wrote is dropped
         saveSettings();
-        if (typeof showToast === 'function') showToast('\ud83e\udde0 Brand brain learned ' + added + ' new thing' + (added > 1 ? 's' : '') + ' \u2014 saved to Voice Memory', 5000);
+        // v669 — SAY WHAT IT LEARNED, NOT HOW MANY.
+        // This is a background job writing PERMANENT rules into Voice Memory with no review step:
+        // brainDistill() — the review card with Keep / Not right — is defined at the top of this
+        // section and HAS NO CALL SITE, so nothing shows the rules before they take effect. The
+        // toast said "learned 2 new things", and those rules then shape every generation from that
+        // moment. Finding a wrong one meant reading a 60-line textarea in Settings and guessing
+        // which lines were new. The rules are capped at 15 words each and at most 3 per run, so
+        // they fit in a toast — and the fix is simply to quote them.
+        if (typeof showToast === 'function') {
+          showToast('\ud83e\udde0 Saved to Voice Memory: ' + addedRules.map(r => '\u201c' + r + '\u201d').join('  \u00b7  ') +
+                    ' \u2014 edit or delete in Settings \u203a Voice Memory', 9000);
+        }
       }
       if (skipped && typeof showToast === 'function') {
         showToast('Voice Memory is at ' + lines.length + ' rules, so ' + skipped + ' new one' + (skipped > 1 ? 's were' : ' was') + " not added. Trim the ones you no longer mean and I'll pick them up next time.", 8000);
@@ -11770,6 +11782,31 @@ function tpPrimer(html){
     +   rows.map(r => '<div class="tp-primer-row">' + r[0] + '<span>' + r[1] + '</span></div>').join('')
     + '</div></details>';
 }
+// v669 — STALE STRESS MARKS SILENTLY KILL THE TELEPROMPTER'S ONLY READING AID.
+// `emphasis` is the generator's list of short verbatim phrases to bold while the person reads to
+// camera. Sharpen and Viral twist REPLACE the script but left the old list in place. Look at
+// tpEmphasise above: when `marks.length` is non-zero it takes the preferred branch and RETURNS —
+// the number/flip-word heuristic never runs. So marks written for the old script, which appear
+// nowhere in the new one, match nothing and the teleprompter renders a flat wall of text.
+// Measured on the real tpEmphasise, a rewritten script with a hard number and a flip word in it:
+//     stale marks kept  -> 0 words emphasised
+//     marks cleared     -> 2 words emphasised  ("never", "40")
+// It fails at the worst possible moment: mid-take, with the person on camera and unable to stop
+// and work out why the aid they had a second ago is gone. The other half is just as bad — a stale
+// mark that happens to appear in the new text bolds a word the new script never meant to stress.
+// PRUNE rather than clear: a rewrite that kept a phrase keeps its mark; everything that no longer
+// appears is dropped, and if nothing survives the list goes empty so the heuristic takes over.
+function tpPruneEmphasis(obj) {
+  try {
+    if (!obj || !Array.isArray(obj.emphasis) || !obj.emphasis.length) return;
+    const body = String((obj.script || '') + ' ' + (obj.boldText || '') + ' ' +
+                        (obj.caption || '') + ' ' + (obj.hook || '')).toLowerCase();
+    obj.emphasis = obj.emphasis.filter(m => {
+      const t = String(m == null ? '' : m).trim();
+      return t.length >= 2 && body.indexOf(t.toLowerCase()) >= 0;
+    });
+  } catch (e) { try { obj.emphasis = []; } catch (_) {} }
+}
 function tpFormatScript(text, emphasis){
   const raw = String(text||'').replace(/\r/g,'').trim();
   if (!raw) return '';
@@ -14186,6 +14223,9 @@ function tvCaptureEdits(idea) {
     const fieldId = el.getAttribute('data-field');
     const key = TV_FIELD_KEY[fieldId];
     if (key) idea[key] = after;                 // user's wording wins
+    // v669: they just rewrote this field by hand, so the generator's stress marks for the OLD
+    // wording may no longer be in it. Same failure as Sharpen — see tpPruneEmphasis.
+    try { tpPruneEmphasis(idea); } catch(e) {}
     // v640: mark provenance. An approved post is only ONE TAP — it is not evidence of voice,
     // it is evidence of "fine, ship it". A post the user REWROTE is the real thing, and until
     // now nothing distinguished them, so the winners handed to the model as "the truest
@@ -17150,13 +17190,14 @@ function applyViralRewrite(id){
   _RWK.forEach(k=>{
     if(nw[k]!==undefined && nw[k]!==null && String(nw[k]).trim()!=='') i[k] = nw[k];
   });
+  tpPruneEmphasis(i);   // v669: the script just changed — see tpPruneEmphasis
   // state[] objects are CLONES of the source IDEAS array (state = IDEAS.map(...{...idea})),
   // so a later reload can revert an in-place edit. Update the matching IDEAS entry too
   // (idea.id === its array index) so the replace sticks. Belt-and-braces.
   try{
     // v663: was IDEAS[id] — a position, which stops being this post after any auto-refill.
     const src = _ideasEntryByTitle(_titleBefore, id);
-    if(src && src !== i) _RWK.forEach(k=>{ if(nw[k]!==undefined && nw[k]!==null && String(nw[k]).trim()!=='') src[k] = nw[k]; });
+    if(src && src !== i) { _RWK.forEach(k=>{ if(nw[k]!==undefined && nw[k]!==null && String(nw[k]).trim()!=='') src[k] = nw[k]; }); tpPruneEmphasis(src); }
   }catch(e){}
   // Learning signal: the user picked the viral version over the original. This is a
   // strong taste signal — feed it into the same brand-memory loop as manual edits.
@@ -17271,9 +17312,10 @@ function sharpenIdea(id, btn){
   const _titleBefore = String(i.title || '');
   sharpenNow({ kind:'post', format:i.format||'', content, btn, apply:(nw)=>{
     Object.keys(nw).forEach(k=>{ if(nw[k]!=null && String(nw[k]).trim()) i[k]=nw[k]; });
+    tpPruneEmphasis(i);   // v669: the script just changed — see tpPruneEmphasis
     // v663: was IDEAS[id]. See _ideasEntryByTitle — a positional write here rewrote whichever
     // post happened to sit at that index, which after a refill is somebody else's card.
-    try{ const _src = _ideasEntryByTitle(_titleBefore, id); if(_src && _src !== i) Object.keys(nw).forEach(k=>{ if(nw[k]!=null && String(nw[k]).trim()) _src[k]=nw[k]; }); }catch(e){}
+    try{ const _src = _ideasEntryByTitle(_titleBefore, id); if(_src && _src !== i) { Object.keys(nw).forEach(k=>{ if(nw[k]!=null && String(nw[k]).trim()) _src[k]=nw[k]; }); tpPruneEmphasis(_src); } }catch(e){}
     // Sharpen can rewrite the title, and the DB cleanup only drops rows by the titles it writes —
     // so without this the pre-sharpen version survives and reappears as a duplicate on reload.
     try{ _dropRenamedIdeaRow(_titleBefore, i.title); }catch(e){}
@@ -17307,7 +17349,7 @@ function sharpenQuickPost(btn){
         if(String(el.textContent).trim() !== String(nw[key]).trim()) changed.push(key === 'boldText' ? 'text' : key);
         el.textContent = nw[key]; if(el.hasAttribute('data-orig')) el.setAttribute('data-orig', String(nw[key]));
       });
-      try{ if(window._tvIdea) Object.keys(nw).forEach(k=>{ window._tvIdea[k]=nw[k]; }); }catch(e){}
+      try{ if(window._tvIdea) { Object.keys(nw).forEach(k=>{ window._tvIdea[k]=nw[k]; }); tpPruneEmphasis(window._tvIdea); } }catch(e){}
       if (note) note.innerHTML = changed.length
         ? `<div class="tv-sharpen-note">Sharpened ✨ — rewrote the <b>${escHtml(changed.join(', '))}</b> above.</div>`
         : `<div class="tv-sharpen-note">Sharpen ran, but the wording it came back with was the same. Try <b>Redo with notes</b> to say what should be different.</div>`;

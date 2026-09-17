@@ -2,6 +2,55 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-17 — v669. The teleprompter's reading aid vanished after every rewrite, silently, mid-take.
+**DEPLOY STATE: pending this session's deploy — see the line the agent writes after verifying.**
+**61 gates, 60 green.** No new SQL.
+
+**1. STALE STRESS MARKS KILLED THE ONE READING AID ON THE FILMING SCREEN.** `emphasis` is the
+generator's list of short verbatim phrases to bold while the person reads to camera. **Sharpen and
+Viral twist replace the script and left the old list behind.** Look at `tpEmphasise`: its preferred
+branch is `if (marks.length)` and it **RETURNS from there** — the number/flip-word heuristic never
+runs. Marks written for the old script match nothing in the new one. Measured on the real
+`tpEmphasise`, rewritten script containing a hard number and a flip word:
+```
+stale marks kept  -> 0 words emphasised
+marks pruned      -> 2 words emphasised  ("never", "40")
+```
+It fails **mid-take, with the person on camera**, and nothing says why. The mirror failure is just
+as bad: a stale mark that DOES appear in the new text bolds a word the script never meant to stress.
+`tpPruneEmphasis` PRUNES rather than clears — a rewrite that kept a phrase keeps its mark, anything
+no longer present is dropped, and an empty list hands the job back to the heuristic. Wired into all
+six paths that overwrite a script: Sharpen (card + its IDEAS mirror), Viral rewrite (+ mirror),
+Quick Post sharpen, **and a hand edit** (same failure, reached a different way).
+
+**2. THE BRAIN SAVED PERMANENT RULES AND WOULDN'T SAY WHICH.** `brainAutoDistill` writes distilled
+rules straight into Voice Memory, where they shape every generation from that moment. **The review
+card that would show them first — `brainDistill()` / `brainRenderReview` / `brainKeepRule`, ~100
+lines, fully written — HAS NO CALL SITE and never runs.** So the toast is the only notice there is,
+and it said *"learned 2 new things"*. Finding a wrong rule meant reading a 60-line textarea and
+guessing which lines were new. It now quotes the rules and names where to delete them. **Do not
+assume the review path runs** — `brain-learning-loop.mjs` fails if anyone wires it up, so that the
+change is a decision rather than a surprise.
+
+**NEW GATE `teleprompter-emphasis-fresh.mjs`** — runs the real `tpEmphasise`/`tpPruneEmphasis`; its
+wiring arm is DERIVED and must name the SAME object the rewrite wrote to. 8 mutations, all caught.
+
+**TWO GATE ESCAPES IN MY OWN WORK, BOTH WORTH REMEMBERING:**
+- **A word in a COMMENT satisfied a "is it wired?" check.** `/tpPruneEmphasis/` over a window
+  matched the comment explaining the fix. Both new gates now strip comments before scanning. This
+  is the third time this shape has bitten (see also `invite-link-owner-delete.mjs`).
+- **A presence check passed a mutation that left the variable and stopped filling it.** Asserting
+  `/addedRules/` appears in the source proved nothing; the toast would have rendered empty. Fixed by
+  RUNNING `brainAutoDistill` against a fake fetch and reading the toast text.
+- Also: **do NOT strip `/* */` file-wide on app.html.** It is HTML + CSS + JS, so a file-wide strip
+  mis-pairs on CSS blocks and on `*/` inside strings and eats real code — it made all six wiring
+  assertions fail at once. Strip the SLICE.
+
+**NEXT:** connections — `crawl-social` reads UNFINISHED Apify runs and blames the user's profile;
+the trends cron heartbeats `ok` when every lane returned nothing (`items.lanes` is computed and
+discarded); Grok web-search returns null silently. Then controls (`stmtDownload`/`staticDownload`
+say "Downloaded!" without checking `toBlob` null; ~41 dead functions). Money and security LAST.
+
 ## ▶▶ 2026-09-17 — v668. The coach chat could die and stay dead. Two integrations were failing invisibly.
 **DEPLOY STATE: LIVE** (verified 2026-09-17 — contentshrimp.com/api/health reported `v668-71e414bf+api.a8d9ba9e`, 22/22 checks green). Stamped by `scripts/stamp-build.js` — see `sw.js`. **60 gates, 59 green.**
 No new SQL. Jörgen ran `sql/v665-edit-signal-provenance.sql` on 2026-09-17 — **provenance is live.**

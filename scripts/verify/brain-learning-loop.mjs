@@ -53,6 +53,7 @@ function makeWorld(opts) {
   opts = opts || {};
   const LS = Object.assign({}, opts.ls);
   const fetchLog = [];
+  const toasts = [];
   const env = {
     lsGet: k => (k in LS ? LS[k] : null),
     lsSet: (k, v) => { LS[k] = String(v); },
@@ -62,7 +63,7 @@ function makeWorld(opts) {
     sb: null,
     brandGate: () => () => true,
     saveSettings: () => {},
-    showToast: () => {},
+    showToast: (m) => { toasts.push(String(m)); },
     window: { _brainReviewOpen: false },
     console: { error() {}, log() {} },
     fetch: async (url, init) => { fetchLog.push(url); return opts.response(); },
@@ -78,7 +79,7 @@ function makeWorld(opts) {
   ].join('\n');
   const keys = Object.keys(env);
   const api = new Function(...keys, src)(...keys.map(k => env[k]));
-  return { api, LS, fetchLog, env };
+  return { api, LS, fetchLog, env, toasts };
 }
 
 // ── 1. the counter must keep rising past the stored-list cap ──────────────────
@@ -134,6 +135,49 @@ r = await runDistill(() => ({ ok: true, status: 200, json: async () => ({ rules:
 if (r.after === r.before) {
   bad('a SUCCESSFUL distill did not advance the watermark, so the same signals are distilled ' +
       'over and over and every run costs a model call.');
+}
+
+// ── 3. a permanent rule written with no review must SAY what it wrote ─────────────────────
+// brainAutoDistill writes rules straight into Voice Memory, where they shape every generation from
+// that moment. The review card that would show them first — brainDistill() / brainRenderReview /
+// brainKeepRule — is fully written and HAS NO CALL SITE, so it never runs. That makes the toast the
+// only notice the person gets, and it used to say "learned 2 new things" without saying which:
+// finding a wrong rule meant reading a 60-line textarea and guessing which lines were new.
+// RUN it — a presence check on the source passed a mutation that left the variable in place and
+// simply stopped filling it, which would have shown an empty toast.
+{
+  const RULE_A = 'Never open with a question.';
+  const RULE_B = 'Say the price out loud, always.';
+  const w = makeWorld({
+    ls: { brain_edit_total: '40', brain_last_distill_count: '0', brain_last_distill_time: '0' },
+    response: () => ({ ok: true, status: 200, json: async () => ({ rules: [{ rule: RULE_A }, { rule: RULE_B }] }) }),
+  });
+  await w.api.brainAutoDistill();
+  const said = w.toasts.join(' | ');
+  if (!w.toasts.length) bad('brainAutoDistill saved rules to Voice Memory and told the person nothing at all.');
+  if (!said.includes(RULE_A) || !said.includes(RULE_B)) {
+    bad('the auto-distill notice does not quote the rules it just saved — it said: ' +
+        JSON.stringify(said.slice(0, 160)) + '. These are permanent rules written with no review ' +
+        'step, so this notice is the only chance to catch a wrong one.');
+  }
+  if (!/Settings/.test(said)) bad('the notice does not say where the rules can be edited or deleted: ' + JSON.stringify(said.slice(0, 160)));
+  // and they must really be in Voice Memory, not just announced
+  if (!String(w.env.settings.coachNotes).includes(RULE_A)) bad('the rule was announced but not actually saved to Voice Memory.');
+}
+
+// ── 4. the review path really is dead — record it, so nobody assumes it runs ───────────────
+// If somebody wires brainDistill() up later, this assertion should be REMOVED, not worked around.
+{
+  // Count CODE references only. A first pass counted a mention inside an explaining comment as a
+  // call and failed on the comment that describes this very situation — the same trap that bit
+  // teleprompter-emphasis-fresh.mjs. Drop comment lines before counting.
+  const codeLines = html.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const calls = (codeLines.match(/brainDistill\s*\(/g) || []).length;
+  const defs = (codeLines.match(/function brainDistill\s*\(/g) || []).length;
+  if (defs && calls > defs) {
+    bad('brainDistill() now HAS a call site. That is a change in behaviour, not a bug: rules would ' +
+        'be reviewed before they are saved. Re-check the toast assertion above and delete this one.');
+  }
 }
 
 if (fails.length) {
