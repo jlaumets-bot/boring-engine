@@ -3288,7 +3288,18 @@ Goal (Jörgen): make the whole app read as ONE design, everything to the brand s
 
 ## Owner: Jörgen — rules (do not violate)
 - Be concise and blunt. **No half-measures. Verify visually / by measurement, do not guess.**
-- **NEVER deploy.** Hand him the exact command: `cd ~/boring-content-engine-deploy && vercel --prod`.
+- **DEPLOYING AND PUSHING IS THE AGENT'S JOB NOW — Jörgen, 2026-09-17: "you can do all on the
+  sidepanel yourself."** This REPLACES the old "NEVER deploy, hand him the command" rule. Do the
+  work, then say what shipped — do not hand over a command and wait.
+  HOW (the sandbox shell has NO git credentials — "could not read Username for 'https://github.com'"):
+  - **Deploy / push:** desktop-commander MCP `start_process`, which runs on his Mac with his
+    keychain — `cd ~/boring-content-engine-deploy && node scripts/stamp-build.js && vercel --prod`,
+    then `git push origin main` AND `git push origin HEAD:backup-<today>`.
+  - **Verify (never trust the dashboard):** Vercel MCP `web_fetch_vercel_url` on
+    `https://contentshrimp.com/api/health` — it returns the live build stamp and every check.
+    It must match what `stamp-build.js` printed.
+  - `--force`/`--force-with-lease` is refused by the permission classifier. Never needed for a
+    fast-forward; if a push is genuinely rejected, stop and ask rather than forcing.
 - **NEVER touch API keys/secrets** (he adds VAPID/Stripe/LLM keys himself).
 - Changes must be reversible; don't remove things that work.
 - Two brands in the account: **Boring Electrolytes** (face-on founder) and **Mila Sourcing** (B2B faceless).
