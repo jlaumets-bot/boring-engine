@@ -755,6 +755,32 @@ async function getStatus(userId, opts) {
   }
 }
 
+/* v676 — ONE PLACE THAT TURNS A REFUSAL INTO A RESPONSE.
+   checkLimit's `reason` gained a 'rate' value (the 60/min burst limiter, which applies to
+   EVERY plan and costs nobody any allowance). Four endpoints branched on it; TWENTY-TWO
+   returned a flat 402 limit_reached — and app.html's global fetch wrapper turns any
+   limit_reached 402 into the upgrade modal. So a user who simply went too fast was told
+   "Your free posts are used up — Upgrade to Pro · €24/mo" with their allowance barely
+   touched, and a paying customer got a billing modal instead of "try again in a moment".
+   Endpoints now call this instead of writing the shape by hand, so the next `reason` value
+   cannot leave twenty-two of them behind again. */
+function denyResponse(res, gate) {
+  const g = gate || {};
+  // meme.js carried this branch alone; it belongs with the others.
+  if (g.reason === 'feature') {
+    return res.status(402).json({ error: 'feature_locked', feature: g.feature || undefined, plan: g.plan });
+  }
+  if (g.reason === 'rate') {
+    const wait = g.retryAfter || 60;
+    try { res.setHeader('Retry-After', String(wait)); } catch (e) {}
+    return res.status(429).json({ error: 'rate_limited', retryAfter: wait });
+  }
+  return res.status(402).json({
+    error: 'limit_reached', reason: g.reason || 'limit',
+    plan: g.plan, used: g.used, limit: g.limit, trialEndsAt: g.trialEndsAt,
+  });
+}
+
 // Gate a single action. Returns { ok } — ok:false ONLY when we positively know
 // the user is over their limit. Any error path returns ok:true (fail-open).
 //
@@ -1039,5 +1065,4 @@ module.exports = {
   // Reservations — the concurrency control. Exported so a gate/harness can drive them
   // directly and so a handler with a long tail of its own can release one early.
   HOLD_PREFIX, HOLD_TTL_MS, RESERVATIONS_ON,
-  createHold, releaseHold, parseHoldAction, isHoldAction, holdActionFor
-};
+  createHold, releaseHold, parseHoldAction, isHoldAction, holdActionFor, denyResponse };

@@ -118,7 +118,7 @@ module.exports = async function handler(req, res) {
       const _billingUser = typeof _usg.billingUserFor === 'function'
         ? await _usg.billingUserFor(user.id, brandId) : user.id;
       const _gate = await require('./_usage').checkLimit(_billingUser, require('./_usage').creditsFor('meme'), 'meme');
-      if (!_gate.ok) return res.status(402).json({ error: _gate.reason === 'feature' ? 'feature_locked' : 'limit_reached', feature: _gate.feature || undefined, plan: _gate.plan, used: _gate.used, limit: _gate.limit, trialEndsAt: _gate.trialEndsAt });
+      if (!_gate.ok) return require('./_usage').denyResponse(res, _gate);
       const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
       const enc = ((r.data || [])[0] || {}).gemini_key_enc;
       if (!enc) return res.status(400).json({ error: 'Add your Gemini API key first (in the Memes tab).' });
@@ -168,7 +168,7 @@ module.exports = async function handler(req, res) {
       const _billingUser = typeof _usg.billingUserFor === 'function'
         ? await _usg.billingUserFor(user.id, brandId) : user.id;
       const _gate = await require('./_usage').checkLimit(_billingUser, require('./_usage').creditsFor('brandimage'), 'brandimage');
-      if (!_gate.ok) return res.status(402).json({ error: _gate.reason === 'feature' ? 'feature_locked' : 'limit_reached', feature: _gate.feature || undefined, plan: _gate.plan, used: _gate.used, limit: _gate.limit, trialEndsAt: _gate.trialEndsAt });
+      if (!_gate.ok) return require('./_usage').denyResponse(res, _gate);
       const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
       const enc = ((r.data || [])[0] || {}).gemini_key_enc;
       if (!enc) return res.status(400).json({ error: 'Add your Gemini API key first.' });

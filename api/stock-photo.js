@@ -35,13 +35,11 @@ module.exports = async function handler(req, res) {
   // logUsage further down are the two halves of the fix; either alone does nothing.
   // Shape copied from hook-frame.js.
   if (_g.over) {
-    const _r = _g.gate && _g.gate.reason;
     // 429 rather than 402 on a BURST trip: this endpoint fires ~6 at a time per video
     // render, making it the most burst-prone call in the app, and app.html's global fetch
     // wrapper opens the upgrade modal on any /api/ 402 — so a rate trip must not tell a
     // user with plenty of allowance left that they are out of posts.
-    if (_r === 'rate') { res.setHeader('Retry-After', String(_g.gate.retryAfter || 60)); return res.status(429).json({ error: 'rate_limited', retryAfter: _g.gate.retryAfter || 60 }); }
-    return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
+    return require('./_usage').denyResponse(res, _g.gate);
   }
 
   // one Pexels search → best usable photo, or null. Kept small so we can try

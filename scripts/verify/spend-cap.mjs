@@ -127,6 +127,22 @@ if (process.env.COST_CAP_EUR == null || process.env.COST_CAP_EUR === '') {
   note(`cost fuse overridden by env (COST_CAP_EUR=${process.env.COST_CAP_EUR}) — default not asserted`);
 }
 
+// The shared helper the endpoints now delegate to must still emit the body the frontend keys
+// on — otherwise "it calls denyResponse" would be an empty reassurance.
+{
+  const mk = () => { const r = { code: 0, body: null, headers: {} };
+    return { res: { status(c){ r.code = c; return this; }, json(b){ r.body = b; return b; },
+                    setHeader(k, v){ r.headers[k] = v; } }, r }; };
+  let m = mk();
+  usage.denyResponse(m.res, { reason: 'limit', plan: 'free', used: 40, limit: 40, trialEndsAt: null });
+  if (m.r.code !== 402 || !m.r.body || m.r.body.error !== 'limit_reached')
+    fail.push(`_usage.denyResponse no longer answers 402 limit_reached for a real limit (got ${m.r.code} ${JSON.stringify(m.r.body)})`);
+  m = mk();
+  usage.denyResponse(m.res, { reason: 'rate', retryAfter: 60 });
+  if (m.r.code !== 429 || !m.r.body || m.r.body.error !== 'rate_limited')
+    fail.push(`_usage.denyResponse no longer answers 429 rate_limited for a burst trip (got ${m.r.code} ${JSON.stringify(m.r.body)})`);
+}
+
 // ── 3. the two previously-ungated endpoints must gate ─────────────────────────
 for (const [file, action] of [['api/crawl-brand.js', 'crawlbrand'], ['api/extract-article.js', 'extractarticle']]) {
   const src = read(file);
@@ -135,10 +151,16 @@ for (const [file, action] of [['api/crawl-brand.js', 'crawlbrand'], ['api/extrac
     continue;
   }
   if (!/\.over\b/.test(src)) fail.push(`${file} calls guard() but never acts on .over — the gate is decorative`);
-  if (!/status\(402\)/.test(src)) fail.push(`${file} never returns 402 — it cannot reject an over-limit caller`);
+  /* v676: the refusal moved into ONE helper, api/_usage.js denyResponse, because twenty-two
+     endpoints had written the 402 by hand and every one of them reported a BURST-limit trip as
+     "you are out of posts" — see scripts/verify/plan-honesty.mjs, which owns that rule and
+     RUNS the helper. Either spelling is acceptable here; no refusal at all is not. */
+  const refuses = /status\(402\)/.test(src) || /denyResponse\(res/.test(src);
+  if (!refuses) fail.push(`${file} never refuses an over-limit caller — no 402 and no denyResponse`);
   // A gate with no usage row can never fire: `used` would stay 0 forever.
   if (!/logUsage\(/.test(src)) fail.push(`${file} gates but never calls logUsage — usage would never accrue`);
-  if (!/'limit_reached'/.test(src)) fail.push(`${file} 402 body must keep error:'limit_reached' (the frontend keys on it)`);
+  const keepsShape = /'limit_reached'/.test(src) || /denyResponse\(res/.test(src);
+  if (!keepsShape) fail.push(`${file} 402 body must keep error:'limit_reached' (the frontend keys on it)`);
   note(`${file} gates on ${action} and meters it`);
 }
 // crawl-brand: the second, early-returning branch (the Master Prompt gdoc sync) was RETIRED in

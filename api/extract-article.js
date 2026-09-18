@@ -19,8 +19,7 @@ module.exports = async function handler(req, res) {
   if (!_eaGuard.user) return res.status(401).json({ error: 'Please sign in again.' });
   if (_eaGuard.over) {
     const _r = _eaGuard.gate && _eaGuard.gate.reason;
-    if (_r === 'rate') { res.setHeader('Retry-After', String(_eaGuard.gate.retryAfter || 60)); return res.status(429).json({ error: 'rate_limited', retryAfter: _eaGuard.gate.retryAfter || 60 }); }
-    return res.status(402).json({ error: 'limit_reached', plan: _eaGuard.gate.plan, used: _eaGuard.gate.used, limit: _eaGuard.gate.limit, trialEndsAt: _eaGuard.gate.trialEndsAt });
+    return require('./_usage').denyResponse(res, _eaGuard.gate);
   }
 
   try {

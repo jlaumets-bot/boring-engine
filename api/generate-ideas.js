@@ -173,7 +173,7 @@ module.exports = async function handler(req, res) {
     // to its generic push, which carries nothing we had to generate.
     if (_billingUser) {
       const _gate = await _usage.checkLimit(_billingUser, _usage.creditsFor('ideas'), 'ideas');
-      if (!_gate.ok) return res.status(402).json({ error: 'limit_reached', plan: _gate.plan, used: _gate.used, limit: _gate.limit, trialEndsAt: _gate.trialEndsAt });
+      if (!_gate.ok) return _usage.denyResponse(res, _gate);
     }
 
     // ── LEAN REQUEST: hydrate the brand brain from the database ────────────────

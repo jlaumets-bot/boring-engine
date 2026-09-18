@@ -134,7 +134,7 @@ module.exports = async function handler(req, res) {
 
   const _g = await require('./_usage').guard(req, 'creatorposts');
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
-  if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
+  if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
 
   const token = process.env.APIFY_API_TOKEN;
   if (!token) return res.status(200).json({ posts: [], empty: true, reason: 'Scraping isn\'t set up on this account yet.' });

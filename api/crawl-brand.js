@@ -33,8 +33,7 @@ module.exports = async function handler(req, res) {
   // call writes a usage row, so every call after it is gated normally.
   if (_cbGuard.over && (_cbGuard.gate && _cbGuard.gate.used) > 0) {
     const _r = _cbGuard.gate.reason;
-    if (_r === 'rate') { res.setHeader('Retry-After', String(_cbGuard.gate.retryAfter || 60)); return res.status(429).json({ error: 'rate_limited', retryAfter: _cbGuard.gate.retryAfter || 60 }); }
-    return res.status(402).json({ error: 'limit_reached', plan: _cbGuard.gate.plan, used: _cbGuard.gate.used, limit: _cbGuard.gate.limit, trialEndsAt: _cbGuard.gate.trialEndsAt });
+    return require('./_usage').denyResponse(res, _cbGuard.gate);
   }
 
   try {

@@ -90,7 +90,7 @@ const handler = async function (req, res) {
 
   const _g = await require('./_usage').guard(req, 'transcribeurl');
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
-  if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
+  if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
 
   // Transcription provider: Groq Whisper ONLY (OpenAI is used nowhere except /api/speak TTS).
   const groqKey = process.env.GROQ_API_KEY;

@@ -90,9 +90,7 @@ module.exports = async function handler(req, res) {
     const _g = await require('./_usage').guard(req, 'hookframe');
     if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
     if (_g.over) {
-      const _r = _g.gate && _g.gate.reason;
-      if (_r === 'rate') { res.setHeader('Retry-After', String(_g.gate.retryAfter || 60)); return res.status(429).json({ error: 'rate_limited', retryAfter: _g.gate.retryAfter || 60 }); }
-      return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
+      return require('./_usage').denyResponse(res, _g.gate);
     }
 
     // Only NOW go and find the frame. The credit is still charged solely on a real read

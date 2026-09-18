@@ -12,7 +12,7 @@ module.exports = async function handler(req, res) {
 
   const _g = await require('./_usage').guard(req, 'speak');
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
-  if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
+  if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'No OpenAI API key configured' });

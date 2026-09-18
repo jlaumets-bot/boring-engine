@@ -27,7 +27,7 @@ const cap = (v, n) => String(v == null ? '' : v).slice(0, n);
 module.exports = async function handler(req, res) {
   const _g = await require('./_usage').guard(req, 'distill');
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
-  if (_g.over) return res.status(402).json({ error: 'limit_reached', plan: _g.gate.plan, used: _g.gate.used, limit: _g.gate.limit, trialEndsAt: _g.gate.trialEndsAt });
+  if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
   try {
     const body = req.body || {};
     const edits = Array.isArray(body.edits) ? body.edits : [];

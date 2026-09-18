@@ -2,6 +2,72 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v676. PLAN-LIMITS AUDIT. A paying subscriber could be locked out of their own billing.
+
+**1. A 200 IS NOT AN ANSWER — AND A PRO SUBSCRIBER READ "TRIAL PLAN".** `api/_usage.js:752-755`
+fails OPEN: when the usage read throws — it issues up to 25 paged PostgREST queries, any of which
+can hit the 8s stall timeout at `_usage.js:195` — it returns **HTTP 200** with
+`{ unknown: true, plan: 'trial', used: 0, limit: 150 }`. `api/usage.js:36` passes that through
+verbatim. The client (`app.html:17940-17941`) checked `r.ok` and took the plan at face value; the
+server's `unknown` flag was read in exactly one place in the whole file, and that place is the
+brand-limit guard.
+
+So a Pro or Agency subscriber opened Settings → Account and read **"Trial plan · 0 / 150 posts this
+month"**, no "Active" tag, an **Upgrade** button, and the onboarding checklist back on screen. Their
+subscription looked gone. And `openBillingPortal` is reachable from exactly three places
+(`app.html:17978`, `17989`, `18050`) — all three need either `csUsage === null` or a paid plan name,
+so in this state **a paying customer had no way to update a card or cancel** until the call happened
+to succeed again. `planBoxHtml`'s own comment (`app.html:17969-17970`) says this bug was fixed; the
+fix only ever covered `csUsage === null`.
+FIX: a body carrying `unknown` is treated as "we could not check" — the same path as a failed call,
+which already offers **Manage billing**. The `brands` rider is kept in `window._csBrandLimit`,
+because the brand-limit guard reads its own `unknown` flag and already fails open correctly.
+
+**2. "REBUILD THE SIDEBAR ONCE" REBUILT IT AFTER EVERY ACTION.** The guard at `app.html:17952` asked
+whether a `.ds-lock` pill was missing. `_dsItem` (`app.html:9019`) only renders that pill for `blog`
+and `meme`, and **both are shelved** (`CS_SHELVED`, `app.html:18012`), so the sidebar can never
+contain one — the condition was permanently true. `refreshUsage` runs 1.2s after every successful
+`/api/` call (`app.html:17868`), so for every free-plan user the whole left sidebar was destroyed and
+re-created a second after each generation, remix or trend pull: flicker, lost hover, lost scroll
+position, forever. Measured: 8 actions → 8 rebuilds. Now 1.
+
+**3. A BURST TRIP WAS SOLD AS AN EMPTY WALLET.** `checkLimit`'s `reason` gained a `'rate'` value
+(the 60/min limiter, which applies to **every** plan and costs nobody any allowance). Four endpoints
+branched on it. **Twenty-two returned a flat `402 limit_reached`** — and the global fetch wrapper
+turns any `limit_reached` 402 into the upgrade modal. A user who simply went too fast was told
+*"Your free posts are used up · Upgrade to Pro · €24/mo"* with their allowance barely touched, and a
+paying customer got a billing modal instead of "try again in a moment". No `Retry-After` either, so
+nothing told them to just wait.
+FIX: **ONE helper**, `denyResponse(res, gate)` in `api/_usage.js`, handling `feature` / `rate` /
+everything else — so the next `reason` value cannot leave twenty-two endpoints behind again. All 25
+gated endpoints now delegate to it (including the four that were already right, so there is one
+path, not two). Client: the fetch wrapper now inspects **429** at all, and decides the burst case
+before `showUpgrade` can fire — including for someone holding an unsaved filmed take.
+
+**NEW GATE `scripts/verify/plan-honesty.mjs`** — 23 assertions, nearly all EXECUTED: `denyResponse`
+imported and driven through every reason; `refreshUsage`/`planBoxHtml` lifted out of app.html and run
+against the LITERAL fail-open body `_usage.js` builds; the sidebar rebuild counted across eight
+actions. Its mutation arm feeds the pre-fix path the same body and REQUIRES "Trial plan" + Upgrade
+with no billing route. 5 of 5 source mutations caught.
+
+**GATE TOUCHED: `spend-cap.mjs`** — it looked for a literal `status(402)` in two endpoints that now
+delegate. Re-anchored on "refuses, by either spelling", and made STRONGER: it now RUNS `denyResponse`
+and asserts the 402/`limit_reached` and 429/`rate_limited` bodies the frontend keys on, so
+"it calls the helper" can never be an empty reassurance. Mutation-checked.
+
+**71 of 71 GATES GREEN.**
+
+DELIBERATELY NOT FIXED — both are the money bucket Jörgen deferred to LAST, and both are now proven:
+- **Holds are never released.** `releaseHold` (`_usage.js:479`) has ZERO handler call sites; every
+  4xx/5xx after a successful gate keeps the credit for the 6-minute TTL. Measured: a free user at
+  38/40 hits two provider errors, gets nothing, and reads 40/40 — then the upgrade wall. The user
+  loses credits they never spent. A fix means threading a release through ~25 handlers' error paths.
+- **`logUsage` overwrites the hold's `brand_id` with null** (`_usage.js:844-855`), so 15 endpoints'
+  completed rows are unattributed — including two where the client DID send a real brand
+  (`reviews.js`, `brand-voice-chat.js`). No user-visible effect today: `usage_events.brand_id` is
+  written but never read anywhere in the repo. It becomes a real per-brand/Agency reporting bug the
+  moment anything reads that column.
+
 ## ▶▶ 2026-09-18 — v675. THE NIGHTLY TRENDS CRON HAS BEEN FAILING EVERY NIGHT. Found it in the live logs and fixed all three causes.
 
 `/api/health` reported `cron_pull-trends-cron_fresh` FAILING — status `error`, heartbeat 212 minutes

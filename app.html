@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v675';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v676';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -7302,7 +7302,10 @@ async function addNewBrand() {
      been returning `brands.canCreate` all along and nothing read it. Now it does, and the count
      below is the fallback for when that answer has not arrived. */
   const _ownedCount = (allBrands || []).filter(b => b && b._owned === true).length;
-  const _srv = (typeof csUsage === 'object' && csUsage && csUsage.brands) ? csUsage.brands : null;
+  // v676: when the plan read failed open, csUsage is null but the brand-limit answer that
+  // rode along on the same response is still good — see refreshUsage.
+  const _srv = (typeof csUsage === 'object' && csUsage && csUsage.brands) ? csUsage.brands
+             : (window._csBrandLimit || null);
   // The server's answer wins when it is a real one. `unknown` means it could not read the plan or
   // the count, and it deliberately fails open — so fall through to the local count rather than
   // treating "we don't know" as "no".
@@ -17853,16 +17856,31 @@ async function connToken(){ try{ const { data:{ session } } = await sb.auth.getS
     const _resp = await _origFetch(input, init);
     try {
       var _u = (_resp && _resp.url) || '';
-      if (_resp && _resp.status === 402 && _u.indexOf('/api/') !== -1) {
+      /* v676 — 429 was not inspected here at all. Endpoints now answer a burst trip with
+         429 rate_limited instead of a 402 that opened the billing modal, so this wrapper has
+         to look at it, or the honest message depends on each caller having its own handler. */
+      if (_resp && (_resp.status === 402 || _resp.status === 429) && _u.indexOf('/api/') !== -1) {
         _resp.clone().json().then(function(d){
           if (!d) return;
           // v660: never open a modal that can navigate the page away while a filmed take is
           // held only in memory. See tpHoldTake().
+          const _burst = (d.error === 'rate_limited' || d.reason === 'rate');
           if (window._tpBlobInHand) {
-            try { if (typeof showToast === 'function') showToast("You're out of posts this month — save this video first, then upgrade.", 7000); } catch(e){}
+            // v676: do not tell someone holding a filmed take they are out of posts when they
+            // are simply going too fast.
+            try { if (typeof showToast === 'function') showToast(_burst
+              ? 'Going a bit fast — give it ' + (d.retryAfter || 60) + ' seconds and try again. Your take is safe.'
+              : "You're out of posts this month — save this video first, then upgrade.", 7000); } catch(e){}
             return;
           }
           if (d.error === 'feature_locked' && typeof showFeatureLock === 'function') showFeatureLock(d.feature || '');
+          /* v676 — a burst trip is not an empty wallet. The 60/min limiter applies to every
+             plan and costs nobody any allowance, so it must never open the billing modal.
+             Endpoints now answer 429 rate_limited (api/_usage.js denyResponse); this is the
+             belt-and-braces half, for any 402 that still carries reason:'rate'. */
+          else if (_burst) {
+            if (typeof showToast === 'function') showToast('Going a bit fast — give it ' + (d.retryAfter || 60) + ' seconds and try again.', 6000);
+          }
           else if (d.error === 'limit_reached' && typeof showUpgrade === 'function') showUpgrade(d);
         }).catch(function(){});
       } else if (_resp && _resp.ok && _u.indexOf('/api/') !== -1 && _u.indexOf('/api/usage') === -1) {
@@ -17938,7 +17956,26 @@ async function refreshUsage(){
   try{
     const r = await fetch('/api/usage');
     if(!r.ok) { _csUsageUnknown(); return; }
-    csUsage = await r.json();
+    const _u = await r.json();
+    /* v676 — A 200 IS NOT THE SAME AS AN ANSWER.
+       api/_usage.js getStatus() fails OPEN: when the usage read throws (it issues up to 25
+       paged queries, any of which can stall) it returns HTTP 200 with
+       { unknown: true, plan: 'trial', used: 0, limit: 150 }. The client took that at face
+       value, so a Pro or Agency subscriber read "Trial plan · 0 / 150 posts", lost the
+       "Active" tag, got an Upgrade button — and lost EVERY route to the billing portal,
+       because all three entry points need either csUsage === null or a paid plan name. A
+       paying customer could not update a card or cancel until the call happened to succeed.
+       The `csUsage === null` guard right below planBoxHtml's comment was written for exactly
+       this failure and never covered this half of it. `brands` is kept: the brand-limit guard
+       reads its own `unknown` flag and already fails open correctly. */
+    if (_u && _u.unknown) {
+      csUsage = null;
+      csUsageLoadFailed = true;
+      window._csBrandLimit = _u.brands || null;
+      try { var pb = document.getElementById('spPlanBox'); if (pb) pb.innerHTML = planBoxHtml(); } catch(e){}
+      return;
+    }
+    csUsage = _u;
     csUsageLoadFailed = false;
     _csUsageRetries = 0;               // v674: a good answer re-arms the retry budget
     renderUsagePill();
@@ -17946,10 +17983,18 @@ async function refreshUsage(){
     // syncPushTimezone — it rate-limits itself to once an hour and no-ops without push).
     try { if (typeof syncPushTimezone === 'function') syncPushTimezone(); } catch(e){}
     try { renderOnb(); } catch(e){}
-    // Free plan: rebuild the desktop sidebar once so paid tools carry their Pro pill
-    // (the sidebar is built before /api/usage returns on a cold load).
+    /* v676 — "rebuild ONCE" REBUILT IT AFTER EVERY SINGLE ACTION.
+       The guard asked whether a `.ds-lock` pill was missing from the sidebar. _dsItem only
+       ever renders that pill for 'blog' and 'meme', and both are shelved (CS_SHELVED), so
+       the sidebar can never contain one — the condition was permanently true. refreshUsage
+       runs 1.2s after every successful /api/ call, so for every free-plan user the whole
+       left sidebar was destroyed and re-created a second after each generation, remix or
+       trend pull: visible flicker, lost hover, lost scroll position, forever.
+       Keep the intent (the sidebar is built before /api/usage answers on a cold load) and
+       do it at most once per session. */
     try {
-      if (csIsFree() && document.getElementById('desktopSidebar') && !document.querySelector('#desktopSidebar .ds-lock')) {
+      if (!window._dsPlanRebuilt && csIsFree() && document.getElementById('desktopSidebar') && !document.querySelector('#desktopSidebar .ds-lock')) {
+        window._dsPlanRebuilt = true;
         document.getElementById('desktopSidebar').remove();
         buildDesktopSidebar();
         if (typeof syncDesktopNav==='function') syncDesktopNav();
