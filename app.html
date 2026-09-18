@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v681';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v682';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -8054,15 +8054,36 @@ function reconcileLocalStatus(arr) {
     if (!sv) return;
     const db = normalizeIdeaStatus(it.status);
     const loc = normalizeIdeaStatus(sv.status);
-    let chosen = (rank[loc] || 0) > (rank[db] || 0) ? loc : db;
-    // honor a local dismissal that hasn't reached the DB yet
-    if (loc === 'dismissed' && db === 'pending') chosen = 'dismissed';
+    /* v682 — RANK IS MONOTONIC, SO STATUS COULD ONLY EVER ADVANCE.
+       pending < dismissed < filming < done, and the higher rank won — so an UNDO was
+       silently reverted on the next load: un-dismissing, moving a post back from the
+       Pipeline, and "Reset all ideas to pending" all came back changed, and `done` could
+       never be undone at all. The comment below shows only one direction was considered
+       ("honor a local dismissal that hasn't reached the DB yet"); the reverse is exactly as
+       real, and it is the one that loses a deliberate action.
+       A timestamp answers both directions. saveState now stamps `statusAt` when the status
+       actually changes, and the row carries its own recency, so the NEWER decision wins
+       whichever way it went. Rank stays as the tie-breaker for rows with no stamp — every
+       idea saved before this, which must keep behaving exactly as it did. */
+    let chosen;
+    const locAt = Number(sv.statusAt) || 0;
+    const dbAt  = Number(it._rowAt) || 0;
+    if (locAt && dbAt) {
+      chosen = (locAt >= dbAt) ? loc : db;
+    } else if (locAt && !dbAt) {
+      chosen = loc;                       // only the local copy is dated — it is the newer one
+    } else {
+      chosen = (rank[loc] || 0) > (rank[db] || 0) ? loc : db;
+      // honor a local dismissal that hasn't reached the DB yet
+      if (loc === 'dismissed' && db === 'pending') chosen = 'dismissed';
+    }
     it.status = chosen;
     if (chosen === 'dismissed') it.dismissReason = sv.dismissReason || it.dismissReason || null;
     if (sv.assignee && !it.assignee) it.assignee = sv.assignee;
     if (sv.doneAt) it.doneAt = sv.doneAt;   // a real local timestamp beats the derived proxy above
     if (sv.approvedAt && !it.approvedAt) it.approvedAt = sv.approvedAt;
     if (sv.approveReason && !it.approveReason) it.approveReason = sv.approveReason;
+    if (sv.statusAt) it.statusAt = Number(sv.statusAt) || 0;   // v682: keep the stamp for next time
   });
 }
 
@@ -8136,6 +8157,9 @@ async function loadIdeasFromDB() {
     // row's own recency: the write that set status='done' is what last touched this row.
     // reconcileLocalStatus still overwrites this with the real local value when it has one.
     _dbDoneAt: (normalizeIdeaStatus(row.status) === 'done') ? (_ideaRowRecency(row) || null) : null,
+    // v682: when this row was last written, so reconcileLocalStatus can tell which decision
+    // is newer instead of assuming status only ever advances. See the note there.
+    _rowAt: _ideaRowRecency(row) || 0,
   })).map(o => { if (o._dbDoneAt) { o.doneAt = o._dbDoneAt; } delete o._dbDoneAt; return o; });
   // Restore paaSource from localStorage mapping
   try {
@@ -9025,7 +9049,27 @@ function saveState() {
   reindexIdeas();
   // The approval-recovery snapshot. Route it through the guarded writer so a full quota
   // reports itself instead of quietly ending status persistence on this device.
-  try{ if(currentBrand&&currentBrand.id) _lsWriteGuarded(bkey(STORAGE_KEY),JSON.stringify(state.map(s=>({title:s.title,status:s.status,dismissReason:s.dismissReason,assignee:s.assignee||'',doneAt:s.doneAt||null,approvedAt:s.approvedAt||null,approveReason:s.approveReason||null})))); }catch(e){}
+  /* v682 — stamp WHEN a status changed, so reconcileLocalStatus can compare it against the
+     database row's own recency instead of assuming status only moves forward. Stamped here
+     rather than at each of the call sites that assign `.status` (there are several, and the
+     one that got missed would be invisible): compare against what was last persisted. */
+  try {
+    if (currentBrand && currentBrand.id) {
+      let prev = {};
+      try {
+        const raw = JSON.parse(lsGet(STORAGE_KEY) || '[]');
+        if (Array.isArray(raw)) raw.forEach(x => { if (x && x.title) prev[x.title] = x; });
+      } catch (e) {}
+      const now = Date.now();
+      state.forEach(s => {
+        const was = prev[s.title];
+        if (!was) { if (!s.statusAt) s.statusAt = now; return; }   // new to this device
+        if (normalizeIdeaStatus(was.status) !== normalizeIdeaStatus(s.status)) s.statusAt = now;
+        else if (!s.statusAt && was.statusAt) s.statusAt = Number(was.statusAt) || 0;
+      });
+      _lsWriteGuarded(bkey(STORAGE_KEY), JSON.stringify(state.map(s=>({title:s.title,status:s.status,dismissReason:s.dismissReason,assignee:s.assignee||'',doneAt:s.doneAt||null,approvedAt:s.approvedAt||null,approveReason:s.approveReason||null,statusAt:s.statusAt||null}))));
+    }
+  } catch(e){}
   return saveIdeasToDB();   // ({ok:boolean}) — never rejects; callers may await before claiming success
 }
 
@@ -15538,7 +15582,14 @@ async function dpToggleMic(id) {
   const btn = document.getElementById('dpMic'+id);
   if (_dpRec && _dpRec.state === 'recording') { _dpRec.stop(); return; }
   try {
+    /* v682 — THE STREAM WAS DECLARED INSIDE THE try, SO THE catch COULD NOT REACH IT.
+       Anything that throws AFTER the microphone opens — an unsupported mimeType in the
+       MediaRecorder constructor, rec.start(), a missing button element — lands in a catch
+       that shows "Could not access microphone" and never stops the tracks. The OS microphone
+       indicator then stays lit for the rest of the session with nothing recording, right
+       after a message saying the mic could not be reached. Hold it where the catch can see it. */
     const stream = await getMicStream();
+    _micHold = stream;
     const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
     const chunks = [];
@@ -15567,11 +15618,13 @@ async function dpToggleMic(id) {
       reader.readAsDataURL(blob);
     };
     rec.start();
+    _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     _dpRec = rec;
     if (btn) btn.classList.add('recording');
     // Same 60s backstop icMicToggle has: a forgotten mic must not hold the microphone open.
     setTimeout(() => { if (_dpRec === rec) { try { rec.stop(); } catch (e) {} } }, 60000);
   } catch (e) {
+    _micRelease();   // v682: the mic is still open — see the note above
     if (btn) btn.classList.remove('recording');
     alert('Could not access microphone. Check browser permissions.');
   }
@@ -15657,7 +15710,14 @@ async function apToggleMic(id) {
   const btn = document.getElementById('apMic'+id);
   if (_apRec && _apRec.state === 'recording') { _apRec.stop(); return; }
   try {
+    /* v682 — THE STREAM WAS DECLARED INSIDE THE try, SO THE catch COULD NOT REACH IT.
+       Anything that throws AFTER the microphone opens — an unsupported mimeType in the
+       MediaRecorder constructor, rec.start(), a missing button element — lands in a catch
+       that shows "Could not access microphone" and never stops the tracks. The OS microphone
+       indicator then stays lit for the rest of the session with nothing recording, right
+       after a message saying the mic could not be reached. Hold it where the catch can see it. */
     const stream = await getMicStream();
+    _micHold = stream;
     const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
     const chunks = [];
@@ -15683,11 +15743,13 @@ async function apToggleMic(id) {
       reader.readAsDataURL(blob);
     };
     rec.start();
+    _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     _apRec = rec;
     if (btn) btn.classList.add('recording');
     // Same 60s backstop icMicToggle has: a forgotten mic must not hold the microphone open.
     setTimeout(() => { if (_apRec === rec) { try { rec.stop(); } catch (e) {} } }, 60000);
   } catch (e) {
+    _micRelease();   // v682: the mic is still open — see the note above
     if (btn) btn.classList.remove('recording');
     alert('Could not access microphone. Check browser permissions.');
   }
@@ -16026,7 +16088,14 @@ async function sparkToggleMic() {
     return;
   }
   try {
+    /* v682 — THE STREAM WAS DECLARED INSIDE THE try, SO THE catch COULD NOT REACH IT.
+       Anything that throws AFTER the microphone opens — an unsupported mimeType in the
+       MediaRecorder constructor, rec.start(), a missing button element — lands in a catch
+       that shows "Could not access microphone" and never stops the tracks. The OS microphone
+       indicator then stays lit for the rest of the session with nothing recording, right
+       after a message saying the mic could not be reached. Hold it where the catch can see it. */
     const stream = await getMicStream();
+    _micHold = stream;
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
       : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
     const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
@@ -16062,12 +16131,14 @@ async function sparkToggleMic() {
       input.placeholder = "Drop a half-idea — I'll turn it into a brief";
     };
     rec.start();
+    _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     _sparkRec = rec;
     btn.classList.add('recording');
     showVoicePill(() => { try { rec.stop(); } catch(e) {} }, 'Listening');
     // auto-stop after 30s so a forgotten mic never runs forever
     setTimeout(() => { if (_sparkRec === rec) { try { rec.stop(); } catch(e) {} } }, 30000);
   } catch(e) {
+    _micRelease();   // v682: the mic is still open — see the note above
     showToast(typeof micErrMsg==='function' ? micErrMsg(e) : 'Microphone not available', 6000);
   }
 }
@@ -16317,7 +16388,14 @@ async function nbToggleMic() {
   const input = document.getElementById('nbInput');
   if (_nbRec && _nbRec.state === 'recording') { _nbRec.stop(); return; }
   try {
+    /* v682 — THE STREAM WAS DECLARED INSIDE THE try, SO THE catch COULD NOT REACH IT.
+       Anything that throws AFTER the microphone opens — an unsupported mimeType in the
+       MediaRecorder constructor, rec.start(), a missing button element — lands in a catch
+       that shows "Could not access microphone" and never stops the tracks. The OS microphone
+       indicator then stays lit for the rest of the session with nothing recording, right
+       after a message saying the mic could not be reached. Hold it where the catch can see it. */
     const stream = await getMicStream();
+    _micHold = stream;
     const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
     const chunks = [];
@@ -16344,8 +16422,10 @@ async function nbToggleMic() {
       reader.readAsDataURL(blob);
     };
     rec.start(); _nbRec = rec;
+    _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     if (btn) btn.classList.add('recording');
   } catch (e) {
+    _micRelease();   // v682: the mic is still open — see the note above
     if (btn) btn.classList.remove('recording');
     alert('Could not access microphone. Check browser permissions.');
   }
@@ -17965,7 +18045,14 @@ async function vlMicToggle(){
   const btn = document.getElementById('vlMicBtn');
   if(_vlRec){ try{ _vlRec.stop(); }catch(e){} return; }
   try{
+    /* v682 — THE STREAM WAS DECLARED INSIDE THE try, SO THE catch COULD NOT REACH IT.
+       Anything that throws AFTER the microphone opens — an unsupported mimeType in the
+       MediaRecorder constructor, rec.start(), a missing button element — lands in a catch
+       that shows "Could not access microphone" and never stops the tracks. The OS microphone
+       indicator then stays lit for the rest of the session with nothing recording, right
+       after a message saying the mic could not be reached. Hold it where the catch can see it. */
     const stream = await getMicStream();
+    _micHold = stream;
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
       : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
     const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
@@ -17988,9 +18075,11 @@ async function vlMicToggle(){
       if(ta) ta.placeholder = VL_VIS_PLACEHOLDER;
     };
     rec.start(); _vlRec = rec; if(btn) btn.classList.add('recording');
+    _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     if(typeof showVoicePill==='function') showVoicePill(()=>{ try{ rec.stop(); }catch(e){} }, 'Describing the video');
     setTimeout(()=>{ if(_vlRec===rec){ try{ rec.stop(); }catch(e){} } }, 60000);
   }catch(e){ if(typeof showToast==='function') showToast(typeof micErrMsg==='function'?micErrMsg(e):'Microphone not available', 6000); }
+    _micRelease();   // v682: the mic is still open — see the note above
 }
 
 // Reusable voice dictation into ANY textarea — same infra as vlMicToggle, but target-agnostic.
@@ -18000,7 +18089,14 @@ async function dictateInto(taId, btn, label){
   if(_dictRec){ try{ _dictRec.stop(); }catch(e){} return; }
   const ta = document.getElementById(taId);
   try{
+    /* v682 — THE STREAM WAS DECLARED INSIDE THE try, SO THE catch COULD NOT REACH IT.
+       Anything that throws AFTER the microphone opens — an unsupported mimeType in the
+       MediaRecorder constructor, rec.start(), a missing button element — lands in a catch
+       that shows "Could not access microphone" and never stops the tracks. The OS microphone
+       indicator then stays lit for the rest of the session with nothing recording, right
+       after a message saying the mic could not be reached. Hold it where the catch can see it. */
     const stream = await getMicStream();
+    _micHold = stream;
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
       : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
     const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
@@ -18023,9 +18119,11 @@ async function dictateInto(taId, btn, label){
       if(ta) ta.placeholder = origPh;
     };
     rec.start(); _dictRec = rec; if(btn) btn.classList.add('recording');
+    _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     if(typeof showVoicePill==='function') showVoicePill(()=>{ try{ rec.stop(); }catch(e){} }, label||'Listening');
     setTimeout(()=>{ if(_dictRec===rec){ try{ rec.stop(); }catch(e){} } }, 60000);
   }catch(e){ if(typeof showToast==='function') showToast(typeof micErrMsg==='function'?micErrMsg(e):'Microphone not available', 6000); }
+    _micRelease();   // v682: the mic is still open — see the note above
 }
 function teachBrandTrend(btn){
   saveTrend(btn.getAttribute('data-take') || '');
@@ -18809,6 +18907,20 @@ function ideaOpenInIdeas(){
 }
 // Robust mic open — retries once if the device hasn't released the mic yet
 // (common on Android right after another recorder, throws NotReadableError/AbortError).
+/* v682 — see the note at each `const stream = await getMicStream()`. The open stream is
+   parked here so a failure after it opens can still stop the tracks, and _micRelease() is
+   safe to call from any catch, twice, or when nothing is open. */
+let _micHold = null;
+function _micReleaseHandled() { _micHold = null; }   // the recorder owns the stream from here
+function _micRelease() {
+  try {
+    if (_micHold && typeof _micHold.getTracks === 'function') {
+      _micHold.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+    }
+  } catch (e) {}
+  _micHold = null;
+}
+
 async function getMicStream(){
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -18826,7 +18938,14 @@ async function icMicToggle(){
   const btn = document.getElementById('icMicBtn');
   if(_icRec){ try{ _icRec.stop(); }catch(e){} return; }
   try{
+    /* v682 — THE STREAM WAS DECLARED INSIDE THE try, SO THE catch COULD NOT REACH IT.
+       Anything that throws AFTER the microphone opens — an unsupported mimeType in the
+       MediaRecorder constructor, rec.start(), a missing button element — lands in a catch
+       that shows "Could not access microphone" and never stops the tracks. The OS microphone
+       indicator then stays lit for the rest of the session with nothing recording, right
+       after a message saying the mic could not be reached. Hold it where the catch can see it. */
     const stream = await getMicStream();
+    _micHold = stream;
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
       : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
     const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
@@ -18864,9 +18983,11 @@ async function icMicToggle(){
       }catch(e){ if(typeof showToast==='function') showToast('Transcription failed — try typing it'); }
     };
     rec.start(); _icRec = rec; if(btn) btn.classList.add('recording');
+    _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     if(typeof showVoicePill==='function') showVoicePill(()=>{ try{ rec.stop(); }catch(e){} }, 'Catching your idea');
     setTimeout(()=>{ if(_icRec===rec){ try{ rec.stop(); }catch(e){} } }, 60000);
   }catch(e){ if(typeof showToast==='function') showToast(micErrMsg(e), 6000); }
+    _micRelease();   // v682: the mic is still open — see the note above
 }
 // Turn a getUserMedia error into something the user can act on.
 function micErrMsg(e){
@@ -23739,7 +23860,12 @@ function _drainToasts() {
   if (old) old.remove();
   const toast = document.createElement('div');
   toast.className = 'generic-toast' + (onTap ? ' tappable' : '');
-  toast.innerHTML = onTap ? `${message} <span class="toast-cta">View \u203A</span>` : message;
+  /* v682 — THE MESSAGE WAS WRITTEN AS HTML. 251 call sites, and a good number interpolate
+     text this app did not write: a server error body, a model's own words, a crawled page's
+     title. None of the 251 passes markup on purpose (checked), so escaping costs nothing and
+     closes the whole surface. The CTA is the one piece of markup, and it is ours. */
+  const _safe = (typeof escHtml === 'function') ? escHtml(message) : String(message == null ? '' : message);
+  toast.innerHTML = onTap ? `${_safe} <span class="toast-cta">View \u203A</span>` : _safe;
   if (onTap) {
     toast.onclick = () => { toast.remove(); try { onTap(); } catch(e){} };
   }
@@ -25682,7 +25808,14 @@ async function bvStartMic() {
   const indicator = document.getElementById('bvVoiceIndicator');
 
   try {
+    /* v682 — THE STREAM WAS DECLARED INSIDE THE try, SO THE catch COULD NOT REACH IT.
+       Anything that throws AFTER the microphone opens — an unsupported mimeType in the
+       MediaRecorder constructor, rec.start(), a missing button element — lands in a catch
+       that shows "Could not access microphone" and never stops the tracks. The OS microphone
+       indicator then stays lit for the rest of the session with nothing recording, right
+       after a message saying the mic could not be reached. Hold it where the catch can see it. */
     const stream = await getMicStream();
+    _micHold = stream;
     if (window._bvStartToken !== _startToken) {
       stream.getTracks().forEach(t => t.stop());
       bvExitRecordingUI();
@@ -25747,12 +25880,14 @@ async function bvStartMic() {
     };
 
     recorder.start();
+    _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     bvState.recognition = recorder;
     bvState.isRecording = true;
     btn.classList.add('recording');
     indicator.classList.add('active');
 
   } catch (err) {
+    _micRelease();   // v682: the mic is still open — see the note above
     console.error('Mic access error:', err);
     const _bar = document.querySelector('.bv-input-bar');
     if (_bar) _bar.classList.remove('recording-mode');

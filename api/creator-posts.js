@@ -167,6 +167,23 @@ module.exports = async function handler(req, res) {
     posts.sort((a, b) => (b.ts || 0) - (a.ts || 0));
     posts = posts.slice(0, MAX_CREATORS * POSTS_EACH);
 
+    /* v682 — A RUN WHERE EVERY LANE FAILED WAS CHARGED AND REPORTED AS "no posts".
+       The credit was logged unconditionally, so an Apify outage, a bad token or a stalled
+       actor cost the user real allowance and told them the creator simply had nothing — which
+       reads as "this creator is empty", not "we could not reach the scraper". Those are
+       different problems and only one of them is theirs. When nothing came back AND every
+       lane rejected, answer honestly instead; the 4xx/5xx refunds the reservation
+       automatically (api/_usage.js attachHoldRelease), so nothing is charged either. */
+    const _allLanesFailed = settled.length > 0 && settled.every(r => r.status === 'rejected');
+    if (!posts.length && _allLanesFailed) {
+      settled.forEach((r, i) => console.error('creator-posts: lane ' + lanes[i] + ' failed — ' +
+        ((r.reason && r.reason.message) || r.reason)));
+      return res.status(502).json({
+        error: 'scrape_failed',
+        message: "Couldn't reach the scraper just now, so we don't know what they posted — try again in a few minutes. You have not been charged.",
+      });
+    }
+
     let logBrandId = null;
     if (brandId) { try { if (await store.userCanAccessBrand(_g.user.id, brandId)) logBrandId = brandId; } catch (e) {} }
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'creatorposts', model: 'apify:' + lanes.join('+') });

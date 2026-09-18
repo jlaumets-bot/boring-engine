@@ -78,7 +78,18 @@ module.exports = async function handler(req, res) {
     if (logBrandId && Array.isArray(items) && items.length) {
       try {
         const _now = Date.now();
-        const _br = (((await store.rest('GET', `/brands?id=eq.${encodeURIComponent(logBrandId)}&select=auto_trends`)) || {}).data || [])[0];
+        /* v682 — AN UNCHECKED READ TURNED THIS MERGE INTO A DELETE. store.rest RESOLVES on
+           every HTTP status (it only rejects on a socket error), so a 5xx or a stall left
+           `_br` undefined and `_at` as {} — and Object.assign onto {} drops every key this
+           pull does not set: competitorMoves, compAt and topPosts, all written by the nightly
+           cron. One failed read on a manual "Pull trends" tap wiped the weekly competitor
+           pulse. A merge onto an unknown base is not a merge; refuse it. */
+        const _brRes = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(logBrandId)}&select=auto_trends`);
+        if (!_brRes || _brRes.status < 200 || _brRes.status >= 300) {
+          throw new Error('could not read the current auto_trends (' + ((_brRes && _brRes.status) || 'no response') +
+                          ') — refusing to merge onto an unknown base and lose the cron\'s competitor pulse');
+        }
+        const _br = ((_brRes.data) || [])[0];
         const _at = (_br && _br.auto_trends && typeof _br.auto_trends === 'object') ? _br.auto_trends : {};
         const _prev = (Array.isArray(_at.items) ? _at.items : []).map(i => i && i.text).filter(Boolean);
         const _scored = scoreTrends(items, _prev, []);
@@ -98,7 +109,12 @@ module.exports = async function handler(req, res) {
           likes: p.likes || 0, reposts: p.reposts || 0, ts: p.ts || _now,
         }));
         if (_tp.length) _merged.topPosts = _tp;
-        await store.rest('PATCH', `/brands?id=eq.${encodeURIComponent(logBrandId)}`, { body: { auto_trends: _merged }, headers: { Prefer: 'return=minimal' } });
+        // v682: store.rest resolves on every status, so an unchecked PATCH let the log below
+        // report "saved N items" for a write that never happened.
+        const _up = await store.rest('PATCH', `/brands?id=eq.${encodeURIComponent(logBrandId)}`, { body: { auto_trends: _merged }, headers: { Prefer: 'return=minimal' } });
+        if (!_up || _up.status < 200 || _up.status >= 300) {
+          throw new Error('auto_trends PATCH ' + ((_up && _up.status) || 'no response') + ' — nothing was saved');
+        }
         savedItems = _merged.items.length; savedAuto = _merged;
         console.log('pull-trends: saved ' + savedItems + ' items to auto_trends for brand ' + logBrandId +
                     ' (' + _merged.items.filter(i => i.link).length + ' with source links)');

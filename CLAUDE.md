@@ -2,6 +2,60 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v682. CLEARING THE BACKLOG: five defects that were proved in earlier audits and left unfixed.
+
+No new audit. These were all found, verified and recorded in earlier passes; this ships the fixes.
+
+**1. STATUS COULD ONLY EVER ADVANCE, SO EVERY UNDO WAS SILENTLY REVERTED.** `reconcileLocalStatus`
+ranked `pending < dismissed < filming < done` and took the higher one. So on the next load:
+un-dismissing came back **dismissed**, moving a post back out of the Pipeline came back **filming**,
+"Reset all ideas to pending" came back as it was, and **`done` could never be undone at all**. The
+function's own comment shows only one direction was ever considered — *"honor a local dismissal that
+hasn't reached the DB yet"* — and the reverse is exactly as real, and is the one that loses a
+deliberate action.
+FIX: a timestamp answers both directions. `saveState` stamps `statusAt` when the status actually
+changes (compared against what was last persisted, so it is stamped once per real change, not on
+every save), `loadIdeasFromDB` carries each row's own recency through as `_rowAt`, and the NEWER
+decision wins whichever way it went. **Rank stays as the tie-breaker for rows with no stamp** — every
+idea saved before this — and the gate pins that backward compatibility, including the old
+"honor a local dismissal" special case.
+
+**2. `showToast` WROTE ITS MESSAGE AS HTML.** 251 call sites, a good number interpolating text this
+app did not write: a server error body, a model's own words, a crawled page's title. Checked all 251
+— **none passes markup on purpose**, so escaping costs nothing and closes the whole surface. The
+tappable CTA is the one piece of markup and it stays.
+
+**3. A CREATOR SCRAPE WHERE EVERY LANE FAILED WAS CHARGED, AND REPORTED AS "no posts".** `logUsage`
+ran unconditionally, so an Apify outage, a bad token or a stalled actor cost real allowance and told
+the user the creator simply had nothing — which reads as *"this creator is empty"*, not *"we could
+not reach the scraper"*. Those are different problems and only one of them is theirs.
+FIX: when nothing came back AND every lane rejected, answer 502 with a real sentence. The 4xx/5xx
+refunds the reservation automatically (v678's `attachHoldRelease`), so nothing is charged either.
+
+**4. AN UNCHECKED READ TURNED A MERGE INTO A DELETE.** `store.rest` RESOLVES on every HTTP status, so
+a 5xx or a stall left `_br` undefined and the merge base as `{}` — and `Object.assign` onto `{}` drops
+every key this pull does not set: **`competitorMoves`, `compAt` and `topPosts`, all written by the
+nightly cron.** One failed read on a manual "Pull trends" tap wiped the weekly competitor pulse. The
+PATCH was unchecked too, so the log reported *"saved N items"* for a write that never happened.
+FIX: refuse to merge onto an unknown base, and check the PATCH.
+
+**5. FIVE MIC PATHS COULD NOT STOP THEIR OWN MICROPHONE.** The stream is a `const` declared inside the
+`try`, so the `catch` literally cannot reach it — and anything that throws after the mic opens (an
+unsupported mimeType in the MediaRecorder constructor, `rec.start()`, a missing button element) shows
+*"Could not access microphone"* and leaves the OS mic indicator lit for the rest of the session with
+nothing recording. Eight sites in total.
+FIX: park the stream where the catch can see it (`_micHold`), hand ownership to the recorder the
+moment it starts (`_micReleaseHandled`), and release on failure. **The handover is what stops one
+path's failure from killing another path's LIVE recording** — the gate checks that explicitly, because
+it is the regression this fix could easily have introduced.
+
+**NEW GATE `scripts/verify/undo-and-honesty.mjs`** — 30 assertions, almost all EXECUTED. Arm 1 drives
+every direction of the status merge including the two backward-compatibility cases; the mic arm
+includes the live-recording regression guard and a mutation anchor stating why the holder exists.
+**5 of 5 mutations caught.**
+
+**78 of 78 GATES GREEN.**
+
 ## ▶▶ 2026-09-18 — v681. SETTINGS / BRAND-BRAIN WRITE PATHS. Two ships-broken — and a v680 fix that could never have worked.
 
 **1. A v680 FIX WAS LOAD-BEARING ON A RETURN VALUE THAT DID NOT EXIST.** v680 gave `nbSaveAsRule` an
