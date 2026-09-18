@@ -46,7 +46,10 @@ const fn = n => { const s = html.indexOf('function ' + n + '('); if (s < 0) thro
 
 // ── 1. saveBrandToDB must not claim success on a refused UPDATE ─────────────────────────────
 {
-  const src = fn('saveBrandToDB');
+  // v681: the body moved into _saveBrandToDBInner when saveBrandToDB became a thin wrapper
+  // that REPORTS the outcome (brand-brain-writes.mjs owns that rule). The checks below are
+  // about the body, so read the body wherever it lives.
+  const src = fn('_saveBrandToDBInner') || fn('saveBrandToDB');
   if (!/\.update\([\s\S]{0,80}\)\.eq\([^)]*\)\.select\(/.test(src)) {
     bad('saveBrandToDB does not .select() its UPDATE, so an RLS refusal (resolves, no error, zero ' +
         'rows) is indistinguishable from a successful save. The entire brand voice is lost on the ' +

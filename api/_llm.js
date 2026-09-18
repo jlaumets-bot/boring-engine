@@ -120,6 +120,16 @@ async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images 
             ' · completion_tokens=' + (u.completion_tokens ?? '?') +
             ' · model=' + model + (attempt ? ' · attempt=' + (attempt + 1) : ''));
         } catch (_) {}
+        /* v681 — A REPLY CUT OFF AT max_tokens CAME BACK AS ORDINARY TEXT. finish_reason was
+           read only on the empty-200 path below, so a completion that stopped mid-sentence
+           because it hit the ceiling was indistinguishable from a finished one — and
+           expand-field REPLACES a whole brand field with whatever it gets. Record it so a
+           caller that overwrites something can refuse a half-written answer. */
+        try {
+          const _fr = resp.body?.choices?.[0]?.finish_reason;
+          LAST_TRUNCATED = (_fr === 'length');
+          if (LAST_TRUNCATED) console.log('xAI reply hit max_tokens (' + payload.max_tokens + ') — it is CUT OFF; model=' + model);
+        } catch (_) { LAST_TRUNCATED = false; }
         return txt;
       }
       // WAS SILENT, and this is the likely one: grok-4.6 is a REASONING model, so it can burn the
@@ -212,13 +222,20 @@ function callGrokSearch(prompt, opts = {}) {
  * @param {Object} opts - { messages, temperature?, max_tokens?, images? }  (model/engine ignored)
  * @returns {string} LLM response text
  */
+// v681: set by callXAI on every successful 200 — see the note there. Read ONLY through
+// callLLM's `wantMeta` option, immediately after the await, so there is no window in which a
+// second call in the same instance could overwrite it before the first caller looks.
+let LAST_TRUNCATED = false;
+
 async function callLLM(opts = {}) {
-  const { messages, temperature = 0.7, max_tokens = 2000, images = null, timeoutMs = 0 } = opts;
+  const { messages, temperature = 0.7, max_tokens = 2000, images = null, timeoutMs = 0, wantMeta = false } = opts;
 
   // PURE GROK — no fallback (Jörgen's call: rather not generate than fall back to Llama).
   // If xAI is down / out of credits, this throws and the caller shows a retry message.
+  LAST_TRUNCATED = false;
   const text = await callXAI({ messages, temperature, max_tokens, images, timeoutMs });
-  if (text) return text;
+  // v681: `wantMeta` is opt-in, so every existing caller still gets a plain string.
+  if (text) return wantMeta ? { text: text, truncated: LAST_TRUNCATED } : text;
 
   throw new Error('The AI is having a moment and could not respond. Please try again in a few seconds.');
 }

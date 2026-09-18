@@ -2,6 +2,79 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v681. SETTINGS / BRAND-BRAIN WRITE PATHS. Two ships-broken — and a v680 fix that could never have worked.
+
+**1. A v680 FIX WAS LOAD-BEARING ON A RETURN VALUE THAT DID NOT EXIST.** v680 gave `nbSaveAsRule` an
+`if (r && r.ok === false)` branch so a refused save could not be reported as "✓ In Voice Memory".
+**That branch could never run**: `saveBrandToDB` has four `return` statements and no return value on
+any path — it always resolves `undefined`. A fix that reads as handled and is not is worse than no
+fix. Own it plainly.
+FIX: `saveBrandToDB` is now a thin wrapper that reports the outcome every inner branch already
+records in `window._brandSaveOk` (the flag the lean request path gates on); the body moved untouched
+into `_saveBrandToDBInner`, so there is no surgery on eight return points and no change to save
+behaviour. `_brandSaveOk` starts as `null` for each save so a previous save's result can never be
+read as this one's, and anything that is not an explicit `true` reports as not-saved. `_queueBrandSave`'s
+`.catch(() => {})` now maps a rejection to `{ ok: false }` instead of `undefined`. The gate DRIVES the
+whole chain — including an exception — and then runs `nbSaveAsRule` against a refused save to prove
+the branch fires.
+
+**2. SWITCHING BRAND WITH SETTINGS OPEN LEFT THE OLD BRAND'S BRAIN ON SCREEN — AND ONE KEYSTROKE WROTE
+IT INTO THE NEW BRAND.** The brand switcher lives in the sticky header, which is **outside**
+`#mainViews` — and only `#mainViews` is hidden when Settings opens — so the dropdown is tappable with
+the whole panel showing (the Brands list inside the panel is a second route). Nothing in `switchBrand`
+re-renders the panel, so after the switch every textarea still showed the **previous** brand's pain
+points, USPs, product details, voice memory and origin story, reading as the new brand's. Each keeps
+its live `oninput="updateSetting(...)"`, so one character — one autocorrect, one tap of a suggestion
+chip — wrote the old brand's entire field into the new brand's row, permanently, with nothing on
+screen saying so. Measured end to end: a PATCH to `BRAND-B` carrying brand A's `painPoints`.
+FIX: re-render the panel on a switch when `#settingsOverlay` has `.open`.
+
+**3. "MAKE IT BETTER" WAS THE ONE ROUND TRIP IN THE FILE WITH NO BRAND PIN.** Every sibling has one
+(`spDraftFromCrawl`, `spDraftFromSocial`, `pullReviews`, `brainAutoDistill`, `openBrainReview`,
+`nbDevelop`); this was missed. Tap it on brand A's USPs, switch brand while it thinks, and brand A's
+rewrite landed in brand B's field **and row**. Separately, the textarea stays editable during the call
+while `val` is captured before it, so **anything typed in those seconds was silently discarded** when
+the reply overwrote the field. FIX: gate captured before the fetch and enforced after; the textarea
+re-queried after the await; and if its content changed, the user's version is kept and they are told.
+
+**4. A REWRITE CUT OFF AT THE TOKEN CEILING REPLACED THE WHOLE FIELD ANYWAY.** `callXAI` returns
+`choices[0].message.content` as soon as it is non-empty and read `finish_reason` only on the empty-200
+path — so a completion that stopped mid-sentence came back as ordinary text, and `expand-field`
+replaces the entire field with it: no diff, no undo, persisted on the next debounce tick. Anything
+past 6,000 characters was never shown to the model either, yet the reply replaced the part it never
+saw. FIX: `callLLM` gains an opt-in `wantMeta` channel (every existing caller still gets a plain
+string); `expand-field` refuses a truncated rewrite with a named `too_long` error and a sentence that
+reads as advice, raises its ceiling 800 → 1600, and tells the client when the field was too long to
+read whole so the client can say so.
+
+**5. THE DISTILLER WAS SHOWN 40 VOICE RULES WHILE THE APP ALLOWS 60.** `api/distill-voice.js` capped
+`existingRules` at 40 under the heading *"RULES ALREADY IN MEMORY (do NOT repeat or restate these)"*,
+with a stale comment claiming the app caps at 25 — the real soft cap is `BRAIN_RULES_SOFT_CAP = 60`.
+Past 40 rules it stopped being told about the oldest and began re-deriving them in different words;
+the client's only defence is an exact case-insensitive match, which a restatement walks past. The list
+fills with near-duplicates and eventually with rules that contradict older ones — all handed to the
+model under "obey ALL". FIX: 60. The gate READS BOTH CAPS and compares them, so raising one without
+the other fails here.
+
+**NEW GATE `scripts/verify/brand-brain-writes.mjs`** — 34 assertions. The save chain is EXECUTED
+through every outcome including an exception; the switchBrand fragment is RUN with Settings open and
+closed; the order rules (gate before fetch, textarea re-queried after the await) are checked as order,
+because order is the defect. **6 of 6 mutations caught.**
+
+**GATES TOUCHED (3), all the same harness gap:** `write-refusal-honesty.mjs`, `data-integrity.mjs`
+and `data-integrity-p1p8.mjs` all extract `saveBrandToDB`'s body, which moved into
+`_saveBrandToDBInner`. Re-anchored to read the body wherever it lives; every assertion they make is
+unchanged and still green (191/191 in data-integrity).
+
+**77 of 77 GATES GREEN.**
+
+CHECKED AND SOUND, so they do not get re-audited: `saveBrandToDB` does check the zero-row RLS refusal;
+`switchBrand` awaits `flushBrandSave()` before replacing `settings`; `coachNotes` is appended and never
+sliced in all four writers; `settingsToBrand`/`brandToSettings` round-trip every key
+(`voiceCoachMessages` is deliberately preserved); all 31 `getBrandContext()` keys are rendered by
+`fullBrandBlock`, and the lean server path mirrors them; the 600ms debounce is flushed on
+`visibilitychange`/`pagehide`.
+
 ## ▶▶ 2026-09-18 — v680. NOTEBOOK/IDEA-CATCHER AUDIT. The worst defect of this whole run: adding one note during boot DELETED the list.
 
 **1. ONE NOTE ADDED DURING APP BOOT DELETED EVERYTHING ELSE.** `_listLoadOk` is initialised **all

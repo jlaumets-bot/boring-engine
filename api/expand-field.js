@@ -2,6 +2,10 @@ const https = require('https');
 const { callLLM } = require('./_llm');
 const { fullBrandBlock } = require('./_brain');
 
+// v681: how much of a field the model is shown. Anything past this is not read, and the
+// client is told so rather than having the unread part silently replaced.
+const FIELD_IN_CAP = 6000;
+
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
   const origin = req.headers.origin || '';
@@ -67,21 +71,40 @@ ${brandInfo ? '\nBrand context:\n' + brandInfo : ''}`;
 
     const userPrompt = `Field: "${fieldLabel}"
 Current value:
-${currentValue.trim().slice(0, 6000)}
+${currentValue.trim().slice(0, FIELD_IN_CAP)}
 
 Instructions: ${instruction}
 
 Return ONLY the improved content for this field.`;
 
-    const expanded = (await callLLM({
+    /* v681 — THIS REPLACES A WHOLE BRAND FIELD, SO IT MUST NOT SHIP A HALF-WRITTEN ANSWER.
+       Two silent losses were possible. (a) Anything past FIELD_IN_CAP was never shown to the
+       model, and the reply then replaced the ENTIRE field — including the part it never saw.
+       (b) max_tokens was 800 (~3,000-3,500 chars); a completion that hit that ceiling came
+       back as ordinary text, because finish_reason was only read on the empty-200 path. A
+       field cut off mid-sentence then overwrote the user's own writing, with no diff and no
+       undo. Refuse a truncated rewrite, and say when the field was too long to read whole. */
+    const _res = await callLLM({
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
       model: 'grok',
       temperature: 0.7,
-      max_tokens: 800
-    })).trim();
+      max_tokens: 1600,
+      wantMeta: true,
+    });
+    if (_res && _res.truncated) {
+      console.error('expand-field: the rewrite hit the token ceiling and is cut off — refusing to ' +
+        'replace the field. field=' + fieldName + ' inputChars=' + currentValue.trim().length);
+      return res.status(502).json({
+        error: 'too_long',
+        message: "That field is long enough that the rewrite got cut off, so nothing was changed. " +
+                 "Shorten it a little, or rewrite one part at a time.",
+      });
+    }
+    const expanded = String((_res && _res.text) || '').trim();
+    const _wasClipped = currentValue.trim().length > FIELD_IN_CAP;
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /
     // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
@@ -94,7 +117,9 @@ Return ONLY the improved content for this field.`;
       } catch (e) {}
     }
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'expand', model: bc.engine || 'grok' });
-    return res.status(200).json({ expanded });
+    // v681: tell the client when part of the field was never read, so it can warn rather than
+    // silently replacing text the model never saw.
+    return res.status(200).json({ expanded, clipped: _wasClipped, readChars: FIELD_IN_CAP });
 
   } catch (err) {
     console.error('expand-field error:', err);

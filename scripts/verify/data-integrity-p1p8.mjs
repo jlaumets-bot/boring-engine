@@ -329,7 +329,10 @@ section('P3 — the 90s deadline must abort the request and report it, not silen
    ═══════════════════════════════════════════════════════════════════════════ */
 section('P4 — a brand save that gives up must tell the user');
 {
-  const src = extractFn('saveBrandToDB');
+  // v681: the body moved into _saveBrandToDBInner when saveBrandToDB became a thin wrapper
+  // that REPORTS its outcome (brand-brain-writes.mjs owns that rule). These checks are about
+  // the body, so read the body wherever it lives.
+  const src = extractFn('_saveBrandToDBInner') || extractFn('saveBrandToDB');
   ok('[structural] the no-user path no longer ends at a debug log', !/if \(!sb \|\| !currentUser\) \{ debugLog/.test(src));
   ok('[structural] the no-user path notifies the user', /if \(!sb \|\| !currentUser\) \{ notifyBrandSaveBlocked/.test(src));
   ok('[structural] the failed-session-refresh path notifies the user', /notifyBrandSaveBlocked\('session refresh failed/.test(src));
@@ -337,7 +340,7 @@ section('P4 — a brand save that gives up must tell the user');
   // BEHAVIOURAL: run the real function on both give-up paths and assert the user is told.
   async function runSave(deps) {
     const toasts = [];
-    const fn = compile(src, 'saveBrandToDB', {
+    const fn = compile(src, '_saveBrandToDBInner', {
       ...deps,
       debugLog: () => {},
       notifyBrandSaveBlocked: compile(extractFn('notifyBrandSaveBlocked'), 'notifyBrandSaveBlocked', {

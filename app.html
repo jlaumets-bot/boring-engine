@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v680';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v681';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -7321,6 +7321,21 @@ async function switchBrand(brandId) {
     renderNav();
     switchView('ideas');
     applyFeatureLocks();
+    /* v681 — THE SETTINGS PANEL WAS NEVER RE-RENDERED, AND ITS TEXTAREAS STAY LIVE.
+       The brand switcher lives in the sticky header, which is OUTSIDE #mainViews — and only
+       #mainViews is hidden when Settings opens — so the dropdown is tappable with the whole
+       Settings panel on screen (the Brands list inside the panel is a second route). Nothing
+       in this function re-renders it, so after the switch every textarea still showed the
+       PREVIOUS brand's pain points, USPs, product details, voice memory and origin story,
+       reading as if they were the new brand's. Each one still carries its live
+       oninput="updateSetting(...)" handler, so one character — one autocorrect, one tap of a
+       suggestion chip — wrote the old brand's entire field into the new brand's row,
+       permanently, with nothing on screen saying so. */
+    try {
+      // openSettings() adds .open to #settingsOverlay; toggleSettings removes it.
+      const _sp = document.getElementById('settingsOverlay');
+      if (_sp && _sp.classList.contains('open') && typeof renderSettingsPanel === 'function') renderSettingsPanel();
+    } catch (e) {}
     showToast('Switched to ' + (settings.brandName || 'brand'));
   } catch(e) {
     // v663: same restore as the failure return above, and never put a raw exception on screen.
@@ -7673,7 +7688,23 @@ function notifyBrandSaveBlocked(why) {
       showToast("You're signed out, so your brand changes are NOT being saved. Reload and sign in — then re-check these fields.", 10000, function(){ try { location.reload(); } catch(e) {} });
   } catch(e) {}
 }
+/* v681 — THIS RETURNED `undefined` ON EVERY PATH, AND CALLERS WERE CHECKING THE RESULT.
+   v680 gave nbSaveAsRule an `if (r && r.ok === false)` branch so a refused save could not be
+   reported as "✓ In Voice Memory" — but the branch could never run, because nothing here ever
+   returned a value. The fix was structurally right and load-bearing on a return that did not
+   exist, which is worse than no fix: it reads as handled.
+   Every branch below already records the outcome in window._brandSaveOk (that is what the lean
+   request path gates on). So the wrapper reports it, and the inner function is untouched —
+   no surgery on eight return points, and no risk of changing save behaviour.
+   `_brandSaveOk` starts as null for THIS save so a previous save's result can never be read
+   as this one's; anything that is not an explicit `true` is reported as not-saved. */
 async function saveBrandToDB() {
+  try { window._brandSaveOk = null; } catch (e) {}
+  try { await _saveBrandToDBInner(); } catch (e) { try { window._brandSaveOk = false; } catch (_) {} }
+  return { ok: (function () { try { return window._brandSaveOk === true; } catch (e) { return false; } })() };
+}
+
+async function _saveBrandToDBInner() {
   if (!sb || !currentUser) { notifyBrandSaveBlocked('no sb or user. sb=' + !!sb + ' user=' + !!currentUser); return; }
   try {
     // Ensure we have a fresh session before any write — prevents RLS failures from stale/missing JWT
@@ -8923,7 +8954,7 @@ function _queueBrandSave() {
   _brandSaveChain = _brandSaveChain.then(
     () => saveBrandToDB(),
     () => saveBrandToDB()          // keep the chain alive after a failure
-  ).catch(() => {});
+  ).catch(() => ({ ok: false }));  // v681: a swallowed rejection must still report "not saved"
   return _brandSaveChain;
 }
 // Immediate save — for discrete actions (toggles, pickers, uploads, programmatic writes).
@@ -21131,6 +21162,14 @@ async function spExpandField(key) {
   }
   btn.classList.add('loading');
   btn.innerHTML = '⏳ Improving...';
+  /* v681 — THE ONE ROUND TRIP IN THIS FILE WITH NO BRAND PIN. Every sibling has one
+     (spDraftFromCrawl, spDraftFromSocial, pullReviews, brainAutoDistill, openBrainReview,
+     nbDevelop); this was missed. Tap "Make it better" on brand A's USPs, switch brand while
+     it thinks, and brand A's rewritten USPs landed in brand B's field AND row.
+     And `val` is captured before the fetch while the textarea stays editable, so anything
+     typed during those seconds was silently discarded when the reply overwrote the field. */
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+  const _fromBrand = (settings && settings.brandName) ? String(settings.brandName) : '';
   try {
     const resp = await fetch('/api/expand-field', {
       method: 'POST',
@@ -21147,6 +21186,8 @@ async function spExpandField(key) {
     if (resp.status === 402) return;
     const data = await resp.json().catch(function () { return {}; });
     if (!resp.ok) {
+      // v681: the server now names the too-long case explicitly (error: 'too_long') and sends
+      // the sentence to show — it already reads as advice rather than a failure.
       say((data && data.message) || "Couldn't rewrite that just now — try again in a moment.");
       return;
     }
@@ -21154,9 +21195,27 @@ async function spExpandField(key) {
       say('Nothing came back for that one — add a little more detail and try again.');
       return;
     }
-    ta.value = data.expanded;
+    if (_sameBrand && !_sameBrand()) {
+      say('You switched brand while that was rewriting, so nothing was changed' +
+          (_fromBrand ? ' — it was written for ' + _fromBrand + '.' : '.'));
+      return;
+    }
+    // Re-read the textarea: it is still on screen and still editable during the call.
+    const _live = document.querySelector('textarea[data-sp-field="' + key + '"]');
+    if (!_live) { say('That field is no longer open — nothing was changed.'); return; }
+    if (_live.value.trim() !== val) {
+      // They kept typing. Overwriting would throw those keystrokes away without a word.
+      say('You edited that while it was rewriting, so your version was kept. Tap Make it better again if you want the rewrite.', 8000);
+      return;
+    }
+    _live.value = data.expanded;
     updateSetting(key, data.expanded);
-    say('Rewritten ✓ — edit it if you want');
+    // v681: if the field was longer than the server reads, the rewrite could not have taken the
+    // tail into account — say so rather than letting it look like a considered edit.
+    say(data.clipped
+      ? ('Rewritten ✓ — but only the first ' + Math.round((data.readChars || 6000) / 1000) +
+         'k characters were read, so check the end before you rely on it.')
+      : 'Rewritten ✓ — edit it if you want');
   } catch (e) {
     console.error('Expand failed:', e);
     say("Couldn't reach the server — check your connection and try again.");

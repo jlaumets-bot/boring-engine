@@ -303,7 +303,10 @@ async function loadBrandFromDB_OLD() {
   ok('there is a working retry', /initApp\(\)/.test(extractFn('showBrandLoadError')));
 
   // The duplicate-brand insert is blocked.
-  const saveSrc = extractFn('saveBrandToDB');
+  // v681: the body moved into _saveBrandToDBInner when saveBrandToDB became a thin wrapper
+  // that REPORTS the outcome (brand-brain-writes.mjs owns that rule). The checks below are
+  // about the body, so read the body wherever it lives.
+  const saveSrc = extractFn('_saveBrandToDBInner') || extractFn('saveBrandToDB');
   function runSaveBrand(brandLoadFailed) {
     const inserts = [];
     const sbStub = {
@@ -313,7 +316,7 @@ async function loadBrandFromDB_OLD() {
         update() { return { eq: async () => ({ error: null }) }; },
       }),
     };
-    const fn = compile(saveSrc, 'saveBrandToDB', {
+    const fn = compile(saveSrc, '_saveBrandToDBInner', {
       sb: sbStub, currentUser: { id: 'u1' }, currentBrand: null,
       _brandLoadFailed: brandLoadFailed, settingsToBrand: () => ({ brand_name: 'X' }),
       debugLog: () => {}, alert: () => {}, showToast: () => {},

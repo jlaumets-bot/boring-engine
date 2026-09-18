@@ -20,7 +20,14 @@ const { extractJson } = require('./_brain');
 //   brandName     — crawl-brand already rejects anything over 48 chars as a description
 // (edits' before/after were already capped at 160 each — those stay as they are.)
 // Worst-case bound on the assembled prompt after capping: ~36KB. Before: unbounded.
-const RULES_MAX = 40, RULE_CAP = 300, EDIT_FIELD_CAP = 80,
+/* v681 — THIS WAS 40 WHILE THE APP ALLOWS 60. The comment above claimed "app.html caps
+   coachNotes at 25"; that cap was removed and the soft cap is now BRAIN_RULES_SOFT_CAP = 60.
+   So past 40 rules the distiller stopped being shown the oldest ones under "do NOT repeat or
+   restate these" and started re-deriving them in different words — and the client's only
+   defence is an exact case-insensitive match, which a restatement walks straight past. The
+   list then grows with near-duplicates and eventually with rules that contradict older ones,
+   all handed to the model under "obey ALL". */
+const RULES_MAX = 60, RULE_CAP = 300, EDIT_FIELD_CAP = 80,
       FORMAT_CAP = 40, REASON_CAP = 300, TITLE_CAP = 200, BRAND_CAP = 100;
 const cap = (v, n) => String(v == null ? '' : v).slice(0, n);
 
