@@ -2,6 +2,84 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v674. TWO PARALLEL AUDITS (auth/session, PWA/offline/storage). Eight defects, all invisible on screen.
+
+Every one below was proved by EXECUTING the real code — extracted into a vm with a throwing
+localStorage, a PostgREST stub that answers the way an RLS refusal really answers, a deterministic
+timer queue, and a faithful Cache API driving the real `sw.js`. 9 of 9 mutations caught.
+
+**1. THE SERVICE WORKER MATCHED THE FULL URL, QUERY STRING INCLUDED.** `sw.js:151` used
+`caches.match(e.request)`; the shell is cached as the bare `/app.html`. So the two entry URLs the
+product ITSELF produces — `/app.html?invite=<code>` (team invite, `app.html:6787`) and
+`/app.html?code=<pkce>` (magic link, via `index.html:40-42`) — MISSED the cache. Offline that is the
+browser's network-error page, on an app whose own copy says "works offline, opens instantly".
+FIX: match `'/app.html'` by path. This branch only runs for that path, so it is exact, not a guess.
+
+**2. AND IT RE-DOWNLOADED THE WHOLE 1.4MB SHELL ON EVERY LAUNCH** (427KB gzipped; measured
+`1,512,061` bytes raw). `SHELL_MARK` already recorded which build was cached — written at three
+places, read at none. On the 0.5KB/s line `sw.js`'s own comments keep citing, that is ~14 minutes of
+saturated pipe per launch. FIX: skip the refetch when the mark equals BUILD. A stale or unreadable
+mark still refetches, so the self-healing property is preserved — and the gate pins that arm too.
+
+**3. THREE BARE `localStorage.setItem` CALLS SAT BEFORE THE WORK.** On a device where the store
+throws (full, or site data blocked) the whole function aborted:
+- `dismissNotifPrompt` (`app.html:15677`) — the ×, "Not now" AND the backdrop all call it, so the
+  daily-nudge sheet **could not be closed at all**; and the dismissal was never recorded, so it
+  re-opened 4.5s after every launch.
+- `spSetTab` (`app.html:21280`) — every Settings tab did nothing.
+- `endTour` (`app.html:23569`) — the tour auto-started again on every load, forever.
+Same file guards its READS at the same places; the asymmetry was an oversight. FIX: do the work
+first, store second, in a try.
+
+**4. `lsSet` SWALLOWED A FULL DISK** (`app.html:8675`, bare `catch(e){}`). Three of the things it
+stores have NO database copy — hand-taught trends, the "People also ask" questions and which were
+used, and the daily-ping toggle. The user typed a trend, saw the toast, and it was gone after the
+reload with nothing said. The right writer already existed — `_lsWriteGuarded` logs and toasts once
+a minute — and had exactly ONE call site. FIX: route `lsSet` through it.
+
+**5. TWO `ideas` DELETEs HAD NO `.select()`** (`app.html:6981` `_dropRenamedIdeaRow`, `app.html:18436`
+`ideaRedoRun`). supabase-js does not throw on an HTTP error and an RLS refusal is **HTTP 200, ZERO
+ROWS, error: null**. The delete policy on `ideas` is owner-only (`sql/v658-member-delete.sql:164`),
+so for a TEAM MEMBER every Sharpen / viral Replace / Redo that renamed a post left the old row
+behind — and the loader dedups BY TITLE, so it came back as a second card after every reload,
+accumulating forever, silently. `dropSuperseded` three functions away already did this correctly.
+FIX: `.select('id')`, count the rows, and say plainly that only the owner can remove the old one.
+
+**6. THE PLAN POLL NEVER STOPPED** (`app.html:17886`). `_csUsageUnknown` cleared its own timer handle
+*before* the retry ran, so each failed retry re-armed it. On a dead session the tab asked
+`/api/usage` every 6 seconds for as long as it stayed open — measured 13 requests and still queued —
+under a message telling the user nothing had changed. FIX: 3 retries with 3× backoff (6s/18s/54s),
+budget re-armed by a good answer.
+
+**7. A FAILED "People also ask" REFRESH WAS ONLY EVER REPORTED WHEN THE LIST WAS EMPTY.** Both reads
+of `window.__paaError` sat inside the `total === 0` branch, but the Refresh button exists only in the
+`total > 0` path. A 401 on a dead session: spinner runs, same old list, no message. FIX: report it
+where the button is.
+
+**8. THE PREVIOUS USER'S BRAND-VOICE TRANSCRIPT SURVIVED A CROSS-TAB USER SWITCH.** supabase-js
+broadcasts auth events across tabs (BroadcastChannel on the storage key, confirmed in the bundled
+2.110.2), so signing out in one tab and signing in as someone else re-inits every other open tab as
+the NEW user. `bvState` was reset only by switchBrand/addNewBrand — never on an auth change — and
+the coach only loads the stored transcript when memory is empty, so the old one won. Then
+`settingsToBrand` (`app.html:7587`) writes `bvState.messages` into whichever brand is open, so the
+next save persisted one user's conversation into another's brand. FIX: clear `bvState.messages` and
+`currentBrand` in the SIGNED_OUT branch.
+
+**NEW GATE `scripts/verify/offline-and-silent-writes.mjs`** — 20 assertions, almost all EXECUTED.
+Two are mutation arms (removing `.select()` must make the refusal invisible again; a stale
+SHELL_MARK must still refetch). 9 of 9 source mutations caught.
+
+**69 of 69 GATES GREEN.**
+
+STILL OPEN from these two audits, not yet fixed: `syncPushTimezone` writes `push_subscriptions` with
+no `.select()` and an empty catch, with the hour cooldown already committed (`app.html:15715-15720`)
+— a failed timezone sync is invisible for an hour, so the daily ping keeps arriving at the old local
+hour after travel or DST. Generic SW cache entries are never pruned or revalidated (`sw.js:169-180`),
+so `/icon-192.png` and friends can never change on an existing install. The "Getting started"
+checklist is keyed per USER but ORs in per-BRAND flags (`app.html:18130,18159`), so a second brand
+shows the first brand's ticks. And `initApp` sets `_initAppDone = true` even when it bailed on
+BRAND_LOAD_FAILED (`app.html:8302-8308,8476`), so a later TOKEN_REFRESHED never retries.
+
 ## ▶▶ 2026-09-18 — v673. BATCH 2: the two SHIPS-BROKEN defects, plus two lies the brain was being told.
 
 Continues the six audits from v672. Everything below was MEASURED by running the real code, and

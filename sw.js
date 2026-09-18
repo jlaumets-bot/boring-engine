@@ -4,7 +4,7 @@
 // changing BUILD makes this file byte-different, the browser detects a new worker, and `install`
 // pulls the fresh app.html into the SAME stable cache while the OLD copy keeps serving instantly.
 const CACHE = 'cs-shell';   // stable — never rename
-const BUILD = 'v673-87520e0c';       // ← bump this string on every app.html/asset change to push an update
+const BUILD = 'v674-8147d09e';       // ← bump this string on every app.html/asset change to push an update
 
 // Only the app shell is refreshed on update. Images/icons are cached lazily on first use (never
 // eagerly precached — on a very slow connection an eager 1.8MB precache saturates the pipe and is
@@ -148,8 +148,24 @@ self.addEventListener('fetch', e => {
      a failed install heal itself instead of stranding the device on an old build forever. */
   if (_path === '/app.html') {
     e.respondWith((async () => {
-      const cached = await caches.match(e.request);
+      /* v674 — MATCH THE PATH, NOT THE URL. The shell is cached as the bare '/app.html',
+         and caches.match() compares the full URL including the query string. So every
+         entry URL the product itself produces — /app.html?invite=<code> from a team invite
+         and /app.html?code=<pkce> from a magic link — MISSED the cache. Offline that meant
+         the browser's network-error page on an app whose own copy says it works offline;
+         online it meant a blocking 1.4MB download before the first pixel. */
+      const cached = await caches.match('/app.html');
+      /* v674 — and do not re-download 1.4MB (427KB gzipped) on EVERY launch. SHELL_MARK
+         already records exactly which build is in the cache; it was written but never read
+         here. When it matches this worker's BUILD the cache is current and the refetch buys
+         nothing — on the 0.5KB/s line this file keeps citing, it cost ~14 minutes of
+         saturated pipe per launch. When it does not match (or cannot be read) we still
+         refetch, so a failed install heals itself exactly as before. */
       const revalidate = (async () => {
+        try {
+          const mark = await caches.match(SHELL_MARK);
+          if (cached && mark && (await mark.text()) === BUILD) return null;
+        } catch (_) {}
         try {
           const r = await fetch('/app.html', { cache: 'reload' });
           if (r && r.ok) {

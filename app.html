@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v673';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v674';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -6978,7 +6978,21 @@ async function _dropRenamedIdeaRow(oldTitle, newTitle) {
     const a = String(oldTitle || '').trim(), b = String(newTitle || '').trim();
     if (!a || !b || a === b) return;                       // no rename, nothing orphaned
     if ((typeof state !== 'undefined' && state || []).some(x => x && String(x.title || '').trim() === a)) return; // still in use
-    await sb.from('ideas').delete().eq('brand_id', currentBrand.id).eq('title', a);
+    /* v674 — .select('id') IS THE ONLY WAY TO SEE THIS FAIL. supabase-js does not throw on
+       an HTTP error, and an RLS refusal comes back as HTTP 200, ZERO ROWS, error: null. The
+       delete policy on `ideas` is owner-only (sql/v658-member-delete.sql), so for a team member
+       every Sharpen / viral Replace / Redo that renames a post left the old row behind — and
+       the loader dedups BY TITLE, so it came back as a second card after every reload, forever,
+       with nothing on screen. dropSuperseded three functions away already did this correctly. */
+    const { data: _gone, error: _e } = await sb.from('ideas').delete()
+      .eq('brand_id', currentBrand.id).eq('title', a).select('id');
+    if (_e || !(_gone && _gone.length)) {
+      console.warn('the renamed idea\'s old row was not removed', { title: a, error: _e || 'no rows — likely an RLS refusal' });
+      if (!window._ideaDropWarned) {
+        window._ideaDropWarned = true;
+        if (typeof showToast === 'function') showToast('Saved — but the earlier version stayed in the library. Only the brand owner can remove it.', 7000);
+      }
+    }
   } catch (e) { console.error('could not drop the renamed idea\'s old row:', e); }
 }
 
@@ -8493,6 +8507,15 @@ function startAuthListener() {
       currentUser = null;
       _initAppDone = false;
       _initAppRunning = false;
+      /* v674 — THE PREVIOUS USER'S BRAND-VOICE TRANSCRIPT SURVIVED THIS.
+         supabase-js broadcasts auth events across tabs, so signing out in one tab and
+         signing in as someone else re-inits every other open tab as the NEW user — but
+         bvState was reset only by switchBrand/addNewBrand, never by an auth change. The
+         coach then showed Alice's conversation to Bob (it only loads the stored transcript
+         when memory is empty), and settingsToBrand writes bvState.messages into whichever
+         brand is open, so the next save persisted it into Bob's brand. */
+      try { if (typeof bvState === 'object' && bvState) { bvState.messages = []; } } catch(e){}
+      try { currentBrand = null; } catch(e){}
       document.getElementById('authScreen').style.display = 'flex';
       dismissCsSplash();
       document.getElementById('authForm').style.display = 'block';
@@ -8672,7 +8695,13 @@ function bkey(base){
 // (pipeline status, edit signals, trends, blog, PAA…) in one place. Real per-brand data
 // still round-trips through bk() = base::brandId.
 function lsGet(base){ try { if(!currentBrand||!currentBrand.id) return null; return localStorage.getItem(bkey(base)); } catch(e){ return null; } }
-function lsSet(base, val){ try { if(!currentBrand||!currentBrand.id) return; localStorage.setItem(bkey(base), val); } catch(e){} }
+/* v674 — THIS BARE CATCH WAS SILENT TOTAL DATA LOSS ON A FULL PHONE.
+   Three of the things it stores have no database copy at all: hand-taught trends
+   (saveTrend), the "People also ask" questions and which were used (savePAAState),
+   and the daily-ping toggle. The user typed a trend, saw the toast, and it was gone
+   after the reload with nothing said. The file already owned the right writer —
+   _lsWriteGuarded logs and toasts once a minute — and it had ONE call site. */
+function lsSet(base, val){ try { if(!currentBrand||!currentBrand.id) return; _lsWriteGuarded(bkey(base), val); } catch(e){} }
 // Same namespace, same null-brand guard — for DROPPING a value that can no longer be trusted
 // (a stored blob that will not parse). Declared at top level on purpose: a `const` helper
 // defined inside a `try` is block-scoped, so calling it from that block's `catch` throws a
@@ -14841,7 +14870,12 @@ function renderPAASection() {
     </div>`;
   });
 
+  /* v674 — window.__paaError was read in exactly two places, both inside the
+     `total === 0` branch. With questions already on screen a failed Refresh — including
+     the 401 the endpoint returns on a dead session — showed NOTHING: the spinner ran and
+     the same old list came back. Say it where the Refresh button actually is. */
   html += `</div>
+    ${window.__paaError ? `<div class="paa-empty" style="text-align:center;padding:8px 0 0;font-size:12px;color:var(--text3)">Couldn't refresh these just now — these are the previous ones. If it keeps failing, sign in again.</div>` : ''}
     <div class="paa-actions">
       <span style="font-size:11px;color:var(--text4)">${unused.length}/${total} unused</span>
       <button class="paa-refresh-btn" onclick="fetchPAAQuestions(true)">
@@ -15674,7 +15708,11 @@ function showNotifPrompt() {
       '<button class="detail-btn" style="width:100%;margin-top:8px;" onclick="dismissNotifPrompt()">Not now</button>' +
     '</div>';
 }
-function dismissNotifPrompt() { localStorage.setItem('notif-prompt-dismissed', '1'); const w = document.getElementById('notifOverlay'); if (w) w.remove(); }
+/* v674 — the setItem ran BEFORE the close, so on a device where storage throws
+   (full, or site data blocked) the whole function aborted and the sheet could not be
+   closed at all: the ×, "Not now" and the backdrop all call this. And since the
+   dismissal was never recorded, it re-opened 4.5s after every launch. Close first. */
+function dismissNotifPrompt() { const w = document.getElementById('notifOverlay'); if (w) w.remove(); try { localStorage.setItem('notif-prompt-dismissed', '1'); } catch(e){} }
 async function notifPromptEnable(btn) { if (btn) btn.disabled = true; const w = document.getElementById('notifOverlay'); if (w) w.remove(); await enableDailyPush(); }
 // Blocked — phone denied earlier, so the browser won't let us re-ask. Redirect to the right place.
 function notifBlockedHelp() {
@@ -17879,11 +17917,22 @@ var csUsage = null;
 // and the Plan box then rendered a Pro subscriber as "Trial plan · 0 / 0 posts · UPGRADE".
 var csUsageLoadFailed = false;
 var _csUsageRetryT = null;
+var _csUsageRetries = 0;   // v674: see _csUsageUnknown — this used to retry forever
 function _csUsageUnknown(){
   csUsageLoadFailed = true;
   try { var pb = document.getElementById('spPlanBox'); if (pb && typeof planBoxHtml === 'function') pb.innerHTML = planBoxHtml(); } catch(e){}
-  // One quiet retry — a dropped mobile request should not leave the plan unknown until a reload.
-  try { if (!_csUsageRetryT) _csUsageRetryT = setTimeout(function(){ _csUsageRetryT = null; refreshUsage(); }, 6000); } catch(e){}
+  /* v674 — "ONE QUIET RETRY" WAS AN UNBOUNDED POLL. The handle was cleared before the
+     retry ran, so every failed retry re-armed the timer: on a dead session the tab asked
+     /api/usage every 6 seconds for as long as it stayed open, each answering 401, under a
+     message telling the user nothing had changed. Measured: 13 requests and still queued.
+     Cap it, and back off. The "Try again" button is still there for a deliberate retry. */
+  try {
+    if (!_csUsageRetryT && _csUsageRetries < 3) {
+      const wait = 6000 * Math.pow(3, _csUsageRetries);   // 6s, 18s, 54s, then stop
+      _csUsageRetries++;
+      _csUsageRetryT = setTimeout(function(){ _csUsageRetryT = null; refreshUsage(); }, wait);
+    }
+  } catch(e){}
 }
 async function refreshUsage(){
   try{
@@ -17891,6 +17940,7 @@ async function refreshUsage(){
     if(!r.ok) { _csUsageUnknown(); return; }
     csUsage = await r.json();
     csUsageLoadFailed = false;
+    _csUsageRetries = 0;               // v674: a good answer re-arms the retry budget
     renderUsagePill();
     // Piggy-back the daily-ping timezone refresh on the call that already runs on load (see
     // syncPushTimezone — it rate-limits itself to once an hour and no-ops without push).
@@ -18433,7 +18483,16 @@ async function ideaRedoRun(id){
       try {
         const newTitle = (state[si].title||'').trim();
         if(currentBrand && typeof sb!=='undefined' && oldTitle && oldTitle!==newTitle){
-          await sb.from('ideas').delete().eq('brand_id', currentBrand.id).eq('title', oldTitle);
+          // v674: same silent-refusal trap as _dropRenamedIdeaRow — see the note there.
+          const { data: _gone, error: _e } = await sb.from('ideas').delete()
+            .eq('brand_id', currentBrand.id).eq('title', oldTitle).select('id');
+          if (_e || !(_gone && _gone.length)) {
+            console.warn('redo: the old title\'s row was not removed', { title: oldTitle, error: _e || 'no rows — likely an RLS refusal' });
+            if (!window._ideaDropWarned) {
+              window._ideaDropWarned = true;
+              if (typeof showToast === 'function') showToast('Redone — but the earlier version stayed in the library. Only the brand owner can remove it.', 7000);
+            }
+          }
         }
       } catch(e){}
     }
@@ -21277,7 +21336,9 @@ function getFormatCounts() { const c={}; FORMATS.forEach(f=>{c[f]=IDEAS.filter(i
 let spActiveTab = 'voice'; try { spActiveTab = localStorage.getItem('sp-tab') || 'voice'; } catch (e) {}
 // ensure 'danger' section toggles even if not in defaults
 
-function spSetTab(t) { spActiveTab = t; localStorage.setItem('sp-tab', t); renderSettingsPanel(); }
+/* v674 — see dismissNotifPrompt: the setItem sat before the re-render, so a throwing
+   store made every Settings tab do nothing at all. Remember the tab if we can; render either way. */
+function spSetTab(t) { spActiveTab = t; try { localStorage.setItem('sp-tab', t); } catch(e){} renderSettingsPanel(); }
 function spFill(keys) {
   const done = keys.filter(k => {
     const v = settings[k];
@@ -23566,7 +23627,10 @@ function nextTourStep() { tourStep++; showTourStep(); }
 function prevTourStep() { tourStep = Math.max(0, tourStep - 1); showTourStep(); }
 function endTour() {
   if (tourOverlay) { tourOverlay.classList.remove('active'); tourOverlay.style.display = 'none'; }
-  localStorage.setItem('bc_tour_done', '1');
+  /* v674 — this threw on a full device and took the rest of endTour with it: the PWA
+     banner stayed hidden, the brand-voice popup never fired, and because the flag was
+     never written the tour auto-started again 2.5s after every single load. */
+  try { localStorage.setItem('bc_tour_done', '1'); } catch(e){}
   // Re-show PWA banner if it was hidden during tour
   const pwaBanner = document.querySelector('.pwa-banner');
   if (pwaBanner) pwaBanner.style.display = '';
