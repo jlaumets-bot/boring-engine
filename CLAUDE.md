@@ -2,6 +2,53 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v675. THE NIGHTLY TRENDS CRON HAS BEEN FAILING EVERY NIGHT. Found it in the live logs and fixed all three causes.
+
+`/api/health` reported `cron_pull-trends-cron_fresh` FAILING — status `error`, heartbeat 212 minutes
+old. The run's own diagnostics (added in v670/v672) named every cause. All three were in this repo.
+
+**1. THE GROK LANE WAS UNBOUNDED AND ATE THE WHOLE RUN.** `pullAllTrends(keywords, apifyToken,
+maxAgeHours, xTimeoutMs, brainObj, grokTimeoutMs)` — the cron passed `undefined` for BOTH timeouts,
+and `bound()` only races a lane when `ms > 0`. So the lane ran until `callGrokSearch`'s own **90s
+socket timeout** — longer than `WORST_BATCH_MS` (75s), the reserve the batch loop uses to decide
+whether it may start another batch. The reserve could not bind. And `pullCompetitorPulse(comp)` was
+a SECOND unbounded 90s Grok call on the same clock, under a comment reading "no timeout here, the
+cron has the full 120s budget" — true when it ran alone.
+
+Live, 05:35 UTC:
+```
+grok-search: timed out after 90s          (×4)
+grok-search: request failed — socket hang up   (×3)
+pull-trends-cron: batch at index 4 outlived the run budget — abandoning it
+pull-trends-cron: ran out of budget after 270000ms — updated 0, 8 left for the next run
+pull-trends-cron: lanes this run — grok=0 news=0 x=0 | updated=0 skipped=8 failed=0
+pull-trends-cron: EVERY source returned nothing for all 4 brand(s) that were actually tried
+```
+Twelve brands. Nothing written. Every night. FIX: bound both lanes to the time the run ACTUALLY has
+left — `Math.max(8000, Math.min(45000, _left() - 25000))` — and give the pulse
+`Math.max(5000, Math.min(30000, _left() - 20000))`. Worst case per brand is now 45s + 30s = 75s,
+which is exactly what `WORST_BATCH_MS` reserves. Before: 90 + 90 = 180s against a 75s reserve.
+
+**2. THE X LANE COUNTED THE SCRAPER'S "I FOUND NOTHING" MARKER AS TEN TWEETS.** Every brand logged
+`10 raw, 0 kept — TEXT FIELD NOT FOUND`. The SHAPE diagnostic right underneath printed the truth:
+`keys = noResults`, `SAMPLE: {"noResults":true}`. The dataset held ten copies of a sentinel, not ten
+tweets. That wrong message had already sent **three rounds of field-name guessing** (v647, v647b,
+v647c) after a parser bug that was never there. FIX: recognise the marker shape, exclude it from the
+raw count, and say "the scraper reported NO MATCHING TWEETS for these keywords". A genuinely broken
+parser is still reported as one — the gate pins both arms.
+
+**3. THE NEWS LANE EXITED IN SILENCE.** `fetchNewsRss` resolved `{items:[]}` on a redirect, a
+transport error and a timeout with no log, so `news=0` for every brand was indistinguishable from a
+quiet news day. FIX: all four exits log, and a non-200 is now handled at all (it used to fall
+through to the XML parser). Same rule the Grok lane was given in v670.
+
+**NEW GATE `scripts/verify/trend-lane-budget.mjs`** — the X-lane counter is EXECUTED on the exact
+payload production logged; the budget arithmetic is the REAL expression from the cron, evaluated at
+three points in a run and compared against the loop's own `WORST_BATCH_MS`. 5 of 5 mutations caught.
+
+**70 of 70 GATES GREEN.** Verify tonight: `/api/health` → `cron_pull-trends-cron_fresh` should pass,
+and the run should log a non-zero lane count.
+
 ## ▶▶ 2026-09-18 — v674. TWO PARALLEL AUDITS (auth/session, PWA/offline/storage). Eight defects, all invisible on screen.
 
 Every one below was proved by EXECUTING the real code — extracted into a vm with a throwing

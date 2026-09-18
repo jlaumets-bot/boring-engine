@@ -150,7 +150,18 @@ module.exports = async function handler(req, res) {
           // merged + deduped by the shared helper so the cron and the on-demand button match.
           // 5th arg = the brand row itself, so Grok web-search scopes + relevance-filters against the
           // full brain (niche, audience, USPs, pain points, avoid) — not just the thin derived keywords.
-          const items = await pullAllTrends(kws, process.env.APIFY_API_TOKEN, undefined, undefined, b);
+          /* v675 — THE GROK LANE WAS UNBOUNDED, AND IT ATE THE WHOLE RUN.
+             pullAllTrends' 4th and 6th arguments are the X and Grok lane timeouts; both were
+             passed as undefined, so `bound()` applied NO race and the lane ran until
+             callGrokSearch's own 90s socket timeout — longer than the WORST_BATCH_MS reserve
+             this loop sets aside (75s). Production on 2026-09-18 05:35: every grok call timed
+             out or hung up, the run spent all 270000ms, and it finished "updated 0, 8 left"
+             with lanes grok=0 news=0 x=0. Twelve brands, nothing written, every night.
+             Bound both lanes to the time this run ACTUALLY has left, minus a margin for the
+             write that follows. A lane that cannot answer in time yields an empty lane instead
+             of taking the other two down with it. */
+          const _laneMs = Math.max(8000, Math.min(45000, _left() - 25000));
+          const items = await pullAllTrends(kws, process.env.APIFY_API_TOKEN, undefined, _laneMs, b, _laneMs);
           // v670: record the per-lane counts BEFORE the empty check — that is the whole point of
           // them, and the empty case is exactly when they matter.
           try {
@@ -194,9 +205,11 @@ module.exports = async function handler(req, res) {
           payload.compAt = compAt;
           if (comp && process.env.XAI_API_KEY && (!prevMoves || (now - compAt) > COMP_STALE_MS)) {
             try {
-              // Shared helper (v454, _trends.js) — same prompt as before; no timeout here,
-              // the cron has the full 120s budget. Resolves '' on any failure.
-              const digest = await pullCompetitorPulse(comp);
+              /* v675 — "no timeout here, the cron has the full 120s budget" was written when
+                 this ran alone. It is a SECOND unbounded 90s grok call, after the lane pull, on
+                 the same clock — see the note on _laneMs above. pullCompetitorPulse already
+                 accepts opts.timeoutMs and resolves '' when it expires; use it. */
+              const digest = await pullCompetitorPulse(comp, { timeoutMs: Math.max(5000, Math.min(30000, _left() - 20000)) });
               if (digest) { payload.competitorMoves = digest; payload.compAt = now; }
             } catch (e) { /* keep prevMoves */ }
           }

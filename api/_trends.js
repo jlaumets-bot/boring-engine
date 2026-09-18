@@ -57,7 +57,18 @@ function fetchNewsRss(query, maxAgeHours) {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ContentShrimp/1.0)', 'Accept': 'application/rss+xml, application/xml, text/xml' },
       timeout: 10000,
     }, (resp) => {
-      if (resp.statusCode >= 300 && resp.statusCode < 400) { resp.resume(); return resolve({ items: [] }); }
+      /* v675 — SAY WHY. Three exits in this function resolved an empty list with no log at
+         all, so a redirect, a transport error and a timeout were indistinguishable from "the
+         news had nothing" — and the cron's own summary then reported news=0 for every brand
+         with nothing to explain it. Same rule the grok lane was given in v670. */
+      if (resp.statusCode >= 300 && resp.statusCode < 400) {
+        console.error('_trends: news RSS redirected (' + resp.statusCode + ' → ' + String(resp.headers && resp.headers.location || '?').slice(0, 120) + ') — lane empty for "' + String(query).slice(0, 60) + '"');
+        resp.resume(); return resolve({ items: [] });
+      }
+      if (resp.statusCode !== 200) {
+        console.error('_trends: news RSS http ' + resp.statusCode + ' — lane empty for "' + String(query).slice(0, 60) + '"');
+        resp.resume(); return resolve({ items: [] });
+      }
       let data = ''; let bytes = 0;
       // req.destroy() with no error argument emits 'close', NOT 'error', and suppresses 'end' —
       // so the old cap branch left this promise UNSETTLED and the whole trends pull hung until
@@ -76,8 +87,14 @@ function fetchNewsRss(query, maxAgeHours) {
       });
       resp.on('end', () => done({ items: parseRssItems(data) }));
     });
-    req.on('error', () => resolve({ items: [] }));
-    req.on('timeout', () => { req.destroy(); resolve({ items: [] }); });
+    req.on('error', (e) => {
+      console.error('_trends: news RSS request failed — ' + ((e && e.message) || e) + ' — lane empty for "' + String(query).slice(0, 60) + '"');
+      resolve({ items: [] });
+    });
+    req.on('timeout', () => {
+      console.error('_trends: news RSS timed out after 10s — lane empty for "' + String(query).slice(0, 60) + '"');
+      req.destroy(); resolve({ items: [] });
+    });
     req.end();
   });
 }
@@ -237,10 +254,25 @@ async function fetchXPosts(keyword, token, maxAgeHours) {
   // that was unresolvable — it could equally have meant Apify returned nothing, or returned tweets
   // whose field names we guessed wrong so every one was filtered out. A diagnostic that cannot
   // separate two failure modes has not finished its job.
-  const raw = (Array.isArray(items) ? items : []).length;
+  const _all = (Array.isArray(items) ? items : []);
+  /* v675 — THE ACTOR'S "I FOUND NOTHING" MARKER WAS BEING COUNTED AS TEN TWEETS.
+     Production logged "10 raw, 0 kept — TEXT FIELD NOT FOUND" on every run for every brand,
+     which sent three rounds of field-name guessing after a bug that was never there: the
+     dataset held ten copies of {"noResults":true}, a sentinel this actor emits when a query
+     matches nothing. The SHAPE line printed it plainly; the count and the note did not.
+     Separate them, so "no tweets matched" stops reading as "our parser is broken". */
+  const _isNoResult = (it) => {
+    if (!it || typeof it !== 'object') return true;
+    const k = Object.keys(it);
+    return k.length <= 2 && k.every(n => /^(noResults|no_results|error|errorDescription|message)$/i.test(n));
+  };
+  const _markers = _all.filter(_isNoResult).length;
+  const raw = _all.length - _markers;
   const withEng = out.filter(o => o.eng.hasData).length;
   let note = '';
-  if (!raw) note = ' — Apify returned NOTHING for this query (no matching tweets, or the search args are wrong)';
+  if (_markers && !raw) note = ' — the scraper reported NO MATCHING TWEETS for these keywords (' + _markers +
+    ' no-result marker' + (_markers === 1 ? '' : 's') + ', not tweets). Nothing is wrong with the parser — the query found nothing.';
+  else if (!raw) note = ' — Apify returned NOTHING for this query (no matching tweets, or the search args are wrong)';
   else if (!out.length) note = ' — ' + raw + ' tweets came back but ALL were dropped: TEXT FIELD NOT FOUND, or every one fell outside the freshness window';
   else if (!withEng) note = ' — ENGAGEMENT FIELDS NOT FOUND, top-posts strip will stay empty';
   console.log('x-lane: ' + raw + ' raw, ' + out.length + ' kept, ' + withEng + ' with engagement data' + note);
@@ -250,7 +282,7 @@ async function fetchXPosts(keyword, token, maxAgeHours) {
   // Only fires on the broken path, so a healthy lane logs nothing extra.
   if (raw && !out.length) {
     try {
-      const first = items[0] || {};
+      const first = _all.filter(x => !_isNoResult(x))[0] || _all[0] || {};
       console.log('x-lane SHAPE: keys = ' + Object.keys(first).slice(0, 40).join(','));
       console.log('x-lane SAMPLE: ' + JSON.stringify(first).slice(0, 600));
     } catch (e) { console.log('x-lane SHAPE: could not read the first item'); }
