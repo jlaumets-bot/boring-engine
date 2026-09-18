@@ -2,6 +2,70 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v677. TIME/SCHEDULING AUDIT. The daily push could kill its own run, skip a day, or arrive three times.
+
+**1. THE RUN BUDGET WAS ARITHMETICALLY SHORT, SO THE FUNCTION COULD BE KILLED MID-LOOP.** The only
+guard refused to START a subscriber with less than `MIN_SLICE_MS` left — **30s** — against a
+per-subscriber worst case of **~125s**, every number of which is declared in the same file:
+`userCanAccessBrand` makes TWO sequential requests at the 20s budget (40s) + `getBrandActivity` 20s
++ `loadBrandContext` 20s + the generate floor 10s + push 15s + the `last_sent_at` PATCH 20s. Starting
+one with 30s left finishes near **340s against maxDuration 300**. The platform kills the function,
+`store.heartbeat()` is never reached, and every subscriber the loop had not got to **misses that day**
+— the due filter matches each of them at exactly one UTC hour, and the code says outright they are
+not retried. `/api/health` tolerates 3h of silence, so one kill does not even turn the monitor red.
+`pull-trends-cron` took exactly this 504-before-heartbeat in production (its own comment records it)
+and was given TWO guards. This file's comment said "same shape as pull-trends-cron" while having one.
+FIX: reserve raised to the measured 125s, AND guard 2 added — the per-subscriber work is wrapped so
+it can be raced against the time actually left, exactly like the sibling cron.
+
+**2. THE 20-HOUR DEDUPE SWALLOWED A WHOLE DAY AFTER EASTWARD TRAVEL.** The app corrects
+`tz_offset_min` when next opened. Moving east makes the next scheduled send EARLIER, so the gap from
+the previous one is `24 − Δ` hours — any eastward hop over 4h lands inside the 20h window and is
+suppressed outright, with no retry. **New York → London: no daily idea at all on the first London
+morning.** Measured: the gap is 19h.
+FIX: the dedupe's real question is "have we already sent for this person's LOCAL DAY", so it asks
+that. This also makes the clocks-back Sunday (a 23h gap) safe.
+
+**3. THREE BRANDS MEANT THREE NOTIFICATIONS ON ONE PHONE, AT THE SAME MINUTE.** `enableDailyPush`
+writes one row per BRAND for the same push endpoint; the only dedupe was `last_sent_at` on the row.
+The toast promises "Daily idea ping on — every day at 09:00" and the prompt says "One notification a
+day". FIX: one per endpoint per local day, plus a `tag` in `sw.js` so any that still overlap replace
+each other instead of stacking.
+
+**4. THE PUSH SAID "TODAY'S POST" AND ASKED FOR NO PARTICULAR DAY.** `generate-ideas` only pins a day
+when `gaps` is supplied, so the model chose freely from `validDays` (which includes `'Bonus'`), while
+the app's Today screen derives the day from the browser clock — tapping the notification could open a
+different day's plan than the brief was written for. FIX: the day is named, in the **subscriber's**
+local time. The gap template also printed `- Monday / undefined (currently undefined ideas)` for a
+day-only gap; it now renders only the parts a caller supplied.
+
+**NEW GATE `scripts/verify/daily-push-timing.mjs`** — the real due filter is lifted verbatim and RUN
+against travel, a DST changeover, a same-day repeat, three brands on one device, two devices and five
+offsets. The budget arithmetic is COMPUTED FROM THE CONSTANTS IN THE FILE, so changing a timeout
+re-derives the worst case rather than passing a stale number. Two mutation arms (the travel gap must
+really fall inside the old 20h window; the old 30s reserve must really be short). 7 of 7 source
+mutations caught.
+
+**72 of 72 GATES GREEN.**
+
+STILL OPEN from this audit, and honest about why:
+- **DST moves the ping by an hour, twice a year, for every EU/US/AU user.** `tz_offset_min` is a
+  fixed offset captured when the app was last opened, and `syncPushTimezone` only refreshes it inside
+  a SUCCESSFUL `/api/usage` response — so the row carries Saturday's offset through Sunday morning,
+  which is exactly when the user has not opened the app. Proved against the real `Europe/London` zone
+  via `Intl`: 2026-10-25 a 09:00 ping lands at **08:00**; 2026-03-29 it lands at **10:00**.
+  A correct fix needs the IANA zone name stored (`Intl.DateTimeFormat().resolvedOptions().timeZone`)
+  so the server can compute the true offset per day — that is a new column, so it needs Jörgen's SQL.
+- **Half-hour zones always get it 30 or 45 minutes late.** The cron fires on the UTC hour, so a
+  +5:30 offset can never line up with `:00`: India 09:30, Nepal 09:45, Adelaide 09:30 — under copy
+  promising 09:00. The scheduling cannot be fixed without a half-hourly cron; the COPY can, and
+  should say the real delivery time.
+- **The generated brief is discarded.** `generate-ideas` performs no database write at all (grepped:
+  zero Supabase calls in that file), so the pushed idea exists only as the notification body, and
+  `sw.js` on tap just focuses `/app.html` with no idea id. Naming the day (fix 4) means the app at
+  least shows the right day's plan; actually persisting the brief so tapping opens THAT idea is a
+  real change to send-daily and is not done.
+
 ## ▶▶ 2026-09-18 — v676. PLAN-LIMITS AUDIT. A paying subscriber could be locked out of their own billing.
 
 **1. A 200 IS NOT AN ANSWER — AND A PRO SUBSCRIBER READ "TRIAL PLAN".** `api/_usage.js:752-755`

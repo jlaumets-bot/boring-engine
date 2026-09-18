@@ -247,7 +247,14 @@ module.exports = async function handler(req, res) {
 
     let gapInstruction = '';
     if (!isSeed && gaps && gaps.length > 0) {
-      gapInstruction = `\nPRIORITY GAPS TO FILL (generate ideas for these first):\n${gaps.map(g => `- ${g.day} / ${g.format} (currently ${g.count} ideas)`).join('\n')}`;
+      /* v677: send-daily names a DAY and nothing else, so render only the parts a caller
+         actually supplied — the old template printed "- Monday / undefined (currently
+         undefined ideas)" into the prompt for any gap that was not a full triple. */
+      gapInstruction = `\nPRIORITY GAPS TO FILL (generate ideas for these first):\n${gaps.map(g => {
+        const bits = [g && g.day, g && g.format].filter(Boolean).join(' / ');
+        const n = (g && g.count != null) ? ` (currently ${g.count} ideas)` : '';
+        return '- ' + (bits || 'any day') + n;
+      }).join('\n')}`;
     }
 
     // Explicit format lock — only when the caller asks for it (Quick Post). Other

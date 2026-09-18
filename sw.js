@@ -4,7 +4,7 @@
 // changing BUILD makes this file byte-different, the browser detects a new worker, and `install`
 // pulls the fresh app.html into the SAME stable cache while the OLD copy keeps serving instantly.
 const CACHE = 'cs-shell';   // stable — never rename
-const BUILD = 'v676-96163ac4';       // ← bump this string on every app.html/asset change to push an update
+const BUILD = 'v677-f72f113f';       // ← bump this string on every app.html/asset change to push an update
 
 // Only the app shell is refreshed on update. Images/icons are cached lazily on first use (never
 // eagerly precached — on a very slow connection an eager 1.8MB precache saturates the pipe and is
@@ -201,10 +201,17 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data.json(); } catch (_) {}
+  /* v677 — no tag meant these STACKED. enableDailyPush writes one push row per BRAND for
+     the same device endpoint, so a user with three brands got three separate notifications at
+     the same minute, under copy promising "One notification a day". send-daily now sends one
+     per endpoint per local day; this tag is the belt-and-braces half, so any that still
+     overlap replace each other instead of piling up. */
   e.waitUntil(self.registration.showNotification(d.title || 'Content Shrimp', {
     body: d.body || 'Your post is ready.',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
+    tag: d.tag || 'cs-daily',
+    renotify: true,
     data: { url: d.url || '/app.html' }
   }));
 });

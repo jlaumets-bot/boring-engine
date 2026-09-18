@@ -32,7 +32,17 @@ const store = require('./_publish/store'); // heartbeat (cron liveness) + the br
 // membership. It is unmetered too: generate-ideas skips its usage gate for the CRON_SECRET
 // caller. So every brand_id is re-checked against the row's OWN user_id, every run, below.
 const RUN_BUDGET_MS   = 245000; // stop STARTING new subscribers after this (maxDuration 300)
-const MIN_SLICE_MS    = 30000;  // never start a subscriber with less than this left
+/* v677 — THE RESERVE WAS 30s AGAINST A 125s WORST CASE, SO IT DID NOT BIND.
+   One subscriber can spend, all from declared timeouts in this file: the access check
+   (userCanAccessBrand makes TWO sequential requests at the 20s budget set below = 40s) +
+   getBrandActivity 20s + loadBrandContext 20s + generate 10s (the floor) + push 15s +
+   the last_sent_at PATCH 20s = 125s. Starting one with 30s left finishes at ~340s against
+   maxDuration 300 — the platform kills the function, store.heartbeat() at the bottom is
+   NEVER reached, and every subscriber the loop had not got to MISSES THAT DAY, because the
+   due filter matches each of them at exactly one UTC hour. pull-trends-cron hit precisely
+   this (a 504 before its heartbeat) and was given TWO guards; this file's comment says
+   "same shape as pull-trends-cron" but only ever had the first one. Now it has both. */
+const MIN_SLICE_MS    = 125000; // never START a subscriber without room for its worst case
 const GEN_TIMEOUT_MS  = 75000;  // hard cap on ONE /api/generate-ideas call
 const PUSH_TIMEOUT_MS = 15000;  // hard cap on ONE web-push delivery
 const DB_TIMEOUT_MS   = 20000;  // hard cap on ONE Supabase request
@@ -77,10 +87,30 @@ module.exports = async function handler(req, res) {
     }
 
     const nowUtc = new Date();
+    /* v677 — THE 20-HOUR DEDUPE SWALLOWED A WHOLE DAY AFTER EASTWARD TRAVEL.
+       The app corrects tz_offset_min when it is next opened. Moving east makes the next
+       scheduled UTC send EARLIER, so the gap from the previous send is (24 - delta) hours —
+       and any eastward hop over 4 hours lands inside the 20h window and is suppressed
+       outright. New York -> London: no daily idea at all on the first morning in London, and
+       no retry, because the next match is 24h later. The question the dedupe actually wants
+       to ask is "have we already sent for THIS person's local day", so ask that. It also
+       makes the clocks-back Sunday safe, where the same 20h window would have bitten. */
+    const localDayKey = (whenUtc, tzOffsetMin) =>
+      new Date(whenUtc.getTime() - (Number(tzOffsetMin) || 0) * 60000).toISOString().slice(0, 10);
+    /* v677 — ONE PING PER DEVICE, AS THE COPY PROMISES. enableDailyPush writes one row per
+       BRAND for the same push endpoint, and the only dedupe was last_sent_at on the row, so a
+       user with three brands got three stacked notifications on one phone at the same minute —
+       under a toast reading "One notification a day". sw.js now also tags them so any that do
+       overlap collapse rather than stack. */
+    const _seenEndpoint = new Set();
     const due = (subs || []).filter(s => {
       const localHour = ((nowUtc.getUTCHours() - ((Number(s.tz_offset_min) || 0) / 60)) % 24 + 24) % 24;
-      const sentRecently = s.last_sent_at && (nowUtc - new Date(s.last_sent_at)) < 20 * 3600 * 1000;
-      return Math.floor(localHour) === s.send_hour && !sentRecently;
+      if (Math.floor(localHour) !== s.send_hour) return false;
+      if (s.last_sent_at &&
+          localDayKey(new Date(s.last_sent_at), s.tz_offset_min) === localDayKey(nowUtc, s.tz_offset_min)) return false;
+      const ep = (s.subscription && s.subscription.endpoint) || '';
+      if (ep) { if (_seenEndpoint.has(ep)) return false; _seenEndpoint.add(ep); }
+      return true;
     });
 
     // `skipped` = due subscribers we never got to because the run ran out of budget.
@@ -93,6 +123,13 @@ module.exports = async function handler(req, res) {
       const left = RUN_BUDGET_MS - (Date.now() - _t0);
       if (left < MIN_SLICE_MS) { ranOut = true; skipped = due.length - i; break; }
       const sub = due[i];
+      /* v677 guard 2 — the reserve above says whether we may START; this says we never
+         OVERRUN, whatever the work is waiting on. Copied from pull-trends-cron's race, which
+         exists because the reserve alone still let a run die before its heartbeat. `_over` is
+         a sentinel rather than a rejection so nothing here can throw. An abandoned subscriber
+         simply is not stamped and is picked up on their next slot — losing one ping beats
+         losing the run's record and everyone after them. */
+      const _subWork = (async () => {
       try {
         let payload;
         // THE ONE PLACE sub.brand_id becomes a fact. Everything below reads `brandId`;
@@ -125,7 +162,7 @@ module.exports = async function handler(req, res) {
             console.error('send-daily: could not remove orphan subscription ' + sub.id + ': ' + ((e && e.message) || e));
           }
           skipped++;
-          continue;   // no ping for a brand they were removed from
+          return;   // v677: inside the per-subscriber async function now — see guard 2
         }
         // Cap this subscriber's generation so it can never overrun the budget: we always
         // keep >= 15s of the slice for the push + the last_sent_at write. Measured AFTER the
@@ -173,8 +210,17 @@ module.exports = async function handler(req, res) {
           // (never the raw, client-written sub.brand_id).
           // An over-limit account answers 402, which carries no `ideas` — so the code below
           // falls into the existing generic push and no generated content is delivered.
+          /* v677 — THE PUSH SAID "TODAY'S POST" AND ASKED FOR NO PARTICULAR DAY.
+             generate-ideas only pins a day when `gaps` is supplied, so the model chose freely
+             from validDays (which includes 'Bonus'), while the app's Today screen derives the
+             day from the browser clock. Tapping the notification could open a different day's
+             plan than the one the brief was written for. Name the day, in the SUBSCRIBER's
+             local time — this is their morning, not the server's. */
+          const _localNow = new Date(nowUtc.getTime() - (Number(sub.tz_offset_min) || 0) * 60000);
+          const _dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][_localNow.getUTCDay()];
           const gen = await postJson(`${host}/api/generate-ideas`,
-            { count: 1, brandContext: bc, forUserId: sub.user_id, forBrandId: brandId || null },
+            { count: 1, brandContext: bc, forUserId: sub.user_id, forBrandId: brandId || null,
+              gaps: [{ day: _dayName }] },
             { Authorization: `Bearer ${cronSecret}` }, genMs);
           if (gen && gen.error === 'limit_reached') {
             overLimit++;
@@ -214,6 +260,20 @@ module.exports = async function handler(req, res) {
             console.error('send-daily: could not delete expired subscription ' + sub.id + ' (' + ((del && del.status) || 'no response') + ')');
           }
         }
+      }
+      })();
+      let _subT = null;
+      const _over = await Promise.race([
+        _subWork.then(() => false),
+        new Promise(r => { _subT = setTimeout(() => r(true), Math.max(1000, RUN_BUDGET_MS - (Date.now() - _t0))); }),
+      ]);
+      try { if (_subT) clearTimeout(_subT); } catch (_) {}
+      if (_over) {
+        ranOut = true;
+        skipped += (due.length - i);
+        console.error('send-daily: subscription ' + (sub && sub.id) + ' outlived the run budget — abandoning it so the ' +
+                      'heartbeat still gets written. It and the ' + (due.length - i - 1) + ' after it miss today.');
+        break;
       }
     }
 
