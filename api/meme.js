@@ -58,7 +58,17 @@ module.exports = async function handler(req, res) {
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const { action, brandId } = req.body || {};
     if (!brandId) return res.status(400).json({ error: 'brandId required' });
-    if (!(await store.userCanAccessBrand(user.id, brandId))) return res.status(403).json({ error: 'No access to this brand' });
+    /* v679: userCanAccessBrand now THROWS when the check could not be completed (a PostgREST
+       5xx or a stalled request), instead of returning a flat false that reads as "denied".
+       Still fails closed here — nothing proceeds without a real yes — but the person is told
+       the truth rather than being accused of not owning their own brand. */
+    let _canUse = false;
+    try { _canUse = await store.userCanAccessBrand(user.id, brandId); }
+    catch (e) {
+      console.error('meme: brand access check could not be completed for user ' + user.id + ': ' + ((e && e.message) || e));
+      return res.status(503).json({ error: "Couldn't check your brand access just now — try again in a moment." });
+    }
+    if (!_canUse) return res.status(403).json({ error: 'No access to this brand' });
 
     if (action === 'has-key') {
       const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);

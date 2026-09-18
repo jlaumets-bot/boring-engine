@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v678';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v679';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -6959,6 +6959,8 @@ async function loadAllBrandsFromDB() {
 // This is the same WRITE-BEFORE-DELETE rule `_saveIdeasToDBNow` and `_replaceBrandRows` already
 // state in their own comments; these three call sites predate it.
 function _saveThenDropRenamedRow(oldTitle, newTitle) {
+  // v679: pin the brand at QUEUE time, not when the save resolves — see _dropRenamedIdeaRow.
+  const _pinned = (currentBrand && currentBrand.id) || null;
   let saved;
   try { saved = saveIdeasToDB(); } catch (e) { console.error('save failed, keeping the old row:', e); return; }
   Promise.resolve(saved).then(r => {
@@ -6968,13 +6970,25 @@ function _saveThenDropRenamedRow(oldTitle, newTitle) {
       console.error('_saveThenDropRenamedRow: the save did not succeed, so the old row is being kept.');
       return;
     }
-    return _dropRenamedIdeaRow(oldTitle, newTitle);
+    return _dropRenamedIdeaRow(oldTitle, newTitle, _pinned);
   }).catch(e => console.error('_saveThenDropRenamedRow:', e));
 }
 
-async function _dropRenamedIdeaRow(oldTitle, newTitle) {
+async function _dropRenamedIdeaRow(oldTitle, newTitle, pinnedBrandId) {
   try {
     if (!currentBrand || !sb) return;
+    /* v679 BRAND PIN. `.eq('brand_id', currentBrand.id)` read the LIVE global, so a brand switch
+       while the save was on the wire aimed this delete at the new brand: it matched nothing, the
+       old-titled row stayed in the original brand forever, and — because the loader dedups by
+       TITLE and two different titles are not duplicates — the superseded version came back as a
+       second card after every reload. The user was then told the wrong reason ("only the brand
+       owner can remove it") when they are the owner. Its sibling dropSuperseded already takes a
+       pinned brandId, which is what shows this was an omission. */
+    const _bid = pinnedBrandId || currentBrand.id;
+    if (pinnedBrandId && currentBrand.id !== pinnedBrandId) {
+      console.warn('skipping the renamed-row cleanup: brand changed mid-save (was ' + pinnedBrandId + ', now ' + currentBrand.id + ')');
+      return;
+    }
     const a = String(oldTitle || '').trim(), b = String(newTitle || '').trim();
     if (!a || !b || a === b) return;                       // no rename, nothing orphaned
     if ((typeof state !== 'undefined' && state || []).some(x => x && String(x.title || '').trim() === a)) return; // still in use
@@ -6985,7 +6999,7 @@ async function _dropRenamedIdeaRow(oldTitle, newTitle) {
        the loader dedups BY TITLE, so it came back as a second card after every reload, forever,
        with nothing on screen. dropSuperseded three functions away already did this correctly. */
     const { data: _gone, error: _e } = await sb.from('ideas').delete()
-      .eq('brand_id', currentBrand.id).eq('title', a).select('id');
+      .eq('brand_id', _bid).eq('title', a).select('id');
     if (_e || !(_gone && _gone.length)) {
       console.warn('the renamed idea\'s old row was not removed', { title: a, error: _e || 'no rows — likely an RLS refusal' });
       if (!window._ideaDropWarned) {
@@ -7201,6 +7215,14 @@ async function switchBrand(brandId) {
     // until the end). Brand A's cards stay visible and tappable. One tap on ✓ runs saveIdeasToDB,
     // which captures brand id B with brand A's rows, and files A's entire library under B —
     // permanently, because the later cleanup only deletes titles it is currently writing.
+    /* v679 — THE IDEAS MULTI-SELECT SURVIVED THE SWITCH, AND IT HOLDS ARRAY INDEXES.
+       _ideaSelected stores positional ids, and the line below rebuilds `state` with fresh ones
+       for the new brand — so ticking three cards, switching brand, and tapping "Approve 3 →"
+       moved three of the NEW brand's posts into the Pipeline and wrote the status change to its
+       database, cheering "3 added to your Pipeline". This reset block already clears fourteen
+       other carry-over globals; these two were missed. */
+    try { if (typeof _ideaSelected !== 'undefined' && _ideaSelected) _ideaSelected.clear(); } catch(e) {}
+    try { _ideaSelectMode = false; } catch(e) {}
     window._ideasSwitching = true;
     currentBrand = data;
     try { localStorage.setItem('cs_last_brand', brandId); } catch(e){}   // v576: remember for next reload
@@ -15131,7 +15153,18 @@ function renderIdeas() {
 
   let html = '';
   if (filtered.length === 0) {
-    html = renderEmptyState('💡', 'Your week of ideas is on the way', 'A 7-day plan of full briefs — each with a hook, script, caption and shot list in your brand voice.');
+    /* v679 — ONE EMPTY STATE FOR TWO DIFFERENT SITUATIONS, AND IT WAS WRONG FOR BOTH.
+       "Your week of ideas is on the way" told a brand-new account that something was
+       generating. Nothing is: opening the Ideas tab starts no generation, and onboarding only
+       ever makes one Quick Post. They waited, came back, and read the same sentence — while
+       the button that would actually do it sat right above, being talked out of. An existing
+       user who narrowed the filters to an empty set got the same sentence too, because the
+       "Nothing matches those filters" line further down could never be reached (`html` is
+       already non-empty by the time it is tested). Say which of the two it is. */
+    const _anyIdeas = (typeof state !== 'undefined' && Array.isArray(state) && state.length > 0);
+    html = _anyIdeas
+      ? renderEmptyState('', 'Nothing matches those filters', 'Clear a filter and the shrimp will resurface what\'s there.')
+      : renderEmptyState('💡', 'No ideas yet', 'Tap “Plan my week” above for a 7-day plan of full briefs — each with a hook, script, caption and shot list in your brand voice.');
   }
   if (filtered.length > 0 && ideaStatusFilter === 'pending') {
     const _pend = visiblePendingIds();
@@ -21092,6 +21125,10 @@ async function spDraftFromCrawl(btnEl) {
   // away scans the server was still doing (and still billing 3 credits for) at a closed socket.
   // 240 sits under 300, so the SERVER's own error surfaces instead of an ambiguous client abort.
   const to = setTimeout(() => ctrl.abort(), 240000);
+  // v679 BRAND PIN — captured BEFORE the fetch, so a switch during the 1-4 minute scan is
+  // visible when the sheet opens. See openBrainReview.
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+  const _fromBrand = (settings && settings.brandName) ? String(settings.brandName) : '';
   try {
     const resp = await fetch('/api/crawl-brand', {
       method: 'POST',
@@ -21133,7 +21170,12 @@ async function spDraftFromCrawl(btnEl) {
     clearTimeout(to); stopW();   // restore the scan button out of its loading state
     renderSettingsPanel();
     if (!fills.length) { showToast('Nothing new to add — your fields were already filled'); return; }
-    openBrainReview(fills, 'your site & the web');
+    // v679: same enforcement as pullReviews — see there.
+    if (_sameBrand && !_sameBrand()) {
+      if (typeof showToast === 'function') showToast('You switched brand while that scan was running — nothing was written to either brand', 7000);
+      return;
+    }
+    openBrainReview(fills, 'your site & the web', { gate: _sameBrand, brandName: _fromBrand });
   } catch(e) {
     clearTimeout(to); stopW();
     showToast(e && e.name === 'AbortError' ? 'That scan timed out — check your connection and try again' : 'Could not read the site — check the URL');
@@ -21274,8 +21316,20 @@ let _brainReviewBrandName = '';
 function _brvPreview(v){ const s = Array.isArray(v) ? v.join(', ') : String(v); return s.length > 140 ? s.slice(0,140) + '…' : s; }
 function openBrainReview(fills, sourceLabel, opts){
   _brainReviewOpts = opts || null;
-  _brainReviewGate = (typeof brandGate === 'function') ? brandGate() : null;
-  _brainReviewBrandName = (settings && settings.brandName) ? String(settings.brandName) : '';
+  /* v679 — ARMING THE GATE HERE WAS TOO LATE, AND IT WROTE ONE BRAND'S BRAIN INTO ANOTHER.
+     "Deep scan my site" and "Read my customer reviews" take one to four minutes. The user
+     carries on working and switches brand. The scan lands, this sheet opens — and the gate
+     was armed ON THE NEW BRAND, so the "you switched brand" refusal in closeBrainReview could
+     never fire. The sheet listed brand A's tagline, USPs, audience, pain points, origin story
+     and competitors under the heading "Saving into <brand B>'s brand brain", and tapping Save
+     wrote all of it into brand B permanently — renaming brand B too, if its name was empty.
+     Every post, coach reply and daily push for brand B is written from that brain afterwards.
+     A gate captured BEFORE the fetch is the only one that can see the switch, so callers pass
+     theirs in. Falling back to a fresh one keeps the synchronous callers working unchanged. */
+  _brainReviewGate = (opts && typeof opts.gate === 'function') ? opts.gate
+                   : ((typeof brandGate === 'function') ? brandGate() : null);
+  _brainReviewBrandName = (opts && opts.brandName) ? String(opts.brandName)
+                        : ((settings && settings.brandName) ? String(settings.brandName) : '');
   _brainFills = fills.map(f => ({ key: f.key, value: f.value, keep: true }));
   const rows = _brainFills.map((f,i) => `<label class="brv-row"><input type="checkbox" class="brv-cb" checked onchange="_brainFills[${i}].keep=this.checked;_brvCount()"><span class="brv-txt"><span class="brv-label">${escHtml(BRAIN_FIELD_LABELS[f.key]||f.key)}</span><span class="brv-val">${escHtml(_brvPreview(f.value))}</span></span></label>`).join('');
   const ov = document.createElement('div');
@@ -21316,6 +21370,9 @@ async function pullReviews(){
   const btn = document.getElementById('spReviewsBtn');
   if(btn) btn.disabled = true;
   if(typeof showToast==='function') showToast('Reading your customer reviews… ~1 min');
+  // v679 BRAND PIN — see spDraftFromCrawl and openBrainReview.
+  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
+  const _fromBrand = (settings && settings.brandName) ? String(settings.brandName) : '';
   try{
     const token = await connToken();
     const resp = await fetch('/api/reviews', {
@@ -21331,6 +21388,12 @@ async function pullReviews(){
     const data = await resp.json().catch(()=>({}));
     if(resp.status===402){ if(data&&data.error==='limit_reached'&&typeof showUpgrade==='function') showUpgrade(data); return; }
     if(!resp.ok) throw new Error(data.error||'failed');
+    // v679: enforce the pin taken before the fetch. The review sheet refuses at Save too, but
+    // there is no reason to open a sheet full of the previous brand's material at all.
+    if (_sameBrand && !_sameBrand()) {
+      if (typeof showToast === 'function') showToast('You switched brand while those reviews were being read — nothing was written to either brand', 7000);
+      return;
+    }
     // v634: this used to be `settings.reviewInsights = ri; saveSettings();` — no crawlValueOk
     // gate, no review sheet, and no check that the field was empty. So it could paste a
     // scraped cookie banner or a "no reviews found" sentence straight into the brain as FACT,
@@ -21353,7 +21416,7 @@ async function pullReviews(){
       return;
     }
     if (typeof openBrainReview === 'function') {
-      openBrainReview([{ key: 'reviewInsights', value: ri }], 'your public reviews');
+      openBrainReview([{ key: 'reviewInsights', value: ri }], 'your public reviews', { gate: _sameBrand, brandName: _fromBrand });
       return;
     }
     settings.reviewInsights = ri;
@@ -21415,7 +21478,7 @@ async function spDraftFromSocial(silent) {
     // brand-gated, still empty-fields-only.
     if (filled && !silent && typeof openBrainReview === 'function') {
       clearTimeout(to); stopW();
-      openBrainReview(_fills, `your social posts (${data.postsAnalyzed} read)`);
+      openBrainReview(_fills, `your social posts (${data.postsAnalyzed} read)`, { gate: _sameBrand });
       return;
     }
     _fills.forEach(f => { settings[f.key] = f.value; });
@@ -22717,7 +22780,7 @@ function obStartSteps() {
 function obStopSteps() {
   if (obStepTimer) { clearTimeout(obStepTimer); obStepTimer = null; }
 }
-function obCompleteSteps(cb) {
+function obCompleteSteps(cb, found) {
   obStopSteps();
   let i = 0;
   const tick = () => {
@@ -22728,11 +22791,30 @@ function obCompleteSteps(cb) {
     } else {
       obStepTimer = null;
       const t = document.getElementById('obStepsTitle');
-      if (t) t.textContent = 'Your brand brain is ready ✓';
+      // v679: `found` is how many fields the scan actually filled. 0 means the site was too
+      // thin to read — say so instead of claiming a brain that does not exist.
+      if (t) t.textContent = (found === 0)
+        ? "We couldn't pull much from that site — fill it in below ↓"
+        : 'Your brand brain is ready ✓';
       if (cb) setTimeout(cb, 500);
     }
   };
   tick();
+}
+
+/* v679: how many of the review fields the crawl actually filled. Used to decide whether the
+   scan can honestly claim to have found anything — see obCrawlWebsite. */
+function obCrawlFilledCount() {
+  let n = 0;
+  try {
+    (OB_REVIEW_FIELDS || []).forEach(f => {
+      const el = document.getElementById(f.id);
+      if (el && String(el.value || '').trim()) n++;
+    });
+    if (typeof obSelectedTones !== 'undefined' && obSelectedTones && obSelectedTones.length) n++;
+    if (typeof obCommunities !== 'undefined' && obCommunities && obCommunities.length) n++;
+  } catch (e) {}
+  return n;
 }
 
 function obShowWizard() {
@@ -22741,6 +22823,23 @@ function obShowWizard() {
   // Hide PWA install banner during onboarding so it doesn't distract or restart the app
   const pwaBanner = document.querySelector('.pwa-banner');
   if (pwaBanner) pwaBanner.style.display = 'none';
+  /* v679 — RE-OPENING THE WIZARD LEFT A DEAD SCREEN WITH NO WAY OUT.
+     A successful crawl hides #obStep1Form and shows #obCrawlAnimation. obShowWizard restored
+     the finish button but never these, so any re-entry — the obFinish save-failure retry, or
+     simply tapping "+ Add new brand" after having onboarded via the crawl — showed a frozen
+     "Building your brand brain ✓" card as the ENTIRE first screen. #obStep1Form holds the URL
+     box, the "Build my brand brain" button AND the "No website yet? Set it up by hand" escape
+     link, so all three vanished; #obCrawlError holds "Try again" and "Skip", and it was hidden
+     too. The overlay is fixed, full-screen, with no close button and no backdrop handler, so
+     the only exit was a page reload — which throws away every answer, because nothing is
+     persisted until obFinish. obSkipCrawl and obBack(2) both reset these three, which is what
+     shows this was an omission. */
+  try {
+    const _f = document.getElementById('obStep1Form'); if (_f) _f.style.display = 'block';
+    const _a = document.getElementById('obCrawlAnimation'); if (_a) _a.style.display = 'none';
+    const _e = document.getElementById('obCrawlError'); if (_e) _e.style.display = 'none';
+    if (typeof obStopSteps === 'function') obStopSteps();
+  } catch (e) {}
   obGoToStep(1);
   obRenderToneCards();
   obRenderExampleChips();
@@ -22901,8 +23000,16 @@ async function obCrawlWebsite() {
     }
     const data = await resp.json();
     obCrawledData = data.brandInfo || data;
+    const _filledBefore = obCrawlFilledCount();
     obPrefillFromCrawl(obCrawledData, url);
-    obCompleteSteps(() => obGoToStep(2));
+    /* v679 — "YOUR BRAND BRAIN IS READY ✓" AFTER FINDING NOTHING.
+       This ran on any HTTP 200, whatever the extraction actually produced — and the server's
+       own prompt tells the model to return an empty string rather than filler for a thin site.
+       So after a minute of "Finding your competitors / Scanning reviews & press" and 3 credits,
+       the user got a green tick and a screen captioned "Here's what I found — tweak anything
+       that's off" over a completely blank form. Count what landed and say the truth. */
+    const _got = obCrawlFilledCount() - _filledBefore;
+    obCompleteSteps(() => obGoToStep(2), _got);
   } catch(err) {
     obStopSteps();
     document.getElementById('obCrawlAnimation').style.display = 'none';

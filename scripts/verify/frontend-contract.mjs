@@ -170,7 +170,9 @@ check(decorative.length === 0,
 const KNOWN_UNGATED = new Set([
   'inviteByEmail', 'generateInviteLink',                     // one-shot inserts of their own row
     
-   'pullReviews',  
+   // v679: pullReviews is GATED now — it captured brandGate() before its fetch and enforces
+   // it after, so one brand's reviews can no longer be written into another's brain.
+   // (was: 'pullReviews',)
   'obFinish', 'bvFinishOnboarding', 'initApp',               // boot / first-run: no brand to switch away from
    
 ]);

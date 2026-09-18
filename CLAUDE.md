@@ -2,6 +2,97 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v679. TWO MORE AUDITS (onboarding/first-run, brand switching). Three ships-broken, two of them unrecoverable by the user.
+
+**1. "DEEP SCAN MY SITE" AND "READ MY CUSTOMER REVIEWS" WROTE ONE BRAND'S BRAIN INTO ANOTHER.**
+`openBrainReview` armed its brand gate when the SHEET OPENED — i.e. *after* the 1-4 minute scan. So:
+start the scan, carry on working, switch brand, the scan lands. The sheet opens listing brand A's
+tagline, USPs, audience, pain points, origin story and competitors under the heading **"Saving into
+<brand B>'s brand brain"** — and the "you switched brand" refusal in `closeBrainReview` could never
+fire, because the gate was armed on brand B. Tapping Save wrote all of it into brand B permanently,
+and **renamed brand B** too if its name was empty. Every post, coach reply and daily push for brand B
+came out of that brain afterwards. The sibling `crawl-social` button 200 lines away captures its gate
+BEFORE its fetch, with a comment saying exactly why — these two were missed.
+FIX: `spDraftFromCrawl` and `pullReviews` capture the gate before the fetch, enforce it on arrival
+(so the sheet never even opens after a switch) and hand it to `openBrainReview`, which now prefers a
+caller-supplied gate over arming its own. The source brand's NAME travels with it too, so the sheet
+can never label brand A's material with brand B's name.
+
+**2. A TRANSIENT DATABASE ERROR PERMANENTLY DELETED THE OWNER'S OWN PUSH SUBSCRIPTION.**
+`store._req` RESOLVES on every HTTP status (it only rejects on a socket error), so a PostgREST 500, a
+503 HTML error page or the 8s inactivity timeout all reached `userCanAccessBrand` as `data: null` and
+came back as a flat **`false`** — indistinguishable from a real refusal. `send-daily` reads that as
+*"this user has no access to the brand they claim"* and **deletes their `push_subscriptions` row with
+the service role.** A brand OWNER, with the daily ping on, silently stops receiving it forever on one
+blip — while the Settings toggle still reads ON (it is drawn from device-local storage). The only
+trace is a log line accusing *them* of a security anomaly. The comment above the function asserted
+the opposite: *"A genuine self-brand row never reaches this branch."*
+FIX: `false` now means denied; a check that could not run **throws** (`e.accessCheckFailed`).
+`authorizedBrandId` returns three answers — a brand id, a flat `null` (genuinely denied, deletable),
+or `{ unknown: true }` (keep the row, re-check next run). Every other caller already wraps the call
+in try/catch and degrades safely; `api/meme.js` was the one exception and now answers an honest 503
+rather than "No access to this brand".
+
+**3. RE-OPENING THE ONBOARDING WIZARD LEFT A DEAD SCREEN WITH NO WAY OUT.** A successful crawl hides
+`#obStep1Form` and shows `#obCrawlAnimation`. `obShowWizard` restored the finish button but never
+those — so the `obFinish` save-failure retry, or simply tapping **"+ Add new brand"** after having
+onboarded via the crawl, showed a frozen "Building your brand brain ✓" card as the ENTIRE first
+screen. `#obStep1Form` holds the URL box, the submit button AND the "No website yet? Set it up by
+hand" escape link; `#obCrawlError` holds "Try again" and "Skip", and was hidden too. The overlay is
+fixed, full-screen, with no close button and no backdrop handler (`obSkip` is dead code), so **the
+only exit was a page reload — which throws away every answer**, since nothing is persisted until
+`obFinish`. `obSkipCrawl` and `obBack(2)` both reset these three, which is what shows it was an
+omission.
+
+**4. A CRAWL THAT FOUND NOTHING STILL SAID "YOUR BRAND BRAIN IS READY ✓"** and dropped the user on a
+blank form captioned "Here's what I found — tweak anything that's off". `obCompleteSteps` ran on any
+HTTP 200 regardless of what was extracted — and the server's own prompt tells the model to return an
+empty string rather than filler for a thin site. Three credits, a minute of "Finding your competitors
+/ Scanning reviews & press", a green tick, and nothing. FIX: count what actually landed
+(`obCrawlFilledCount`) and say *"We couldn't pull much from that site — fill it in below ↓"*.
+
+**5. THE IDEAS EMPTY STATE PROMISED WORK THAT WAS NOT HAPPENING.** *"Your week of ideas is on the
+way"* — nothing generates on tab entry, and onboarding only ever makes one Quick Post. A brand-new
+user waited, came back, and read the same sentence, while the button that would actually do it sat
+right above being talked out of. The same sentence also showed for an empty FILTER, because the real
+"Nothing matches those filters" line below could never be reached (`html` is already non-empty by the
+time it is tested). FIX: the two situations now have their own messages.
+
+**6. THE IDEAS MULTI-SELECT SURVIVED A BRAND SWITCH, AND IT HOLDS ARRAY INDEXES.** Tick three cards,
+switch brand, tap "Approve 3 →" — three of the **new** brand's posts move into the Pipeline and the
+status change is written to that brand's database, cheering "3 added to your Pipeline". `switchBrand`
+already clears fourteen other carry-over globals; these two were missed. Cleared before `state` is
+rebuilt.
+
+**7. THE RENAME CLEANUP RESOLVED `currentBrand` AFTER ITS SAVE AWAIT.** A switch while a Sharpen /
+viral Replace / Redo save was on the wire aimed the delete at the NEW brand: it matched nothing, the
+old-titled row stayed in the original brand forever, and — because the loader dedups by TITLE — came
+back as a second card after every reload. The user was told the wrong reason ("only the brand owner
+can remove it") while being the owner. Now pinned at queue time, and it skips rather than deleting in
+the wrong brand.
+
+**NEW GATE `scripts/verify/brand-isolation-and-first-run.mjs`** — 40 assertions. The real
+`userCanAccessBrand` and `authorizedBrandId` are RUN against healthy, denied and 5xx responses; the
+real `closeBrainReview` is RUN with a gate reporting a switch and must write nothing; the real
+`_dropRenamedIdeaRow` is RUN with a mismatched pin and must issue no delete at all. The structural
+arms are anchored on ORDER (gate before fetch, selection cleared before `state` is rebuilt, pin taken
+before the save) because order is the whole defect in each case. **8 of 8 mutations caught.**
+
+**GATES TOUCHED (2), both legitimate:** `frontend-contract.mjs` correctly complained that
+`pullReviews` captured a gate without enforcing it — fixed the code, then removed `pullReviews` from
+the KNOWN_UNGATED ratchet, which is the ratchet doing its job. `write-refusal-honesty.mjs` needed
+`currentBrand` in its harness now that the function pins it, and its assertion was strengthened to
+require the pin to actually travel.
+
+**76 of 76 GATES GREEN.**
+
+STILL OPEN from these two audits: `obStartVoiceCoach` is unreachable dead code whose finish gate
+would fire the "brand brain is still empty" modal seconds after saying setup was done — worth
+deleting or wiring. `onbDerived()` tests `st.tones`, which is `[]` (truthy) for a default brand, so
+"Set up your brand brain" ticks for any brand with a name. `brand_members`/`brand_invites` are not in
+`deleteBrand`'s sweep (unreachable orphans, not visible). And `loadGeneratedIdeas` reads an
+un-namespaced key but has zero call sites — dead.
+
 ## ▶▶ 2026-09-18 — v678. THE TWO DEFERRED ONES, PLUS A TELEPROMPTER AUDIT: A FILMED TAKE COULD BE LOST.
 
 **1. A FAILED RUN KEPT THE CREDIT.** `releaseHold()` existed and had **zero handler call sites**, so

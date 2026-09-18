@@ -90,16 +90,18 @@ const fn = n => { const s = html.indexOf('function ' + n + '('); if (s < 0) thro
     // Execute it: the drop must not fire until the save resolves, and must not fire at all on failure.
     const order = [];
     const run = (saveResult) => {
-      const api = new Function('saveIdeasToDB', '_dropRenamedIdeaRow', 'console', 'Promise',
+      // v679: the function now pins currentBrand at queue time (brand-isolation-and-first-run.mjs
+      // owns that rule), so the harness has to supply it or the body throws before the save.
+      const api = new Function('saveIdeasToDB', '_dropRenamedIdeaRow', 'console', 'Promise', 'currentBrand',
         src + '\nreturn _saveThenDropRenamedRow;')(
         () => { order.push('save'); return Promise.resolve(saveResult); },
-        () => { order.push('drop'); return Promise.resolve(); },
-        { error() {}, log() {} }, Promise);
+        (o, n, pinned) => { order.push('drop' + (pinned ? ':pinned' : ':UNPINNED')); return Promise.resolve(); },
+        { error() {}, log() {} }, Promise, { id: 'BRAND-A' });
       api('old', 'new');
       return new Promise(r => setTimeout(() => r(order.slice()), 10));
     };
     const ok = await run({ ok: true });
-    if (ok.join(',') !== 'save,drop') bad('the old row is not dropped strictly after the save: ' + ok.join(','));
+    if (ok.join(',') !== 'save,drop:pinned') bad('the old row is not dropped strictly after the save, with the brand pinned: ' + ok.join(','));
     order.length = 0;
     const refused = await run({ ok: false });
     if (refused.includes('drop')) {

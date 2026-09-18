@@ -109,7 +109,25 @@ async function userCanAccessBrand(userId, brandId) {
   const b = (owned.data || [])[0];
   if (b && b.user_id === userId) return true;
   const mem = await _req('GET', `/rest/v1/brand_members?brand_id=eq.${bid}&user_id=eq.${uid}&select=brand_id`);
-  return !!(mem.data && mem.data.length);
+  if (mem.data && mem.data.length) return true;
+  /* v679 — "DENIED" AND "WE COULD NOT CHECK" WERE THE SAME ANSWER, AND ONE CALLER DELETES.
+     _req RESOLVES on every HTTP status (it only rejects on a socket error), so a PostgREST 500,
+     a 503 HTML error page or the 8s inactivity timeout all arrive here as `data: null` and left
+     this function returning a flat `false` — indistinguishable from a real refusal. send-daily
+     reads that false as "this user has no access to the brand they claim" and PERMANENTLY
+     DELETES their push subscription with the service role. A brand OWNER, with the daily ping
+     on, silently stops receiving it forever on one transient database blip, while the Settings
+     toggle still reads ON (it is drawn from device-local storage). The only trace is a log line
+     accusing them of a security anomaly.
+     `false` now means denied. A check that could not run throws, so a caller has to decide. */
+  const failed = (r) => !r || (r.status != null && (r.status < 200 || r.status >= 300));
+  if (failed(owned) || failed(mem)) {
+    const e = new Error('brand access check could not be completed (brands ' +
+      ((owned && owned.status) || 'no response') + ', members ' + ((mem && mem.status) || 'no response') + ')');
+    e.accessCheckFailed = true;
+    throw e;
+  }
+  return false;
 }
 
 // Thin REST helpers (PostgREST)

@@ -177,8 +177,16 @@ module.exports = async function handler(req, res) {
         // generic-push path this code already takes for a subscription with no brand — so
         // the subscriber still gets their ping, it just carries nothing out of a brand they
         // are not entitled to.
-        const brandId = await authorizedBrandId(sub);
-        if (sub.brand_id && !brandId) {
+        const _access = await authorizedBrandId(sub);
+        // v679: three answers now — a brand id, a flat null (genuinely denied), or
+        // { unknown: true } (the check could not run). Only the middle one may delete.
+        const _accessUnknown = !!(_access && _access.unknown);
+        const brandId = (_access && typeof _access === 'string') ? _access : null;
+        if (sub.brand_id && _accessUnknown) {
+          console.error('send-daily: subscription ' + sub.id + ' — brand access could not be verified this run. ' +
+            'Sending the generic push and KEEPING the row; it is re-checked next run.');
+        }
+        if (sub.brand_id && !brandId && !_accessUnknown) {
           brandDenied++;
           /* v663: A REMOVED TEAM MEMBER GOT A DAILY PUSH FOREVER, WITH NO WAY TO STOP IT.
              removeMember deletes only the brand_members row. Nothing touches push_subscriptions,
@@ -415,7 +423,9 @@ async function authorizedBrandId(sub) {
     console.error('send-daily: brand access check FAILED for subscription ' + (sub && sub.id) +
       ' (user ' + (sub && sub.user_id) + ', brand ' + (sub && sub.brand_id) + ') — treating the brand as absent ' +
       'and sending the generic push: ' + ((e && e.message) || e));
-    return null;
+    /* v679: UNKNOWN, not denied. The caller must not delete this row on the strength of a
+       check that never ran — see the note in store.js userCanAccessBrand. */
+    return { unknown: true };
   }
   if (!ok) {
     console.error('send-daily: SECURITY — subscription ' + sub.id + ' claims brand ' + sub.brand_id +
