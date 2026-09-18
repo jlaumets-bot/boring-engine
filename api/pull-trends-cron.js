@@ -182,17 +182,32 @@ module.exports = async function handler(req, res) {
           const scored = scoreTrends(items, prevTexts, prefTexts);
           // v453: persist each item's REAL timestamp (News pubDate / tweet ts) — writing `now` for
           // every item destroyed the recency data the TTL filter + velocity scoring rely on.
-          const payload = { at: now, items: scored.map(it => ({ text: it.text, source: it.source || '', link: String(it.link || '').slice(0, 400), ts: it.ts || now, hot: !!it.hot })) };
+          // v683 — auto_trends is ONE json column, and this PATCH replaces the whole of it. Building
+          // the payload from scratch silently dropped every key not re-added below. Start from the
+          // brand's existing object so a key this cron does not know about survives the night.
+          const _prevAuto = (b.auto_trends && typeof b.auto_trends === 'object' && !Array.isArray(b.auto_trends)) ? b.auto_trends : {};
+          const payload = Object.assign({}, _prevAuto, { at: now, items: scored.map(it => ({ text: it.text, source: it.source || '', link: String(it.link || '').slice(0, 400), ts: it.ts || now, hot: !!it.hot })) });
           // v644 — posts worth repurposing, from the SAME pull the trends came from (no extra cost).
           // Kept separate from `items` on purpose: a trend is a topic that feeds the brain, this is a
           // specific post the user can act on. Empty when the scraper returns no engagement data,
           // which keeps the strip honest rather than showing an unranked list as a "top 5".
-          payload.topPosts = (Array.isArray(items.topPosts) ? items.topPosts : []).slice(0, 5).map(p => ({
+          // v683 — THIS ASSIGNMENT WAS UNCONDITIONAL AND IT WIPED THE STRIP EVERY NIGHT.
+          // _trends.js:502 sets topPosts to [] whenever the X/Apify lane comes back as a plain
+          // array — no APIFY_API_TOKEN, a stalled actor run, the bound() race timing out, or no
+          // post clearing topXPosts' engagement filter. The Grok and News lanes still return
+          // trends, so items.length > 0 and the skip above does NOT fire: the brand is "updated"
+          // and every post the user was going to repurpose is erased. Measured: a pull with
+          // lanes grok=0 news=2 x=0 took auto_trends.topPosts from 2 posts to 0, for every brand,
+          // silently, with nowhere else to recover them from. The manual button has had the guard
+          // since v644b (pull-trends.js:111) and says why in its own comment; the cron never got it.
+          // Absent key => Object.assign above keeps the previous strip.
+          const _tp = (Array.isArray(items.topPosts) ? items.topPosts : []).slice(0, 5).map(p => ({
             text: String(p.text || '').slice(0, 600),
             handle: String(p.handle || '').slice(0, 40),
             link: String(p.link || '').slice(0, 400),
             likes: p.likes || 0, reposts: p.reposts || 0, ts: p.ts || now,
           }));
+          if (_tp.length) payload.topPosts = _tp;
 
           // Competitor pulse (light, weekly): once every ~7 days, ask Grok what the
           // brand's listed competitors have DONE lately. Stored alongside the trends

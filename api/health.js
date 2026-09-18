@@ -24,6 +24,14 @@ try { ({ COST_CAP_EUR } = require('./_usage')); } catch (_) {}
 // and zero policies would otherwise be flagged here.
 const ZERO_POLICY_ALLOWED = ['brand_connections', 'job_heartbeats'];
 
+// The arrays security_health() always returns. Their PRESENCE is what proves the audit
+// actually ran: a PostgREST error body is also a plain object, and treating one as an
+// audit result turned a database error into five green security claims. See isolationOf().
+const AUDIT_ARRAY_KEYS = [
+  'rls_disabled', 'permissive_policies', 'permissive_write_policies',
+  'unbound_brand_tables', 'zero_policy_tables',
+];
+
 // Cron liveness thresholds. A heartbeat is "fresh" if the job's last success is
 // within maxAgeMin. A MISSING row is treated as not-yet-observed (fresh deploy
 // that hasn't run the cron), NOT a failure — we only fail on a job seen before
@@ -85,6 +93,26 @@ function routeOk(mode, status) {
   return status !== 404 && status < 500;               // deployed & fail-closed
 }
 
+// Probe both route groups in parallel and roll each up into one boolean.
+// Returns { results:[{key,ok}], meta:{path:status} }; never throws, so it is safe
+// to sit inside the same Promise.allSettled as the database reads.
+async function probeRouteGroups() {
+  const meta = {};
+  const groups = [
+    { key: 'open_app_routes_ok',   routes: OPEN_APP_ROUTES },
+    { key: 'onboarding_routes_ok', routes: ONBOARDING_ROUTES },
+  ];
+  const results = await Promise.all(groups.map(async g => {
+    const statuses = await Promise.all(g.routes.map(async rt => {
+      const { status } = await probe(rt.path);
+      meta[rt.path] = status;
+      return routeOk(rt.mode, status);
+    }));
+    return { key: g.key, ok: statuses.every(Boolean) };
+  }));
+  return { results, meta };
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-store');
@@ -120,40 +148,62 @@ module.exports = async function handler(req, res) {
   add('config_apify_token', !!process.env.APIFY_API_TOKEN);      // no token ⇒ X/Twitter trends lane silently empty
   add('config_stripe_prices', !!(process.env.STRIPE_PRICE_PRO && process.env.STRIPE_PRICE_AGENCY));
 
+  // ── Live posture + DB + crons + routes: probed CONCURRENTLY ─────────────────
+  // These four blocks used to run one after another. Three sequential store.rest calls
+  // at REQ_TIMEOUT_MS (8s each) plus the 8s route probes is 32s of worst case against a
+  // maxDuration of 20 — measured at 34s with a stalled Supabase. The platform kills the
+  // function and the daily monitor gets NOTHING back, which is the one failure mode a
+  // monitor must not have: silence reads the same as "never ran". Probed together, the
+  // worst case is a single 8s window.
+  const [isoR, dbR, hbR, routeR] = await Promise.allSettled([
+    store.rest('POST', '/rpc/security_health', { body: {} }),
+    store.rest('GET', '/brands?select=id&limit=1'),
+    store.rest('GET', '/job_heartbeats?select=job,last_success_at,last_status'),
+    probeRouteGroups(),
+  ]);
+  const settled = (r) => (r.status === 'fulfilled' ? r.value : null);
+
   // ── Live account-isolation posture (via security_health() RPC) ──────────────
-  let isolationChecked = false;
-  try {
-    const r = await store.rest('POST', '/rpc/security_health', { body: {} });
-    const h = r && r.data;
-    if (h && typeof h === 'object') {
-      isolationChecked = true;
-      const rlsDisabled = Array.isArray(h.rls_disabled) ? h.rls_disabled : [];
-      const permissive = Array.isArray(h.permissive_policies) ? h.permissive_policies : [];
-      const permissiveWrite = Array.isArray(h.permissive_write_policies) ? h.permissive_write_policies : [];
-      const unboundBrand = Array.isArray(h.unbound_brand_tables) ? h.unbound_brand_tables : [];
-      const zeroPol = (Array.isArray(h.zero_policy_tables) ? h.zero_policy_tables : [])
-        .filter(t => !ZERO_POLICY_ALLOWED.includes(t));
-      add('rls_all_tables_enabled', rlsDisabled.length === 0);
-      add('no_permissive_brand_policies', permissive.length === 0);
-      add('no_permissive_write_policies', permissiveWrite.length === 0);
-      add('no_unexpected_denyall_tables', zeroPol.length === 0);
-      add('brand_tables_bound_to_caller', unboundBrand.length === 0);
-      add('membership_function_present', h.has_user_brand_ids === true);
-      // user_brand_ids_secure only present in v2 SQL; if absent (older SQL), don't fail.
-      if (h.user_brand_ids_secure !== undefined) add('membership_function_secure', h.user_brand_ids_secure === true);
-    }
-  } catch (e) {
-    // fall through — isolationChecked stays false
+  // store.rest RESOLVES on every HTTP status, so a PostgREST ERROR BODY — a plain
+  // object like {code:'PGRST202', message:'Could not find the function ...'} — used to
+  // satisfy `h && typeof h === 'object'`. None of the audit's arrays were present, each
+  // defaulted to [], and .length === 0 scored GREEN. Measured: with the RPC answering
+  // 404, five live security claims — RLS enabled everywhere, no permissive policies, no
+  // permissive writes, no unexpected deny-all tables, every brand table bound to its
+  // caller — were all reported as passing, from a response that contained none of them.
+  // A monitor that invents five green safety facts out of a database error is worse than
+  // no monitor. The audit must now PROVE it answered: HTTP 200, the membership boolean,
+  // and all five arrays actually present as arrays. Anything else is 'unverified', which
+  // is the truthful word, and the checks it would have made are not added at all.
+  const isolationOf = (r) => {
+    if (!r) return { state: 'unreachable', h: null };
+    if (r.status !== 200) return { state: 'http-' + r.status, h: null };
+    const h = r.data;
+    if (!h || typeof h !== 'object' || Array.isArray(h)) return { state: 'unexpected-shape', h: null };
+    if (typeof h.has_user_brand_ids !== 'boolean') return { state: 'unexpected-shape', h: null };
+    for (const k of AUDIT_ARRAY_KEYS) if (!Array.isArray(h[k])) return { state: 'unexpected-shape', h: null };
+    return { state: 'ok', h };
+  };
+  const iso = isolationOf(settled(isoR));
+  if (iso.h) {
+    const h = iso.h;
+    const zeroPol = h.zero_policy_tables.filter(t => !ZERO_POLICY_ALLOWED.includes(t));
+    add('rls_all_tables_enabled', h.rls_disabled.length === 0);
+    add('no_permissive_brand_policies', h.permissive_policies.length === 0);
+    add('no_permissive_write_policies', h.permissive_write_policies.length === 0);
+    add('no_unexpected_denyall_tables', zeroPol.length === 0);
+    add('brand_tables_bound_to_caller', h.unbound_brand_tables.length === 0);
+    add('membership_function_present', h.has_user_brand_ids === true);
+    // user_brand_ids_secure only present in v2 SQL; if absent (older SQL), don't fail.
+    if (h.user_brand_ids_secure !== undefined) add('membership_function_secure', h.user_brand_ids_secure === true);
+    add('isolation_audit_reachable', true);
+  } else {
+    add('isolation_audit_reachable', false);
   }
-  if (!isolationChecked) add('isolation_audit_reachable', false);
 
   // ── DB reachable (simple read) ──────────────────────────────────────────────
-  try {
-    const r = await store.rest('GET', '/brands?select=id&limit=1');
-    add('db_reachable', r && r.status < 400);
-  } catch (e) {
-    add('db_reachable', false);
-  }
+  const dbRow = settled(dbR);
+  add('db_reachable', !!dbRow && dbRow.status < 400);
 
   // ── Cron liveness (via job_heartbeats) ──────────────────────────────────────
   // Fails only when a job HAS a heartbeat that is now stale (ran before, then
@@ -161,11 +211,17 @@ module.exports = async function handler(req, res) {
   // exposes ages (minutes, or null if never seen) — timestamps only, nothing
   // sensitive — so the daily report can note "never observed" jobs.
   const cronMeta = {};
-  try {
-    const r = await store.rest('GET', '/job_heartbeats?select=job,last_success_at,last_status');
-    const rows = Array.isArray(r && r.data) ? r.data : [];
+  const hb = settled(hbR);
+  // Heartbeats table unreachable — an INFRA error, not a dead cron. Kept as a pass so a
+  // Supabase blip cannot masquerade as "your crons are down", but meta now says which of the
+  // two happened: 'never-run' (the job) vs 'unreadable' (the table). Previously both were
+  // null and indistinguishable, so a broken monitor looked exactly like a broken cron.
+  if (!hb || hb.status >= 400 || !Array.isArray(hb.data)) {
+    console.error('health: job_heartbeats unreadable');
+    for (const { job } of CRON_JOBS) { cronMeta[job] = 'unreadable'; add('cron_' + job + '_fresh', true); }
+  } else {
     const byJob = Object.create(null);
-    for (const row of rows) byJob[row.job] = row;
+    for (const row of hb.data) byJob[row.job] = row;
     const now = Date.now();
     for (const { job, maxAgeMin } of CRON_JOBS) {
       const row = byJob[job];
@@ -189,39 +245,15 @@ module.exports = async function handler(req, res) {
       cronMeta[job] = { ageMin, status };
       add('cron_' + job + '_fresh', ageMin <= maxAgeMin && status === 'ok');
     }
-  } catch (e) {
-    // Heartbeats table unreachable — an INFRA error, not a dead cron. Kept as a pass so a
-    // Supabase blip cannot masquerade as "your crons are down", but meta now says which of the
-    // two happened: 'never-run' (the job) vs 'unreadable' (the table). Previously both were
-    // null and indistinguishable, so a broken monitor looked exactly like a broken cron.
-    console.error('health: job_heartbeats unreadable —', String(e && e.message).slice(0, 120));
-    for (const { job } of CRON_JOBS) { cronMeta[job] = 'unreadable'; add('cron_' + job + '_fresh', true); }
   }
 
   // ── Live route reachability: open-app + onboarding paths ────────────────────
   // Rolled up into two booleans (so the report stays readable); meta.routes maps
   // each probed path to its HTTP status (or null) so a failure shows exactly which
-  // route and code broke. Probed in parallel to keep the endpoint fast.
-  const routeMeta = {};
-  try {
-    const groups = [
-      { key: 'open_app_routes_ok',    routes: OPEN_APP_ROUTES },
-      { key: 'onboarding_routes_ok',  routes: ONBOARDING_ROUTES },
-    ];
-    const results = await Promise.all(
-      groups.map(async g => {
-        const statuses = await Promise.all(g.routes.map(async rt => {
-          const { status } = await probe(rt.path);
-          routeMeta[rt.path] = status;
-          return routeOk(rt.mode, status);
-        }));
-        return { key: g.key, ok: statuses.every(Boolean) };
-      })
-    );
-    for (const r of results) add(r.key, r.ok);
-  } catch (e) {
-    // Probing infra failed entirely — don't hard-fail; leave routeMeta as-is.
-  }
+  // route and code broke.
+  const routes = settled(routeR);
+  const routeMeta = (routes && routes.meta) || {};
+  if (routes) for (const r of routes.results) add(r.key, r.ok);
 
   // ── Live Grok reachability (opt-in, spends ONE tiny Grok token) ─────────────
   // GET /api/health?ping=1 with a signed-in user's Bearer token actually calls Grok

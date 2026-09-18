@@ -109,7 +109,7 @@
       "maxDuration": 30
     },
     "api/health.js": {
-      "maxDuration": 20
+      "maxDuration": 30
     },
     "api/pull-trends-cron.js": {
       "maxDuration": 300

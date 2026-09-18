@@ -981,11 +981,24 @@ async function getPlanSnapshot(userId) {
 }
 
 // Look up a user's Stripe customer id (for opening the billing portal).
+//
+// v683 — THREE ANSWERS, NOT TWO. This used to collapse a failed read into `null`, the same
+// value it returns for "this user has no Stripe customer", with no log line at all. Its only
+// caller, create-portal-session.js, turns null into 400 {error:'no_subscription'} — so on any
+// Supabase hiccup a paying customer was told they have no subscription and the one self-serve
+// route to cancel or fix a failing card was closed to them. They keep being charged and cannot
+// stop it. The sibling on the SAME table (getPlanSnapshot, above) states the rule this one
+// broke: "callers must treat null as don't know, never as no plan".
+// Returns: a string (the customer id) | null (read succeeded, no customer) | {unknown:true}.
 async function stripeCustomerId(userId) {
   try {
     const rows = await sbRequest('GET', `/rest/v1/user_plans?user_id=eq.${encodeURIComponent(userId)}&select=stripe_customer_id`);
-    return (Array.isArray(rows) && rows[0]) ? (rows[0].stripe_customer_id || null) : null;
-  } catch (e) { return null; }
+    if (!Array.isArray(rows)) { console.error('stripeCustomerId: unexpected shape — user=' + userId); return { unknown: true }; }
+    return rows[0] ? (rows[0].stripe_customer_id || null) : null;
+  } catch (e) {
+    console.error('stripeCustomerId FAILED — user=' + userId + ':', (e && e.message) || e);
+    return { unknown: true };
+  }
 }
 
 // ── WHOSE PLAN PAYS FOR THIS? ─────────────────────────────────────────────────
@@ -1066,6 +1079,25 @@ function claimedBrandId(req) {
    the release's promise from json() makes it complete before the function can be frozen. The
    cost is one DB round trip, on the error path only. A handler that does not `return` its
    json() still gets a best-effort release, which is what it has today minus the waiting. */
+/* v683 — THE STATUS CODE WAS THE WRONG QUESTION. v678 refunded on 4xx/5xx only, so a handler
+   that failed but answered 200 still kept the credit. Nine such paths shipped: reviews.js
+   answers 200 {reviewInsights:'', empty:true} whenever the model returns nothing — and
+   callGrokSearch resolves NULL on a 401, a 429, a socket error and its own 90s timeout, so
+   every real x.ai failure lands there. It is gated as 'crawlbrand' = 3 credits. Measured: a
+   free user (40) who taps "Pull reviews" three times during an x.ai outage is shown 10/40
+   used, has received nothing, and meets the upgrade wall — the exact harm v678 was written to
+   prevent, through the door it left open. Same shape in creator-posts.js (no token / no
+   profiles saved), hook-frame.js (bad url / no frame / caught error), distill-voice.js
+   (model returned nothing) and stock-photo.js (five paths).
+
+   The honest question is not "what status did it answer" but "was anything actually charged".
+   That invariant already exists and is exact: every gated endpoint calls logUsage with the
+   SAME action it gated (verified across all 25), and logUsage settles the hold by token. So a
+   hold that is STILL PENDING when the response is written means logUsage never ran, which
+   means no credit was spent — whatever the code says. Refund on that, and a handler cannot
+   invent a new silent-failure path this misses. A genuinely empty-but-real result keeps its
+   charge, because that path logs: creator-posts.js:189 logs before answering {empty:true} on
+   a scrape that ran and found nothing, and stays charged. */
 function attachHoldRelease(res, hold) {
   if (!res || !hold || typeof res.json !== 'function' || res.__csHoldPatched) return;
   res.__csHoldPatched = true;
@@ -1073,11 +1105,11 @@ function attachHoldRelease(res, hold) {
   res.json = function (body) {
     let code = 200;
     try { code = Number(res.statusCode) || 200; } catch (e) {}
-    if (code < 400 || !isPending(hold)) return origJson(body);
+    if (!isPending(hold)) return origJson(body);
     // Give the credit back first, then answer. Never let a release failure swallow the response.
     return Promise.resolve()
       .then(() => releaseHold(hold))
-      .catch((e) => { try { console.error('hold release failed on a ' + code + ' response:', (e && e.message) || e); } catch (_) {} })
+      .catch((e) => { try { console.error('hold release failed on a ' + code + ' response (nothing was logged, so nothing was charged):', (e && e.message) || e); } catch (_) {} })
       .then(() => origJson(body));
   };
 }

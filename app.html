@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v682';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v683';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -12082,10 +12082,23 @@ function tpFormatScript(text, emphasis){
       if (s) blocks.push(s);
     });
   });
-  return blocks.map((b, i) => {
-    const lines = tpSenseLines(b)
-      .map(l => '<span class="tp-line">' + tpEmphasise(tpEscape(l), emphasis) + '</span>')
-      .join('');
+  /* v683 — MARKS THAT MATCH NOTHING LEFT THE SCRIPT WITH NO EMPHASIS AT ALL, WHICH IS WORSE
+     THAN HAVING NONE. tpEmphasise takes its branch on marks.length, not on whether anything
+     actually matched, and returns before the fallback heuristic. Emphasis is applied PER
+     RENDERED LINE, so a model phrase that straddles a tpSenseLines break exists in no single
+     line and can never match — yet its presence still switches the heuristic off. Measured
+     over every contiguous phrase of three realistic sentences: 7% of 2-word marks, 14% of
+     3-word, 23% of 4-word render ZERO emphasis, against 2-3 emphasised words when the model
+     sends no marks at all. The prompt asks for 2-5 word phrases, so this is the ordinary case.
+     tpPruneEmphasis does not catch it either — it tests the mark against the whole script
+     string, where a straddling phrase is present and passes.
+     Fixed script-wide, not per block: per block would hand the heuristic to every sentence a
+     mark simply does not cover, which over-marks. If no mark lands anywhere, fall back. */
+  const marked = blocks.map(b => tpSenseLines(b).map(l => tpEmphasise(tpEscape(l), emphasis)));
+  const anyHit = marked.some(ls => ls.some(h => h.indexOf('tp-em') >= 0));
+  const lanes = anyHit ? marked : blocks.map(b => tpSenseLines(b).map(l => tpEmphasise(tpEscape(l), [])));
+  return lanes.map((ls, i) => {
+    const lines = ls.map(h => '<span class="tp-line">' + h + '</span>').join('');
     const beat = i < blocks.length - 1 ? '<span class="tp-beat" aria-hidden="true">\u00b7</span>' : '';
     return '<div class="tp-blk">' + lines + beat + '</div>';
   }).join('');
@@ -16422,6 +16435,12 @@ async function nbToggleMic() {
       reader.readAsDataURL(blob);
     };
     rec.start(); _nbRec = rec;
+    /* v683 — the second uncapped mic. Six of the eight stop themselves; this one and
+       bvStartMic did not, so a forgotten notebook mic ran until the tab closed and then tried
+       to POST the whole clip as one base64 body. 60s matches its five siblings
+       (dpToggleMic, apToggleMic, vlMicToggle, dictateInto, icMicToggle). The identity guard
+       stops a stale timer from a finished recording killing a later one. */
+    setTimeout(() => { if (_nbRec === rec) { try { rec.stop(); } catch(e) {} } }, 60000);
     _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     if (btn) btn.classList.add('recording');
   } catch (e) {
@@ -16503,6 +16522,9 @@ document.addEventListener('input', function(e){
   if (!(t.classList.contains('nb-input') || t.id === 'icIdea' || t.id === 'icNotes')) return;
   t.style.height = 'auto';
   t.style.height = Math.min(Math.max(t.scrollHeight + 2, 130), 480) + 'px';
+  // v683 — this was the ONLY listener that fired while the user typed, and all it did was
+  // resize the box. Debounced so a long idea is not written on every keypress.
+  if (t.id === 'icIdea' || t.id === 'icNotes') { try { icDraftQueue(); } catch(e) {} }
 });
 
 function nbTimeAgo(ts) {
@@ -18681,9 +18703,45 @@ function icToggleManual(show){
   if (show === true) { p.classList.remove('ic-manual-hidden'); return; }
   p.classList.toggle('ic-manual-hidden');
 }
+/* v683 — THE IDEA CATCHER KEPT NO DRAFT, IN A TOOL WHOSE WHOLE PROMISE IS NOT LOSING THE IDEA.
+   #view-idea starts empty and renderIdeaCatcher rebuilds its entire innerHTML on every entry,
+   so the typed idea, the reference link and the notes died with the discarded DOM nodes, and
+   the line above them (`icRefImage = null`) threw away the attached screenshot separately.
+   Nothing persisted any of it: no beforeunload anywhere in the file, no sessionStorage, no
+   storage call on any of icIdea / icNotes / icUrl / icRefImage. Type a paragraph, tap another
+   tab, come back — empty, with no toast, no warning and no undo.
+   The neighbours do not have this: the Notebook's input is static markup and renderNotebook
+   only rewrites #nbList, and Remix's own screenshot variable is never nulled on re-render. So
+   this was an oversight, not a decision. v680 already shipped a rescue path for DICTATED words
+   (_icLostTranscript) after the same re-render ate a transcript — typed words got nothing.
+   lsSet/lsGet go through bkey(), so the key is per-brand already and one brand's draft can
+   never surface in another. _lsWriteGuarded catches a full quota and toasts, so a large
+   screenshot degrades rather than throwing. */
+function icDraftSave(){
+  try {
+    const g = (id) => ((document.getElementById(id) || {}).value || '');
+    const d = { idea: g('icIdea'), url: g('icUrl'), notes: g('icNotes'), img: icRefImage || '', at: Date.now() };
+    if (!d.idea.trim() && !d.url.trim() && !d.notes.trim() && !d.img) { lsDel('ic_draft'); return; }
+    lsSet('ic_draft', JSON.stringify(d));
+  } catch(e) {}
+}
+function icDraftLoad(){
+  try {
+    const raw = lsGet('ic_draft');
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    return (d && typeof d === 'object') ? d : null;
+  } catch(e) { lsDel('ic_draft'); return null; }   // unparseable blob: drop it, never throw
+}
+function icDraftClear(){ try { lsDel('ic_draft'); } catch(e) {} }
+let _icDraftT = null;
+function icDraftQueue(){ try { clearTimeout(_icDraftT); } catch(e) {} _icDraftT = setTimeout(icDraftSave, 400); }
+
 function renderIdeaCatcher(){
   const v = document.getElementById('view-idea'); if(!v) return;
   if(!currentBrand){ v.innerHTML = '<div class="vl-head"><h2>Idea Catcher</h2><p class="vl-sub">Pick a brand first.</p></div>'; return; }
+  // Read the draft BEFORE the innerHTML below destroys the fields it came from.
+  const _draft = icDraftLoad();
   icRefImage = null;
   v.innerHTML = `
     <div class="vl-head">
@@ -18709,6 +18767,26 @@ function renderIdeaCatcher(){
     <button class="gen-btn" id="icBtn" onclick="ideaDevelop()" style="width:100%;margin-top:14px;">Develop into a brief</button>
     <div id="icStatus" class="vl-status"></div>
     <div id="icResult"></div>`;
+  // Put the draft back. The screenshot goes through refShotSet so its preview chip returns with
+  // it — restoring the text and silently not the image would be worse than restoring neither.
+  if (_draft) {
+    const put = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+    put('icIdea', _draft.idea); put('icUrl', _draft.url); put('icNotes', _draft.notes);
+    if (_draft.img) { try { refShotSet('ic', _draft.img); } catch(e) {} }
+    // Unfold the reference panel only if the draft actually has something in it, so a restored
+    // draft never hides its own link, notes or screenshot behind a collapsed fold.
+    if (_draft.url || _draft.notes || _draft.img) { try { icToggleManual(true); } catch(e) {} }
+    const el = document.getElementById('icIdea');
+    if (el) { try { el.style.height = 'auto'; el.style.height = Math.min(Math.max(el.scrollHeight + 2, 130), 480) + 'px'; } catch(e) {} }
+    if ((_draft.idea || '').trim() || _draft.img) {
+      const st = document.getElementById('icStatus');
+      if (st) { st.textContent = 'Picked up where you left off.'; st.className = 'vl-status'; }
+    }
+  }
+  // #icUrl is an <input>, and the delegated listener that auto-grows the textareas filters on
+  // TEXTAREA, so it would never see it. Wire it directly rather than widening that filter.
+  const _u = document.getElementById('icUrl');
+  if (_u) _u.addEventListener('input', icDraftQueue);
 }
 async function ideaDevelop(){
   const idea = ((document.getElementById('icIdea')||{}).value || '');
@@ -18776,6 +18854,7 @@ async function ideaDevelop(){
     window._lastIdeaCatcherId = idx;
     saveState(); saveGeneratedIdeas();
     const a=document.getElementById('icIdea'); if(a) a.value=''; const b=document.getElementById('icUrl'); if(b) b.value=''; const c=document.getElementById('icNotes'); if(c) c.value=''; refShotClear('ic');
+    icDraftClear();   // v683 — the brief is in state now; the draft it came from must not come back
     if(status){ status.textContent=''; status.className='vl-status'; }
     renderNav();
     // Show the brief RIGHT HERE so there's never a "nothing happened" moment.
@@ -19471,6 +19550,9 @@ let icRefImage = null;      // Idea Catcher
 let remixRefImage = null;   // Remix
 function refShotSet(kind, dataUrl) {
   if (kind === 'ic') icRefImage = dataUrl; else remixRefImage = dataUrl;
+  // v683 — attach a screenshot and tap away without typing another character: without this
+  // the draft would not know about it. Guarded because this also runs during the rehydrate.
+  if (kind === 'ic') { try { if (typeof icDraftSave === 'function') icDraftSave(); } catch(e) {} }
   const box = document.getElementById(kind + 'ShotPreview');
   if (!box) return;
   box.innerHTML = dataUrl
@@ -25720,6 +25802,30 @@ function bvVoiceUnavailable(){
   if (window._bvVoiceWarned) return; window._bvVoiceWarned = true;
   if (typeof showToast === 'function') showToast('Voice is off right now — you can still type here.');
 }
+/* v683 — THE MIC USED TO BORROW THE TTS FLAG, SO ITS FAILURES WENT SILENT.
+   _bvVoiceWarned is set once per page load and never reset, and bvSpeak sets it too. If
+   /api/speak fails once — no OPENAI_API_KEY, quota, offline — and speechSynthesis is absent
+   (common in Android WebView), the flag is already true before the user ever touches the mic,
+   so the FIRST dictation failure is silent, not the second. Its wording is wrong for the mic
+   as well: "voice is off" describes speak-back, not a transcription that failed.
+   A transcription failure is per-attempt and actionable, so it always speaks, and it says what
+   the server said. bvStartMic used to read only data.text: resp.ok and data.error were never
+   looked at, so every message api/transcribe-voice.js writes — "Please sign in again.",
+   "Transcription is not configured on the server.", "Couldn't transcribe your voice" — was
+   thrown away and replaced by the once-per-page toast above. */
+/* Two minutes, well inside the 3.8-minute worst case computed above, and long enough that a
+   real answer to a coaching question is never cut short. */
+const BV_MAX_MIC_MS = 120000;
+const BV_WARN_MIC_MS = 100000;
+let _bvWarnMicT = null, _bvMaxMicT = null;
+function bvClearMicLimit(){
+  try { clearTimeout(_bvWarnMicT); } catch(e) {}
+  try { clearTimeout(_bvMaxMicT); } catch(e) {}
+  _bvWarnMicT = null; _bvMaxMicT = null;
+}
+function bvTranscribeFailed(msg){
+  if (typeof showToast === 'function') showToast(String(msg || "Couldn't catch that — try again, or type it here."), 6000);
+}
 function bvSpeakBrowser(text){
   try{
     if (!('speechSynthesis' in window) || !text) return false;
@@ -25851,6 +25957,16 @@ async function bvStartMic() {
       indicator.classList.add('active');
 
       const blob = new Blob(chunks, { type: recorder.mimeType });
+      /* v683 — base64 adds a third, and the ~4.5MB cap is the platform's, not ours, so an
+         oversized POST is refused with an HTML page we cannot read. 3MB is the threshold this
+         codebase already uses for exactly this reason (INLINE_MAX). Saying so beats a silent
+         drop; the cap above means this should now be unreachable. */
+      if (blob.size > 3 * 1024 * 1024) {
+        indicator.textContent = 'Listening...';
+        indicator.classList.remove('active');
+        bvTranscribeFailed('That recording was too long to send — try it in shorter takes.');
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64 = reader.result.split(',')[1];
@@ -25861,25 +25977,52 @@ async function bvStartMic() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ audio: base64, format })
           });
-          const data = await resp.json();
+          /* v683 — a platform 413 or 504 answers with an HTML page, so resp.json() itself
+             throws; .catch({}) keeps that in the same honest branch as a JSON error body. */
+          const data = await resp.json().catch(() => ({}));
           indicator.textContent = 'Listening...';
           indicator.classList.remove('active');
-          if (data.text && data.text.trim()) {
+          if (resp.ok && data.text && data.text.trim()) {
             setTimeout(() => bvSend(data.text.trim()), 200); try{ voiceLogAdd(data.text, 'coach', _vg); }catch(_){}
           } else {
-            bvVoiceUnavailable();
+            bvTranscribeFailed(data.error || (resp.status === 413
+              ? 'That recording was too long to send — try it in shorter takes.'
+              : "Couldn't turn that into words — try again, or type it here."));
           }
         } catch (err) {
           console.error('Transcription error:', err);
           indicator.textContent = 'Listening...';
           indicator.classList.remove('active');
-          bvVoiceUnavailable();
+          bvTranscribeFailed("Couldn't send that recording — check your connection and try again.");
         }
       };
       reader.readAsDataURL(blob);
     };
 
     recorder.start();
+    /* v683 — THE ONE MIC IN THE APP WITH NO CAP. Six of the other seven stop themselves after
+       30-60s; bvStartMic and nbToggleMic had nothing, and bvTabDown long-presses straight into
+       this one, so a 450ms press on the coach tab starts a recording nothing will ever end.
+       recorder.start() takes no timeslice, so every chunk is held in memory until stop, and the
+       whole clip is base64'd into ONE JSON body. Measured with ffmpeg on real WebM/Opus
+       (container overhead included) against the ~4.5MB serverless body cap this repo documents
+       in three places: 128kbps hits it at 3.8 min, 64kbps at 7.6 min, 32kbps at 14.9 min. Past
+       that the POST is rejected and the recording is gone — chunks and blob are closure-locals,
+       the tracks are already stopped, nothing is persisted and nothing retries.
+       Modelled on the filming cap (TP_MAX_TAKE_MS), whose comment states the rule this follows:
+       THE CAP STOPS THE TAKE, IT NEVER DISCARDS IT. bvStopMic() is the ordinary stop, so the
+       clip still goes to transcription exactly as if the user had tapped Send. The identity
+       guard matters: a stale timer from a finished recording must not kill a later one. */
+    bvClearMicLimit();
+    _bvWarnMicT = setTimeout(() => {
+      if (bvState.recognition !== recorder || recorder.state !== 'recording') return;
+      if (typeof showToast === 'function') showToast('Wrap up — the mic stops on its own in 20 seconds.', 6000);
+    }, BV_WARN_MIC_MS);
+    _bvMaxMicT = setTimeout(() => {
+      if (bvState.recognition !== recorder || recorder.state !== 'recording') return;
+      if (typeof showToast === 'function') showToast("That's the longest the mic can send in one go — sending what you said.", 7000);
+      bvStopMic();
+    }, BV_MAX_MIC_MS);
     _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     bvState.recognition = recorder;
     bvState.isRecording = true;
@@ -25905,6 +26048,7 @@ function bvExitRecordingUI() {
 }
 
 function bvStopMic() {
+  bvClearMicLimit();   // v683 — every path that ends a take clears its timers
   bvWaveSet('');
   window._bvStartToken = (window._bvStartToken || 0) + 1;
   if (bvState.recognition && bvState.recognition.state === 'recording') {

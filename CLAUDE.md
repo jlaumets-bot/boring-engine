@@ -2,6 +2,119 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v683. EIGHT DEFECTS: a monitor that invented green security facts, a cron that wiped the post strip nightly, nine failure paths that kept the credit, and three silent losses in the app.
+
+Four parallel audits (one per area, read-only, every finding re-verified here by running the real code).
+
+**1. THE MONITOR INVENTED FIVE GREEN SECURITY FACTS OUT OF A DATABASE ERROR.** `store.rest` resolves
+on every HTTP status, so a PostgREST error body — `{code:'PGRST202', message:'Could not find the
+function public.security_health'}` — satisfied `h && typeof h === 'object'`. None of the audit's
+arrays were in it, each defaulted to `[]`, and `.length === 0` scored GREEN. **Measured with the RPC
+answering 404: "RLS enabled on all tables", "no permissive brand policies", "no permissive write
+policies", "no unexpected deny-all tables", "brand tables bound to caller" — all five reported as
+PASSING.** The one red was `membership_function_present`, which reads as a missing SQL function and
+sends you looking in the wrong place. The audit must now prove it answered: HTTP 200, the membership
+boolean, and all five arrays present as arrays. Otherwise it adds only `isolation_audit_reachable:
+false` and makes none of the claims. **1b.** Three sequential `store.rest` calls at 8s each plus 8s
+of route probes = **34s measured against `maxDuration: 20`** — the platform killed it and the daily
+report got NOTHING, and silence from a monitor reads exactly like a monitor that was never
+scheduled. Now probed concurrently (9s measured); `maxDuration` 20 → 30 for the optional Grok ping.
+GATE: `scripts/verify/health-monitor-truth.mjs` — reads the budget from vercel.json, so raising one
+without the other cannot pass.
+
+**2. THE NIGHTLY CRON WIPED EVERY BRAND'S "WORTH MAKING YOURS" STRIP.** `pull-trends-cron.js` rebuilt
+`brands.auto_trends` from scratch and assigned `topPosts` UNCONDITIONALLY. `_trends.js:502` makes it
+`[]` whenever the X/Apify lane comes back empty — no token, a stalled actor, the `bound()` race
+expiring, nothing clearing the engagement filter. The Grok and News lanes still return trends, so
+`items.length > 0` and the "got nothing" skip does not fire: the brand is "updated" and every post
+the user was going to repurpose is **erased, for every brand, with nowhere to recover it.** Measured:
+lanes grok=0 news=2 x=0 took topPosts from 2 to 0. The manual button has guarded this since v644b
+(`pull-trends.js:111`) and its comment says exactly why; the cron never got it. Rebuilding the object
+also dropped any `auto_trends` key not re-added by hand — now merged onto the previous object.
+
+**3. NINE FAILURE PATHS ANSWERED 200 AND KEPT THE CREDIT.** v678 refunded on 4xx/5xx only. `reviews.js`
+answers `200 {reviewInsights:'', empty:true}` whenever the model returns nothing — and `callGrokSearch`
+resolves **null** on 401, 429, socket error and its own 90s timeout, so every real x.ai failure lands
+there. It is gated at **3 credits**. Measured: a free user (40) who taps "Pull reviews" three times
+during an x.ai outage is shown **10/40 used, has received nothing, and meets the upgrade wall** — the
+exact harm v678 was written to prevent, through the door it left open. Same shape in
+`creator-posts.js` (140/158), `hook-frame.js` (83/99/134), `distill-voice.js:47`, `stock-photo.js`
+(five paths). **THE STATUS CODE WAS THE WRONG QUESTION.** Every gated endpoint logs the SAME action
+it gated (verified across all 25) and `logUsage` settles the hold by token — so *pending at response
+time* means nothing was charged. One change in `attachHoldRelease` fixes all nine and every future
+one. A genuinely empty-but-real result keeps its charge (`creator-posts.js:189` logs, then answers
+`{empty:true}`). `hold-refund.mjs` arm 2b, which asserted the OLD contract, was re-anchored and a new
+arm now proves the action-parity invariant the fix rests on.
+
+**4. A PAYING CUSTOMER WAS TOLD THEY HAD NO SUBSCRIPTION — AND COULD NOT CANCEL.**
+`_usage.stripeCustomerId` collapsed a failed read into `null`, the same value it returns for "no
+Stripe customer", with no log line. Its caller turns `null` into `400 no_subscription`, so on any
+Supabase hiccup the only self-serve route to cancel or replace a failing card answered "you have
+nothing to cancel" — and the charges continue. The sibling on the same table states the rule it
+broke: *"callers must treat null as don't know, never as no plan"*. Three answers now: id / null /
+`{unknown:true}` → 503 "try again".
+
+**5. "ADD YOUR GEMINI API KEY FIRST" — TO USERS WHOSE KEY WAS STORED.** All three key lookups in
+`meme.js` read `((r.data || [])[0] || {}).gemini_key_enc`, so a PostgREST 5xx asserted "no key":
+`has-key` answered `200 {hasKey:false}` and the UI re-opened the key form, inviting the user to
+re-paste a Google API key over a problem that was never theirs. The **write** path 20 lines up
+already checked its status and its comment calls this *"exactly the confusing symptom users
+reported"* — only the write side had been fixed. The frontend's own retry branch existed and had
+never once fired. The generate paths now answer 503, so the credit they just reserved is refunded.
+
+**6. AN UNCHECKED PATCH REPORTED A COMPETITOR PULSE AS SAVED.** `pull-trends.js:65` discarded its
+PATCH result and set `competitorMoves` on the next line regardless. With `Prefer: return=minimal` the
+status is the only evidence there is. The panel showed a fresh pulse that was never in the database;
+the next reload reverted, and `compAt` never advanced so the weekly refresh did not retry either. The
+second write in the same handler got this check in v682; this one was missed.
+GATE for 2, 4, 5, 6: `scripts/verify/unreadable-is-not-an-answer.mjs`.
+
+**7. THE IDEA CATCHER KEPT NO DRAFT** — in a tool whose whole promise is not losing the idea.
+`#view-idea` starts empty and `renderIdeaCatcher` rebuilds its entire innerHTML on every entry, so
+the typed idea, the link and the notes died with the discarded nodes, and the line above them
+(`icRefImage = null`) threw the screenshot away separately. **Nothing persisted any of it:** no
+`beforeunload` anywhere in the file, no sessionStorage, no storage call on any of the four. Type a
+paragraph, tap another tab, come back — empty, no toast, no undo. The Notebook and Remix screens next
+to it lose nothing, and v680 already shipped a rescue path for DICTATED words after the same
+re-render ate a transcript; typed words got nothing. Draft now saved debounced through `lsSet`
+(brand-namespaced via `bkey`, so it cannot cross brands), restored before the innerHTML runs,
+screenshot restored through `refShotSet` so its chip returns with it, cleared once a brief ships.
+
+**8. THE COACH MIC HAD NO LENGTH CAP AND ITS FAILURES WERE SILENT.** `recorder.start()` takes no
+timeslice, so the whole clip is base64'd into one JSON body. Measured with ffmpeg on real WebM/Opus
+against the ~4.5MB serverless cap this repo documents in three places: **128kbps exceeds it at 3.8
+min, 64kbps at 7.6, 32kbps at 14.9.** Past that the POST is refused and the recording is gone —
+`chunks` and `blob` are closure locals, the tracks are stopped, nothing persists, nothing retries.
+Six of the eight mics in the app already cap; `bvStartMic` and `nbToggleMic` did not, and `bvTabDown`
+long-presses straight into `bvStartMic`. Capped 120s with a 20s warning, modelled on `TP_MAX_TAKE_MS`
+whose comment states the rule: **the cap stops the take, it never discards it** — so it calls the
+ordinary `bvStopMic()` and the clip still goes to transcription. `nbToggleMic` capped at 60s like its
+siblings. The failure path called `bvVoiceUnavailable`, a once-per-page flag **shared with the
+text-to-speech path**, so one earlier `/api/speak` failure made the FIRST mic failure silent too —
+and `resp.ok`/`data.error` were never read, so every message `api/transcribe-voice.js` writes was
+discarded. New `bvTranscribeFailed` always speaks and says what the server said.
+
+**9. EMPHASIS MARKS THAT MATCHED NOTHING LEFT THE SCRIPT WITH NO EMPHASIS AT ALL.** `tpEmphasise`
+branches on `marks.length`, not on whether anything matched, and returns above the fallback
+heuristic. Emphasis is applied **per rendered line**, so a model phrase straddling a `tpSenseLines`
+break exists in no single line and can never match — yet it still switches the heuristic off.
+Measured over every contiguous phrase of three realistic sentences: **7% of 2-word marks, 14% of
+3-word, 23% of 4-word rendered ZERO emphasis**, against 2-3 emphasised words when no marks are sent
+at all. The prompt asks for 2-5 word phrases, so this is the ordinary case. `tpPruneEmphasis` does
+not catch it — it tests the mark against the whole script string, where a straddling phrase passes.
+`tpFormatScript` now checks script-wide whether any mark lands and falls back when none does.
+GATE for 7, 8, 9: `scripts/verify/idea-mic-emphasis.mjs`.
+
+**STILL OPEN, verified, not fixed.** `emphasis` is never persisted: `_buildIdeaRows` does not write
+it and `loadIdeasFromDB` hand-picks fields and does not read it, so model-chosen phrases degrade to
+the generic heuristic on every reload — and there is **no `CREATE TABLE ideas` in `sql/`**, so
+whether the column exists could not be verified from the repo. Needs a migration first, and must ship
+AFTER #9 above (persisting a straddling mark would make #9 permanent instead of session-scoped).
+Also: `vercel.json` gives `api/transcribe-voice.js` `maxDuration: 30` while the handler's own socket
+timeout is 50s, so the platform kills it 20s before it can return its own JSON error.
+
+GATES: 80 of 80 green. Two new files.
+
 ## ▶▶ 2026-09-18 — v682. CLEARING THE BACKLOG: five defects that were proved in earlier audits and left unfixed.
 
 No new audit. These were all found, verified and recorded in earlier passes; this ships the fixes.

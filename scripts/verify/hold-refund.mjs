@@ -128,18 +128,38 @@ const req = { method:'POST', headers:{}, body:{} };
   ok(done() === 1, 'exactly one completed event (' + done() + ')');
   ok(rows[0].action === 'remix', 'and it is the real action, not a hold: ' + rows[0].action);
 }
-// ── 2b. a 2xx must NEVER refund, even if the handler has not logged yet ──────
-// (Without this arm, deleting the `code < 400` test above still passes everything else.)
+// ── 2b. a 200 THAT NEVER LOGGED must refund — v683 ───────────────────────────
+// This arm used to assert the OPPOSITE ("a 200 does NOT release — the work succeeded, it is
+// owed"), which assumed every 200 is a success. Nine shipped paths broke that assumption:
+// reviews.js answers 200 {reviewInsights:'', empty:true} on every x.ai failure (callGrokSearch
+// resolves null on 401, 429, socket error and timeout) and it is gated at 3 credits. The
+// handler charged the user for a run that produced nothing and never called logUsage.
+// The real invariant is not the status code but whether anything was charged: every gated
+// endpoint logs the SAME action it gated, and logUsage settles the hold by token. Pending at
+// response time therefore means nothing was spent.
 {
   rows.length = 0;
   const res = mkRes();
   await usage.guard(req, 'remix', res);
   ok(holds() === 1, 'a reservation is outstanding before the 200');
-  await res.status(200).json({ ok: true });
-  ok(holds() === 1, 'a 200 does NOT release the reservation \u2014 the work succeeded, it is owed ' +
-     '(left=' + holds() + '). logUsage settles it; the refund is only ever for an error.');
-  await res.status(204).json({});
-  ok(holds() === 1, 'a 204 does not release it either');
+  await res.status(200).json({ empty: true });
+  ok(holds() === 0, 'a 200 that never called logUsage MUST refund - nothing was charged, so the ' +
+     'user must not be (left=' + holds() + '). This is reviews.js:46, creator-posts.js:140/158, ' +
+     'hook-frame.js:83/99/134, distill-voice.js:47 and five paths in stock-photo.js.');
+  ok(done() === 0, 'and no completed event was invented for it');
+}
+// ── 2c. a 200 that DID log must keep the charge (the over-correction) ────────
+// A real scrape that legitimately found nothing (creator-posts.js:189 logs, then answers
+// {empty:true}) is work: it must stay charged. Without this arm, refunding every 200 passes.
+{
+  rows.length = 0;
+  const res = mkRes();
+  const g = await usage.guard(req, 'remix', res);
+  await usage.logUsage({ userId: g.billingUserId, action: 'remix', model: 'grok' });
+  await res.status(200).json({ posts: [], empty: true });
+  ok(holds() === 0, 'the hold is settled by the log, not by a refund');
+  ok(done() === 1, 'a real run that found nothing is still charged exactly once (' + done() + ') - ' +
+     'refunding it would give away work that actually ran.');
 }
 
 // ── 3. a 4xx after a SUCCESSFUL log must NOT refund (the work happened) ───────
@@ -183,6 +203,27 @@ const req = { method:'POST', headers:{}, body:{} };
     if (/\.checkLimit\(/.test(t) && !/attachHoldRelease\(/.test(t)) bad.push(f + ': calls checkLimit but never attaches a release');
   }
   ok(bad.length === 0, 'every gated endpoint wires the refund: ' + (bad.join(' | ') || 'all good'));
+
+  // ── 5. THE LOAD-BEARING ASSUMPTION behind the v683 refund-on-unlogged-200 rule ──────
+  // "Pending at response time means nothing was charged" is only true because every gated
+  // endpoint calls logUsage with the SAME action string it gated on. logUsage settles the hold
+  // by (user, action) — so a handler that gates 'reviews' and logs 'crawlbrand' would do real
+  // work, leave its hold pending, and get REFUNDED for it. Nothing in the code stops that
+  // being written tomorrow, so it is checked here.
+  const mismatched = [];
+  for (const f of fs.readdirSync(ROOT + '/api')) {
+    if (!f.endsWith('.js') || f === '_usage.js') continue;
+    const t = fs.readFileSync(ROOT + '/api/' + f, 'utf8');
+    const gated = new Set();
+    for (const m of t.matchAll(/guard\(\s*req\s*,\s*'([a-z0-9_]+)'/g)) gated.add(m[1]);
+    for (const m of t.matchAll(/checkLimit\([^,]+,[^,]+,\s*'([a-z0-9_]+)'/g)) gated.add(m[1]);
+    if (!gated.size) continue;
+    const logged = new Set();
+    for (const m of t.matchAll(/logUsage\(\{[\s\S]{0,400}?action:\s*'([a-z0-9_]+)'/g)) logged.add(m[1]);
+    if (!logged.size) { mismatched.push(f + ': gates ' + [...gated] + ' but never calls logUsage — every run of it would be refunded'); continue; }
+    for (const a of logged) if (!gated.has(a)) mismatched.push(f + ": logs '" + a + "' but gates " + JSON.stringify([...gated]));
+  }
+  ok(mismatched.length === 0, 'every gated endpoint logs the action it gated: ' + (mismatched.join(' | ') || 'all good'));
 }
 console.log(fail ? '\nFAIL \u2014 ' + fail + ' check(s) failed' : '\nPASS \u2014 a failed run refunds its credit, a successful one is charged once, and every gated endpoint is wired');
 process.exit(fail?1:0);

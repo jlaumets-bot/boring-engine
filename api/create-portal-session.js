@@ -59,6 +59,13 @@ module.exports = async function handler(req, res) {
 
   try {
     const customerId = await usage.stripeCustomerId(user.id);
+    // v683 — "we could not read your account" is not "you have no subscription". The lookup used
+    // to answer null for both, so a Supabase blip locked a paying customer out of the only place
+    // they can cancel or replace a failing card, and told them they had nothing to cancel. A 503
+    // is honest and, unlike a 400, reads as "try again" to both the user and the client.
+    if (customerId && customerId.unknown) {
+      return res.status(503).json({ error: 'Could not reach your billing record just now — please try again in a moment.' });
+    }
     if (!customerId) return res.status(400).json({ error: 'no_subscription' });
 
     const base = (origin && allowed.includes(origin)) ? origin : allowed[0];

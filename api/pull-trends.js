@@ -62,8 +62,19 @@ module.exports = async function handler(req, res) {
             if (digest) {
               // Merge into the existing auto_trends payload — items/at stay untouched.
               const merged = Object.assign({}, at, { competitorMoves: digest, compAt: Date.now() });
-              await store.rest('PATCH', `/brands?id=eq.${encodeURIComponent(logBrandId)}`, { body: { auto_trends: merged }, headers: { Prefer: 'return=minimal' } });
-              competitorMoves = digest; compAt = merged.compAt;
+              // v683 — the SECOND write in this handler got the status check in v682; this one was
+              // missed. store.rest resolves on every status, and `Prefer: return=minimal` means the
+              // status is the only evidence a write happened at all. The two lines below repainted
+              // the "Competitor moves" panel with a fresh pulse that was never saved: the next
+              // reload showed the stale one again, and compAt never advanced server-side so the
+              // weekly refresh did not retry either. Only claim it when the row actually changed.
+              const _cup = await store.rest('PATCH', `/brands?id=eq.${encodeURIComponent(logBrandId)}`, { body: { auto_trends: merged }, headers: { Prefer: 'return=minimal' } });
+              if (_cup && _cup.status >= 200 && _cup.status < 300) {
+                competitorMoves = digest; compAt = merged.compAt;
+              } else {
+                console.error('pull-trends: competitor pulse PATCH ' + ((_cup && _cup.status) || 'no response') +
+                              ' — not saved, keeping the previous pulse on screen');
+              }
             }
           }
         }

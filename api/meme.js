@@ -10,6 +10,33 @@ const store = require('./_publish/store');
 
 const ALLOWED = ['https://contentshrimp.com', 'https://bettercontent.app', 'https://boring-engine.vercel.app'];
 
+// v683 — READ THE STATUS. All three key lookups below used to do
+//   const enc = ((r.data || [])[0] || {}).gemini_key_enc;
+// and treat a missing value as "this brand has no key". store.rest RESOLVES on every HTTP
+// status, so a PostgREST 5xx puts an ERROR OBJECT in r.data: [0] is undefined, enc is
+// undefined, and the handler asserts the user never saved a key. Measured against a real 503:
+// has-key answered 200 {hasKey:false} so the UI re-opened the key-entry form, and both
+// generate paths answered "Add your Gemini API key first" to users whose key was stored fine —
+// inviting them to re-paste a Google API key to fix a problem that was never theirs. The WRITE
+// path 20 lines down already checks its status and its comment calls this "exactly the confusing
+// symptom users reported"; only the write side was fixed.
+// Returns { enc } on a clean read, or { unknown: true } when we could not read at all.
+async function readGeminiKeyEnc(brandId) {
+  let r = null;
+  try {
+    r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
+  } catch (e) {
+    console.error('meme: gemini_key_enc read threw —', (e && e.message) || e);
+    return { unknown: true };
+  }
+  if (!r || r.status < 200 || r.status >= 300 || !Array.isArray(r.data)) {
+    console.error('meme: gemini_key_enc read ' + ((r && r.status) || 'no response') + ' — cannot tell whether a key is stored');
+    return { unknown: true };
+  }
+  return { enc: (r.data[0] || {}).gemini_key_enc || null };
+}
+const KEY_UNREADABLE = 'Could not reach your saved key just now — please try again in a moment.';
+
 // Accepts either a plain prompt string, or an array of Gemini "parts"
 // ([{text}, {inlineData:{mimeType,data}}, ...]) so callers can pass reference
 // product photos for the model to match.
@@ -71,8 +98,11 @@ module.exports = async function handler(req, res) {
     if (!_canUse) return res.status(403).json({ error: 'No access to this brand' });
 
     if (action === 'has-key') {
-      const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
-      return res.status(200).json({ hasKey: !!(((r.data || [])[0] || {}).gemini_key_enc) });
+      const k = await readGeminiKeyEnc(brandId);
+      // A non-200 here is what memeCheckKey's own else-branch is written for: "Couldn't check
+      // your key just now — retry". Answering 200 {hasKey:false} sent it down the wrong branch.
+      if (k.unknown) return res.status(503).json({ error: KEY_UNREADABLE });
+      return res.status(200).json({ hasKey: !!k.enc });
     }
 
     if (action === 'save-key') {
@@ -131,8 +161,11 @@ module.exports = async function handler(req, res) {
       // v678: direct checkLimit caller — attach the release by hand. See _usage.js.
       if (_gate && _gate.ok && _gate.hold) require('./_usage').attachHoldRelease(res, _gate.hold);
       if (!_gate.ok) return require('./_usage').denyResponse(res, _gate);
-      const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
-      const enc = ((r.data || [])[0] || {}).gemini_key_enc;
+      const _k = await readGeminiKeyEnc(brandId);
+      // 503, not 400: a 5xx is what attachHoldRelease refunds on, so a read we could not make
+      // does not also cost the credit reserved two lines above.
+      if (_k.unknown) return res.status(503).json({ error: KEY_UNREADABLE });
+      const enc = _k.enc;
       if (!enc) return res.status(400).json({ error: 'Add your Gemini API key first (in the Memes tab).' });
       let key;
       try { key = decrypt(enc).key; } catch (e) { return res.status(400).json({ error: 'Stored key is unreadable — re-save it.' }); }
@@ -183,8 +216,9 @@ module.exports = async function handler(req, res) {
       // v678: direct checkLimit caller — attach the release by hand. See _usage.js.
       if (_gate && _gate.ok && _gate.hold) require('./_usage').attachHoldRelease(res, _gate.hold);
       if (!_gate.ok) return require('./_usage').denyResponse(res, _gate);
-      const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
-      const enc = ((r.data || [])[0] || {}).gemini_key_enc;
+      const _k = await readGeminiKeyEnc(brandId);
+      if (_k.unknown) return res.status(503).json({ error: KEY_UNREADABLE });
+      const enc = _k.enc;
       if (!enc) return res.status(400).json({ error: 'Add your Gemini API key first.' });
       let key;
       try { key = decrypt(enc).key; } catch (e) { return res.status(400).json({ error: 'Stored key is unreadable — re-save it.' }); }
