@@ -199,6 +199,12 @@ module.exports = async function handler(req, res) {
     add('isolation_audit_reachable', true);
   } else {
     add('isolation_audit_reachable', false);
+    // Say WHY. "Unverified" without a reason is only half an improvement over the old lie:
+    // 'http-404' (the function is not in this database), 'http-401'/'http-403' (the grant is
+    // wrong), 'unexpected-shape' (it answered, but not with an audit) and 'unreachable' (the
+    // call never completed) each send you somewhere different. The state is a fixed string,
+    // never a response body, so it leaks nothing — the same class as the route statuses below.
+    console.error('health: isolation audit did not run — ' + iso.state);
   }
 
   // ── DB reachable (simple read) ──────────────────────────────────────────────
@@ -300,6 +306,6 @@ module.exports = async function handler(req, res) {
     total: checks.length,
     failing,           // check NAMES only — no sensitive detail
     checks,
-    meta: { crons: cronMeta, routes: routeMeta, grok } // ages (min) + route statuses + live Grok ping
+    meta: { crons: cronMeta, routes: routeMeta, grok, isolation: iso.state } // ages (min) + route statuses + live Grok ping + why the audit did or did not run
   });
 };

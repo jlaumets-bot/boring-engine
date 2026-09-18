@@ -191,29 +191,69 @@ function callGrokSearch(prompt, opts = {}) {
       tools: [tool],
       max_output_tokens: Math.min(opts.maxTokens || 1500, 4000),
     });
-    const r = https.request({
-      hostname: 'api.x.ai', path: '/v1/responses', method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}`, 'Content-Length': Buffer.byteLength(body) },
-    }, (resp) => {
-      let data = '';
-      resp.on('data', c => data += c);
-      resp.on('end', () => {
-        // console.ERROR, not log: this is a failure, and it is the line someone greps for.
-        if (resp.statusCode !== 200) { console.error('grok-search: http ' + resp.statusCode + ' — ' + String(data).slice(0, 300)); return resolve(null); }
-        try {
-          const text = extractResponsesText(JSON.parse(data));
-          if (!text) console.error('grok-search: 200 but no text in the response body — ' + String(data).slice(0, 200));
-          resolve(text);
-        } catch (e) {
-          console.error('grok-search: 200 with an unparseable body — ' + (e && e.message) + ' — ' + String(data).slice(0, 200));
-          resolve(null);
-        }
+    /* v684 — ONE SOCKET HANG-UP ENDED THE LANE. callXAI, the sibling that does every other
+       x.ai call in this app, retries up to four times with exponential backoff on a NETWORK
+       error (_llm.js:102) — and deliberately does not retry a timeout, because a timeout means
+       the request is being worked on. This function had no retry at all: one 'socket hang up'
+       and the whole web-search lane came back empty. Production, 2026-09-18 05:35 UTC: four
+       brands, every one of them ending in 'timed out after 90s' or 'request failed — socket
+       hang up', grok=0 across the board. It is not only the trends lane — brand-voice-chat.js,
+       crawl-brand.js and reviews.js all call this.
+       Same rule as the sibling, deliberately conservative: a network error retries ONCE, a
+       timeout never does, and both are bounded by the caller's own deadline so a retry can
+       never outlive the budget it was given. The timeout is now the caller's too — it was
+       hard-coded at 90s while every caller races it against a much shorter bound, which meant
+       the socket stayed open long after the lane had given up on it. */
+    const TOTAL_MS = Math.max(5000, Math.min(Number(opts.timeoutMs) || 90000, 240000));
+    const started = Date.now();
+    let attempt = 0;
+    const attemptOnce = () => {
+      const leftMs = TOTAL_MS - (Date.now() - started);
+      if (leftMs < 2000) { console.error('grok-search: no time left for attempt ' + (attempt + 1)); return resolve(null); }
+      attempt++;
+      const r = https.request({
+        hostname: 'api.x.ai', path: '/v1/responses', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}`, 'Content-Length': Buffer.byteLength(body) },
+      }, (resp) => {
+        let data = '';
+        resp.on('data', c => data += c);
+        resp.on('end', () => {
+          // console.ERROR, not log: this is a failure, and it is the line someone greps for.
+          if (resp.statusCode !== 200) { console.error('grok-search: http ' + resp.statusCode + ' — ' + String(data).slice(0, 300)); return resolve(null); }
+          try {
+            const text = extractResponsesText(JSON.parse(data));
+            if (!text) console.error('grok-search: 200 but no text in the response body — ' + String(data).slice(0, 200));
+            resolve(text);
+          } catch (e) {
+            console.error('grok-search: 200 with an unparseable body — ' + (e && e.message) + ' — ' + String(data).slice(0, 200));
+            resolve(null);
+          }
+        });
       });
-    });
-    r.on('error', (e) => { console.error('grok-search: request failed — ' + (e && e.message)); resolve(null); });
-    // agentic search can take longer than a chat call
-    r.setTimeout(90000, () => { console.error('grok-search: timed out after 90s'); r.destroy(); resolve(null); });
-    r.write(body); r.end();
+      let timedOut = false;
+      r.on('error', (e) => {
+        const msg = (e && e.message) || String(e);
+        if (timedOut) return;   // the timeout below already owns this outcome
+        const canRetry = attempt < 2 && (TOTAL_MS - (Date.now() - started)) > 8000;
+        if (canRetry) {
+          console.error('grok-search: request failed on attempt ' + attempt + ' — ' + msg + ' — retrying once');
+          return setTimeout(attemptOnce, 900);
+        }
+        console.error('grok-search: request failed on attempt ' + attempt + ' — ' + msg + ' — giving up');
+        resolve(null);
+      });
+      // agentic search can take longer than a chat call, but never longer than the caller allows
+      r.setTimeout(leftMs, () => {
+        timedOut = true;
+        r.destroy();
+        // One line on purpose: connections-honesty.mjs requires the log and the bail to sit
+        // together, so a future edit cannot leave an exit here silent by drifting them apart.
+        console.error('grok-search: timed out after ' + Math.round(leftMs / 1000) + 's on attempt ' + attempt + ' — not retried (a timeout means it is being worked on)');
+        resolve(null);
+      });
+      r.write(body); r.end();
+    };
+    attemptOnce();
   });
 }
 

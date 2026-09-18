@@ -400,7 +400,7 @@ function brainSummaryFrom(o) {
   return out;
 }
 
-async function pullGrokTrends(keywords, maxAgeHours, brainObj) {
+async function pullGrokTrends(keywords, maxAgeHours, brainObj, grokTimeoutMs) {
   const kw = (Array.isArray(keywords) ? keywords : []).map(k => String(k || '').trim()).filter(Boolean).slice(0, 3);
   // v670: three more exits that used to be silent. The first is a legitimate no-op the caller
   // usually screens out; the other two mean the module is broken, which must never be quiet.
@@ -421,7 +421,10 @@ Return ONLY a JSON array, no prose or markdown fences:
   // nothing for weeks and the only symptom was a slightly thinner trends feed. callGrokSearch now
   // logs its own failures; these are the ones that happen AFTER a successful call.
   let raw = null;
-  try { raw = await callGrokSearch(prompt, { maxTokens: 1200 }); }
+  // v684 — pass the lane's own deadline down. bound() races this promise, but the SOCKET used
+  // to stay open for the hard-coded 90s after the lane had already given up on it, so a retry
+  // could never fit and the connection outlived the run. callGrokSearch now honours timeoutMs.
+  try { raw = await callGrokSearch(prompt, { maxTokens: 1200, timeoutMs: grokTimeoutMs || 0 }); }
   catch (e) { console.error('trends: grok lane threw — ' + ((e && e.message) || e)); return []; }
   if (!raw) return [];   // callGrokSearch has already said why
   let arr = null;
@@ -448,8 +451,10 @@ Return ONLY a JSON array, no prose or markdown fences:
 // One Grok web-search digest of what the brand's listed competitors did lately.
 // Extracted from pull-trends-cron.js so the manual "Pull trends" button can refresh
 // a stale pulse too. Never throws; resolves '' on no key / no competitors / timeout /
-// any failure. opts.timeoutMs races callGrokSearch (which allows 90s internally) so
-// the on-demand endpoint can run it inside its leftover budget; the cron passes none.
+// any failure. opts.timeoutMs is BOTH the race cap and callGrokSearch's own socket timeout,
+// so the two agree instead of leaving a 90s connection behind a 30s race.
+// v684: "the cron passes none" was true until v675 and is not any more — pull-trends-cron.js
+// computes a timeoutMs from its remaining budget for this call and for the trends lane.
 async function pullCompetitorPulse(competitors, opts = {}) {
   const comp = String(competitors || '').trim();
   if (!comp || !process.env.XAI_API_KEY) return '';
@@ -457,7 +462,7 @@ async function pullCompetitorPulse(competitors, opts = {}) {
   try { ({ callGrokSearch } = require('./_llm')); } catch (_) { return ''; }
   if (!callGrokSearch) return '';
   const prompt = `Using live web search, find what these competitor brands have DONE in roughly the last 30 days that a rival should know — new products/features, pricing changes, campaigns, partnerships, or notable posts/announcements. Competitors:\n${comp.slice(0, 700)}\n\nReturn 3-6 SHORT bullet lines, newest first, each naming the competitor and the move. Only real, recent, verifiable moves — empty string if nothing notable.`;
-  let p = callGrokSearch(prompt, { maxTokens: 700 });
+  let p = callGrokSearch(prompt, { maxTokens: 700, timeoutMs: opts.timeoutMs || 0 });
   if (opts.timeoutMs && opts.timeoutMs > 0) p = Promise.race([p, new Promise(r => setTimeout(() => r(null), opts.timeoutMs))]);
   let digest = null;
   try { digest = await p; } catch (e) { console.error('trends: competitor pulse threw — ' + ((e && e.message) || e)); return ''; }
@@ -466,8 +471,10 @@ async function pullCompetitorPulse(competitors, opts = {}) {
 }
 
 // Grok web-search (niche-relevant, LEADS) + Google News (fresh headlines) + X (latest tweets), merged
-// into one FRESH feed, deduped by normalized text. `maxAgeHours` windows every source. The daily cron
-// passes no timeouts (full 120s budget); the on-demand button passes xTimeoutMs (X/Apify race cap) and
+// into one FRESH feed, deduped by normalized text. `maxAgeHours` windows every source. BOTH callers
+// now pass timeouts — the cron computes them from its remaining run budget (v675; before that it
+// passed undefined, which made bound() a no-op and let one lane eat the whole run) and the
+// on-demand button passes xTimeoutMs (X/Apify race cap) and
 // grokTimeoutMs (v453: Grok gets its OWN, tighter budget — callGrokSearch allows 90s internally, which
 // used to blow past the on-demand race) so the whole pull stays under its 60s function limit
 // (News alone always returns, so the button never fails). Fail-open: a timed-out lane resolves [].
@@ -476,7 +483,7 @@ async function pullCompetitorPulse(competitors, opts = {}) {
 async function pullAllTrends(keywords, apifyToken, maxAgeHours, xTimeoutMs, brainObj, grokTimeoutMs) {
   const win = clampWindow(maxAgeHours);
   const bound = (p, ms) => (ms && ms > 0) ? Promise.race([p, new Promise(r => setTimeout(() => r([]), ms))]) : p;
-  const grokPromise = process.env.XAI_API_KEY ? bound(pullGrokTrends(keywords, win, brainObj).catch(() => []), grokTimeoutMs || xTimeoutMs) : Promise.resolve([]);
+  const grokPromise = process.env.XAI_API_KEY ? bound(pullGrokTrends(keywords, win, brainObj, grokTimeoutMs || xTimeoutMs).catch(() => []), grokTimeoutMs || xTimeoutMs) : Promise.resolve([]);
   const xPromise = apifyToken ? bound(pullXTrends(keywords, apifyToken, win).catch(() => []), xTimeoutMs) : Promise.resolve([]);
   const [grok, news, x] = await Promise.all([
     grokPromise,

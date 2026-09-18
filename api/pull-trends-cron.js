@@ -93,6 +93,8 @@ module.exports = async function handler(req, res) {
     // systematic breakage reported {ok:true, updated:0, skipped:30} with an 'ok' heartbeat and
     // not one log line — which is exactly how this cron died silently for days at a time.
     let updated = 0, skipped = 0, failed = 0, ranOut = false;
+    // v684: brands the loop never reached, as distinct from brands it tried and skipped.
+    let untried = 0;
     // v670 — WHY a brand was skipped, and WHICH LANE went quiet.
     // `skipped` lumped three different things together: no keywords (a brand that is not set up),
     // no items (every source returned nothing), and out of budget. Only the middle one can mean
@@ -127,7 +129,7 @@ module.exports = async function handler(req, res) {
     const BUDGET_MS = 270000, WORST_BATCH_MS = 75000, _cronT0 = Date.now();
     const _left = () => BUDGET_MS - (Date.now() - _cronT0);
     for (let i = 0; i < due.length; i += CONC) {
-      if (_left() <= WORST_BATCH_MS) { ranOut = true; skipped += (due.length - i); break; }
+      if (_left() <= WORST_BATCH_MS) { ranOut = true; untried += (due.length - i); skipped += (due.length - i); break; }
       const batch = due.slice(i, i + CONC);
       let _batchT = null;
       const _work = Promise.all(batch.map(async (b) => {
@@ -252,6 +254,7 @@ module.exports = async function handler(req, res) {
       try { if (_batchT) clearTimeout(_batchT); } catch (_) {}
       if (_over) {
         ranOut = true;
+        untried += (due.length - i);
         skipped += (due.length - i);
         console.error('pull-trends-cron: batch at index ' + i + ' outlived the run budget — abandoning it so the heartbeat still gets written. ' +
                       'Brands in that batch are unchanged and will be picked up next run.');
@@ -259,7 +262,14 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    if (ranOut) console.log('pull-trends-cron: ran out of budget after ' + (Date.now() - _cronT0) + 'ms — updated ' + updated + ', ' + skipped + ' left for the next run');
+    /* v684 — "N left for the next run" WAS NOT N. It printed `skipped`, which already included
+       every brand skipped for a legitimate per-brand reason (no keywords, no items) earlier in the
+       run — brands that WERE tried and are not waiting for anything. Production 2026-09-18 05:35:
+       "updated 0, 8 left for the next run" when only 4 were genuinely unattempted, the other 4
+       having been tried and returned nothing. The two numbers answer different questions and only
+       one of them is "how much work is outstanding". */
+    if (ranOut) console.log('pull-trends-cron: ran out of budget after ' + (Date.now() - _cronT0) + 'ms — updated ' + updated +
+      ', ' + untried + ' not attempted at all (of ' + due.length + ' due; ' + skipped + ' skipped in total)');
     if (failed) console.error('pull-trends-cron: ' + failed + ' of ' + due.length + ' brand(s) FAILED this run (see the per-brand errors above)');
     console.log('pull-trends-cron: lanes this run — grok=' + laneTotals.grok + ' news=' + laneTotals.news +
       ' x=' + laneTotals.x + ' | updated=' + updated + ' skipped=' + skipped +

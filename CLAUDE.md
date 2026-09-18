@@ -2,6 +2,71 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v684. THE HONEST MONITOR EARNED ITS KEEP THE HOUR IT SHIPPED: it went red, and the red was real.
+
+v683 made `/api/health` stop inventing green security facts. The first live poll after deploying it
+came back **`isolation_audit_reachable: false`** and **`cron_pull-trends-cron: {ageMin: 632, status:
+'error'}`**. Both are genuine. Under v682 the first would have shown as five green security claims
+and the second was already known but unexplained.
+
+**1. THE MONITOR SAID "UNVERIFIED" WITHOUT SAYING WHY** — half an improvement over the old lie.
+`meta.isolation` now carries the state (`ok` / `http-404` / `http-401` / `unexpected-shape` /
+`unreachable`) and a `console.error` names it. Each sends you somewhere different: 404 = the function
+is not in this database, 401/403 = the grant is wrong (see `sql/v658-revoke-security-health.sql`),
+`unexpected-shape` = it answered but not with an audit. The state is a fixed string, never a response
+body — same class as the route statuses already in `meta`.
+
+**⚠ OPEN AND NEEDS YOU: `security_health()` is not answering in production.** Whatever `meta.isolation`
+says on the next poll is the lead. Until it reads `ok`, **the live isolation posture is unverified** —
+not "fine", and not "broken". This was true under v682 as well; the difference is that it now says so.
+
+**2. THE 05:35 UTC CRON FAILURE WAS PRE-v675 CODE.** v675 (`90eb9cf`) was committed **09:16 UTC —
+3h41m AFTER** the 05:35 run (`vercel.json:209`, `"35 5 * * *"`). Every symptom in that run reproduces
+exactly against the pre-v675 blob and is already fixed at HEAD: the x-lane "10 raw ... TEXT FIELD NOT
+FOUND" line (it was counting ten `{"noResults":true}` sentinels as tweets — a monitoring lie that had
+already sent us hunting for a field-name bug twice, see the 2026-09-13 note at
+`pull-trends-cron.js:15`), the unbounded grok lane (`bound(p, undefined)` returns the promise
+unraced, so the lane ran to its own 90s and the loop could reach at most 6 of 12 brands a night),
+and the news lane's four silent zero-exits. **Tonight's 05:35 run is the first on v675+ and is the
+real test.**
+
+**3. ONE SOCKET HANG-UP ENDED THE WHOLE SEARCH LANE — STILL OPEN AT HEAD, NOW FIXED.** `callXAI`, the
+sibling that makes every other x.ai call in this app, retries up to four times with exponential
+backoff on a network error and deliberately never retries a timeout (`_llm.js:102`). `callGrokSearch`
+had **no retry at all**. Production 05:35: every brand ended in `timed out after 90s` or `request
+failed — socket hang up`, grok=0 across the board. It is not only trends — `brand-voice-chat.js`,
+`crawl-brand.js` and `reviews.js` all go through it. Same rule as the sibling, deliberately
+conservative: a network error retries ONCE, a timeout never, both bounded by the caller's deadline.
+
+**3b. ITS TIMEOUT WAS HARD-CODED AT 90s WHILE EVERY CALLER RACED IT AGAINST FAR LESS** (the cron
+computes ~45s from its remaining budget, the on-demand button passes 35s). The race resolved and the
+lane moved on, but the **socket stayed open for the full 90s** — so a retry could never have fitted
+inside the budget even if one had existed. `opts.timeoutMs` is now both the race cap and the socket
+timeout, threaded through `pullGrokTrends` (which needed a new parameter — reading the caller's
+variable there would have been a runtime `ReferenceError` that no syntax check catches; the gate
+tests for exactly that, because I nearly shipped it).
+
+**4. "8 LEFT FOR THE NEXT RUN" WAS NOT 8.** The cron printed `skipped`, which already counted every
+brand skipped for a legitimate per-brand reason earlier in the run — brands that *were* tried and are
+not waiting for anything. Only 4 were genuinely unattempted. Now reports `untried` separately.
+
+GATE: `scripts/verify/search-lane-resilience.mjs` — runs the real `callGrokSearch` against a stubbed
+socket and counts attempts; six mutations proved caught. `connections-honesty.mjs` caught the
+restructured function's exits drifting away from their log lines and the CODE was fixed, not the gate.
+
+**NOT VERIFIABLE FROM HERE — two things only you can check:**
+- **`XAI_SEARCH_MODEL` vs `XAI_MODEL` are separate env vars.** If only `XAI_MODEL` is set in Vercel,
+  `callGrokSearch` is silently using its hard-coded `'grok-4.6'` default while the rest of the app
+  uses whatever you set. I did not read `.env` or query Vercel env.
+- **`callGrokSearch` is the only function in the repo that posts to `/v1/responses`**; every other
+  x.ai call uses `/v1/chat/completions` via `callXAI`. The logs never show an HTTP status from it —
+  only timeouts and hang-ups — meaning no response ever arrived. That is consistent with an endpoint
+  or body-shape rejection, a model-name problem, OR an upstream fault, and **the code cannot tell
+  those apart and neither can I without calling x.ai.** The single cleanest experiment: point it at
+  the `/v1/chat/completions` shape the working sibling uses and see whether a response arrives.
+
+GATES: 81 of 81 green.
+
 ## ▶▶ 2026-09-18 — v683. EIGHT DEFECTS: a monitor that invented green security facts, a cron that wiped the post strip nightly, nine failure paths that kept the credit, and three silent losses in the app.
 
 Four parallel audits (one per area, read-only, every finding re-verified here by running the real code).
