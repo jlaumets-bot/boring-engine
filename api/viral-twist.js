@@ -1,7 +1,7 @@
 // Viral Twist — take an existing idea and return punchier, scroll-stopping angles.
 // Uses TIMELESS virality mechanics (no live-trend data). Stays brand-true and on-voice.
 const { callLLM } = require('./_llm');
-const { fullBrandBlock, writingCraft, rulePrecedence, extractJson } = require('./_brain');
+const { fullBrandBlock, writingCraft, rulePrecedence, extractJson, coerceShape, VIRAL_TWIST_SHAPE } = require('./_brain');
 
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
@@ -90,8 +90,12 @@ ${rulePrecedence()}`;
     });
     if (!content) return res.status(502).json({ error: 'No response from the AI — try again' });
 
-    const twist = extractJson(content);
-    if (!twist) return res.status(502).json({ error: 'Could not parse the viral twist — try again' });
+    const _raw = extractJson(content);
+    if (!_raw) return res.status(502).json({ error: 'Could not parse the viral twist — try again' });
+    // v673: the model's JSON is an untrusted SHAPE. An array or object where a string
+    // was asked for used to go straight to the client, and its `.trim()` inside
+    // the angles .forEach() threw — killing the twist panel with nothing on screen.
+    const twist = coerceShape(_raw, VIRAL_TWIST_SHAPE);
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /

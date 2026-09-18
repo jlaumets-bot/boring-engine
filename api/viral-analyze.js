@@ -2,7 +2,7 @@
 // to the brand. The human supplies the live trend (transcript/description); the AI
 // extracts the durable mechanics and produces brand-true ideas + a trend takeaway.
 const { callLLM } = require('./_llm');
-const { fullBrandBlock, extractJson } = require('./_brain');
+const { fullBrandBlock, extractJson, coerceShape, VIRAL_ANALYZE_SHAPE } = require('./_brain');
 
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
@@ -97,8 +97,12 @@ Exactly 3 items in "ideas".`;
     });
     if (!result) return res.status(502).json({ error: 'No response from the AI — try again' });
 
-    const analysis = extractJson(result);
-    if (!analysis) return res.status(502).json({ error: 'Could not parse the analysis — try again' });
+    const _raw = extractJson(result);
+    if (!_raw) return res.status(502).json({ error: 'Could not parse the analysis — try again' });
+    // v673: the model's JSON is an untrusted SHAPE. An array or object where a string
+    // was asked for used to go straight to the client, and its `.trim()` inside
+    // the analysis renderer threw — killing the analysis panel with nothing on screen.
+    const analysis = coerceShape(_raw, VIRAL_ANALYZE_SHAPE);
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /

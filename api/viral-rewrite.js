@@ -1,7 +1,7 @@
 // Viral Rewrite — regenerate a FULL post around a chosen viral angle.
 // Keeps the same format + brand truth/voice; rewrites hook + body + caption + shots + tags.
 const { callLLM } = require('./_llm');
-const { fullBrandBlock, writingCraft, rulePrecedence, extractJson } = require('./_brain');
+const { fullBrandBlock, writingCraft, rulePrecedence, extractJson, coerceShape, VIRAL_REWRITE_SHAPE } = require('./_brain');
 
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
@@ -111,8 +111,12 @@ ${rulePrecedence()}`;
     });
     if (!content) return res.status(502).json({ error: 'No response from the AI — try again' });
 
-    const rewritten = extractJson(content);
-    if (!rewritten) return res.status(502).json({ error: 'Could not parse the rewrite — try again' });
+    const _raw = extractJson(content);
+    if (!_raw) return res.status(502).json({ error: 'Could not parse the rewrite — try again' });
+    // v673: the model's JSON is an untrusted SHAPE. An array or object where a string
+    // was asked for used to go straight to the client, and its `.trim()` inside
+    // renderIdeas' .map() threw — killing the Ideas tab for the whole session with nothing on screen.
+    const rewritten = coerceShape(_raw, VIRAL_REWRITE_SHAPE);
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /

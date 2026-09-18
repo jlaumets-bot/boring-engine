@@ -87,7 +87,9 @@ const stripComments = src => src
 const WRITERS = [
   ['Sharpen on an Ideas/Pipeline card', /Object\.keys\(nw\)\.forEach\(k=>\{ if\(nw\[k\]!=null && String\(nw\[k\]\)\.trim\(\)\) i\[k\]=nw\[k\]; \}\);/, 'i', 600],
   ["Sharpen's mirror write to the IDEAS row", /if\(_src && _src !== i\)/, '_src', 600],
-  ['Viral rewrite', /if\(nw\[k\]!==undefined && nw\[k\]!==null && String\(nw\[k\]\)\.trim\(\)!==''\) i\[k\] = nw\[k\];/, 'i', 600],
+  // v673: the assign coerces through asText() now — a model can send an array where a string
+  // was asked for, and the raw value used to be persisted onto the idea (model-shape-coercion.mjs).
+  ['Viral rewrite', /if\(nw\[k\]!==undefined && nw\[k\]!==null && asText\(nw\[k\]\)\.trim\(\)!==''\) i\[k\] = asText\(nw\[k\]\);/, 'i', 600],
   ["Viral rewrite's mirror write", /if\(src && src !== i\)/, 'src', 600],
   ['Quick Post sharpen', /if\(window\._tvIdea\)/, 'window._tvIdea', 600],
   ['a hand edit to a field', /if \(key\) idea\[key\] = after;/, 'idea', 600],

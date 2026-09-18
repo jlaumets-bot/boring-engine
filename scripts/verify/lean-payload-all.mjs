@@ -94,7 +94,9 @@ const CLIENT_SRC = [
   grabLine('VL_TREND_TTL_MS'), grabLine('VL_TREND_CAP'), grabLine('CS_AVOID_MARK'),
   grabFn('defaultSettings'), grabFn('brandToSettings'), grabFn('getDayCommunities'),
   grabLine('CM_MAX_AGE_MS'), grabFn('getCompetitorMoves'),
-  grabFn('getEngine'), grabFn('getLearnedSignalsCompact'), grabFn('getApprovedExamples'),
+  grabFn('getEngine'), grabFn('getLearnedSignalsCompact'),
+  grabFn('humanEditSignals'),   /* v673: the shared edit-signal filter getApprovedExamples now calls */
+  grabFn('getApprovedExamples'),
   grabFn('getTrendStore'), grabFn('_atDismissed'), grabFn('getAutoTrends'), grabFn('getRecentTrends'),
   grabFn('getBrandContext'), grabFn('_tvBcFieldCount'),
 ].join('\n');

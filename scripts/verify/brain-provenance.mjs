@@ -135,9 +135,13 @@ if (untagged.length) {
       'will match that text back and present it to the model as the brand\'s own words:\n      ' +
       untagged.join('\n      '));
 }
-// And the consumer must actually filter on the tag.
+// And the consumer must actually filter on the tag. v673 moved that filter into the shared
+// humanEditSignals() reader (see brain-voice-truth.mjs, which owns that rule and every other
+// reader of the same store); either spelling is correct here, raw access is not.
 const consumer = html.slice(html.indexOf('function getApprovedExamples('), html.indexOf('function getApprovedExamples(') + 4000);
-if (!/\.filter\(s\s*=>\s*!s\s*\|\|\s*s\.by\s*!==\s*'ai'\)/.test(consumer)) {
+const filtersInline = /\.filter\(s\s*=>\s*!s\s*\|\|\s*s\.by\s*!==\s*'ai'\)/.test(consumer);
+const filtersShared = /humanEditSignals\(\)/.test(consumer);
+if (!filtersInline && !filtersShared) {
   bad("getApprovedExamples no longer excludes by:'ai' signals, so tagging them achieves nothing.");
 }
 // The durable copy must carry both columns, and must survive a database that lacks them.

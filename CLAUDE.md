@@ -2,6 +2,74 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v673. BATCH 2: the two SHIPS-BROKEN defects, plus two lies the brain was being told.
+
+Continues the six audits from v672. Everything below was MEASURED by running the real code, and
+every fix is pinned by a gate whose mutation arms were each proven to fail.
+
+**1. THE IDEAS TAB DIED FOR THE WHOLE SESSION, SILENTLY.** `viral-rewrite`, `viral-twist` and
+`viral-analyze` returned the model's JSON raw. `remix`/`sharpen`/`generate-ideas` were each given
+their own coercion in v666-v667; these three were missed. A model asked for `{"hook":"..."}`
+sometimes answers `{"hook":["a","b"]}`. `applyViralRewrite` writes that onto the idea AND persists
+it, then the card renderers call `idea.hook.trim()` inside a `.map()` — TypeError, escaping an
+onclick handler uncaught. Nothing renders, nothing is reported, the list just freezes; every later
+render (approve, dismiss, filter, tab switch) throws at the same line. Ideas AND Pipeline dead for
+the rest of the session with a clean screen, and the poisoned row survives a reload.
+FIX: one shared `coerceShape(value, spec)` + `toStr` in `api/_brain.js` (specs: `VIRAL_REWRITE_SHAPE`,
+`VIRAL_TWIST_SHAPE`, `VIRAL_ANALYZE_SHAPE`), wired into all three endpoints. Client belt-and-braces:
+`asText()` next to escHtml, used at both render conditions and both apply loops, so a row poisoned
+before this fix also cannot kill the tab.
+RUNNING IT FOUND A BUG IN MY OWN FIX: `{"ideas":{...}}` — a single idea object where a list was
+asked for — was `Object.values()`'d into FIVE junk fragments. Only index-like keys (`"1"`,`"2"`)
+count as a list now. A presence check would never have seen this.
+
+**2. A SHIPPED SETTINGS CHIP WAS DEAD ON TAP.** `spRenderFieldExtras` HTML-escaped (`&#39;`) a value
+going into an inline `onclick="..."`. The HTML parser DECODES the entity before the JS compiles, so
+the string literal ended at the apostrophe: `SyntaxError — missing ) after argument list`. Proven by
+compiling the real markup. `SP_CHIPS.productDetails` contains `What's included`; every AI-written
+chip in `spBrandChips` is unbounded text. The visible label was interpolated raw as well.
+FIX: `escJs(c)` for the handler slot, `escHtml(c)` for the label. `spChipClick`'s `&#39;` re-decode —
+the other half of the same bug — is gone; it silently mangled literal entity text.
+Verified: 67 handlers compile and deliver their text byte-exact, including quotes, backslashes and
+`</span><script>`.
+
+**3. THE MODEL'S OWN WRITING WAS BEING LABELLED THE FOUNDER'S VOICE.** v665 tagged AI-authored edit
+signals `by:'ai'` and filtered them in exactly ONE reader. FOUR others kept feeding them to the
+model under headings that assert they are the user's own — `"this is their real voice"` (×2), the
+`humanEditedTitles` list (which the SERVER PREFERS over its own filtered DB query), and
+`"They edit their drafts by hand (N logged)"` / `"N manual edits"`.
+MEASURED on a store of 6 typed edits + 8 model rewrites: **8 of the 8 lines under "this is their
+real voice" were model-written.** The brand brain was learning to imitate itself, and got worse the
+more Sharpen was used.
+FIX: ONE reader, `humanEditSignals()`. Five inline filters is exactly how the v665 fix came to be
+missed twice, so the gate pins the RULE — no code may read the store raw — with a named allow-list
+of the three legitimate raw readers (the filter itself, the writer, the distill payload).
+
+**4. THE 16 OLDEST TRENDS WERE BEING SENT AS "WORKING RIGHT NOW".** `getRecentTrends` sliced from the
+FRONT of `getTrendStore().concat(getAutoTrends())`. The store is oldest-first and caps at 40; the
+nightly cron appends LAST. MEASURED: **0 of 12 cron items reached the prompt**, and the 16 that did
+were the stalest in the store. After: 12/12, newest-first, duplicates keeping the fresher copy.
+
+**NEW GATES (3), all with proven mutation arms:**
+- `scripts/verify/model-shape-coercion.mjs` — 35 assertions. Imports the real `coerceShape`; lifts
+  `asText`, both render conditions and both apply loops out of app.html and RUNS them. 5/5 mutations
+  caught. Its mutation arm re-runs the pre-fix expression and requires a TypeError.
+- `scripts/verify/chip-handler-escaping.mjs` — runs the real renderer in a vm, entity-decodes every
+  handler the way a browser would, COMPILES it with `new Function`, then executes it against a fake
+  textarea and compares the landed text byte for byte. 3/3 mutations caught.
+- `scripts/verify/brain-voice-truth.mjs` — owns the whole class: the raw-read rule (derived, with a
+  named allow-list that must not rot) plus the trends ordering, both executed. 5/5 mutations caught.
+
+**GATES TOUCHED (4), all harness repairs, none a product regression — each one verified:**
+- `lean-payload.mjs` / `lean-payload-all.mjs` lift `getApprovedExamples` but not the new shared
+  reader it calls, so `_editedText` came back empty and the provenance path went untested. Added
+  `grabFn('humanEditSignals')`.
+- `brain-provenance.mjs` looked for the v665 inline filter that moved into the shared reader.
+- `teleprompter-emphasis-fresh.mjs` watches the viral apply loop, which now coerces through asText.
+
+**68 of 68 GATES GREEN** (build-stamp included — it needed file-delete permission on the Mac, which
+is now granted for this folder for the session; it writes a probe into api/ and must unlink it).
+
 ## ▶▶ 2026-09-17 — v672. SIX PARALLEL DEEP AUDITS. Batch 1 of the findings: the four that DESTROY WORK.
 **DEPLOY STATE: LIVE** (deployed and verified 2026-09-17 by the agent — contentshrimp.com/api/health returned `v672-28657680+api.d2035ce6`, matching the stamp, 22/22 checks green).
 **65 gates, 64 green.** No new SQL.

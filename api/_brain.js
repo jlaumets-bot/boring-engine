@@ -594,4 +594,75 @@ function extractJson(text) {
   return null;
 }
 
-module.exports = { antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson };
+// ── Model output is an UNTRUSTED SHAPE, not just untrusted text ────────────
+// A model asked for {"hook": "..."} will sometimes answer {"hook": ["a","b"]}
+// or {"hook": {"text": "..."}}. The client calls .trim() on those fields inside
+// a .map() render loop, so one array lands as a TypeError that escapes an
+// onclick handler uncaught: the list freezes and every later render throws
+// again — the whole tab is dead for the session with nothing on screen.
+// remix.js / sharpen.js / generate-ideas.js each grew their own coercion in
+// v666-v667; this is that logic in one place so the next endpoint gets it free.
+function toStr(v) {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return v.map(toStr).filter(Boolean).join('\n');
+  try { return Object.values(v).map(toStr).filter(Boolean).join(' '); } catch (e) { return ''; }
+}
+
+// Coerce `value` so it matches `spec`, whatever the model actually sent:
+//   'str'             → a string (anything else is flattened by toStr)
+//   'num'             → a finite number (0 when unusable)
+//   ['str']           → an array of strings
+//   [{ k: 'str' }]    → an array of objects, each coerced by the inner spec
+//   { k: 'str', ... } → an object; keys named in the spec use it, keys the
+//                       model invented become strings rather than being dropped.
+function coerceShape(value, spec) {
+  if (spec === 'num') { const n = Number(value); return Number.isFinite(n) ? n : 0; }
+  if (spec === 'str' || spec == null) return toStr(value);
+
+  if (Array.isArray(spec)) {
+    const inner = spec[0] || 'str';
+    let list = value;
+    if (list == null) list = [];
+    else if (!Array.isArray(list)) {
+      // Not a list. Two different mistakes look alike here, and telling them
+      // apart is the whole job: {"1":{...},"2":{...}} is a list keyed by index
+      // and must be spread, while {"title":...,"hook":...} is ONE item and
+      // spreading it turns one good idea into five fragments. Only index-like
+      // keys count as a list.
+      const keys = (typeof list === 'object') ? Object.keys(list) : [];
+      const indexed = keys.length > 0 && keys.every(function (k) { return /^\d+$/.test(k); });
+      if (indexed) { try { list = Object.values(list); } catch (e) { list = []; } }
+      else list = [list];
+    }
+    return list.map(function (x) { return coerceShape(x, inner); });
+  }
+
+  // Object spec.
+  let src = value;
+  if (src == null || typeof src !== 'object' || Array.isArray(src)) {
+    // A bare string where an object was asked for — park it in the spec's first
+    // string field instead of throwing the model's only answer away.
+    const first = Object.keys(spec).filter(function (k) { return spec[k] === 'str'; })[0];
+    const parked = {};
+    if (first && src != null) parked[first] = src;
+    src = parked;
+  }
+  const out = {};
+  for (const k of Object.keys(spec)) out[k] = coerceShape(src[k], spec[k]);
+  for (const k of Object.keys(src)) if (!(k in out)) out[k] = toStr(src[k]);
+  return out;
+}
+
+// The three shapes the viral lane asks models for. Keys the client reads by
+// name live here; anything else the model adds still comes back as a string.
+const VIRAL_REWRITE_SHAPE = { title: 'str', hook: 'str', script: 'str', shots: 'str', boldText: 'str', caption: 'str', tags: 'str' };
+const VIRAL_TWIST_SHAPE   = { angles: [{ angle: 'str', hook: 'str', why: 'str' }], spicy: { hook: 'str', why: 'str' }, tip: 'str' };
+const VIRAL_ANALYZE_SHAPE = {
+  whyItWorks: ['str'], hook: 'str', structure: 'str', trigger: 'str',
+  ideas: [{ format: 'str', title: 'str', hook: 'str', angle: 'str', script: 'str' }],
+  takeaway: 'str',
+};
+
+module.exports = { antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };

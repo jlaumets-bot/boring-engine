@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v672';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v673';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -12572,7 +12572,7 @@ function renderPipeline() {
         <div class="pipeline-card-info">
           <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${idea.isRemix?'<span class="remix-origin-tag">Remix</span>':''}${idea.delivery==='faceless'?'<span class="remix-origin-tag" style="background:#E7DAF9;color:#16130F;">Faceless</span>':''}
           <div class="pipeline-card-title" style="padding-right:50px">${exp?'\u25BC':'\u25B6'} ${escHtml(idea.title)}</div>
-          ${idea.hook && idea.hook.trim().toLowerCase() !== (idea.title||'').trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="pipeline-card-hook">${escHtml(idea.hook)}</div>` : ''}
+          ${idea.hook && asText(idea.hook).trim().toLowerCase() !== asText(idea.title).trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="pipeline-card-hook">${escHtml(idea.hook)}</div>` : ''}
           <div class="pipeline-card-day">${escHtml(idea.day)}${idea.originalCreator?' \u2022 via '+escHtml(idea.originalCreator):''}${idea.community?' \u2022 '+escHtml(idea.community):''}</div>
         </div>
         <div class="pipeline-card-actions" onclick="event.stopPropagation()">
@@ -12695,6 +12695,22 @@ async function autoRefillCheck(day, format) {
   }
 }
 
+/* v673 — ONE reader for "what the USER actually wrote", because five separate ones drifted.
+   Sharpen, Viral twist and the viral rewrite all log an edit signal whose `after` is the
+   MODEL's text. v665 tagged those `by:'ai'` and filtered them in ONE place (_editedText).
+   Four other readers kept feeding them to the model under headings that call them the
+   founder's own voice — "this is their real voice", "posts the user actually REWROTE",
+   "they edit their drafts by hand". Measured on a real store: 8 of the 8 lines under "this is
+   their real voice" were model-written. That is the brand brain learning to imitate itself.
+   Signals saved before v665 carry no `by` and are read as human: they predate the tagging and
+   are mostly genuine typing, so that is the conservative reading of old data. */
+function humanEditSignals() {
+  try {
+    const arr = JSON.parse(lsGet('edit_signals') || '[]');
+    return (Array.isArray(arr) ? arr : []).filter(s => s && s.by !== 'ai');
+  } catch (e) { return []; }
+}
+
 function buildLearningContext() {
   const approved = state.filter(i => ['filming','done'].includes(i.status));
   const dismissed = state.filter(i => i.status === 'dismissed');
@@ -12707,7 +12723,7 @@ function buildLearningContext() {
   }
   // The strongest taste signal: how the user rewrites our drafts. Mirror these fixes.
   try {
-    const edits = JSON.parse(lsGet('edit_signals') || '[]').slice(-8);
+    const edits = humanEditSignals().slice(-8);
     if (edits.length) {
       ctx += `\nHOW THE USER EDITS OUR DRAFTS (mirror these fixes — this is their real voice):\n` +
         edits.map(e => `• ${e.field}: was "${(e.before||'').slice(0,120)}" → they changed it to "${(e.after||'').slice(0,120)}"`).join('\n');
@@ -12890,7 +12906,7 @@ function getBrainStats(){
   const st = Array.isArray(state) ? state : [];
   const approved = st.filter(i => i.status==='filming' || i.status==='done').length;
   const dismissed = st.filter(i => i.status==='dismissed').length;
-  let edits = 0; try { edits = (JSON.parse(lsGet('edit_signals')||'[]')||[]).length; } catch(e){}
+  let edits = humanEditSignals().length;   // v673: "manual edits" must not count the model's
   const rules = (s.coachNotes||'').split('\n').map(l=>l.trim()).filter(Boolean).length;
   const signals = approved + dismissed + edits + rules;
   let last = 0;
@@ -12924,7 +12940,7 @@ function _brainFacets(){
   const s = (typeof settings==='object' && settings) ? settings : {};
   const has = (v)=> v!=null && String(v).trim().length>0;
   const st = Array.isArray(state) ? state : [];
-  let edits=0; try{ edits=(JSON.parse(lsGet('edit_signals')||'[]')||[]).length; }catch(e){}
+  let edits = humanEditSignals().length;   // v673: see _brainStats — same claim, same filter
   const approvedAny = st.some(i=>i.status==='filming'||i.status==='done');
   const dismissedAny = st.some(i=>i.status==='dismissed');
   const rules = has(s.coachNotes);
@@ -13691,7 +13707,7 @@ function _humanEditedTitles() {
     const st = Array.isArray(state) ? state : [];
     let after = [];
     try {
-      after = (JSON.parse(lsGet('edit_signals') || '[]') || [])
+      after = humanEditSignals()
         .map(s => String((s && s.after) || '').replace(/\s+/g, ' ').trim())
         .filter(t => t.length > 25);
     } catch (e) {}
@@ -13813,7 +13829,7 @@ async function generateTodayTabPost() {
   }
   // The strongest taste signal: how the user rewrites our drafts. Match these patterns.
   try {
-    const edits = JSON.parse(lsGet('edit_signals') || '[]').slice(-8);
+    const edits = humanEditSignals().slice(-8);
     if (edits.length) {
       learningContext += `\nHOW THE USER EDITS OUR DRAFTS (mirror these fixes — this is their real voice):\n` +
         edits.map(e => `• ${e.field}: was "${(e.before||'').slice(0,120)}" → they changed it to "${(e.after||'').slice(0,120)}"`).join('\n');
@@ -14219,7 +14235,7 @@ function tvApplyTwist(){
   const beforeHook = i.hook || '';
   const beforeBody = i.boldText || i.script || '';
   const _RWK = ['title','hook','script','shots','screen','boldText','caption','tags'];
-  _RWK.forEach(k => { if (nw[k] !== undefined && nw[k] !== null && String(nw[k]).trim() !== '') i[k] = nw[k]; });
+  _RWK.forEach(k => { if (nw[k] !== undefined && nw[k] !== null && asText(nw[k]).trim() !== '') i[k] = asText(nw[k]); });
   // Update the visible card in place (same pattern as Sharpen — no re-render).
   try {
     const tEl = document.querySelector('#tvResult .tp-result-title'); if (tEl && nw.title) tEl.textContent = nw.title;
@@ -14528,6 +14544,19 @@ function tvDismissWithReason(reason) {
   }
   window._todayTabIdea = null;
   generateTodayTabPost();
+}
+
+/* v673 — a field that should be text but isn't.
+   The viral endpoints now coerce their own JSON, but a row saved BEFORE that fix
+   still holds an array where `hook` should be, and `.trim()` on it throws inside a
+   render .map(), which kills the list for the session. asText flattens anything to
+   a string so no render path can die on a stored shape. */
+function asText(v) {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return v.map(asText).filter(Boolean).join('\n');
+  try { return Object.values(v).map(asText).filter(Boolean).join(' '); } catch (e) { return ''; }
 }
 
 function escHtml(s) {
@@ -15069,7 +15098,7 @@ function renderIdeas() {
             <div style="flex:1">
               <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${idea.paaSource ? '<span class="paa-badge-idea">People ask</span>' : ''}${idea.sparkSource ? '<span class="spark-badge-idea">Your idea</span>' : ''}${isFreshIdea(idea) ? '<span class="new-badge-idea">New</span>' : ''}${idea.format==='carousel'?`<button class="cm-card-btn" onclick="event.stopPropagation();openCarouselMaker(${idea.id})" title="Make Slides"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg> Slides</button>`:''}${['video','micro','qna'].includes(idea.format)?`<button class="cm-card-btn" onclick="event.stopPropagation();openBroll(${idea.id})" title="B-roll preview"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 7h5M17 17h5"/></svg> B-roll</button>`:''}
               <div class="list-card-title">${exp?'\u25BC':'\u25B6'} ${escHtml(idea.title)}</div>
-              ${idea.hook && idea.hook.trim().toLowerCase() !== (idea.title||'').trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="list-card-hook">${escHtml(idea.hook)}</div>` : ''}
+              ${idea.hook && asText(idea.hook).trim().toLowerCase() !== asText(idea.title).trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="list-card-hook">${escHtml(idea.hook)}</div>` : ''}
               ${idea.status!=='pending' ? `<span class="list-card-status s-${escAttr(idea.status)}">${escHtml(STAGE_LABELS[idea.status]||idea.status)}${idea.dismissReason?' \u2022 '+escHtml(idea.dismissReason):''}</span>` : ''}
             </div>
             <div class="list-actions" onclick="event.stopPropagation()">${_ideaSelectMode ? (isPending ? `<button class="idea-pick ${_ideaSelected.has(idea.id)?'on':''}" onclick="toggleIdeaPick(${idea.id})" aria-label="Select">${_ideaSelected.has(idea.id)?ICO.check:''}</button>` : '') : (isPending ? `
@@ -17295,7 +17324,7 @@ function applyViralRewrite(id){
   const _RWK = ['title','hook','script','shots','screen','boldText','caption','tags'];
   const _titleBefore = String(i.title || '');   // the viral rewrite can rename it — see below
   _RWK.forEach(k=>{
-    if(nw[k]!==undefined && nw[k]!==null && String(nw[k]).trim()!=='') i[k] = nw[k];
+    if(nw[k]!==undefined && nw[k]!==null && asText(nw[k]).trim()!=='') i[k] = asText(nw[k]);
   });
   tpPruneEmphasis(i);   // v669: the script just changed — see tpPruneEmphasis
   // state[] objects are CLONES of the source IDEAS array (state = IDEAS.map(...{...idea})),
@@ -20732,7 +20761,11 @@ function spUpdateQuality(key) {
 function spChipClick(key, text, chipEl) {
   const ta = document.querySelector('textarea[data-sp-field="' + key + '"]');
   if (!ta) return;
-  const decoded = text.replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+  /* v673 — the decode that used to live here was the other half of the escaping bug
+     above: the chip arrived HTML-escaped, so this undid it. The handler argument is
+     now JS-escaped and reaches us as the exact chip text, and re-decoding would
+     silently mangle a chip that really does contain "&#39;" or "&quot;". */
+  const decoded = String(text == null ? '' : text);
   const current = ta.value.trim();
   if (current && !current.endsWith('\n')) ta.value = current + '\n' + decoded;
   else ta.value = current + decoded;
@@ -20800,8 +20833,13 @@ function spRenderFieldExtras(key) {
   let html = '<div class="sp-field-extras">';
   chips.forEach((c, i) => {
     const isUsed = currentVal.toLowerCase().includes(c.toLowerCase());
-    const safe = c.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-    html += '<span class="sp-chip' + (isUsed ? ' used' : '') + '" onclick="spChipClick(\'' + key + '\',\'' + safe + '\',this)">' + c + '</span>';
+    /* v673 — this used to HTML-escape an apostrophe (&#39;) for a slot that needs
+       JS-escaping. The HTML parser decodes the entity BEFORE the JS compiles, so the
+       string literal ended at the apostrophe and the handler was a SyntaxError: the
+       chip did nothing, silently. A SHIPPED chip hit it — SP_CHIPS.productDetails has
+       "What's included" — and so does every AI-written chip in spBrandChips.
+       escJs is the escape built for exactly this slot; the visible label needs escHtml. */
+    html += '<span class="sp-chip' + (isUsed ? ' used' : '') + '" onclick="spChipClick(\'' + escJs(key) + '\',\'' + escJs(c) + '\',this)">' + escHtml(c) + '</span>';
   });
   html += '</div>';
   return html;
@@ -21849,14 +21887,9 @@ function getApprovedExamples(fmt){
     // retroactively on the library that already exists.
     let _editedText = [];
     try {
-      _editedText = (JSON.parse(lsGet('edit_signals') || '[]') || [])
-        // v665: EXCLUDE SIGNALS THE MODEL WROTE. Sharpen and Viral twist record a before/after
-        // whose `after` is the model's own text; matching that back against an approved post
-        // marked it as the founder's own writing. Only text a person actually typed is evidence
-        // of how they write. Signals from before this change carry no `by`, and are treated as
-        // human — they predate the AI-authored ones being tagged, and the older store is mostly
-        // genuine typing, so assuming human is the conservative reading of old data.
-        .filter(s => !s || s.by !== 'ai')
+      // v665 excluded model-written signals here; v673 moved that rule into
+      // humanEditSignals() so the other four readers cannot drift away from it again.
+      _editedText = humanEditSignals()
         .map(s => String((s && s.after) || '').replace(/\s+/g,' ').trim())
         .filter(t => t.length > 25);            // short fragments match too loosely to be evidence
     } catch(e) {}
@@ -22020,14 +22053,25 @@ function remixTopPost(i){
     }, 260);
   }catch(e){}
 }
+/* v673 — THIS TOOK THE 16 OLDEST TRENDS AND CALLED THEM "RIGHT NOW".
+   It read `getTrendStore().concat(getAutoTrends())` and sliced from the FRONT. The store is
+   oldest-first and caps at 40, so after one busy week the first 16 entries were up to 40 items
+   stale — and the nightly cron's items, which are appended LAST, never reached the slice at
+   all. The prompt block they feed (trendsBlock) tells the model these are working right now.
+   Sort newest-first across both sources before the cut; on a duplicate keep the fresher copy. */
 function getRecentTrends(){
+  const all = getTrendStore().concat(getAutoTrends())
+    .filter(t => t && String(t.text || '').trim())
+    .map(t => ({ text: String(t.text), ts: Number(t.ts) || 0 }))
+    .sort((a, b) => b.ts - a.ts);
   const seen = new Set(); const out = [];
-  for(const t of getTrendStore().concat(getAutoTrends())){
-    const k = (t.text || '').toLowerCase().trim();
-    if(!k || seen.has(k)) continue;
+  for(const t of all){
+    const k = t.text.toLowerCase().trim();
+    if(seen.has(k)) continue;
     seen.add(k); out.push(t.text);
+    if(out.length >= 16) break;
   }
-  return out.slice(0, 16);
+  return out;
 }
 function saveTrend(text){
   if(!text || !text.trim()) return;
@@ -24424,7 +24468,7 @@ function bvBuildBehavior() {
       if (appr.length) parts.push(`Recently approved (${appr.length}${topFmt ? `, leans ${topFmt[0]}` : ''}): ${appr.slice(-3).map(i => '"' + String(i.title || '').slice(0, 50) + '"').join(', ')}.`);
       if (dism.length) parts.push(`Recently dismissed (${dism.length}): ${dism.slice(-2).map(i => '"' + String(i.title || '').slice(0, 45) + '"' + (i.dismissReason ? ' (' + i.dismissReason + ')' : '')).join(', ')}.`);
     }
-    try { const e = JSON.parse(lsGet('edit_signals') || '[]'); if (e.length) { const last = e[e.length - 1] || {}; parts.push(`They edit their drafts by hand (${e.length} logged) — latest tweak was to the "${last.field || 'content'}".`); } } catch (e) {}
+    try { const e = humanEditSignals(); if (e.length) { const last = e[e.length - 1] || {}; parts.push(`They edit their drafts by hand (${e.length} logged) — latest tweak was to the "${last.field || 'content'}".`); } } catch (e) {}
     return parts.join('\n');
   } catch (e) { return ''; }
 }
