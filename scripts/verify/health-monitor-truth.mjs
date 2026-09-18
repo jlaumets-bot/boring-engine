@@ -49,7 +49,10 @@ process.env.APP_BASE_URL = 'https://health-gate.invalid';
 
 const fail = (m) => { console.error('FAIL: ' + m); process.exitCode = 1; };
 let failed = 0;
-const check = (cond, m) => { if (!cond) { fail(m); failed++; } };
+// Print the ok lines too. A gate that is silent when it passes hides an arm that never ran —
+// which is exactly how the two arms below first shipped asserting nothing at all (they called
+// ok(), which in this file is the PAYLOAD BUILDER, not an assertion).
+const check = (cond, m) => { if (!cond) { fail(m); failed++; } else console.log('ok: ' + m); };
 
 const https = require_('node:https');
 const realRequest = https.request;
@@ -98,10 +101,16 @@ async function run({ answer, routeStatus = 200, scale = 1 }) {
     json(b) { this._body = b; return this; }, end() { return this; },
   };
   const t0 = Date.now();
-  await handler({ method: 'GET', query: {}, headers: {} }, res);
+  // A monitor that THROWS says nothing at all, which is the same outcome as one that was never
+  // scheduled. Catch it here so the arms report a real failure instead of an unhandled rejection
+  // that scrolls past — a crash must read as "the monitor is broken", loudly.
+  let threw = null;
+  try { await handler({ method: 'GET', query: {}, headers: {} }, res); }
+  catch (e) { threw = (e && e.message) || String(e); }
   const ms = (Date.now() - t0) * scale;
   https.request = realRequest; globalThis.fetch = realFetch; global.setTimeout = realSetTimeout;
-  return { res, ms, calls };
+  if (threw) { fail('/api/health THREW instead of answering: ' + threw + ' — a monitor that crashes tells you nothing.'); failed++; }
+  return { res, ms, calls, threw };
 }
 
 const HEALTHY_AUDIT = {
@@ -164,6 +173,32 @@ const baseAnswer = (rpc) => (p) => {
   check(b.failing.includes('rls_all_tables_enabled'), 'ARM 3: rls_disabled:["takes"] must fail rls_all_tables_enabled.');
   check(b.failing.includes('no_permissive_write_policies'), 'ARM 3: a permissive write policy must fail no_permissive_write_policies.');
   check(get(b, 'isolation_audit_reachable').ok === true, 'ARM 3: the audit DID run — isolation_audit_reachable must stay true so the real findings are trusted.');
+}
+
+// ── ARM 4b: a one-row PostgREST array is unwrapped, not rejected ─────────────
+// PostgREST answers with a bare object for a scalar-returning function and a ONE-ROW ARRAY for a
+// set-returning one. Calling a working audit malformed would be a different kind of lie.
+{
+  const { res } = await run({ answer: baseAnswer(ok([HEALTHY_AUDIT])) });
+  const b = res._body;
+  check(get(b, 'isolation_audit_reachable') && get(b, 'isolation_audit_reachable').ok === true,
+     'a single-row array wrapping a real audit must be unwrapped and trusted; got meta.isolation=' + JSON.stringify(b.meta.isolation));
+  check(greenIsolation(b).length >= 6, 'and its checks must be made (got ' + greenIsolation(b).length + ')');
+}
+// ── ARM 4c: a STALE function must name the keys it is missing ────────────────
+// This is the live production case: the audit answers 200 with a real payload, but the deployed
+// SQL predates some keys. Under v682 each missing key defaulted to [] and scored GREEN, so the
+// checks it should have made were never made. "unexpected-shape" is true and useless; the owner
+// needs to know it is sql/health-check.sql that is behind, and which keys say so.
+{
+  const stale = Object.assign({}, HEALTHY_AUDIT);
+  delete stale.permissive_write_policies; delete stale.unbound_brand_tables;
+  const { res } = await run({ answer: baseAnswer(ok(stale)) });
+  const b = res._body;
+  check(greenIsolation(b).length === 0, 'a stale function must make NO green isolation claims (got ' + JSON.stringify(greenIsolation(b)) + ')');
+  const iso = String(b.meta && b.meta.isolation);
+  check(/stale-function/.test(iso) && /permissive_write_policies/.test(iso) && /unbound_brand_tables/.test(iso),
+     'and meta.isolation must name exactly which keys are missing, so the fix is obvious: ' + JSON.stringify(iso));
 }
 
 // ── ARM 4: a 200 of the wrong shape is unverified, not green ─────────────────

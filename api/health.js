@@ -178,13 +178,30 @@ module.exports = async function handler(req, res) {
   const isolationOf = (r) => {
     if (!r) return { state: 'unreachable', h: null };
     if (r.status !== 200) return { state: 'http-' + r.status, h: null };
-    const h = r.data;
-    if (!h || typeof h !== 'object' || Array.isArray(h)) return { state: 'unexpected-shape', h: null };
-    if (typeof h.has_user_brand_ids !== 'boolean') return { state: 'unexpected-shape', h: null };
-    for (const k of AUDIT_ARRAY_KEYS) if (!Array.isArray(h[k])) return { state: 'unexpected-shape', h: null };
+    // PostgREST returns a bare object for a scalar-returning function and a ONE-ROW ARRAY for a
+    // set-returning one. Unwrap the single-row case rather than calling a working audit malformed.
+    let h = r.data;
+    if (Array.isArray(h) && h.length === 1 && h[0] && typeof h[0] === 'object') h = h[0];
+    if (!h || typeof h !== 'object' || Array.isArray(h)) return { state: 'not-an-object', h: null };
+    if (typeof h.has_user_brand_ids !== 'boolean') return { state: 'not-an-audit', h: null };
+    /* v684b — NAME THE MISSING KEYS. The live answer was 'unexpected-shape', which is true and
+       useless: it does not distinguish "the database is broken" from "the deployed function is
+       older than sql/health-check.sql". Every array in that file is
+       coalesce(jsonb_agg(...), '[]'::jsonb), so a CURRENT function can never omit one — a missing
+       key means the deployed function predates the key. Under v682 each missing key silently
+       defaulted to [] and scored GREEN, so the checks it should have made were never made at all.
+       Key names are not sensitive: they are in this repo and in sql/health-check.sql. */
+    const missing = AUDIT_ARRAY_KEYS.filter(k => !Array.isArray(h[k]));
+    if (missing.length) return { state: 'stale-function, missing: ' + missing.join(','), h: null };
     return { state: 'ok', h };
   };
-  const iso = isolationOf(settled(isoR));
+  let iso = { state: 'unreachable', h: null };
+  try { iso = isolationOf(settled(isoR)); } catch (e) { iso = { state: 'unreadable', h: null }; }
+  // Belt and braces behind the shape check above: a monitor that throws is a monitor that says
+  // NOTHING, and silence from a monitor reads exactly like a monitor that was never scheduled.
+  // Proved necessary — loosening the shape check made this block throw a TypeError and 500 the
+  // whole endpoint on a payload that merely lacked a key.
+  try {
   if (iso.h) {
     const h = iso.h;
     const zeroPol = h.zero_policy_tables.filter(t => !ZERO_POLICY_ALLOWED.includes(t));
@@ -205,6 +222,11 @@ module.exports = async function handler(req, res) {
     // call never completed) each send you somewhere different. The state is a fixed string,
     // never a response body, so it leaks nothing — the same class as the route statuses below.
     console.error('health: isolation audit did not run — ' + iso.state);
+  }
+  } catch (e) {
+    console.error('health: isolation block threw — ' + ((e && e.message) || e));
+    if (!checks.some(c => c.name === 'isolation_audit_reachable')) add('isolation_audit_reachable', false);
+    iso = { state: 'threw' };
   }
 
   // ── DB reachable (simple read) ──────────────────────────────────────────────

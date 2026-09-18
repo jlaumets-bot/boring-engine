@@ -2,7 +2,7 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
-## ▶▶ 2026-09-18 — v684. THE HONEST MONITOR EARNED ITS KEEP THE HOUR IT SHIPPED: it went red, and the red was real.
+## ▶▶ 2026-09-18 — v684 + v685. THE HONEST MONITOR EARNED ITS KEEP THE HOUR IT SHIPPED: it went red, and the red was real.
 
 v683 made `/api/health` stop inventing green security facts. The first live poll after deploying it
 came back **`isolation_audit_reachable: false`** and **`cron_pull-trends-cron: {ageMin: 632, status:
@@ -16,9 +16,25 @@ is not in this database, 401/403 = the grant is wrong (see `sql/v658-revoke-secu
 `unexpected-shape` = it answered but not with an audit. The state is a fixed string, never a response
 body — same class as the route statuses already in `meta`.
 
-**⚠ OPEN AND NEEDS YOU: `security_health()` is not answering in production.** Whatever `meta.isolation`
-says on the next poll is the lead. Until it reads `ok`, **the live isolation posture is unverified** —
-not "fine", and not "broken". This was true under v682 as well; the difference is that it now says so.
+**⚠ ANSWERED, AND THE ANSWER WAS "YOUR SQL IS BEHIND" (v685).** Live `meta.isolation` came back
+`unexpected-shape` — true and useless. The RPC answers **200 with a real payload**; it is the
+DEPLOYED FUNCTION that predates `sql/health-check.sql`. Every array in that file is
+`coalesce(jsonb_agg(...), '[]'::jsonb)`, so a current function can never omit one — a missing key
+means the live function is older than the repo. `meta.isolation` now reads
+`stale-function, missing: <keys>`, which names the fix.
+
+**⚠ NEEDS YOU: run `sql/health-check.sql` in the Supabase SQL editor** (it is idempotent and
+read-only), then re-run `sql/v658-revoke-security-health.sql` to re-apply the grants. Until then the
+live isolation posture is **unverified** — not "fine", not "broken". It was equally unverified under
+v682; the difference is that the checks the missing keys would have made were scored GREEN then.
+
+**A MONITOR THAT THROWS SAYS NOTHING.** Mutation-testing the shape check found that loosening it made
+the isolation block throw a TypeError and **500 the whole endpoint** on a payload that merely lacked a
+key — the one failure mode a monitor must not have. The block is now wrapped, and the gate reports a
+crash as a loud failure instead of an unhandled rejection that scrolls past. Also found and fixed a
+bug in the gate itself: two new arms called `ok()`, which in that file is the PAYLOAD BUILDER, not the
+assertion — so they asserted nothing and both mutations escaped. `check()` now prints on success too,
+because a gate that is silent when it passes hides an arm that never ran.
 
 **2. THE 05:35 UTC CRON FAILURE WAS PRE-v675 CODE.** v675 (`90eb9cf`) was committed **09:16 UTC —
 3h41m AFTER** the 05:35 run (`vercel.json:209`, `"35 5 * * *"`). Every symptom in that run reproduces
@@ -65,7 +81,7 @@ restructured function's exits drifting away from their log lines and the CODE wa
   those apart and neither can I without calling x.ai.** The single cleanest experiment: point it at
   the `/v1/chat/completions` shape the working sibling uses and see whether a response arrives.
 
-GATES: 81 of 81 green.
+GATES: 81 of 81 green. (v685 ships in the same batch — see the isolation note above.)
 
 ## ▶▶ 2026-09-18 — v683. EIGHT DEFECTS: a monitor that invented green security facts, a cron that wiped the post strip nightly, nine failure paths that kept the credit, and three silent losses in the app.
 
