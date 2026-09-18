@@ -2,6 +2,82 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v680. NOTEBOOK/IDEA-CATCHER AUDIT. The worst defect of this whole run: adding one note during boot DELETED the list.
+
+**1. ONE NOTE ADDED DURING APP BOOT DELETED EVERYTHING ELSE.** `_listLoadOk` is initialised **all
+true**, and `initApp`'s existing-brand branch never reset it — the fresh-user branch does
+(`app.html:8415`), and `switchBrand` does (`7210`), but the path **every returning user takes** did
+not. `currentBrand` is assigned before the loads, so `saveNotebookToDB`'s `if (!currentBrand)` guard
+does not fire either. Eight awaited round trips run before the notebook list lands, while the splash
+is force-dismissed at **4s** and the nav is forced up at **5s** — the app is fully interactive with
+`notebookNotes` still `[]` and the save guard still answering *"loaded, go ahead"*.
+
+Type one note in that window and tap Save. `_replaceBrandRows` captures the real row ids, inserts the
+one new note, and DELETES the rest. Measured on a 74-note store:
+```
+notebook_notes rows BEFORE: 74
+DB calls: SELECT ids -> 74 | INSERT -> 1 | DELETE -> 50 | DELETE -> 24
+notebook_notes rows AFTER : 1     toast: "Saved to your Brand Notebook"
+```
+Same window, same outcome for **Bookmarks, Reference photos, Remixes and Prompt history.** This is
+precisely the failure the guard's own comment (`app.html:7109-7111`) was written to stop — it was
+disarmed everywhere except where it was needed. FIX: disarm in the cold-start branch too, right after
+`currentBrand` is known and **before** the first load starts; each load re-arms its own flag.
+
+**2. A FAILED LOAD RENDERED AS AN ORDINARY EMPTY LIST.** All five catch blocks set the list to `[]`
+and marked the flag false with **no toast, no log, nothing** — and `grep` proves no render path had
+ever consulted the flag (the only reads were the five save guards). So on a flaky connection the
+Notebook says *"Nothing saved yet. Jot a thought above"*, Bookmarks says *"No categories yet"*, and
+Reference photos says *"No reference photos yet"*. The user concludes their material is gone and
+retypes it — and the retype does not save either, because the guard correctly refuses, so the second
+toast is the first they hear of any problem. Ideas already had `notifyIdeasLoadFailed`; the five
+side-lists were given the flag and not the notification. FIX: `notifyListLoadFailed(kind)` (once per
+failure, re-armed by a successful load) plus honest empty states on all four surfaces. The gate's
+scan is DERIVED — every `_markListLoad(..., false)` in the file must be followed by a notification —
+so a sixth list added later cannot be silent.
+
+**3. IDEA CATCHER DICTATION WAS WRITTEN INTO A DETACHED TEXTAREA.** `#icIdea` was captured *before*
+the FileReader and the transcription round trip; `renderIdeaCatcher` replaces `view-idea`'s whole
+`innerHTML`, so switching tab and back detaches that node. Thirty seconds of speech gone, a credit
+spent, and **no message at all** — the "Could not hear that" branch only fires when the server
+returned empty text. FIX: re-query after the await, and when the screen really has gone, stash the
+transcript and offer a tap to paste it back. (`nbToggleMic` survives because `renderNotebook` only
+rewrites `#nbList` — which is what shows this was an omission.)
+
+**5. "CLEAR" DESTROYED EVERY UPLOADED PRODUCT PHOTO ON ONE TAP.** A one-word control sitting
+mid-sentence next to "Using your 6 reference photos", straight to `_replaceBrandRows` with an empty
+list. No confirm, no undo — and these are photos the user took, which nothing regenerates.
+`deleteBmCategory` and `deleteBrand` both confirm, and destroy less. Now it asks.
+
+**6. "OPEN IN IDEAS →" JUMPED TO THE WRONG POST.** The id was taken from `IDEAS.length`, but ids index
+`state`, and the two drift as soon as anything pushes to `state` alone — `autoRefillCheck` and
+`usePAAQuestion` both do. Measured: after one auto-refill, `state.length` 5 vs `IDEAS.length` 3, so
+the link expanded a refill idea while the user's new brief sat further down. It reads as "my brief
+didn't save". `nbDevelop` uses `state.length`, which is what shows this was the mistake.
+
+**8. "SAVE AS VOICE RULE" CLAIMED SUCCESS BEFORE THE WRITE.** The button locked to "✓ In Voice
+Memory" and promised every future post would follow it, then a refusal toast contradicted it — with
+the button disabled, so no obvious retry. `nbSaveNote` three functions earlier was fixed for exactly
+this in v663; this one was missed.
+
+**NEW GATE `scripts/verify/your-own-material.mjs`** — 34 assertions. The guard is RUN in both states
+with a mutation arm proving the all-true initial value really reads as "loaded"; the disarm is
+checked by ORDER, because order is the whole defect; `notifyListLoadFailed`, `prodClearRefs` and
+`nbSaveAsRule` are EXECUTED, the last against both a successful and a refused save. **6 of 6
+mutations caught.**
+
+**77 of 77 GATES GREEN.**
+
+STILL OPEN from this audit, verified but not fixed: the Idea Catcher keeps no draft, so leaving the
+tab and coming back erases everything typed there and drops the attached screenshot (`renderIdeaCatcher`
+rebuilds the view and sets `icRefImage = null`; there is no localStorage draft key anywhere).
+Deleting every bookmark category lets the loader re-migrate the pre-`__bookmarks__` competitor rows,
+so the category returns on the next reload — only affects accounts with legacy rows, which I cannot
+confirm exist in production. And `promptHistory` does not survive a round trip (saved as one column,
+loaded as bare strings, rendered as objects — `p.scene.slice()` throws), but the Prompt Generator UI
+is orphaned: no `id="promptHistory"` element and no call site for `generatePrompt()`. Dead weight
+carrying a latent throw, not a live defect.
+
 ## ▶▶ 2026-09-18 — v679. TWO MORE AUDITS (onboarding/first-run, brand switching). Three ships-broken, two of them unrecoverable by the user.
 
 **1. "DEEP SCAN MY SITE" AND "READ MY CUSTOMER REVIEWS" WROTE ONE BRAND'S BRAIN INTO ANOTHER.**

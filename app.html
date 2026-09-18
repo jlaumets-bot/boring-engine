@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v679';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v680';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -7111,6 +7111,30 @@ function renderBrandDropdown() {
 // "transient read failure + one new item = everything gone" path. Saves consult this.
 let _listLoadOk = { remixes: true, productRefs: true, bookmarks: true, promptHistory: true, notebook: true };
 function _markListLoad(k, ok) { try { _listLoadOk[k] = !!ok; } catch(e) {} }
+/* v680 — A FAILED LOAD LOOKED EXACTLY LIKE AN EMPTY ONE, AND INVITED THE USER TO START OVER.
+   Every one of the five catch blocks set the list to [] and marked the flag false — with no
+   toast, no log, nothing — and no render path has ever consulted the flag. So on a flaky
+   connection the Notebook says "Nothing saved yet. Jot a thought above", Bookmarks says "No
+   categories yet", and Reference photos says "No reference photos yet". The user concludes
+   their material is gone and retypes it; the retype does not save either (the save guard
+   correctly refuses), so the second toast is the first they hear of any problem.
+   Ideas already had this: window._ideasLoadFailed + notifyIdeasLoadFailed(). The five
+   side-lists were given the flag and not the notification. */
+const _LIST_LABELS = { remixes: 'remixes', productRefs: 'reference photos', bookmarks: 'bookmarks',
+                       promptHistory: 'prompt history', notebook: 'notebook' };
+function listLoadFailed(k) { return _listLoadOk[k] === false; }
+let _listFailWarned = {};
+function notifyListLoadFailed(k) {
+  try {
+    if (_listFailWarned[k]) return;
+    _listFailWarned[k] = true;
+    if (typeof showToast === 'function')
+      showToast("Couldn't load your " + (_LIST_LABELS[k] || k) + " — nothing has been deleted. " +
+                "Reload when your connection is back.", 8000);
+  } catch (e) {}
+}
+// A list that loaded fine clears its own warning, so a later brand switch can warn again.
+function _clearListFailWarn(k) { try { delete _listFailWarned[k]; } catch(e) {} }
 function _listLoaded(k) { try { return _listLoadOk[k] !== false; } catch(e) { return true; } }
 /* v663: A FAILED SAVE WAS SILENT ON THREE OF THE FIVE LISTS.
    _replaceBrandRows correctly returns {ok:false, error} and a gate even verifies that it reports
@@ -7242,11 +7266,11 @@ async function switchBrand(brandId) {
     // under C's brand_id — permanent cross-brand corruption from an ordinary double-tap.
     const _live = () => myToken === _switchSeq;
     await Promise.all([
-      loadRemixesFromDB().then(r => { if (_live()) { remixes = r; _markListLoad('remixes', true); } }).catch(() => { if (_live()) { remixes = []; _markListLoad('remixes', false); } }),
-      loadNotebookFromDB().then(r => { if (_live()) { notebookNotes = r; _markListLoad('notebook', true); } }).catch(() => { if (_live()) { notebookNotes = []; _markListLoad('notebook', false); } }),
-      loadProductRefsFromDB().then(r => { if (_live()) { productRefs = r; _markListLoad('productRefs', true); } }).catch(() => { if (_live()) { productRefs = []; _markListLoad('productRefs', false); } }),
-      loadBookmarksFromDB().then(r => { if (_live()) { bookmarkCategories = r; _markListLoad('bookmarks', true); } }).catch(() => { if (_live()) { bookmarkCategories = []; _markListLoad('bookmarks', false); } }),
-      loadPromptHistoryFromDB().then(r => { if (_live()) { promptHistory = r; _markListLoad('promptHistory', true); } }).catch(() => { if (_live()) { promptHistory = []; _markListLoad('promptHistory', false); } }),
+      loadRemixesFromDB().then(r => { if (_live()) { remixes = r; _markListLoad('remixes', true); _clearListFailWarn('remixes'); } }).catch(() => { if (_live()) { remixes = []; _markListLoad('remixes', false); notifyListLoadFailed('remixes'); } }),
+      loadNotebookFromDB().then(r => { if (_live()) { notebookNotes = r; _markListLoad('notebook', true); _clearListFailWarn('notebook'); } }).catch(() => { if (_live()) { notebookNotes = []; _markListLoad('notebook', false); notifyListLoadFailed('notebook'); } }),
+      loadProductRefsFromDB().then(r => { if (_live()) { productRefs = r; _markListLoad('productRefs', true); _clearListFailWarn('productRefs'); } }).catch(() => { if (_live()) { productRefs = []; _markListLoad('productRefs', false); notifyListLoadFailed('productRefs'); } }),
+      loadBookmarksFromDB().then(r => { if (_live()) { bookmarkCategories = r; _markListLoad('bookmarks', true); _clearListFailWarn('bookmarks'); } }).catch(() => { if (_live()) { bookmarkCategories = []; _markListLoad('bookmarks', false); notifyListLoadFailed('bookmarks'); } }),
+      loadPromptHistoryFromDB().then(r => { if (_live()) { promptHistory = r; _markListLoad('promptHistory', true); _clearListFailWarn('promptHistory'); } }).catch(() => { if (_live()) { promptHistory = []; _markListLoad('promptHistory', false); notifyListLoadFailed('promptHistory'); } }),
       // v643: the one loader here that assigns INTERNALLY rather than via .then(), so the v638
       // token guard applied to the other five never covered it — a superseded switch could
       // overwrite teamMembers/teamInvites (which include pending invite EMAIL ADDRESSES) with a
@@ -8349,6 +8373,18 @@ async function initApp() {
     _brandLoadFailed = false;
     hideBrandLoadError();
     currentBrand = _brandRes;
+    /* v680 — THE GUARD WAS DISARMED EVERYWHERE EXCEPT THE PATH EVERY USER TAKES.
+       _listLoadOk is initialised ALL TRUE, and this branch never reset it — the fresh-user
+       branch below does, and switchBrand does, but the ordinary cold start did not. Eight
+       awaited round trips run before the notebook list lands, while the splash clears at 4s
+       and the nav is forced up at 5s, so the app is fully interactive with `notebookNotes`
+       still [] and the save guard still saying "loaded, go ahead".
+       Type one note in that window and tap Save: _replaceBrandRows captures the 74 real rows,
+       inserts the one new note, and DELETES all 74. Toast: "Saved to your Brand Notebook".
+       Same window, same outcome for Bookmarks, Reference photos, Remixes and Prompt history.
+       This is precisely the failure the guard's own comment was written to stop. Disarm here,
+       BEFORE the awaits; each load re-arms its own flag on success. */
+    _listLoadOk = { remixes: false, productRefs: false, bookmarks: false, promptHistory: false, notebook: false };
     try { if (currentBrand && currentBrand.id) localStorage.setItem('cs_last_brand', currentBrand.id); } catch(e){}
     allBrands = await loadAllBrandsFromDB();
     debugLog('initApp: brand=' + (currentBrand ? currentBrand.id + ' "' + currentBrand.brand_name + '"' : 'null') + ', totalBrands=' + allBrands.length);
@@ -8384,11 +8420,11 @@ async function initApp() {
         notifyIdeasLoadFailed();
       }
 
-      try { remixes = await loadRemixesFromDB(); _markListLoad('remixes', true); } catch(e) { remixes = []; _markListLoad('remixes', false); }
-      try { notebookNotes = await loadNotebookFromDB(); _markListLoad('notebook', true); } catch(e) { notebookNotes = []; _markListLoad('notebook', false); }
-      try { productRefs = await loadProductRefsFromDB(); _markListLoad('productRefs', true); } catch(e) { productRefs = []; _markListLoad('productRefs', false); }
-      try { bookmarkCategories = await loadBookmarksFromDB(); _markListLoad('bookmarks', true); } catch(e) { bookmarkCategories = []; _markListLoad('bookmarks', false); }
-      try { promptHistory = await loadPromptHistoryFromDB(); _markListLoad('promptHistory', true); } catch(e) { promptHistory = []; _markListLoad('promptHistory', false); }
+      try { remixes = await loadRemixesFromDB(); _markListLoad('remixes', true); _clearListFailWarn('remixes'); } catch(e) { remixes = []; _markListLoad('remixes', false); notifyListLoadFailed('remixes'); }
+      try { notebookNotes = await loadNotebookFromDB(); _markListLoad('notebook', true); _clearListFailWarn('notebook'); } catch(e) { notebookNotes = []; _markListLoad('notebook', false); notifyListLoadFailed('notebook'); }
+      try { productRefs = await loadProductRefsFromDB(); _markListLoad('productRefs', true); _clearListFailWarn('productRefs'); } catch(e) { productRefs = []; _markListLoad('productRefs', false); notifyListLoadFailed('productRefs'); }
+      try { bookmarkCategories = await loadBookmarksFromDB(); _markListLoad('bookmarks', true); _clearListFailWarn('bookmarks'); } catch(e) { bookmarkCategories = []; _markListLoad('bookmarks', false); notifyListLoadFailed('bookmarks'); }
+      try { promptHistory = await loadPromptHistoryFromDB(); _markListLoad('promptHistory', true); _clearListFailWarn('promptHistory'); } catch(e) { promptHistory = []; _markListLoad('promptHistory', false); notifyListLoadFailed('promptHistory'); }
     } else {
       debugLog('initApp: no brand — fresh user, showing onboarding');
       /* v663: CLEAR EVERYTHING, NOT MOST OF IT.
@@ -16369,7 +16405,11 @@ function renderNotebook() {
   const list = document.getElementById('nbList');
   if (!list) return;
   if (!notebookNotes.length) {
-    list.innerHTML = renderEmptyState('\uD83D\uDCD3', 'Nothing saved yet', 'Jot a thought above — an idea, a customer quote, a rule of thumb. Develop it into a post or save it as a voice rule whenever you like.');
+    // v680: "Nothing saved yet" on a FAILED load is how a user comes to retype notes they
+    // still have. Say which of the two it is — see notifyListLoadFailed.
+    list.innerHTML = (typeof listLoadFailed === 'function' && listLoadFailed('notebook'))
+      ? renderEmptyState('⚠️', "Couldn't load your notebook", 'Nothing has been deleted — this is a loading problem. Reload the page when your connection is back. Anything you add now will not be saved.')
+      : renderEmptyState('\uD83D\uDCD3', 'Nothing saved yet', 'Jot a thought above — an idea, a customer quote, a rule of thumb. Develop it into a post or save it as a voice rule whenever you like.');
     return;
   }
   list.innerHTML = notebookNotes.map(n => `<div class="nb-note" id="nbNote-${n.id}">
@@ -16430,9 +16470,24 @@ function nbSaveAsRule(id, btn) {
   const v = note.text.trim();
   if (!lines.some(l => l.toLowerCase() === v.toLowerCase())) lines.push(v);
   settings.coachNotes = lines.join('\n');   // v634: no slice(-25) \u2014 saving a note must never delete an older rule
-  saveSettings();
-  btn.textContent = '\u2713 In Voice Memory'; btn.disabled = true;
-  if (typeof showToast === 'function') showToast('Added to Voice Memory \u2014 every future post follows this');
+  /* v680 — THIS CLAIMED SUCCESS BEFORE THE WRITE LANDED. saveSettings() returns the queued
+     brand save, whose refusal path toasts "That didn't save — the database refused it". The
+     button had already locked to "✓ In Voice Memory", so the user got a promise and then a
+     contradiction, with no obvious way to retry. nbSaveNote three functions earlier was fixed
+     for exactly this in v663 ("only say 'Saved' once it is"); this one was missed. */
+  const _prevLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving\u2026'; }
+  Promise.resolve(saveSettings()).then(function (r) {
+    if (r && r.ok === false) {
+      if (btn) { btn.disabled = false; btn.textContent = _prevLabel || 'Save as voice rule'; }
+      return;   // saveBrandToDB has already said what went wrong
+    }
+    if (btn) { btn.textContent = '\u2713 In Voice Memory'; btn.disabled = true; }
+    if (typeof showToast === 'function') showToast('Added to Voice Memory \u2014 every future post follows this');
+  }).catch(function () {
+    if (btn) { btn.disabled = false; btn.textContent = _prevLabel || 'Save as voice rule'; }
+    if (typeof showToast === 'function') showToast("That rule didn't save \u2014 try again.", 6000);
+  });
 }
 
 async function sparkDevelop() {
@@ -18581,7 +18636,13 @@ async function ideaDevelop(){
 
     const out = data.ideas[0];
     if (!_sameBrand()) { if (typeof showToast === 'function') showToast('You switched brand while that was generating, so it was not added.', 6000); return; }
-    const idx = IDEAS.length; IDEAS.push(out);
+    /* v680 — THIS ID INDEXED THE WRONG ARRAY. `id` is a position in `state`, not in IDEAS
+       (the invariant saveState/reindexIdeas maintain), and the two drift as soon as anything
+       pushes to state alone — autoRefillCheck and usePAAQuestion both do. So on an account
+       that has had one auto-refill, "Open in Ideas →" expanded and scrolled to a REFILL idea
+       while the user's new brief sat further down: it reads as "my brief didn't save".
+       nbDevelop uses state.length, which is what shows this was the mistake. */
+    const idx = state.length; IDEAS.push(out);
     state.push({ ...out, id: idx, status:'pending', assignee:'', sparkSource:true, paaSource:false, freshAt: Date.now(), day: (out.day && DAYS.includes(out.day)) ? out.day : getTodayName() });
     window._lastIdeaCatcherId = idx;
     saveState(); saveGeneratedIdeas();
@@ -18745,12 +18806,29 @@ async function icMicToggle(){
       _icRec = null; if(btn) btn.classList.remove('recording'); if(typeof hideVoicePill==='function') hideVoicePill();
       const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
       if(blob.size < 1000){ if(typeof showToast==='function') showToast('Too short — try again'); return; }
-      const ta = document.getElementById('icIdea'); const prev = ta ? ta.value : '';
+      /* v680 — THE TEXTAREA WAS CAPTURED BEFORE THE TRANSCRIPTION AND WRITTEN TO AFTER IT.
+         renderIdeaCatcher replaces view-idea's whole innerHTML, so switching tab and back
+         DETACHES this node — and the transcript was then written into an element no longer on
+         the page. Thirty seconds of speech gone, a credit spent, and no message at all (the
+         "Could not hear that" branch only fires when the server returned empty text).
+         Re-query by id after the await, and say so when it is genuinely gone. */
+      const prev = (function(){ const e = document.getElementById('icIdea'); return e ? e.value : ''; })();
       try{
         const b64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onloadend=()=>res(r.result.split(',')[1]); r.onerror=rej; r.readAsDataURL(blob); });
         const resp = await fetch('/api/transcribe-voice', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ audio:b64, format: mimeType.includes('mp4')?'mp4':'webm' })});
         const data = await resp.json();
-        if(data.text && data.text.trim()){ if(ta) ta.value = prev ? (prev.trim() + ' ' + data.text.trim()) : data.text.trim(); try{ voiceLogAdd(data.text, 'catcher', _vg); }catch(_){} }
+        if(data.text && data.text.trim()){
+          const ta = document.getElementById('icIdea');   // v680: re-queried AFTER the await
+          if(ta){ ta.value = prev ? (prev.trim() + ' ' + data.text.trim()) : data.text.trim(); }
+          else if(typeof showToast==='function'){
+            // The screen was rebuilt under us. Hand the words back rather than dropping them.
+            try { window._icLostTranscript = data.text.trim(); } catch(_){}
+            showToast('Heard you, but the Idea Catcher had closed \u2014 tap Idea Catcher to paste it back.', 9000,
+              function(){ try { switchView('idea'); setTimeout(function(){ const t = document.getElementById('icIdea');
+                if (t && window._icLostTranscript) { t.value = window._icLostTranscript; window._icLostTranscript = null; } }, 60); } catch(_){} });
+          }
+          try{ voiceLogAdd(data.text, 'catcher', _vg); }catch(_){}
+        }
         else if(typeof showToast==='function'){ showToast('Could not hear that — try again'); }
       }catch(e){ if(typeof showToast==='function') showToast('Transcription failed — try typing it'); }
     };
@@ -18942,6 +19020,14 @@ function prodAddRefs(event){
 }
 function prodClearRefs(){
   if(typeof productRefs === 'undefined' || !Array.isArray(productRefs)) return;
+  /* v680 — ONE MIS-TAP DESTROYED EVERY UPLOADED PRODUCT PHOTO, PERMANENTLY. The control is a
+     one-word "Clear" sitting mid-sentence next to "Using your 6 reference photos", and it goes
+     straight to _replaceBrandRows with an empty list, which deletes every row. These are photos
+     the user took — nothing regenerates them. deleteBmCategory and deleteBrand both confirm
+     first, and they destroy less. */
+  if (productRefs.length && typeof confirm === 'function' &&
+      !confirm('Remove all ' + productRefs.length + ' reference photo' + (productRefs.length === 1 ? '' : 's') +
+               '? You will need to upload them again.')) return;
   productRefs.length = 0;
   if(typeof saveProductRefs === 'function') saveProductRefs();
   memeRenderRefNote();
@@ -19312,7 +19398,10 @@ function renderRefGrid() {
   const el = document.getElementById('refGrid');
   if(!el) return;
   if(!productRefs.length) {
-    el.innerHTML = '<div class="ref-count-badge">No reference photos yet — add at least 2-3 angles</div>';
+    // v680: see renderNotebook.
+    el.innerHTML = (typeof listLoadFailed === 'function' && listLoadFailed('productRefs'))
+      ? '<div class="ref-count-badge">Couldn\'t load your reference photos — nothing has been deleted</div>'
+      : '<div class="ref-count-badge">No reference photos yet — add at least 2-3 angles</div>';
     return;
   }
   el.innerHTML = `<div class="ref-count-badge">${productRefs.length} reference photo${productRefs.length!==1?'s':''}</div>` +
@@ -20282,7 +20371,10 @@ const BM_PLATFORMS = [
 function renderBookmarksInner() {
   let html = '';
   if (!bookmarkCategories.length) {
-    html += '<div class="bm-empty">No categories yet. Add one below.</div>';
+    // v680: see renderNotebook — a failed load must not read as an empty one.
+    html += (typeof listLoadFailed === 'function' && listLoadFailed('bookmarks'))
+      ? '<div class="bm-empty">Couldn\'t load your bookmarks — nothing has been deleted. Reload when your connection is back.</div>'
+      : '<div class="bm-empty">No categories yet. Add one below.</div>';
   }
   bookmarkCategories.forEach(cat => {
     html += '<div class="bm-category">';
@@ -20710,7 +20802,10 @@ function handlePromptRefUpload(event) {
 function renderPromptRefGrid() {
   const grid = document.getElementById('promptRefGrid');
   if (!productRefs.length) {
-    grid.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px 0;">No reference photos yet. Add your product photos above.</div>';
+    // v680: see renderNotebook.
+    grid.innerHTML = (typeof listLoadFailed === 'function' && listLoadFailed('productRefs'))
+      ? '<div style="color:var(--text3);font-size:12px;padding:8px 0;">Couldn\'t load your reference photos — nothing has been deleted. Reload when your connection is back.</div>'
+      : '<div style="color:var(--text3);font-size:12px;padding:8px 0;">No reference photos yet. Add your product photos above.</div>';
     return;
   }
   grid.innerHTML = productRefs.map((r, i) => `
