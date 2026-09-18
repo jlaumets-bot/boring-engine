@@ -118,6 +118,8 @@ module.exports = async function handler(req, res) {
       const _billingUser = typeof _usg.billingUserFor === 'function'
         ? await _usg.billingUserFor(user.id, brandId) : user.id;
       const _gate = await require('./_usage').checkLimit(_billingUser, require('./_usage').creditsFor('meme'), 'meme');
+      // v678: direct checkLimit caller — attach the release by hand. See _usage.js.
+      if (_gate && _gate.ok && _gate.hold) require('./_usage').attachHoldRelease(res, _gate.hold);
       if (!_gate.ok) return require('./_usage').denyResponse(res, _gate);
       const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
       const enc = ((r.data || [])[0] || {}).gemini_key_enc;
@@ -168,6 +170,8 @@ module.exports = async function handler(req, res) {
       const _billingUser = typeof _usg.billingUserFor === 'function'
         ? await _usg.billingUserFor(user.id, brandId) : user.id;
       const _gate = await require('./_usage').checkLimit(_billingUser, require('./_usage').creditsFor('brandimage'), 'brandimage');
+      // v678: direct checkLimit caller — attach the release by hand. See _usage.js.
+      if (_gate && _gate.ok && _gate.hold) require('./_usage').attachHoldRelease(res, _gate.hold);
       if (!_gate.ok) return require('./_usage').denyResponse(res, _gate);
       const r = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(brandId)}&select=gemini_key_enc`);
       const enc = ((r.data || [])[0] || {}).gemini_key_enc;

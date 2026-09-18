@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v677';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v678';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
     var b=document.createElement('div'); b.id='csUpdateBanner';
@@ -9930,8 +9930,8 @@ function closeTeleprompter() {
           try { await navigator.share({ files: [file], title: 'Content Shrimp Video' }); showToast('Video shared!','success'); }
           catch(e) {
             if (_tpShareCancelled(e)) {
-              try { window._tpLastTake = { blob: blob, name: fname }; } catch(_){}
-              showToast('Not shared — your video is still here. Tap to share it again.', 9000, function(){ tpShareOrSave(blob, fname); });
+              // v678: the same nine-second-toast trap as tpShareOrSave — see the note there.
+              tpRescueTake(blob, fname);
             } else tpDownloadBlob(blob, fname);
           }
         } else { tpDownloadBlob(blob, fname); }
@@ -9993,7 +9993,29 @@ function toggleTpRecord() {
 // black slab until you hit Record, because there was simply no video behind it yet.
 // Returns false if we couldn't get the camera; `quiet` suppresses the error toast
 // (opening the prompter shouldn't nag — only pressing Record should).
+/* v678 — "THE STREAM OBJECT EXISTS" IS NOT "THE CAMERA IS LIVE".
+   A seized camera ENDS its tracks (this file says so at the mid-take guard), and the object
+   stays non-null. So: open the teleprompter, take a phone call or switch to an app that grabs
+   the camera, come back, tap Record. The recorder is built on dead tracks, start() succeeds,
+   the red Stop button and the timer both run — and the user performs a whole take against a
+   camera that captured nothing. They only find out when they tap Stop. The mid-take rescue
+   cannot help, because it binds track.onended AFTER the tracks already ended.
+   Check the tracks, and re-acquire when they are not live. */
+function tpStreamLive(stream) {
+  try {
+    const t = stream && typeof stream.getTracks === 'function' ? stream.getTracks() : [];
+    return t.length > 0 && t.some(x => x && x.kind === 'video' && x.readyState === 'live');
+  } catch (e) { return false; }
+}
 async function tpEnsureCamera(quiet) {
+  if (tpCameraStream && !tpStreamLive(tpCameraStream)) {
+    // Dead tracks. Drop them and fall through to a fresh getUserMedia rather than handing
+    // the recorder a stream that will capture nothing.
+    try { tpCameraStream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} }); } catch (e) {}
+    tpCameraStream = null;
+    try { const v = document.getElementById('tpCameraFeed'); if (v) { v.srcObject = null; v.classList.remove('active'); } } catch (e) {}
+    try { const o = document.getElementById('teleprompterOverlay'); if (o) o.classList.remove('cam-on'); } catch (e) {}
+  }
   if (tpCameraStream) return true;
   if (window._tpCamPending) { try { await window._tpCamPending; } catch(e){} return !!tpCameraStream; }
   const attempt = (async () => {
@@ -10592,8 +10614,15 @@ function tpShareOrSave(blob, fname){
           // A dismissed share sheet is not a failure: don't "save" it behind their back and don't
           // claim anything. Keep the bytes reachable and offer the share again.
           if (_tpShareCancelled(err)) {
-            try { window._tpLastTake = { blob: blob, name: fname }; } catch(e){}
-            showToast('Not shared — your video is still here. Tap to share it again.', 9000, function(){ tpShareOrSave(blob, fname); });
+            /* v678 — A NINE-SECOND TOAST WAS THE ONLY THING HOLDING A FILMED TAKE.
+               The teleprompter has already been torn down by the time this runs, so after the
+               toast expired the bytes were unreachable: `window._tpLastTake` is written here and
+               read NOWHERE (two writes, zero reads in the whole file). Tapping outside a share
+               sheet is an ordinary thing to do — wrong app, changed mind — and it cost the
+               user a take they cannot redo. tpRescueTake is the sheet this codebase already uses
+               for "the device cannot take the file": it keeps the video on screen, playable, with
+               Share and Save, and releases the hold only when the user says they have it. */
+            tpRescueTake(blob, fname);
             return;
           }
           tpDownloadBlob(blob, fname);
@@ -10959,6 +10988,10 @@ function tpSplitResult(bd, outBlob, ext, rawBlob, rawName, warn){
       const file = new File([outBlob], fname, { type: outBlob.type });
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: 'Content Shrimp Video' });
+        // v678: release the hold. Without this, _tpBlobInHand stayed true until the 15-minute
+        // failsafe, and any later plan-limit 402 told the user to "save this video first" about
+        // a video they had already shared — with no route to the Upgrade button.
+        try { if (typeof tpReleaseTake === 'function') tpReleaseTake(); } catch(e){}
         showToast('Shared ✓', 'success'); close(); return;
       }
     } catch(e) {
@@ -15660,25 +15693,60 @@ async function enableDailyPush() {
       // set, so this resolved to {data:null,error} and fell straight through to lsSet + the "ping
       // on" toast. On a dropped connection the user got "Daily idea ping on — every day at 09:00",
       // a toggle that stayed checked forever (it reads localStorage), and no notification, ever.
-      const _ins = await sb.from('push_subscriptions').insert({
+      /* v678 — tz_offset_min IS A SNAPSHOT, AND DST MOVES THE PING BY AN HOUR.
+         The offset is whatever it was the last time the app was open, and the cron has no way
+         to know it went stale. Proved against the real Europe/London zone: on 2026-10-25 a
+         09:00 ping lands at 08:00, and on 2026-03-29 at 10:00 — twice a year, for every
+         EU/US/AU user, and Sunday morning is exactly when nobody has opened the app yet.
+         The zone NAME does not go stale, so send that too and let the server work out the
+         real offset for the day it is actually sending. tz_offset_min stays as the fallback
+         for rows written before this and for a browser with no Intl. */
+      const _tzName = (function () {
+        try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch (e) { return null; }
+      })();
+      const _subRow = {
         user_id: currentUser.id,
         brand_id: _pushBrandId,
         subscription: _subJson,
         send_hour: hour,
         tz_offset_min: new Date().getTimezoneOffset(),
         motivation_on: lsGet('motivation-on') !== '0'
-      }).select('id');
+      };
+      if (_tzName) _subRow.tz_name = _tzName;
+      let _ins = await sb.from('push_subscriptions').insert(_subRow).select('id');
+      // The column is added by sql/v678-push-tz-name.sql. Until that has been run, PostgREST
+      // rejects the whole insert with PGRST204 — so retry WITHOUT it rather than leaving the
+      // person with a toggle that says on and a notification that never arrives.
+      if (_ins && _ins.error && _tzName && /tz_name/.test(String(_ins.error.message || ''))) {
+        console.warn('push_subscriptions.tz_name is missing — run sql/v678-push-tz-name.sql. ' +
+                     'Falling back to the fixed offset, which drifts by an hour across DST.');
+        delete _subRow.tz_name;
+        _ins = await sb.from('push_subscriptions').insert(_subRow).select('id');
+      }
       if (_ins && _ins.error) throw new Error(_ins.error.message || 'could not save the reminder');
     }
     // Past the gate, so currentBrand.id === _pushBrandId and bkey() resolves to the pinned brand.
     lsSet('daily-push-on', '1');
     lsSet('daily-push-hour', String(hour));
-    showToast(`Daily idea ping on — every day at ${String(hour).padStart(2, '0')}:00`);
+    /* v678 — SAY THE TIME IT ACTUALLY ARRIVES. The cron runs on the UTC hour, so a timezone
+       that is not a whole number of hours from UTC can never line up with :00 — India lands at
+       :30, Nepal at :45, Adelaide at :30. This toast promised "09:00" to all of them, every day,
+       forever. The schedule cannot be fixed without a half-hourly cron; the sentence can. */
+    showToast(`Daily idea ping on — every day at ${dailyPingClock(hour)}`);
   } catch (e) {
     showToast('Could not turn on notifications — try from the installed app');
     if (_sameBrand()) lsSet('daily-push-on', '0');
     renderSettingsPanel();
   }
+}
+
+/* The wall-clock time the daily ping really lands, for THIS device's timezone. The hourly cron
+   fires on the UTC hour, so the minutes are whatever the local offset is past the hour: 0 for
+   most places, 30 for India and Adelaide, 45 for Nepal and the Chatham Islands. */
+function dailyPingClock(hour) {
+  let mins = 0;
+  try { mins = ((-new Date().getTimezoneOffset()) % 60 + 60) % 60; } catch (e) { mins = 0; }
+  return String(hour).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
 }
 
 // Proactive one-time prompt — the app asks for you, you just tap Enable + approve.
@@ -15754,10 +15822,25 @@ async function syncPushTimezone() {
     const sub = await reg.pushManager.getSubscription();
     if (!sub || !sub.endpoint) return;
     _pushTzSyncedAt = Date.now();
-    await sb.from('push_subscriptions')
-      .update({ tz_offset_min: new Date().getTimezoneOffset() })
-      .eq('user_id', currentUser.id)
-      .eq('subscription->>endpoint', sub.endpoint);
+    // v678: keep the zone name current too — see enableDailyPush. And READ the result: this
+    // write had a bare catch, and supabase-js does not throw on an HTTP error, so a failed
+    // timezone sync was invisible for an hour while the ping kept arriving at the old time.
+    const _tzName = (function () {
+      try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch (e) { return null; }
+    })();
+    const _patch = { tz_offset_min: new Date().getTimezoneOffset() };
+    if (_tzName) _patch.tz_name = _tzName;
+    let _up = await sb.from('push_subscriptions').update(_patch)
+      .eq('user_id', currentUser.id).eq('subscription->>endpoint', sub.endpoint).select('id');
+    if (_up && _up.error && _tzName && /tz_name/.test(String(_up.error.message || ''))) {
+      delete _patch.tz_name;
+      _up = await sb.from('push_subscriptions').update(_patch)
+        .eq('user_id', currentUser.id).eq('subscription->>endpoint', sub.endpoint).select('id');
+    }
+    if (_up && (_up.error || !(_up.data && _up.data.length))) {
+      _pushTzSyncedAt = 0;   // do not sit on a failed sync for an hour — try again next call
+      console.warn('push timezone sync did not update any row', _up && _up.error);
+    }
   } catch (e) {}
 }
 
@@ -16706,9 +16789,36 @@ function canvasDownloadPng(canvas, filename, say) {
     try {
       canvas.toBlob(blob => {
         if (!blob) { tell("Couldn't build the image file — try again."); return finish(false); }
+        /* v678 — THIS RETURNED TRUE THE MOMENT a.click() HAD BEEN CALLED, and its own header
+           said "true only when a file was really handed to the browser". A script-driven
+           <a download> click is INERT in an iOS home-screen PWA and in the Instagram/TikTok
+           in-app browsers — nothing is written and no error is raised. The app SHIPS as an
+           installable PWA. So "Download All 8 Slides" counted eight successes and said
+           "Downloaded 8 slides!" with zero files written. _tpDownloadsInert already detects
+           exactly this and was never consulted here; memeDownload already shares instead.
+           Share where downloading does nothing, and never claim a file that was not produced. */
+        const a = document.createElement('a');
+        const inert = (typeof _tpDownloadsInert === 'function') ? _tpDownloadsInert(a) : false;
+        if (inert) {
+          try {
+            const file = window.File ? new File([blob], filename, { type: 'image/png' }) : null;
+            if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+              navigator.share({ files: [file], title: filename })
+                .then(() => finish(true))
+                .catch(err => {
+                  // Dismissing the sheet is a choice, not a failure — say nothing and claim nothing.
+                  if (err && err.name === 'AbortError') return finish(false);
+                  tell("This browser won't save files on its own — press and hold the image to save it.");
+                  finish(false);
+                });
+              return;
+            }
+          } catch (e) {}
+          tell("This browser won't save files on its own — press and hold the image to save it.");
+          return finish(false);
+        }
         try {
           const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
           a.href = url; a.download = filename;
           document.body.appendChild(a); a.click(); a.remove();
           setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 2000);

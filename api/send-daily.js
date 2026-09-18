@@ -79,14 +79,52 @@ module.exports = async function handler(req, res) {
       // user_id is selected because brand_id cannot be trusted without it: the row's owner
       // is the only thing that says whether the brand it names is theirs to read. Without
       // this column no ownership check is even expressible here.
-      subs = await sbGet(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
-        `/rest/v1/push_subscriptions?select=id,user_id,brand_id,subscription,send_hour,tz_offset_min,last_sent_at,motivation_on`);
+      /* v678: tz_name rides along so the offset can be recomputed for the day we are actually
+         sending (see offsetFor below). A database that has not had sql/v678-push-tz-name.sql
+         run yet answers 400 for an unknown column — and a 400 here means NOBODY gets a push,
+         so fall back to the old column list rather than failing the whole run. The fallback
+         behaves exactly as v677 did: a fixed offset that drifts an hour across DST. */
+      const _cols = 'id,user_id,brand_id,subscription,send_hour,tz_offset_min,last_sent_at,motivation_on';
+      try {
+        subs = await sbGet(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+          `/rest/v1/push_subscriptions?select=${_cols},tz_name`);
+      } catch (e1) {
+        console.error('send-daily: could not read tz_name (run sql/v678-push-tz-name.sql) — ' +
+          'falling back to the stored offset, which drifts by an hour across DST: ' + ((e1 && e1.message) || e1));
+        subs = await sbGet(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+          `/rest/v1/push_subscriptions?select=${_cols}`);
+      }
     } catch (e) {
       console.error('send-daily: subscriber read FAILED — 0 pushes attempted this run:', (e && e.message) || e);
       return res.status(500).json({ error: 'subscriber read failed', detail: String((e && e.message) || e).slice(0, 200) });
     }
 
     const nowUtc = new Date();
+    /* v678 — DST MOVED THE PING BY AN HOUR, TWICE A YEAR, FOR EVERY EU/US/AU USER.
+       tz_offset_min is a SNAPSHOT taken the last time the app was open, and it is only
+       refreshed inside a successful /api/usage call — so on the changeover Sunday the row
+       still carries Saturday's offset, and Sunday morning is exactly when nobody has opened
+       the app. Measured against the real Europe/London zone: 2026-10-25 a 09:00 ping lands at
+       08:00; 2026-03-29 it lands at 10:00.
+       A zone NAME does not go stale. When the row has one, work out the offset for TODAY;
+       otherwise fall back to the stored number, which is what every pre-v678 row has. */
+    const offsetFor = (sub, when) => {
+      const name = sub && sub.tz_name;
+      if (name) {
+        try {
+          // Format the same instant in the zone, read it back as if it were UTC, and the
+          // difference IS the offset. getTimezoneOffset()'s sign convention: west is positive.
+          const f = new Intl.DateTimeFormat('en-US', { timeZone: name, hour12: false,
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const p = {};
+          for (const part of f.formatToParts(when)) p[part.type] = part.value;
+          const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+          return Math.round((when.getTime() - asUtc) / 60000);
+        } catch (e) { /* an unknown zone name falls through to the stored offset */ }
+      }
+      return Number(sub && sub.tz_offset_min) || 0;
+    };
     /* v677 — THE 20-HOUR DEDUPE SWALLOWED A WHOLE DAY AFTER EASTWARD TRAVEL.
        The app corrects tz_offset_min when it is next opened. Moving east makes the next
        scheduled UTC send EARLIER, so the gap from the previous send is (24 - delta) hours —
@@ -104,10 +142,11 @@ module.exports = async function handler(req, res) {
        overlap collapse rather than stack. */
     const _seenEndpoint = new Set();
     const due = (subs || []).filter(s => {
-      const localHour = ((nowUtc.getUTCHours() - ((Number(s.tz_offset_min) || 0) / 60)) % 24 + 24) % 24;
+      const off = offsetFor(s, nowUtc);          // v678: today's real offset, not last week's
+      const localHour = ((nowUtc.getUTCHours() - (off / 60)) % 24 + 24) % 24;
       if (Math.floor(localHour) !== s.send_hour) return false;
       if (s.last_sent_at &&
-          localDayKey(new Date(s.last_sent_at), s.tz_offset_min) === localDayKey(nowUtc, s.tz_offset_min)) return false;
+          localDayKey(new Date(s.last_sent_at), offsetFor(s, new Date(s.last_sent_at))) === localDayKey(nowUtc, off)) return false;
       const ep = (s.subscription && s.subscription.endpoint) || '';
       if (ep) { if (_seenEndpoint.has(ep)) return false; _seenEndpoint.add(ep); }
       return true;
@@ -216,7 +255,7 @@ module.exports = async function handler(req, res) {
              day from the browser clock. Tapping the notification could open a different day's
              plan than the one the brief was written for. Name the day, in the SUBSCRIBER's
              local time — this is their morning, not the server's. */
-          const _localNow = new Date(nowUtc.getTime() - (Number(sub.tz_offset_min) || 0) * 60000);
+          const _localNow = new Date(nowUtc.getTime() - offsetFor(sub, nowUtc) * 60000);
           const _dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][_localNow.getUTCDay()];
           const gen = await postJson(`${host}/api/generate-ideas`,
             { count: 1, brandContext: bc, forUserId: sub.user_id, forBrandId: brandId || null,

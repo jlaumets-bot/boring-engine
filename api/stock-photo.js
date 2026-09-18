@@ -25,7 +25,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   // Auth — this proxy spends OUR Pexels quota, so it is not open.
-  const _g = await guard(req, 'stockphoto');
+  const _g = await guard(req, 'stockphoto', res);
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
 
   // ENFORCE THE GATE WE ALREADY PAID FOR. guard() only CHECKS the allowance; its `over`

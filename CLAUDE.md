@@ -2,6 +2,93 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-18 — v678. THE TWO DEFERRED ONES, PLUS A TELEPROMPTER AUDIT: A FILMED TAKE COULD BE LOST.
+
+**1. A FAILED RUN KEPT THE CREDIT.** `releaseHold()` existed and had **zero handler call sites**, so
+every 4xx/5xx after an admitted gate left the reservation standing for the full 6-minute TTL — and a
+live reservation counts toward `used`. Measured by running the real `api/_usage.js` against an
+in-memory PostgREST: a free user at 38/40 hits two provider errors, receives **nothing**, reads
+40/40, and the next real generation is refused with *"Your free posts are used up · Upgrade to Pro ·
+€24/mo"*. They are pushed toward paying for credits they never spent. Endpoints that fail this way
+in one click are ordinary: an unreachable URL, an unparseable transcript, a provider 502.
+FIX: the release is attached to the **response**, not threaded through ~25 handlers' error paths —
+the one error path that got missed would have been invisible. `res.json` is patched (not
+`res.on('finish')`, because a serverless instance can be frozen the moment the response is sent, so
+work started in a finish listener may never run — whereas every handler here does
+`return res.status(x).json(y)` and the platform awaits the handler). `guard(req, action, res)` at 24
+call sites; the three direct `checkLimit` callers attach it by hand. After the fix: two failed runs
+leave the user at 38/40, not 40/40.
+
+**2. DST MOVED THE DAILY PING BY AN HOUR, TWICE A YEAR, FOR EVERY EU/US/AU USER.**
+`push_subscriptions.tz_offset_min` is a SNAPSHOT taken the last time the app was open, refreshed only
+inside a successful `/api/usage` call — so on the changeover Sunday the row carries Saturday's
+offset, and Sunday morning is exactly when nobody has opened the app. Proved against Node's real IANA
+zone data: 2026-10-25 a 09:00 ping lands at **08:00**; 2026-03-29 at **10:00**.
+FIX: the row now carries the zone NAME (`Intl.DateTimeFormat().resolvedOptions().timeZone`), which
+never goes stale, and `send-daily` computes the real offset for the day it is actually sending.
+**RUN `sql/v678-push-tz-name.sql`** — idempotent, nullable, no backfill. Every fallback is pinned by
+the gate: a row with no name, an unknown name, and a database where the column has not been added yet
+all behave exactly as v677 did rather than throwing or sending nothing. Swept all 365 days of 2026:
+the ping fires exactly once a day, at the right wall-clock hour, on both switches.
+
+**3. HALF-HOUR TIMEZONES WERE PROMISED A TIME THEY NEVER GET.** The cron runs on the UTC hour, so
+India lands at :30, Nepal at :45, Adelaide at :30 — under a toast saying "every day at 09:00". The
+schedule cannot be fixed without a half-hourly cron; the sentence can, and now says the real time.
+
+**TELEPROMPTER AUDIT — the surface where lost work cannot be redone. Three ships-broken:**
+
+**4. A DISMISSED SHARE SHEET LOST THE TAKE NINE SECONDS LATER.** `tpShareOrSave` calls
+`closeTeleprompter()` BEFORE sharing, and the review card and split sheet are already gone — so on a
+cancelled share the only thing holding the bytes was a **9-second toast's closure**.
+`window._tpLastTake` looked like the safety net: **written in two places, read in none** (grep proves
+it). Tapping outside a share sheet is an ordinary thing to do — wrong app, changed mind — and it cost
+a take that cannot be refilmed. FIX: both torn-down paths now open `tpRescueTake`, the sheet this
+codebase already uses for "this device cannot take the file" — video on screen, playable, Share and
+Save, hold released only when the user says they have it. The split-screen result sheet was already
+correct and is untouched; the gate checks all three call sites.
+
+**5. A TAKE COULD RECORD NOTHING WHILE THE UI SAID "RECORDING" FOR THE WHOLE PERFORMANCE.**
+`tpEnsureCamera` returned `true` on the mere existence of the stream object. A seized camera ENDS its
+tracks and leaves the object in place — so after a phone call or an app switch the recorder was built
+on dead tracks, `start()` succeeded, the red Stop button and the timer both ran, and the user
+performed the entire take against nothing, finding out only when they tapped Stop. The mid-take
+rescue cannot help: it binds `track.onended` AFTER the tracks already ended. FIX: check
+`readyState === 'live'` and re-acquire when it is not. A live camera is still reused, with no extra
+permission prompt.
+
+**6. EVERY CANVAS DOWNLOAD CLAIMED SUCCESS WHERE `<a download>` DOES NOTHING.** `canvasDownloadPng`
+returned true the moment `a.click()` had been called, under a header reading *"true only when a file
+was really handed to the browser"*. A script-driven `<a download>` is INERT in an iOS home-screen PWA
+and in the Instagram/TikTok in-app browsers — nothing written, no error raised — and the app ships as
+an installable PWA. **"Download All 8 Slides" counted eight successes and said "Downloaded 8 slides!"
+with zero files written.** `_tpDownloadsInert` already detected exactly this and was never consulted
+here; `memeDownload` already shared instead. FIX: share where downloading does nothing, and never
+claim a file that was not produced. An ordinary browser is byte-for-byte unchanged.
+
+**7.** The split-screen success path never released the take, so `_tpBlobInHand` stayed true for 15
+minutes and any later plan-limit 402 said *"save this video first"* about a video already shared —
+with no route to the Upgrade button.
+
+**NEW GATES (3):** `hold-refund.mjs` (runs the real `_usage.js` against an in-memory PostgREST; also
+pins the two over-corrections — a 2xx must never refund, and an error after a successful log must
+not), `push-timezone-truth.mjs` (real IANA zones, both switches, a 365-day sweep, two mutation arms
+requiring the pre-fix 08:00/10:00), `take-never-lost.mjs` (drives the real share/camera/download
+paths). **10 of 10 mutations caught.**
+
+**GATE TOUCHED:** `daily-push-timing.mjs` lifted the due filter but not the new `offsetFor` helper it
+calls — the same harness gap as the v674 lean-payload one. Re-anchored, still green.
+
+**75 of 75 GATES GREEN.**
+
+STILL OPEN from the teleprompter audit, verified but not fixed: the brand-voice coach mic has no
+length cap and a long dictation is silently discarded against Vercel's ~4.5MB body limit (every other
+mic path in the app auto-stops at 30-60s; `bvStartMic` has none, and `bvVoiceUnavailable` only warns
+once per page load). Emphasis marks that straddle a line break are dropped AND suppress the fallback
+heuristic, so a marked script can render with NO emphasis at all. Five mic paths declare the stream
+inside the `try`, so their `catch` cannot stop the tracks — the OS mic indicator stays lit after a
+"could not access microphone" message. And there is no `beforeunload`/`popstate` anywhere, so an
+Android hardware Back during review destroys an in-memory take with no warning.
+
 ## ▶▶ 2026-09-18 — v677. TIME/SCHEDULING AUDIT. The daily push could kill its own run, skip a day, or arrive three times.
 
 **1. THE RUN BUDGET WAS ARITHMETICALLY SHORT, SO THE FUNCTION COULD BE KILLED MID-LOOP.** The only

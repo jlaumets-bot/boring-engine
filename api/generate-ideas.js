@@ -173,6 +173,9 @@ module.exports = async function handler(req, res) {
     // to its generic push, which carries nothing we had to generate.
     if (_billingUser) {
       const _gate = await _usage.checkLimit(_billingUser, _usage.creditsFor('ideas'), 'ideas');
+      // v678: this path calls checkLimit directly, so guard() cannot attach the release — do it
+      // here, or a failed generation keeps the credit for the full hold TTL. See _usage.js.
+      if (_gate && _gate.ok && _gate.hold) _usage.attachHoldRelease(res, _gate.hold);
       if (!_gate.ok) return _usage.denyResponse(res, _gate);
     }
 

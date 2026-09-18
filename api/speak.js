@@ -10,7 +10,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const _g = await require('./_usage').guard(req, 'speak');
+  const _g = await require('./_usage').guard(req, 'speak', res);
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
   if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
 

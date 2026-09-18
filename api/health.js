@@ -237,7 +237,7 @@ module.exports = async function handler(req, res) {
       // guard() is used instead of a bare getUser so the plan limit and the fuse both apply;
       // it is scoped to THIS branch only, so the plain GET the crons and the app poll stays
       // public, unauthenticated and free, and /api/health still always answers 200.
-      const _g = await require('./_usage').guard(req, 'healthping');
+      const _g = await require('./_usage').guard(req, 'healthping', res);
       if (!_g.user) {
         grok = { ok: null, reason: 'sign in to run the live check' };
       } else if (_g.over) {

@@ -54,10 +54,13 @@ const sw = fs.readFileSync(path.join(ROOT,'sw.js'),'utf8');
 let fail=0; const ok=(c,m)=>{ if(!c){console.log('FAIL:',m);fail++;} else console.log('ok:',m); };
 
 // ── the REAL due filter, lifted verbatim ──────────────────────────────────────
-const i = sd.indexOf('    const localDayKey =');
-const seg = sd.slice(i, sd.indexOf('    });', i) + 7);
+// v678: the due filter calls offsetFor() to get the subscriber's REAL offset for today
+// (see push-timezone-truth.mjs), so lift from there — a slice that starts at localDayKey
+// leaves the helper behind and the filter throws.
+const i = sd.indexOf('    const offsetFor = (sub, when) =>');
+const seg = sd.slice(i, sd.indexOf('    });', sd.indexOf('const due = (subs || []).filter')) + 7);
 const runDue = (subs, nowUtc) => {
-  const c = { console, subs, nowUtc, Date, Number, Set, Math };
+  const c = { console, subs, nowUtc, Date, Number, Set, Math, Intl };
   vm.createContext(c);
   return vm.runInContext(seg + '\n;due;', c);
 };
@@ -141,7 +144,9 @@ ok(runDue([sub({ subscription:{} })], at('2026-09-22T09:00:00Z')).length === 1, 
   ok(/gaps: \[\{ day: _dayName \}\]/.test(sd), 'send-daily now names the day it wants');
   const m = sd.match(/const _localNow = ([^;]+);/);
   ok(!!m, '_localNow is gone');
-  const c = { Date, Number }; vm.createContext(c);
+  // v678: _localNow now resolves the offset through offsetFor(), so the helper must be in scope.
+  const offSeg = sd.slice(sd.indexOf('    const offsetFor = (sub, when) =>'), sd.indexOf('\n    };', sd.indexOf('    const offsetFor = (sub, when) =>')) + 7);
+  const c = { Date, Number, Intl }; vm.createContext(c); vm.runInContext('var ' + offSeg.trim().replace(/^const /, ''), c);
   for (const [tz, iso, want] of [[0,'2026-09-22T09:00:00Z','Tuesday'], [300,'2026-09-22T02:00:00Z','Monday'],
                                  [-660,'2026-09-22T22:00:00Z','Wednesday']]) {
     c.nowUtc = new Date(iso); c.sub = { tz_offset_min: tz };

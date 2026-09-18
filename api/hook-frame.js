@@ -87,7 +87,7 @@ module.exports = async function handler(req, res) {
     // fetches of up to 4MB each. The hosts are fixed (i.ytimg.com / tiktok.com), so it
     // was a bandwidth amplifier rather than a general SSRF — but there is no reason to
     // spend our egress on someone who is not signed in.
-    const _g = await require('./_usage').guard(req, 'hookframe');
+    const _g = await require('./_usage').guard(req, 'hookframe', res);
     if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
     if (_g.over) {
       return require('./_usage').denyResponse(res, _g.gate);

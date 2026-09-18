@@ -25,7 +25,7 @@ const RULES_MAX = 40, RULE_CAP = 300, EDIT_FIELD_CAP = 80,
 const cap = (v, n) => String(v == null ? '' : v).slice(0, n);
 
 module.exports = async function handler(req, res) {
-  const _g = await require('./_usage').guard(req, 'distill');
+  const _g = await require('./_usage').guard(req, 'distill', res);
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
   if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
   try {

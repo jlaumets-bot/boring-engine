@@ -372,6 +372,13 @@ function takePending(userId, action) {
   if (!list.length) PENDING_HOLDS.delete(k);
   return h;
 }
+// Is this exact reservation still outstanding? Token-exact, so a second concurrent call for
+// the same (user, action) can never be mistaken for this one.
+function isPending(hold) {
+  if (!hold) return false;
+  const list = PENDING_HOLDS.get(pendingKey(hold.userId, hold.action));
+  return !!(list && list.some(h => h.token === hold.token));
+}
 function dropPending(hold) {
   if (!hold) return;
   const k = pendingKey(hold.userId, hold.action);
@@ -1041,7 +1048,41 @@ function claimedBrandId(req) {
 // ceiling would be checked while the seat's row grew, and nothing would ever reach a limit.
 // Note that `gate` therefore describes the OWNER's plan/used/limit when a seat is over — a
 // teammate seeing "the brand's plan is out of posts" is the intended message.
-async function guard(req, action) {
+/* v678 — A FAILED RUN KEPT THE CREDIT. releaseHold() existed and had ZERO handler call
+   sites, so every 4xx/5xx after an admitted gate left the reservation standing for the full
+   6-minute TTL, and a live reservation counts toward `used`. Measured: a free user at 38/40
+   hits two provider errors, receives nothing, and reads 40/40 — then the upgrade wall. They
+   are pushed toward paying for credits they never spent.
+
+   Threading a release through ~25 handlers' error paths would need an edit at every `return
+   res.status(...)` in the file set, and the one that got missed would be invisible. So the
+   release is attached to the RESPONSE instead: when a handler answers 4xx/5xx and its
+   reservation is still outstanding (logUsage settles it by token, so a successful call has
+   already taken it), the credit goes back before the response is flushed.
+
+   Why patching res.json and not res.on('finish'): a serverless instance can be frozen the
+   moment the response is sent, so work started in a 'finish' listener may never run. Handlers
+   here all `return res.status(x).json(y)`, and the platform awaits the handler — so returning
+   the release's promise from json() makes it complete before the function can be frozen. The
+   cost is one DB round trip, on the error path only. A handler that does not `return` its
+   json() still gets a best-effort release, which is what it has today minus the waiting. */
+function attachHoldRelease(res, hold) {
+  if (!res || !hold || typeof res.json !== 'function' || res.__csHoldPatched) return;
+  res.__csHoldPatched = true;
+  const origJson = res.json.bind(res);
+  res.json = function (body) {
+    let code = 200;
+    try { code = Number(res.statusCode) || 200; } catch (e) {}
+    if (code < 400 || !isPending(hold)) return origJson(body);
+    // Give the credit back first, then answer. Never let a release failure swallow the response.
+    return Promise.resolve()
+      .then(() => releaseHold(hold))
+      .catch((e) => { try { console.error('hold release failed on a ' + code + ' response:', (e && e.message) || e); } catch (_) {} })
+      .then(() => origJson(body));
+  };
+}
+
+async function guard(req, action, res) {
   const user = await require('./_requireUser')(req);
   if (!user) return { user: null, over: false };
   const brandId = claimedBrandId(req);
@@ -1051,6 +1092,8 @@ async function guard(req, action) {
   const gate = await checkLimit(billingUserId, creditsFor(action), action, { brandId: brandId });
   // `hold` is returned for a handler that wants to settle or release it explicitly; handlers
   // that ignore it still reconcile, because logUsage() looks the hold up by (user, action).
+  // v678: an admitted gate holds a credit. If the handler ends in an error, give it back.
+  if (gate && gate.ok && gate.hold && res) attachHoldRelease(res, gate.hold);
   return { user, over: !gate.ok, gate, billingUserId, hold: gate.hold || null };
 }
 
@@ -1065,4 +1108,4 @@ module.exports = {
   // Reservations — the concurrency control. Exported so a gate/harness can drive them
   // directly and so a handler with a long tail of its own can release one early.
   HOLD_PREFIX, HOLD_TTL_MS, RESERVATIONS_ON,
-  createHold, releaseHold, parseHoldAction, isHoldAction, holdActionFor, denyResponse };
+  createHold, releaseHold, isPending, attachHoldRelease, parseHoldAction, isHoldAction, holdActionFor, denyResponse };

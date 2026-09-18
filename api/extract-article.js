@@ -15,7 +15,7 @@ module.exports = async function handler(req, res) {
   // fetched an arbitrary public URL and returned its body. That is an authenticated
   // general-purpose web proxy running on our IP reputation, callable without bound.
   // Now metered like everything else, so abuse costs the caller their own allowance.
-  const _eaGuard = await require('./_usage').guard(req, 'extractarticle');
+  const _eaGuard = await require('./_usage').guard(req, 'extractarticle', res);
   if (!_eaGuard.user) return res.status(401).json({ error: 'Please sign in again.' });
   if (_eaGuard.over) {
     const _r = _eaGuard.gate && _eaGuard.gate.reason;

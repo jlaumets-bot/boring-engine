@@ -21,7 +21,7 @@ module.exports = async function handler(req, res) {
   // Google-Doc sync — was retired in v636 along with the whole Master Prompt feature.
   const _cbBody = req.body || {};
   const _cbAction = 'crawlbrand';
-  const _cbGuard = await require('./_usage').guard(req, _cbAction);
+  const _cbGuard = await require('./_usage').guard(req, _cbAction, res);
   const _cbUser = _cbGuard.user;
   if (!_cbUser) return res.status(401).json({ error: 'Please sign in again.' });
   // ONBOARDING MUST NEVER BE BLOCKED. The wizard's very first step calls this to build a
