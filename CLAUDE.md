@@ -2,6 +2,56 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-19 — v686. THE TRENDS CRON IS FIXED AND GREEN. The one lane still dead is Grok web-search, and the timeout was measuring the wrong thing.
+
+**LAST NIGHT'S RUN, 05:35 UTC, on v675+v684 — verbatim:**
+```
+pull-trends-cron: lanes this run — grok=0 news=30 x=0 | updated=3 skipped=5 (noKeywords=0, noItems=5) failed=0
+```
+`updated=3`, **no "ran out of budget"**, heartbeat `status:"ok"`, and `/api/health` is 16/17. Compare
+the 2026-09-18 run: `updated=0`, budget exhausted, only 4 of 12 brands attempted. The budget fix
+works. The x-lane line is now honest too — *"the scraper reported NO MATCHING TWEETS ... Nothing is
+wrong with the parser"* instead of the old "TEXT FIELD NOT FOUND" that sent us hunting twice.
+
+**THE CALL SHAPE IS NOT WRONG — VERIFIED AGAINST THE LIVE DOCS.** docs.x.ai documents exactly what
+the code sends: `POST /v1/responses`, `input`, `tools:[{type:'web_search'}]`, model `grok-4.6`. The
+web_search tool takes only `filters.allowed_domains` / `excluded_domains` /
+`enable_image_understanding` / `enable_image_search` — **there is no parameter that bounds how much
+searching it does**, so the work cannot be made to fit a budget from our side.
+
+**THE MECHANISM: `req.setTimeout` IS NODE'S SOCKET *INACTIVITY* TIMEOUT, NOT A TOTAL ONE.** A
+non-streaming agentic search sends **zero bytes while it works**, so "still thinking" and "dead
+socket" are the same event to us. Every call died this way — at 90s before v684, at 45s after, and
+**never once with an HTTP status**. A rejected key answers 401; a rate limit answers 429; nothing
+arrived at all. That is the signature of a long silence, not a rejection.
+
+**FIXED BY STREAMING** (`stream: true`), which the docs support. Bytes flow, so the idle timer only
+fires on real silence, and an **absolute deadline — which the old code never had** — is what bounds
+the call. Parsing is deliberately shape-tolerant: any `delta` string is appended and any event
+carrying a whole response wins, so nothing depends on knowing x.ai's event names, and a server that
+ignores `stream` and sends one JSON body still parses. Partial text is **reported but never
+returned** — every caller parses this as whole JSON and half an array is worse than none.
+
+**EVERY OUTCOME NOW LOGS first-byte latency, bytes, events and elapsed vs budget.** The next run will
+say *how long the search actually takes* instead of only that it did not fit. That number decides the
+next move, and nothing before it was a measurement.
+
+GATE: `scripts/verify/search-lane-resilience.mjs` grew an SSE-speaking stub. Four mutations proved
+caught: dropping `stream:true`, removing the absolute deadline, returning partial text, ignoring
+deltas. **Two harness bugs found and fixed in the gate itself:** the stub cleared the idle timer on
+first byte instead of RE-ARMING it the way a real socket does, which made a stalled stream look
+survivable; and with no wall clock a missing deadline made the gate HANG instead of fail — a gate
+that hangs is a gate nobody runs, and that is exactly how that mutation first escaped.
+
+**STILL RED, STILL NEEDS YOU:** `isolation_audit_reachable` —
+`meta.isolation: "stale-function, missing: permissive_write_policies,unbound_brand_tables"`. Run
+`sql/health-check.sql` in the Supabase SQL editor, then re-run `sql/v658-revoke-security-health.sql`.
+
+**x=0 IS NOT A BUG.** Apify genuinely reports no matching tweets for the current keywords. That is a
+`deriveKeywords()` question, not a parser one.
+
+GATES: 81 of 81 green.
+
 ## ▶▶ 2026-09-18 — v684 + v685. THE HONEST MONITOR EARNED ITS KEEP THE HOUR IT SHIPPED: it went red, and the red was real.
 
 v683 made `/api/health` stop inventing green security facts. The first live poll after deploying it

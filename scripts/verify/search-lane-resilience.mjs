@@ -40,23 +40,51 @@ const ok = (c, m) => { if (c) console.log('ok: ' + m); else { console.error('FAI
 const https = require_('node:https');
 const realRequest = https.request;
 
-// behave(n) decides what the nth attempt does: 'hangup' | 'silence' | {status, body}
+// behave(n) decides what the nth attempt does:
+//   'hangup'  — socket error
+//   'silence' — accepted, then nothing at all (the idle timer owns it)
+//   {sse:[...], gapMs} — a real event-stream, optionally drip-fed
+//   {status, body} — one buffered JSON body
 async function run(behave, opts) {
   let attempts = 0;
+  const timers = [];
   https.request = (o, cb) => {
     const n = ++attempts;
     const req = new EventEmitter();
-    req.write = () => {}; req.destroy = () => {};
-    let timer = null;
-    req.setTimeout = (ms, fn) => { timer = setTimeout(fn, ms); };
+    req.write = () => {};
+    let idle = null, killed = false;
+    req.destroy = () => { killed = true; if (idle) clearTimeout(idle); };
+    req.setTimeout = (ms, fn) => { idleFn = fn; idleMs = ms; idle = setTimeout(fn, ms); timers.push(idle); };
+    // A real socket RE-ARMS its inactivity timer on every byte. Clearing it once (as this stub
+    // first did) makes a stalled stream look survivable and hides the missing absolute deadline.
+    let idleFn = null, idleMs = 0;
+    const bump = () => { if (idle) clearTimeout(idle); if (idleFn) { idle = setTimeout(idleFn, idleMs); timers.push(idle); } };
     req.end = () => setTimeout(() => {
       const a = behave(n);
-      if (a === 'silence') return;                       // never answers: the timeout owns it
-      if (timer) clearTimeout(timer);
-      if (a === 'hangup') return req.emit('error', new Error('socket hang up'));
+      if (a === 'silence') return;                       // never answers: the idle timer owns it
+      if (a === 'hangup') { if (idle) clearTimeout(idle); return req.emit('error', new Error('socket hang up')); }
       const resp = new EventEmitter();
+      if (a.sse) {
+        resp.statusCode = a.status || 200;
+        resp.headers = { 'content-type': 'text/event-stream' };
+        cb(resp);
+        let t = 0;
+        const gap = a.gapMs || 5;
+        a.sse.forEach((chunk) => {
+          t += gap;
+          const h = setTimeout(() => { if (killed) return; bump(); resp.emit('data', Buffer.from(chunk)); }, t);
+          timers.push(h);
+        });
+        if (!a.neverEnds) {
+          const h = setTimeout(() => { if (killed) return; resp.emit('end'); }, t + gap);
+          timers.push(h);
+        }
+        return;
+      }
+      if (idle) clearTimeout(idle);
       resp.statusCode = a.status;
-      cb(resp); resp.emit('data', a.body); resp.emit('end');
+      resp.headers = { 'content-type': 'application/json' };
+      cb(resp); resp.emit('data', Buffer.from(a.body)); resp.emit('end');
     }, 1);
     return req;
   };
@@ -64,12 +92,28 @@ async function run(behave, opts) {
   delete require_.cache[p];
   const { callGrokSearch } = require_(p);
   const t0 = Date.now();
-  const out = await callGrokSearch('find me some trends', opts);
+  // NO ARM MAY HANG. Without this a missing absolute deadline stalls the gate instead of failing
+  // it, and a gate that hangs is a gate nobody runs — which is exactly how that mutation escaped.
+  const WALL = ((opts && opts.timeoutMs) || 90000) + 5000;
+  const out = await Promise.race([
+    callGrokSearch('find me some trends', opts),
+    new Promise(r => { const h = setTimeout(() => r('__HUNG__'), WALL); timers.push(h); }),
+  ]);
   https.request = realRequest;
+  timers.forEach(t => { try { clearTimeout(t); } catch (_) {} });
+  if (out === '__HUNG__') { ok(false, 'callGrokSearch NEVER SETTLED within ' + WALL + 'ms (budget ' + ((opts && opts.timeoutMs) || 90000) + 'ms) — nothing bounds the call, so in production the platform kills the whole function instead.'); return { out: null, attempts, ms: Date.now() - t0, hung: true }; }
   return { out, attempts, ms: Date.now() - t0 };
 }
+const sseEvent = (o) => 'data: ' + JSON.stringify(o) + '\n\n';
 
 const GOOD = { status: 200, body: JSON.stringify({ output: [{ content: [{ type: 'output_text', text: 'a trend' }] }] }) };
+// A realistic event-stream: text arrives as deltas, then one completed response.
+const GOOD_SSE = { sse: [
+  sseEvent({ type: 'response.output_text.delta', delta: 'a ' }),
+  sseEvent({ type: 'response.output_text.delta', delta: 'trend' }),
+  sseEvent({ type: 'response.completed', response: { output: [{ content: [{ type: 'output_text', text: 'a trend' }] }] } }),
+  'data: [DONE]\n\n',
+] };
 
 // ── 1. a network error retries ONCE, and can still succeed ───────────────────
 {
@@ -118,7 +162,51 @@ const GOOD = { status: 200, body: JSON.stringify({ output: [{ content: [{ type: 
   ok(r.attempts === 1 && r.out === null, 'a 429 is a real answer and is not retried here (attempts=' + r.attempts + ')');
 }
 
-// ── 7. both callers hand it a deadline, so the race and the socket agree ─────
+// ── 7. a streamed answer is read, and the caller's deadline is ABSOLUTE ──────
+// This is the production failure. Every call on 2026-09-19 ended in "timed out", never once an
+// HTTP status — at 90s before v684 and at 45s after. The shape is not wrong (docs.x.ai documents
+// exactly this endpoint and body), and no parameter bounds how much searching the model does.
+// req.setTimeout is Node's socket INACTIVITY timeout, so a non-streaming agentic search — which
+// sends zero bytes while it works — is indistinguishable from a dead socket. Streaming keeps
+// bytes flowing so the idle timer only fires on real silence, and an ABSOLUTE deadline (which the
+// old code never had) is what bounds the call.
+{
+  const r = await run(() => GOOD_SSE, { maxTokens: 100, timeoutMs: 20000 });
+  ok(r.out === 'a trend', 'a streamed answer is assembled into text (' + JSON.stringify(r.out) + ')');
+  ok(r.attempts === 1, 'in one attempt');
+}
+{
+  // Deltas only, no completed event — the text must still come through.
+  const r = await run(() => ({ sse: [
+    sseEvent({ delta: 'half ' }), sseEvent({ delta: 'a trend' }), 'data: [DONE]\n\n',
+  ] }), { maxTokens: 100, timeoutMs: 20000 });
+  ok(r.out === 'half a trend', 'deltas alone are enough when no completed event arrives (' + JSON.stringify(r.out) + ')');
+}
+{
+  // THE REAL ONE: bytes keep trickling, so the idle timer never fires. Without an absolute
+  // deadline this call runs until the platform kills the whole function.
+  const t0 = Date.now();
+  const r = await run(() => ({ sse: Array.from({ length: 400 }, (_, i) => sseEvent({ delta: 'x' + i })), gapMs: 30, neverEnds: true }),
+                      { maxTokens: 100, timeoutMs: 6000 });
+  const el = Date.now() - t0;
+  ok(el < 9000, 'a stream that never finishes is cut off at the caller\'s budget (' + el + 'ms for 6000ms) — ' +
+     'the idle timer alone would never fire while bytes keep arriving, and the function would be killed instead');
+  ok(r.out === null, 'and it returns null rather than half a JSON array, which every caller would fail to parse');
+}
+{
+  // A server that ignores `stream` and sends one JSON body must still work.
+  const r = await run(() => GOOD, { maxTokens: 100, timeoutMs: 20000 });
+  ok(r.out === 'a trend', 'a buffered (non-streaming) answer is still parsed (' + JSON.stringify(r.out) + ')');
+}
+{
+  const src = fs.readFileSync(path.join(ROOT, 'api/_llm.js'), 'utf8');
+  ok(/stream: true/.test(src), 'the request asks for a stream');
+  ok(/first byte /.test(src) && /bytes, /.test(src) && /events, /.test(src),
+     'and every outcome logs first-byte latency, bytes and events, so the next run says how long ' +
+     'the search actually takes instead of only that it did not fit');
+}
+
+// ── 8. both callers hand it a deadline, so the race and the socket agree ─────
 {
   const tr = fs.readFileSync(path.join(ROOT, 'api/_trends.js'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, '');
@@ -131,7 +219,7 @@ const GOOD = { status: 200, body: JSON.stringify({ output: [{ content: [{ type: 
      '(reading a caller-only variable here would be a ReferenceError at runtime, which no syntax check catches)');
 }
 
-// ── 8. the cron reports work outstanding, not work done-and-skipped ──────────
+// ── 9. the cron reports work outstanding, not work done-and-skipped ──────────
 {
   const cr = fs.readFileSync(path.join(ROOT, 'api/pull-trends-cron.js'), 'utf8');
   ok(/untried \+= \(due\.length - i\)/.test(cr) && /'ms — updated ' \+ updated \+\s*\n?\s*', ' \+ untried \+ ' not attempted/.test(cr.replace(/\r/g, '')),
