@@ -49,15 +49,26 @@ function sameInstant(a, b) {
 
 // Find the user this event belongs to. The database lookup is tried on BOTH keys before we
 // fall back to the object's metadata — which is the only thing that works for a first purchase.
+/* v687 — `lookupFailed` is now distinct from `unresolved`. userIdByStripe answers {unknown:true}
+   when it could not read at all, and a database we could not reach is not a customer we do not
+   have. The metadata fallback still runs (a checkout carries user_id, so most first purchases
+   survive a blip), but if nothing resolves AND a lookup failed, the caller answers 5xx so Stripe
+   redelivers instead of 200, which would have discarded a paid event for good. */
 async function resolveUserId({ subscriptionId, customerId, metaUserId }) {
-  let id = subscriptionId ? await usage.userIdByStripe({ subscriptionId }) : null;
-  if (id) return { userId: id, via: 'subscription_id' };
-  id = customerId ? await usage.userIdByStripe({ customerId }) : null;
-  if (id) return { userId: id, via: 'customer_id' };
+  let lookupFailed = false;
+  const tryLookup = async (arg) => {
+    const r = await usage.userIdByStripe(arg);
+    if (r && typeof r === 'object' && r.unknown) { lookupFailed = true; return null; }
+    return r || null;
+  };
+  let id = subscriptionId ? await tryLookup({ subscriptionId }) : null;
+  if (id) return { userId: id, via: 'subscription_id', lookupFailed };
+  id = customerId ? await tryLookup({ customerId }) : null;
+  if (id) return { userId: id, via: 'customer_id', lookupFailed };
   if (metaUserId && typeof metaUserId === 'string' && metaUserId.trim()) {
-    return { userId: metaUserId.trim(), via: 'metadata' };
+    return { userId: metaUserId.trim(), via: 'metadata', lookupFailed };
   }
-  return { userId: null, via: 'unresolved' };
+  return { userId: null, via: lookupFailed ? 'lookup_failed' : 'unresolved', lookupFailed };
 }
 
 // Write the plan ONLY if the row does not already say exactly this. Stripe redelivers, and the
@@ -87,7 +98,13 @@ function stripeGet(path, secret) {
       resp.on('data', c => d += c);
       resp.on('end', () => {
         let j = null; try { j = JSON.parse(d); } catch (_) {}
-        if (resp.statusCode >= 400) return reject(new Error((j && j.error && j.error.message) || ('Stripe ' + resp.statusCode)));
+        if (resp.statusCode >= 400) {
+          // v687: carry the status out. Without it every failure looked identical to the caller,
+          // so "this event does not exist" and "Stripe was unreachable" got the same answer.
+          const err = new Error((j && j.error && j.error.message) || ('Stripe ' + resp.statusCode));
+          err.status = resp.statusCode;
+          return reject(err);
+        }
         resolve(j);
       });
     });
@@ -112,7 +129,24 @@ module.exports = async function handler(req, res) {
     // Re-fetch the real event from Stripe (authenticity check).
     let evt = null;
     try { evt = await stripeGet('/v1/events/' + encodeURIComponent(evtId), secret); }
-    catch (e) { return res.status(200).json({ ok: true, ignored: 'event not found' }); }
+    catch (e) {
+      /* v687 — A PAYMENT COULD BE DROPPED BY A NETWORK BLIP. Every failure of this re-fetch
+         answered 200 "event not found", with NO LOG AT ALL. 200 tells Stripe the webhook was
+         delivered, so it never retries — and this re-fetch is the FIRST thing the handler does,
+         before any plan is granted. A timeout, a socket error, a 429 or a Stripe 5xx therefore
+         meant: the customer paid, the plan was never granted, and nothing anywhere recorded it.
+         Only a DEFINITE answer may be acknowledged. A 404 or 400 means the event genuinely is
+         not there (a bogus id, or a test-mode id against a live key) and retrying cannot help.
+         Anything else is unknown, and Stripe redelivers for 3 days — comfortably inside the 72h
+         replay window checked below, so a retry still applies cleanly. */
+      const st = Number(e && e.status) || 0;
+      const definite = st === 404 || st === 400;
+      console.error('stripe-webhook: could not re-fetch event ' + evtId + ' — ' +
+        (st ? ('Stripe ' + st) : 'transport/timeout') + ': ' + ((e && e.message) || e) +
+        (definite ? ' — treating as genuinely absent' : ' — returning 503 so Stripe retries'));
+      if (definite) return res.status(200).json({ ok: true, ignored: 'event not found' });
+      return res.status(503).json({ ok: false, error: 'event_refetch_failed' });
+    }
     if (!evt || !evt.type) return res.status(200).json({ ok: true, ignored: 'no event' });
 
     // REPLAY GUARD. The re-fetch above proves the event is AUTHENTIC but says nothing
@@ -145,10 +179,18 @@ module.exports = async function handler(req, res) {
       const subId = s.subscription || null;
       const meta = s.metadata || {};
       const plan = validPlan(meta.plan) || 'pro';
-      const { userId, via } = await resolveUserId({
+      const { userId, via, lookupFailed } = await resolveUserId({
         subscriptionId: subId, customerId,
         metaUserId: meta.user_id || s.client_reference_id
       });
+      if (!userId && lookupFailed) {
+        // v687: "we could not look them up" is not "they do not exist". A paid checkout must not
+        // be acknowledged on a database blip — 503 makes Stripe redeliver, and the next attempt
+        // resolves normally once the database answers.
+        console.error('stripe-webhook: PAID, AND THE USER LOOKUP FAILED — checkout session=' + (s.id || 'none') +
+          ' customer=' + customerId + ' sub=' + subId + ' evt=' + evtId + ' — returning 503 so Stripe retries.');
+        return res.status(503).json({ ok: false, error: 'user_lookup_failed' });
+      }
       if (!userId) {
         console.error('stripe-webhook: PAID BUT UNRESOLVABLE — checkout session=' + (s.id || 'none') +
           ' customer=' + customerId + ' sub=' + subId + ' evt=' + evtId +
@@ -275,7 +317,14 @@ module.exports = async function handler(req, res) {
 
     return res.status(200).json({ ok: true });
   } catch (e) {
-    console.error('stripe-webhook error:', e.message);
-    return res.status(200).json({ ok: true }); // never make Stripe retry on our bug
+    /* v687 — "never make Stripe retry on our bug" IS BACKWARDS. Our bug is exactly the case
+       where a retry helps: the payment already happened, and every path that reaches here has
+       NOT applied it. Answering 200 threw the event away permanently. Stripe retries for 3 days
+       and then surfaces the failure in the dashboard, which is a far better outcome than a
+       silently lost payment — and every deterministic-failure path above already answers 200
+       on purpose, so only genuine surprises land here. */
+    console.error('stripe-webhook: UNHANDLED — the event was NOT applied. Returning 503 so Stripe retries. ' +
+      ((e && e.stack) || (e && e.message) || e));
+    return res.status(503).json({ ok: false, error: 'unhandled' });
   }
 };

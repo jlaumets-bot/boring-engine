@@ -947,6 +947,13 @@ async function setPlan(userId, plan, extra) {
 }
 
 // Reverse lookup: find the user behind a Stripe subscription/customer (for webhooks).
+/* v687 — THE THIRD PLACE A FAILED READ POSED AS AN ANSWER (after stripeCustomerId in v683 and
+   the health audit in v685). This collapsed an unreachable database into `null`, the same value
+   it returns for "no user has this Stripe id", and logged nothing. Its caller, the webhook's
+   resolveUserId, turns null into "unresolvable" — which for a subscription event means a plan
+   change is refused, and for a checkout means a PAID customer is recorded as unresolvable and
+   acknowledged with 200. A Supabase blip and a genuinely unknown customer must not look alike.
+   Returns: a string (the user id) | null (read succeeded, nobody matches) | {unknown:true}. */
 async function userIdByStripe(opts) {
   try {
     let filter = null;
@@ -954,8 +961,12 @@ async function userIdByStripe(opts) {
     else if (opts && opts.customerId) filter = 'stripe_customer_id=eq.' + encodeURIComponent(opts.customerId);
     else return null;
     const rows = await sbRequest('GET', `/rest/v1/user_plans?${filter}&select=user_id`);
-    return (Array.isArray(rows) && rows[0]) ? rows[0].user_id : null;
-  } catch (e) { return null; }
+    if (!Array.isArray(rows)) { console.error('userIdByStripe: unexpected shape for ' + filter); return { unknown: true }; }
+    return rows[0] ? rows[0].user_id : null;
+  } catch (e) {
+    console.error('userIdByStripe FAILED — ' + ((e && e.message) || e));
+    return { unknown: true };
+  }
 }
 
 // The billing-relevant state of a user_plans row, for callers that must decide whether a
