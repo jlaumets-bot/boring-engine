@@ -2,6 +2,98 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-19 — v687. SPLIT SCREEN, PART 1: four ways a finished video was destroyed or lied about. Plus the audio question is ANSWERED.
+
+Three parallel audits of the whole split-screen feature (render/record, content lane, delivery).
+This ships the four that destroy or misreport a finished video; the rest are listed at the bottom.
+
+**⚑ THE BIGGEST OPEN QUESTION IN THIS FILE IS RESOLVED — AND THE ANSWER IS "IT'S FINE".**
+`CLAUDE.md` has carried *"does `vid.volume = 0` in renderSplitScreen silence the CAPTURED audio? If
+it does, EVERY split screen is silent"* since v553. The W3C Media Capture from DOM Elements spec
+settles it: *"Muting the audio on a media element does not cause the capture to produce silence …
+Similarly, **the audio level or volume of the media element does not affect the volume of captured
+audio**."* (https://w3c.github.io/mediacapture-fromelement/). So `volume = 0` is CORRECT as written —
+it is what stops the take blaring out of the speaker during the render — and split screens have
+sound. Consequences to clean up later, not bugs: the comment at `:11301` asserting *"A muted media
+element captures a silent audio track"* is wrong by the same spec sentence, which makes the
+"unmute and retry" at `:11312` a no-op and `if (vid.muted)` at `:11321` dead code. NOT verified on a
+device; one real recording would confirm the engine matches the spec.
+
+**1. THE UPDATE BANNER COULD DELETE A FINISHED VIDEO.** The service worker is re-checked **every 60
+seconds** and on every `visibilitychange`; a split-screen build takes **minutes** (measured worst
+case 509s–1709s, so 8–28 update checks inside one build). The banner is `z-index:100000` — above the
+result sheet (50000) and above the rescue sheet (99999) — has **no dismiss button, only "Refresh"**,
+and that button called `location.reload()` **with no check of `_tpBlobInHand`**. Nothing in this app
+persists a take or a render (`indexedDB` count in app.html: **0**; no `beforeunload`), so one tap on
+a black pill that appeared over their video threw away the take AND the render, with no warning and
+no way back. The 402 paywall branch was hardened for exactly this in v678 (*"nothing may navigate
+the page while a take is in hand"*); the update banner was never brought in line. It now waits, and
+arrives once the take is delivered. Added `window._spBusy` covering the whole offer→result flow,
+because `tpHoldTake`'s 15-minute failsafe is taken ONCE and a long build outruns it.
+
+**2. CANCEL THREW AWAY A VIDEO THAT HAD ALREADY FINISHED.** The cancel button aborts through a 700ms
+watchdog poll — and `finish()` CLEARS that interval. So the 15s muxer flush and the 4s drift probe
+that follow the frame loop run with **nothing watching `_spCancel`**. In that ~19-second window the
+promise resolves with a complete, correct video and `if (window._spCancel) return;` dropped it. The
+button reads **"Stop and just save my video"**, which is exactly what someone watching a bar sit at
+99% will tap. This codebase's own rule for the filmed take is **IT STOPS, IT NEVER DISCARDS**
+(`:8868`); the render did not honour it. Now: if the bytes exist, they are offered, with the plain
+video still one tap away.
+
+**3. A HEADER-ONLY FILE SHIPPED AS "0.0 MB · ready to post", AND LEAKED ON THE WAY OUT.**
+`TP_MIN_TAKE_BYTES` (8192) exists because *"a recorder that emitted a container header and no frames
+yields a few hundred bytes — truthy"*. It guards the FILMED take at **four** sites and guarded the
+RENDER OUTPUT at **none** — only `!blob.size` did. A 400-byte file reached the sheet as ready to
+post, and both honesty checks are blind to it: `partial` compares `dur` to `lastT` (equal, the loop
+ran to the end) and the drift probe resolves 0 on `probe.onerror`, which is what a header-only file
+triggers. **The same line leaked everything:** `return reject(...)` RESOLVES rather than throws, so
+the catch holding the only other `_wl.release()` and `_spReleaseRender()` never ran — the screen
+wake lock stayed held for the life of the page and the 1440×2560 canvas track plus the borrowed
+audio track stayed live. The failure sheet offers "Try the split again", so every retry leaked
+another set: precisely the scenario the v660 note at `:11176` says it fixed.
+
+**4. THE "WE GUESSED YOUR TAKE'S LENGTH" WARNING WAS NEVER SHOWN.** `_spDurEstimated` is set when the
+phone will not report the take's duration, and the render then builds to a guess of
+`beats.length * 3.25s`. Its comment says *"surfaced on the result sheet"* — it was **written twice
+and read NOWHERE**. Measured: a 180-second take came back as a **19.5-second** clip labelled *"Your
+split screen ✓ · ready to post"*, losing 160.5s, with both honesty checks reading clean because they
+measure the output against the guess. **The gate made it worse:** `render-honesty.mjs` asserted only
+that the flag is SET — a presence check on a write-only variable, i.e. it reported the bug as fixed.
+That arm now EXECUTES the real `_estMsg`/`_warn` expressions and requires a warning to come out,
+with its opposite arm (a measured render must NOT warn) so an always-warn fix fails too.
+
+GATES: 82 of 82 green. New: `scripts/verify/split-screen-never-lost.mjs` — runs the real banner code
+against a fake DOM; six mutations proved caught. `render-honesty.mjs` ITEM2 re-anchored from
+pattern-matching to execution.
+
+**STILL OPEN IN SPLIT SCREEN — verified, not fixed, roughly by harm:**
+- **Beat timing collapses.** `tpBeatTimesFromVoice:12371` gives every word past the last recognised
+  one the SAME timestamp, and cue matching runs against the SCRIPT DOM, not what was heard — so `ok`
+  is always high and the fallbacks at `:12417` never run. Measured on a 45s take: beats 2 and 3
+  flash for 0.70s (unreadable) and beat 4 sits for 38.8s, while the sheet reports **"matched 4/4"**.
+- **iPhone is offered a feature that always fails.** The offer gate `:10940` checks **canvas**
+  captureStream; the render requires **element** captureStream (`:11264`), which Safari does not
+  expose. The user waits through the beats call and up to six 40s photo fetches, spends credits,
+  then gets a failure sheet. The check could move to the offer.
+- **`sub` is cut mid-word** at 42/44 chars (`:11600`, `:11628`) against a 110-char server cap — and
+  the cut is in the wrong unit: measured, an all-caps sub at 44 chars is 683px against a 720px
+  canvas and runs off the edge, while ordinary prose loses 33 characters that would have fitted.
+- **`sub` on `chips` beats is shown in the preview and never drawn in the video** (`:9675` vs
+  `:11601-11612`). The user approves a sentence that is not in the export.
+- **The preview's duration is fiction** — footer says `beats.length * 3.25` ("4 beats · 13.00s")
+  while the video is the length of the take. Server-side `duration` has zero readers.
+- **The B-roll preview re-pays on every tap** — `openBrollIdea:9736` never calls `beatsCacheGet`,
+  unlike `beatsForIdea:10876`. ~1.6 credits a look; three looks ≈ 12% of a free month.
+- **Every stock-photo failure is silent and identical** — missing key, revoked key, 429, timeout, no
+  match, 402 all collapse into one bare `return` at `:11692`; the server's `reason` has zero readers.
+- **Budgets:** `api/video-beats.js` (285s timeout + retry loop) overruns its 300s; `api/meme.js`
+  (45s+50s) and `api/hook-frame.js` (45s + 2×12s) overrun their 60s. On a kill the user sees a raw
+  JSON parse error from Vercel's own 504 page. `timeout-budgets.mjs` passes them all — it multiplies
+  `callLLM` timeouts and is blind to non-LLM timeouts and to the retry loop.
+- **`rec.onerror` is never assigned**; a truncated recording is reported as a "timing wobble".
+- **Memory:** 20 Mbps at 1440×2560 = 2.5 MB/s. Measured 429 MB for a 180s take, with raw + output
+  alive together = **858 MB**, plus up to 78 MB of decoded stock photos held for the session.
+
 ## ▶▶ 2026-09-19 — v686. THE TRENDS CRON IS FIXED AND GREEN. The one lane still dead is Grok web-search, and the timeout was measuring the wrong thing.
 
 **LAST NIGHT'S RUN, 05:35 UTC, on v675+v684 — verbatim:**

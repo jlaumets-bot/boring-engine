@@ -96,6 +96,7 @@ const APP = process.argv[2] ||
 const src = fs.readFileSync(APP, 'utf8');
 
 const fails = [];
+import vm from 'node:vm';
 const ok = (cond, msg) => { if (!cond) fails.push(msg); };
 
 /* ── slicing app.html ────────────────────────────────────────────────────────
@@ -404,6 +405,51 @@ if (render) {
        'ITEM2: the render falls back to guessing the length of the take and does not set ' +
        '_spDurEstimated, so nothing on the result sheet says so. The person is shown a video that ' +
        'may stop a third of the way through their take and told it is ready to post.');
+  }
+  /* v687 — AND IT MUST BE READ. Setting the flag was the whole of this check for four versions,
+     and the flag was written TWICE and read NOWHERE, so the sentence above described a warning the
+     person could never see. A presence check on a write-only variable is worse than no check: it
+     reports the bug as fixed. Assert the reader, in the function that builds the result sheet. */
+  {
+    const offer = fnSource('tpOfferSplit');
+    /* RUN IT, don't match it. A textual check here is what let the original bug ship: the flag
+       was written twice, read nowhere, and every pattern that mentioned its NAME passed. So lift
+       the two real declarations and execute them with the flag set, and require a warning to come
+       out the other side. `false && window._spDurEstimated` passes a regex; it fails this. */
+    const estDecl  = (offer.match(/const _estMsg = [\s\S]*?;\n/) || [])[0];
+    const warnDecl = (offer.match(/const _warn = [\s\S]*?;\n/) || [])[0];
+    ok(!!estDecl && !!warnDecl, 'ITEM2: could not find the _estMsg / _warn declarations — re-anchor this arm.');
+    if (estDecl && warnDecl) {
+      const run = (flag, out) => {
+        // `const` inside runInContext does not leak onto the context object, so end the script
+        // with the expression itself and take runInContext's return value.
+        const ctx = { window: { _spDurEstimated: flag }, out };
+        vm.createContext(ctx);
+        return vm.runInContext(estDecl + warnDecl + '\n_warn', ctx);
+      };
+      const clean = { partial: false, drift: 0, estSec: 19.5 };
+      const guessed = run(true, clean);
+      ok(typeof guessed === 'string' && guessed.length > 0,
+         'ITEM2: with window._spDurEstimated true the result sheet shows NO warning (got ' +
+         JSON.stringify(guessed) + '). The render guessed the length of the take, so the video may ' +
+         'stop a fraction of the way through it and the person is told it is ready to post.');
+      ok(typeof guessed === 'string' && /19.5|guess/i.test(guessed),
+         'ITEM2: the warning does not say what was guessed, so the person cannot tell whether their ' +
+         'take was longer than that: ' + JSON.stringify(guessed));
+      const measured = run(false, clean);
+      ok(measured === '',
+         'ITEM2: a render whose duration WAS measured still warns (' + JSON.stringify(measured) +
+         '). A warning on every render is a warning nobody reads.');
+      const wobbly = run(true, { partial: false, drift: 2.2, estSec: 19.5 });
+      ok(typeof wobbly === 'string' && /guess/i.test(wobbly),
+         'ITEM2: when the length was guessed AND the phone reported drift, the drift text wins and ' +
+         'the truncation goes unmentioned. Truncation is the worse of the two: ' + JSON.stringify(wobbly));
+    }
+    const usesIt = /_estMsg/.test(offer) && /_warn\s*=\s*_estMsg/.test(offer);
+    ok(usesIt,
+       'ITEM2: the estimated-duration message is not the FIRST warning on the sheet. A truncated ' +
+       'video is worse than a wobbly one, so it must win over the drift text rather than be ' +
+       'appended after it or dropped when drift is also set.');
   }
   // _spDurEstimated is a window flag that outlives the render, so it has to be cleared
   // on the measured path AND NOWHERE ELSE. Cleared unconditionally after the if/else it

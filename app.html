@@ -13,15 +13,42 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v686';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v687';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
+     60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
+     is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
+     no dismiss button, only "Refresh", and that button called location.reload() with no check of
+     _tpBlobInHand. Nothing in this app persists a take or a render (no IndexedDB, no
+     beforeunload), so one tap on a black pill that appeared over their video threw away both the
+     filmed take and the render, with no warning and no way back. The 402 branch of the fetch
+     wrapper was hardened for exactly this in v678 ("nothing may navigate the page while a take is
+     in hand"); the update banner was never brought in line.
+     It now waits. The update is not urgent; their footage is. */
+  window._csUpdatePending = false;
+  window._csTakeInHand = function(){
+    try { return !!window._tpBlobInHand || !!window._spBusy; } catch(e){ return false; }
+  };
+  window._csShowPendingUpdate = function(){
+    try { if (window._csUpdatePending && !window._csTakeInHand()) window._showUpdateBanner(); } catch(e){}
+  };
   window._showUpdateBanner = function(){
     if(document.getElementById('csUpdateBanner') || !document.body) return;
+    if(window._csTakeInHand()){ window._csUpdatePending = true; return; }
     var b=document.createElement('div'); b.id='csUpdateBanner';
     b.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:100000;background:#16130F;color:#F9F6EA;border-radius:999px;padding:11px 16px;font:600 13px/1 -apple-system,system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.28);display:flex;align-items:center;gap:12px;max-width:calc(100vw - 24px)';
     var t=document.createElement('span'); t.textContent='New version ready'; b.appendChild(t);
     var btn=document.createElement('button'); btn.textContent='Refresh';
     btn.style.cssText='background:#E7DAF9;color:#16130F;border:none;border-radius:999px;padding:7px 14px;font:700 12px/1 -apple-system,system-ui,sans-serif;cursor:pointer';
-    btn.onclick=function(){ try{ location.reload(); }catch(e){} };
+    // Belt and braces: the hold can be taken AFTER the banner is already on screen.
+    btn.onclick=function(){
+      if(window._csTakeInHand()){
+        try{ t.textContent='Save your video first'; }catch(e){}
+        window._csUpdatePending = true;
+        try{ b.remove(); }catch(e){}
+        return;
+      }
+      try{ location.reload(); }catch(e){}
+    };
     b.appendChild(btn); document.body.appendChild(b);
   };
   // v468: one-tap deterministic update check (tap the version line in More / sidebar footer).
@@ -10925,6 +10952,11 @@ function spTickStop(){
 
 function tpOfferSplit(blob, fname){
   tpHoldTake();   // v660: held until the take is actually delivered — see tpHoldTake()
+  /* v687 — tpHoldTake's failsafe drops the flag after 15 minutes, and it is taken ONCE, here.
+     A long take plus a slow beats call plus six 40s photo fetches plus the render deadline can
+     outrun that, which re-arms the paywall modal and the update banner over a live video. _spBusy
+     covers the whole flow instead of a timer, and is cleared on every exit below. */
+  window._spBusy = true;
   const id = window._tpSplitIdeaId;
   // `_spIdea` resolves BOTH lanes: a Pipeline idea via state[id], and a Quick Post via '_tv'.
   // Using it here (not just state[id]) matters: a Quick Post lives only in memory, so a sharpen
@@ -11031,7 +11063,27 @@ function tpOfferSplit(blob, fname){
         const b = document.getElementById('tpSplitBar'); if (b) b.style.width = Math.round(p*100) + '%';
       });
       spTickStop();
-      if (window._spCancel) return;   // bailed out mid-render; their take is already saved
+      /* v687 — A FINISHED VIDEO WAS THROWN ON THE FLOOR. The cancel button only aborts the render
+         through a 700ms watchdog poll, and finish() CLEARS that interval — so everything after the
+         frame loop (a 15s muxer flush, then a 4s drift probe) runs with nothing watching _spCancel.
+         In that ~19-second window the promise resolves with a complete, correct video and this
+         line discarded it. The button says "Stop and just save my video", which is exactly what
+         someone watching a bar sit at 99% will tap. The rule this codebase set for the filmed take
+         — IT STOPS, IT NEVER DISCARDS — has to hold for the render too: if the bytes exist, offer
+         them. They can still choose the plain video from the sheet. */
+      if (window._spCancel) {
+        if (out && out.blob && out.blob.size > TP_MIN_TAKE_BYTES) {
+          window._spCancel = false;
+          // The cancel handler already detached bd and handed over the plain take. Put the
+          // backdrop back so the sheet has somewhere to render; tpSplitResult falls through to
+          // tpShareOrSave if its sheet node is missing, so a re-attach failure still delivers.
+          try { if (!bd.isConnected) document.body.appendChild(bd); } catch(e){}
+          tpSplitResult(bd, out.blob, out.ext, blob, fname,
+            'You stopped it, but it had already finished — here it is. Use the plain video below if you would rather.');
+          return;
+        }
+        return;   // genuinely mid-render; their take is already saved
+      }
       // v481: DO NOT auto-share here. The render takes 15-40s, by which time the
       // browser has revoked the tap's user activation and navigator.share() throws
       // — the file then fell silently into Downloads and looked like it vanished.
@@ -11039,11 +11091,25 @@ function tpOfferSplit(blob, fname){
       // v530: a tripped drift probe no longer DISCARDS the render — the result
       // sheet PLAYS the video, so he judges with his eyes. The silent downgrade
       // to the plain take read as "it produced a video with no b-roll at all".
-      const _warn = out.partial
+      /* v687 — THE "ESTIMATED DURATION" WARNING WAS NEVER SHOWN. _spDurEstimated is set when the
+         phone refuses to report how long the take is, and the render then builds to a GUESS of
+         beats.length * 3.25s. Its own comment says "surfaced on the result sheet" — it was written
+         twice and read NOWHERE (verified: zero readers in app.html). So a 3-minute take came back
+         as a 19.5-second clip labelled "ready to post", and both honesty checks read clean because
+         they measure the output against the guess: `partial` compares dur to lastT (equal), and
+         the drift probe compares the output to dur (equal). The render-honesty gate asserted only
+         that the flag is SET, which is a presence check on a write-only variable.
+         This is first in the chain on purpose: a truncated video is worse than a wobbly one. */
+      const _estMsg = window._spDurEstimated
+        ? ('This phone would not say how long your take was, so the split screen was built to a ' +
+           (out.estSec ? (out.estSec.toFixed(1) + '-second') : 'short') + ' guess. If your take was longer than that, ' +
+           'the end is missing — check it, or use the plain video below.')
+        : '';
+      const _warn = _estMsg || (out.partial
         ? 'This build stopped early — the video is shorter than your take. Check it, or use the plain video below.'
         : ((out.drift && Math.abs(out.drift) > 0.4)
           ? ('Check it before posting — this phone reported a ' + Math.abs(out.drift).toFixed(1) + 's timing wobble. If the lips look off or it cuts short, use the plain video below.')
-          : '');
+          : ''));
       tpSplitResult(bd, out.blob, out.ext, blob, fname, _warn);
     } catch(e) {
       spTickStop();
@@ -11193,7 +11259,8 @@ function renderSplitScreen(videoBlob, beats, onProgress){
     // video), but on a browser WITHOUT rVFC the requestAnimationFrame fallback kept compositing
     // full-resolution frames for the life of the page — on a phone, exactly while the user is
     // sharing. Declared out here so the outer catch can reach it.
-    let _vid = null, _rec = null, _wl = null, _alive = true, _stream = null, _capRef = null;   // v660: refs so the catch path can release the tracks too
+    let _vid = null, _rec = null, _wl = null, _alive = true, _stream = null, _capRef = null;
+  let _estSec = 0;   // v687: the guessed length, when the phone would not report the real one   // v660: refs so the catch path can release the tracks too
     try {
       // v531: an empty graphics track would render layers[-1] = undefined → the
       // no-layer fallback paints cream for the whole clip = a "split" with zero
@@ -11347,8 +11414,9 @@ function renderSplitScreen(videoBlob, beats, onProgress){
       }
       if (!dur) {
         dur = beats.length * PER;
-        window._spDurEstimated = true;   // surfaced on the result sheet — never claim a full render
-      } else { window._spDurEstimated = false; }
+        window._spDurEstimated = true;   // v687: now ACTUALLY surfaced on the result sheet — see _estMsg
+        _estSec = dur;
+      } else { window._spDurEstimated = false; _estSec = 0; }
       const per = Math.max(1.6, dur / beats.length);
       // v483 A/V SYNC: pre-render each beat's graphics ONCE. Laying out text every
       // frame made the draw loop slower than real time, so the picture fell behind
@@ -11463,7 +11531,27 @@ function renderSplitScreen(videoBlob, beats, onProgress){
       vid.pause(); rec.stop(); await _limit(stopped, 15000, 'finishing the file');
       URL.revokeObjectURL(vid.src);
       const blob = new Blob(chunks, { type: mime.split(';')[0] });
-      if (!blob.size) return reject(new Error('empty render'));
+      /* v687 — TWO BUGS ON ONE LINE.
+         (1) THE FLOOR WAS WRONG. TP_MIN_TAKE_BYTES (8192) exists because "a recorder that emitted
+         a container header and no frames yields a few hundred bytes — truthy". It is applied to
+         the FILMED take at four sites and was applied to the RENDER OUTPUT at none, so a
+         400-byte header-only file passed `!blob.size` and reached the result sheet as
+         "Your split screen ✓ · 0.0 MB · ready to post". Both honesty checks are blind to it:
+         `partial` compares dur to lastT (equal, the loop ran to the end) and the drift probe
+         resolves 0 on probe.onerror — which is exactly what a header-only file triggers.
+         (2) IT LEAKED EVERYTHING. `return reject(...)` RESOLVES the promise rather than throwing,
+         so the catch below — which holds the only other _wl.release() and _spReleaseRender() —
+         never ran. The screen wake lock stayed held for the life of the page and the 1440×2560
+         canvas track plus the borrowed audio track stayed live. The failure sheet offers "Try the
+         split again", so every retry leaked another set: the precise scenario the v660 note above
+         says it fixed. Release first, then reject. */
+      if (!blob.size || blob.size <= TP_MIN_TAKE_BYTES) {
+        try { if (_wl) { _wl.release(); _wl = null; } } catch(e){}
+        _spReleaseRender(stream, _cap, vid);
+        return reject(new Error(blob.size
+          ? 'the phone wrote an empty video file'
+          : 'the phone produced no video at all'));
+      }
       // v501: don't just hope it came out right — measure it. If the rendered
       // clip's length doesn't match the footage we fed in, the timeline was
       // distorted and audio will not line up. Report it rather than shipping it
@@ -11498,7 +11586,7 @@ function renderSplitScreen(videoBlob, beats, onProgress){
       // passes the drift probe cleanly — blob length matches consumed footage —
       // so a half-length video shipped as "ready to post". Flag it.
       const partial = (isFinite(dur) && lastT > 0 && (dur - lastT) > 0.75);
-      resolve({ blob, ext: mime.indexOf('mp4') !== -1 ? 'mp4' : 'webm', drift, partial });
+      resolve({ blob, ext: mime.indexOf('mp4') !== -1 ? 'mp4' : 'webm', drift, partial, estSec: _estSec });
     } catch (e) {
       // v507: a cancelled or failed render must not leave the take playing out
       // loud in a detached element, or the recorder running — or the frame loop compositing.
@@ -11783,7 +11871,9 @@ function tpHoldTake(){
   } catch(e){}
 }
 function tpReleaseTake(){
-  try { window._tpBlobInHand = false; clearTimeout(window._tpHoldT); } catch(e){}
+  try { window._tpBlobInHand = false; clearTimeout(window._tpHoldT); window._spBusy = false; } catch(e){}
+  // v687: the take is delivered — now it is safe to offer the update that was held back.
+  try { if (window._csShowPendingUpdate) window._csShowPendingUpdate(); } catch(e){}
 }
 /* v660: THE LAST RESORT, so a finished take can never dead-end.
    Before this, a user who opened the app from an Instagram or Facebook link could film, tap
