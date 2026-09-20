@@ -2,6 +2,80 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-20 — v688. SPLIT SCREEN, PART 2: the graphics stopped following the speech, and the app said the timing was perfect.
+
+**1. A CUE PAST THE LAST WORD THE PHONE HEARD WAS COUNTED AS A MATCH.** `tpVoiceWords` is built from
+the SCRIPT DOM — what they were meant to say — while `_tpVoiceTimeline` holds only what speech
+recognition actually caught, and recognition routinely drops the tail (`tpBeatTimesFromVoice`'s own
+v563 comment says so). So a cue in the unheard tail still matched a script word, counted toward
+`ok`, and was handed `timeAtWord`'s final fallback — `tl[tl.length-1].t`, **the same timestamp for
+every one of them**. The min-spacing pass then pushed them 0.70s apart and the clamp pulled them
+back to the clip end, piling them up. Measured against the real function, 45s take, recognition
+dying at 5s:
+```
+before: starts 0.00, 3.33, 5.00, 5.70   on screen 3.33 | 1.67 | 0.70 | 39.30
+after : starts 0.00, 3.33, 17.12, 30.91 on screen 3.33 | 13.79 | 13.79 | 14.09
+```
+Cards two and three flashed past unreadably; card four was frozen for **39 of the 45 seconds** —
+and the sheet reported **"matched 4/4 beats"**, telling the person the timing was perfect. The whole
+point of the feature is graphics that follow the speech. `timeAtWord` now returns null past the last
+heard word, so those beats are UNMATCHED (which is what they are), the pace extension written for
+exactly this case takes over, and `matched N/M` becomes a true statement.
+
+**1b. AND THE PACE WAS EXTRAPOLATED FROM A FIVE-SECOND SAMPLE.** `avgGap` is measured only from the
+beats that matched. When those anchors span a few seconds, multiplying that across a whole take put
+every trailing beat in the first few seconds and left the last card frozen for the rest — still 35s
+of 45 even after the match fix. Trailing beats now share the clip that is left, which degrades to
+roughly the same answer as pace when the anchors already cover most of the clip.
+
+**2. iPHONE WAS OFFERED A FEATURE THAT CAN NEVER WORK.** The offer gate tested **canvas**
+captureStream; the render also needs **element** captureStream to copy the sound out of the take
+(`:11340`), and Safari exposes neither `captureStream` nor `mozCaptureStream` on `<video>`. So on a
+mobile-first PWA's most common phone, the offer appeared, the person tapped it, waited through the
+beats call and up to six 40-second photo fetches with a wake lock held, **spent credits**, and then
+got a failure sheet. Testing a detached `<video>` costs nothing and happens before any of that.
+
+**3. LOOKING AT A PREVIEW TWICE COST TWICE.** `beatsForIdea` (the filming path) checks
+`beatsCacheGet` first; `openBrollIdea` — the lane a user taps to LOOK before deciding — never did.
+Every tap on the same card, same brand, unchanged script was a fresh paid call: 1 credit for the
+beats plus up to 6 stock-photo calls. Three looks ≈ **4.8 credits, 12% of a free user's month**, for
+identical content. The cache is fingerprinted by brand and script, so a sharpen, a viral rewrite or
+a brand switch still invalidates it — this only skips a call whose answer cannot have changed.
+
+**4. EVERY MISSING PICTURE WAS THE SAME SILENCE.** A missing `PEXELS_API_KEY`, a revoked key, a 429
+once the shared hourly quota drains (~16 renders/hour app-wide), a timeout, no match, an oversized
+image and a 402 out-of-credits all hit one bare `return`. The server sets a `reason` on most of
+those paths — added so they could be told apart — and it had **zero readers**. The sheet promised
+*"Finding the photos… free stock, recoloured to your brand"* and handed back plain text panels with
+nothing saying why and no log line to find it by. Text-only stays the fallback; it is now counted,
+logged, and reported in words with the right advice per cause (rated out → try later; timeout →
+your connection; three or more no-matches → it is just plainer). One missing photo stays silent,
+because a warning on every render is how a warning stops being read.
+
+GATES: 83 of 83 green. New: `scripts/verify/beat-timing-honest.mjs` — runs the real
+`tpBeatTimesFromVoice` against a heard-everything timeline and a died-early one; three mutations
+proved caught, including the over-correction that spreads every beat evenly. `render-honesty.mjs`
+ITEM2 grew arms for the low-match and missing-photo messages (five more mutations caught); one of
+them found a plural bug in my own copy.
+
+**STILL OPEN IN SPLIT SCREEN:**
+- `sub` cut mid-word at 42/44 chars (`:11600`, `:11628`) against a 110-char server cap, and cut by
+  CHARACTER not pixel width: measured, an all-caps sub at 44 chars is 683px against a 720px canvas
+  and runs off the edge, while ordinary prose loses 33 characters that would have fitted.
+- `sub` on `chips` beats is drawn in the preview and never in the video (`:9675` vs `:11601-11612`).
+- `headline` on `number` beats and `highlight` on `number`/`chips` are generated, truncated and paid
+  for, and drawn nowhere.
+- `spWrap` silently drops a fifth headline line — and `contrast` beats are *instructed* to use line
+  breaks.
+- The preview's duration is fiction (`beats.length * 3.25`); server-side `duration` has zero readers.
+- Budgets: `api/video-beats.js` (285s + retry loop) overruns 300s; `api/meme.js` (45+50s) and
+  `api/hook-frame.js` (45 + 2×12s) overrun 60s. On a platform kill the user sees a raw JSON parse
+  error from Vercel's 504 page. `timeout-budgets.mjs` passes all three — it multiplies `callLLM`
+  timeouts and is blind to non-LLM timeouts and to the retry loop.
+- `rec.onerror` is never assigned; a truncated recording is reported as a "timing wobble".
+- Memory: 20 Mbps at 1440×2560 = 2.5 MB/s; 429 MB for a 180s take, raw + output alive together
+  = 858 MB, plus up to 78 MB of decoded stock photos held for the session.
+
 ## ▶▶ 2026-09-19 — v687. SPLIT SCREEN, PART 1: four ways a finished video was destroyed or lied about. Plus the audio question is ANSWERED.
 
 Three parallel audits of the whole split-screen feature (render/record, content lane, delivery).

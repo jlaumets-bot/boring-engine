@@ -417,15 +417,22 @@ if (render) {
        the two real declarations and execute them with the flag set, and require a warning to come
        out the other side. `false && window._spDurEstimated` passes a regex; it fails this. */
     const estDecl  = (offer.match(/const _estMsg = [\s\S]*?;\n/) || [])[0];
+    const totDecl  = (offer.match(/const _tot = [\s\S]*?;\n/) || [])[0] || '';
+    const lowDecl  = (offer.match(/const _lowMatch = [\s\S]*?;\n/) || [])[0] || '';
+    const missDecl = (offer.match(/const _miss = [\s\S]*?;\n/) || [])[0] || '';
+    const whyDecl  = (offer.match(/const _why = [\s\S]*?;\n/) || [])[0] || '';
+    const photoDecl = (offer.match(/const _photoMsg = [\s\S]*?;\n/) || [])[0] || '';
     const warnDecl = (offer.match(/const _warn = [\s\S]*?;\n/) || [])[0];
     ok(!!estDecl && !!warnDecl, 'ITEM2: could not find the _estMsg / _warn declarations — re-anchor this arm.');
     if (estDecl && warnDecl) {
-      const run = (flag, out) => {
+      const run = (flag, out, beats) => {
         // `const` inside runInContext does not leak onto the context object, so end the script
         // with the expression itself and take runInContext's return value.
-        const ctx = { window: { _spDurEstimated: flag }, out };
+        const b = beats || { total: 4, matched: 4 };
+        const ctx = { window: { _spDurEstimated: flag, _tpBeatTotal: b.total, _tpBeatMatched: b.matched,
+                                _spPhotoMisses: b.misses || 0, _spPhotoWhy: b.why || '' }, out, String, RegExp };
         vm.createContext(ctx);
-        return vm.runInContext(estDecl + warnDecl + '\n_warn', ctx);
+        return vm.runInContext(estDecl + totDecl + lowDecl + missDecl + whyDecl + photoDecl + warnDecl + '\n_warn', ctx);
       };
       const clean = { partial: false, drift: 0, estSec: 19.5 };
       const guessed = run(true, clean);
@@ -440,6 +447,31 @@ if (render) {
       ok(measured === '',
          'ITEM2: a render whose duration WAS measured still warns (' + JSON.stringify(measured) +
          '). A warning on every render is a warning nobody reads.');
+      /* v688 — the match count only became a true statement in v688: before it, every cue matched
+         against the SCRIPT whether or not the phone had heard that part, so the number was always
+         high and meant nothing. Now a low count is real information and has to be readable. */
+      const low = run(false, { partial: false, drift: 0 }, { total: 4, matched: 1 });
+      ok(typeof low === 'string' && /1 of 4|cues/.test(low),
+         'ITEM2: a run where the phone caught only 1 of 4 cues shows no warning (' + JSON.stringify(low) +
+         '). The graphics are then spaced evenly rather than following the words, and only an 11px ' +
+         'grey "matched 1/4" says so.');
+      const fine = run(false, { partial: false, drift: 0 }, { total: 4, matched: 4 });
+      ok(fine === '', 'ITEM2: a run that matched every cue must not warn (' + JSON.stringify(fine) + ')');
+      /* v688 — a beat with no picture used to be indistinguishable from a beat that never wanted
+         one: missing key, revoked key, 429, timeout, no match and 402 all hit the same bare
+         `return`, while the sheet promised "free stock, recoloured to your brand". */
+      const quota = run(false, { partial: false, drift: 0 }, { total: 4, matched: 4, misses: 4, why: 'http_429' });
+      ok(typeof quota === 'string' && /rated out/i.test(quota),
+         'ITEM2: four cards came back with no picture because the photo service was rated out, and ' +
+         'the sheet says nothing (' + JSON.stringify(quota) + ')');
+      const slow = run(false, { partial: false, drift: 0 }, { total: 4, matched: 4, misses: 3, why: 'timeout' });
+      ok(typeof slow === 'string' && /did not answer in time/i.test(slow) && !/rated out/i.test(slow),
+         'ITEM2: a photo timeout is not reported as a quota problem — the two need different advice: ' +
+         JSON.stringify(slow));
+      const onePlain = run(false, { partial: false, drift: 0 }, { total: 4, matched: 4, misses: 1, why: 'no_match' });
+      ok(onePlain === '',
+         'ITEM2: ONE beat with no matching stock photo is normal and must not raise a warning (' +
+         JSON.stringify(onePlain) + '). Warning on every render is how a warning stops being read.');
       const wobbly = run(true, { partial: false, drift: 2.2, estSec: 19.5 });
       ok(typeof wobbly === 'string' && /guess/i.test(wobbly),
          'ITEM2: when the length was guessed AND the phone reported drift, the drift text wins and ' +

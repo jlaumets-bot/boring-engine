@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v687';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v688';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -9761,15 +9761,28 @@ async function openBrollIdea(idea, id){
     + '</div>';
   document.body.appendChild(bd);
   try {
-    // Lean request — see leanBrandFetch. Same endpoint and same saving as beatsForIdea; this is
-    // the B-roll PREVIEW lane, which a user taps to look before deciding, so it is hit often.
-    const resp = await leanBrandFetch('/api/video-beats',
-      { script: idea.script || idea.boldText || '', hook: idea.hook || '', title: idea.title || '' },
-      () => (typeof getBrandContext === 'function' ? getBrandContext() : {}));
-    const data = await resp.json();
+    /* v688 — LOOKING TWICE COST TWICE. beatsForIdea (the filming path) checks beatsCacheGet
+       first; this one, the lane a user taps to LOOK before deciding, never did. Every tap of
+       "B-roll" on the same card, same brand, unchanged script was a fresh paid call: 1 credit for
+       the beats plus up to 6 stock-photo calls at 0.1 each. Three looks ≈ 4.8 credits, which is
+       12% of a free user's month, for identical content. The cache is already fingerprinted by
+       brand and script, so a sharpen, a viral rewrite or a brand switch still invalidates it —
+       this only skips the call when the answer genuinely cannot have changed. */
+    const _cachedBeats = (typeof beatsCacheGet === 'function') ? beatsCacheGet(id, idea) : null;
+    let data;
+    if (_cachedBeats && _cachedBeats.beats && _cachedBeats.beats.length) {
+      data = _cachedBeats;
+    } else {
+      // Lean request — see leanBrandFetch. Same endpoint and same saving as beatsForIdea.
+      const resp = await leanBrandFetch('/api/video-beats',
+        { script: idea.script || idea.boldText || '', hook: idea.hook || '', title: idea.title || '' },
+        () => (typeof getBrandContext === 'function' ? getBrandContext() : {}));
+      data = await resp.json();
+      if (!resp.ok) data = Object.assign({}, data, { _httpFail: true });
+    }
     const body = document.getElementById('brollBody');
     if (!body) return;
-    if (!resp.ok || !data.beats || !data.beats.length) {
+    if ((data && data._httpFail) || !data || !data.beats || !data.beats.length) {
       body.innerHTML = '<div class="br-load" style="color:var(--warning,#B45309)">'
         + brollEsc(humanErr(data && data.error, "Couldn't build the graphics track."))
         + '<br><span>Tap B-roll again to retry.</span></div>';
@@ -10969,7 +10982,19 @@ function tpOfferSplit(blob, fname){
   // leave the old beats in place, and they were composited onto the take without a word.
   const _spIdea = _beatsIdeaFor(id);
   const cached = beatsCacheGet(id, _spIdea);
-  if ((!haveIdea && !cached) || !document.createElement('canvas').captureStream) return false;
+  /* v688 — THE OFFER TESTED THE WRONG CAPABILITY. This checked CANVAS captureStream; the render
+     also needs ELEMENT captureStream to copy the sound out of the take (:11340), and Safari
+     exposes neither captureStream nor mozCaptureStream on <video>. So on an iPhone — a
+     mobile-first PWA — the offer appeared, the person tapped it, waited through the beats call
+     and up to six 40-second photo fetches with a wake lock held, spent credits, and THEN got a
+     failure sheet saying the split screen would come out silent. The check that decides this was
+     available before any of that was spent. Testing a detached <video> costs nothing. */
+  if (!haveIdea && !cached) return false;
+  if (!document.createElement('canvas').captureStream) return false;
+  try {
+    const _probe = document.createElement('video');
+    if (!_probe.captureStream && !_probe.mozCaptureStream) return false;
+  } catch(e) { return false; }
   // v516: no split-screen offer for statements — the graphics engine needs a
   // script's moments; a one-liner would render as padded, repetitive cards.
   if (haveIdea && (state[id] || _spIdea || {}).format === 'statement') return false;
@@ -11105,11 +11130,35 @@ function tpOfferSplit(blob, fname){
            (out.estSec ? (out.estSec.toFixed(1) + '-second') : 'short') + ' guess. If your take was longer than that, ' +
            'the end is missing — check it, or use the plain video below.')
         : '';
+      /* v688 — a LOW match count is now a true statement, so say what it means. Until this version
+         every cue "matched" against the script whether or not the phone had heard that part, so
+         the count was always high and meant nothing. Now that it only counts words that were
+         actually heard, "matched 2/4" is real information — and it belongs in words, not in 11px
+         grey text next to the word "voice". */
+      const _tot = window._tpBeatTotal || 0, _mat = window._tpBeatMatched || 0;
+      const _lowMatch = _tot >= 2 && (_mat * 2) < _tot;
+      /* v688 — say when the pictures are missing, and why. The sheet promises "free stock,
+         recoloured to your brand" and then quietly hands back plain text panels. */
+      const _miss = window._spPhotoMisses || 0;
+      const _why = String(window._spPhotoWhy || '');
+      const _photoMsg = _miss > 0
+        ? (/429|quota|http_402|limit/.test(_why)
+            ? ('No stock photos this time — the photo service is rated out for the moment, so ' + _miss + ' card' + (_miss === 1 ? '' : 's') + ' came out as text. Try again later if you want the pictures.')
+            : (/timeout|network/.test(_why)
+              ? ('The photo service did not answer in time, so ' + _miss + ' card' + (_miss === 1 ? '' : 's') + ' came out as text. Your connection may be slow.')
+              : ((_miss >= 3)
+                ? (_miss + ' cards came out as text — no stock photo matched them. The video is fine, it is just plainer.')   // only ever ≥3, so the plural is always right
+                : '')))
+        : '';
       const _warn = _estMsg || (out.partial
         ? 'This build stopped early — the video is shorter than your take. Check it, or use the plain video below.'
-        : ((out.drift && Math.abs(out.drift) > 0.4)
-          ? ('Check it before posting — this phone reported a ' + Math.abs(out.drift).toFixed(1) + 's timing wobble. If the lips look off or it cuts short, use the plain video below.')
-          : ''));
+        : (_lowMatch
+          ? ('Your phone only caught ' + _mat + ' of ' + _tot + ' cues, so the graphics are spaced evenly instead of following your words. Check the timing before you post.')
+          : (_photoMsg
+            ? _photoMsg
+            : ((out.drift && Math.abs(out.drift) > 0.4)
+              ? ('Check it before posting — this phone reported a ' + Math.abs(out.drift).toFixed(1) + 's timing wobble. If the lips look off or it cuts short, use the plain video below.')
+              : ''))));
       tpSplitResult(bd, out.blob, out.ext, blob, fname, _warn);
     } catch(e) {
       spTickStop();
@@ -11769,7 +11818,17 @@ function spNudgeFrame(d){
 // proxy so the bytes are same-origin — a cross-origin image would taint the
 // canvas and kill captureStream (the render would silently die). Best-effort:
 // any failure just means that beat renders text-only, exactly like today.
+/* v688 — one place to record why a beat has no picture. Counts, and keeps the first reason, so
+   the result sheet can name it and so a production log line exists at all. */
+function _spPhotoMiss(why){
+  try {
+    window._spPhotoMisses = (window._spPhotoMisses || 0) + 1;
+    if (!window._spPhotoWhy) window._spPhotoWhy = String(why || 'unknown');
+    console.error('split-screen: a beat has no photo — ' + why);
+  } catch(e) {}
+}
 async function spFetchBeatPhotos(beats){
+  try { window._spPhotoMisses = 0; window._spPhotoWhy = ''; } catch(e) {}
   const want = (beats || []).filter(b => b && b.imageQuery && !b._imgBlob).slice(0, 6);   // v538: was 4 — later beats were silently photoless
   if (want.length) await Promise.allSettled(want.map(async b => {
     const ctrl = new AbortController();
@@ -11777,11 +11836,26 @@ async function spFetchBeatPhotos(beats){
     try {
       const r = await fetch('/api/stock-photo?q=' + encodeURIComponent(b.imageQuery) + '&t=' + encodeURIComponent(String(b.headline || '').slice(0, 120)), { signal: ctrl.signal });   // v564: send the beat text so the photo is picked for on-pointness
       const ct = r.headers.get('content-type') || '';
-      if (!r.ok || ct.indexOf('image/') !== 0) return;   // {empty:true} → text-only
+      /* v688 — EVERY FAILURE WAS THE SAME BARE `return`. A missing PEXELS_API_KEY, a revoked key,
+         a 429 once the shared hourly quota is drained, a timeout, no match, an oversized image and
+         a 402 out-of-credits were indistinguishable — from each other and from a beat the model
+         deliberately left photoless. The server sets a `reason` on most of those paths (added so
+         they COULD be told apart) and it had zero readers. The sheet still promised "Finding the
+         photos… free stock, recoloured to your brand" and then delivered plain text panels with
+         nothing anywhere saying why, and no log line to find it by.
+         Text-only stays the behaviour — it is the right fallback — but it is now recorded, so the
+         result sheet can say so and so there is something to grep. */
+      if (!r.ok || ct.indexOf('image/') !== 0) {
+        let why = 'http_' + r.status;
+        try { if (ct.indexOf('json') !== -1) { const j = await r.json(); if (j && j.reason) why = String(j.reason); else if (j && j.error) why = String(j.error).slice(0, 60); } } catch(e) {}
+        _spPhotoMiss(why);
+        return;
+      }
       const blob = await r.blob();
-      if (!blob.size) return;
+      if (!blob.size) { _spPhotoMiss('empty_body'); return; }
       b._imgBlob = blob;   // v513: shared cache — preview and render use the same download
-    } catch(e) {} finally { clearTimeout(kill); }
+    } catch(e) { _spPhotoMiss((e && e.name === 'AbortError') ? 'timeout' : 'network'); }
+    finally { clearTimeout(kill); }
   }));
   // decode for the canvas renderer
   await Promise.allSettled((beats || []).filter(b => b && b._imgBlob && !b._img).map(async b => {
@@ -12451,7 +12525,22 @@ function tpBeatTimesFromVoice(beats, dur){
   const tl = window._tpVoiceTimeline;
   if (!tl || tl.length < 3 || !tpVoiceWords.length) return null;
   const norm = s => tpNormWords(s);
+  /* v688 — A CUE PAST THE LAST WORD WE ACTUALLY HEARD IS NOT A MATCH.
+     tpVoiceWords is built from the SCRIPT DOM — what they were meant to say — while the timeline
+     only covers what speech recognition actually caught, and recognition routinely drops the tail
+     (this function's own v563 comment says so). So a cue in the unheard tail still "matched" a
+     script word, counted toward `ok`, and was handed `tl[tl.length-1].t`: the SAME timestamp for
+     every one of them. The min-spacing pass then pushed them 0.70s apart and the final clamp
+     pulled them back to the clip end, piling them up.
+     Measured on a 45s take whose recognition died at 5s: cards 2 and 3 on screen for 1.67s and
+     0.70s — unreadable — and card 4 frozen for 39.3s, with the result sheet reporting
+     "matched 4/4". The feature is ruined and the diagnostic says it is perfect.
+     Returning null instead makes those beats UNMATCHED, which is what they are — and the pace
+     extension below (written for exactly this case) then spaces them properly. It also makes
+     _tpBeatMatched honest, so "matched 3/6" becomes a true statement. */
+  const lastHeardWord = tl[tl.length - 1].w;
   const timeAtWord = idx => {
+    if (idx > lastHeardWord) return null;   // beyond what was heard — we do not know when this was said
     for (let i = 0; i < tl.length; i++) if (tl[i].w >= idx) {
       if (i === 0) return Math.max(0, tl[0].t * (idx / Math.max(1, tl[0].w)));
       const a = tl[i-1], b = tl[i];
@@ -12471,7 +12560,12 @@ function tpBeatTimesFromVoice(beats, dur){
         if (hit >= Math.max(2, Math.ceil(cue.length * 0.6))) found = i;
       }
     }
-    if (found >= 0) { from = found + 1; ok++; times.push(timeAtWord(found)); }
+    if (found >= 0) {
+      from = found + 1;                       // advance regardless, so later cues search after it
+      const t = timeAtWord(found);
+      if (t != null) { ok++; times.push(t); }
+      else times.push(n === 0 ? 0 : null);    // found in the script, never heard — pace it below
+    }
     else times.push(n === 0 ? 0 : null);
   });
   if (!ok) return null;
@@ -12493,7 +12587,17 @@ function tpBeatTimesFromVoice(beats, dur){
     if (next < times.length && times[next] != null) {
       times[i] = a + (times[next] - a) * ((i - prev) / (next - prev));   // between two matched anchors
     } else {
-      times[i] = a + avgGap * (i - prev);                                // trailing → pace (clamped to clip end on return)
+      /* v688 — SPREAD THE TAIL OVER THE CLIP THAT IS LEFT, don't extrapolate a pace.
+         avgGap is measured only from the beats that matched. When recognition dies early those
+         anchors span a few seconds, and multiplying that tiny sample across a whole take put every
+         trailing beat in the first few seconds and left the last card frozen for the remainder —
+         measured 35s of a 45s video on one card even after the match fix. Sharing the remaining
+         time equally cannot do that: it degrades to roughly the same answer as pace when the
+         anchors already cover most of the clip, and stays sane when they cover almost none. */
+      const tailCount = times.length - 1 - prev;                         // how many trail after `prev`
+      const end = Math.max(a, dur - 0.3);
+      times[i] = tailCount > 0 ? (a + (end - a) * ((i - prev) / (tailCount + 1)))
+                               : (a + avgGap * (i - prev));
     }
   }
   for (let i = 1; i < times.length; i++) if (times[i] < times[i-1] + SP_MIN_BEAT) times[i] = times[i-1] + SP_MIN_BEAT;
