@@ -139,7 +139,7 @@ If they haven't set the basics yet (brand name, audience), start there before an
       ...trimmedMessages
     ];
 
-    const content = await callLLM({ timeoutMs: 44000,
+    const content = await callLLM({ deadlineMs: 70000, timeoutMs: 44000,
       messages: fullMessages,
       model: 'grok',
       temperature: 0.8,

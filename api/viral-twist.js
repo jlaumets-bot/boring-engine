@@ -82,7 +82,7 @@ Exactly 3 items in "angles".
 
 ${rulePrecedence()}`;
 
-    const content = await callLLM({
+    const content = await callLLM({ deadlineMs: 280000,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       model: 'grok',
       max_tokens: 1200,

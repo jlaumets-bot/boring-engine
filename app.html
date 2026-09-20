@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v688';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v689';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -11150,7 +11150,10 @@ function tpOfferSplit(blob, fname){
                 ? (_miss + ' cards came out as text — no stock photo matched them. The video is fine, it is just plainer.')   // only ever ≥3, so the plural is always right
                 : '')))
         : '';
-      const _warn = _estMsg || (out.partial
+      const _encMsg = out.recFailed
+        ? ('The phone\u2019s video encoder gave up part-way, so this file is probably missing content. Build it again, or use the plain video below.')
+        : '';
+      const _warn = _encMsg || _estMsg || (out.partial
         ? 'This build stopped early — the video is shorter than your take. Check it, or use the plain video below.'
         : (_lowMatch
           ? ('Your phone only caught ' + _mat + ' of ' + _tot + ' cues, so the graphics are spaced evenly instead of following your words. Check the timing before you post.')
@@ -11400,6 +11403,17 @@ function renderSplitScreen(videoBlob, beats, onProgress){
       window._spLastMime = rec.mimeType || mime;
       const chunks = [];
       rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+      /* v689 — rec.onerror WAS NEVER ASSIGNED. If the encoder failed part-way, the frame loop
+         carried on reading vid.currentTime to the end, so `partial` (which compares dur to lastT)
+         stayed false and the only thing that noticed was the drift probe — which phrases it as
+         "this phone reported a 12.3s timing wobble". A file missing most of its content was
+         described as a wobble. Record it, so the result sheet can say the encoder gave up and the
+         person retries instead of posting it. */
+      let _recFailed = '';
+      rec.onerror = (e) => {
+        _recFailed = (e && e.error && (e.error.name || e.error.message)) || 'encoder error';
+        console.error('split-screen: MediaRecorder failed mid-record — ' + _recFailed);
+      };
       const stopped = new Promise(r => { rec.onstop = r; });
       // v531: hold a screen wake lock for the whole build. While FILMING the
       // camera keeps the screen on — the render has no camera, so on a long
@@ -11635,7 +11649,7 @@ function renderSplitScreen(videoBlob, beats, onProgress){
       // passes the drift probe cleanly — blob length matches consumed footage —
       // so a half-length video shipped as "ready to post". Flag it.
       const partial = (isFinite(dur) && lastT > 0 && (dur - lastT) > 0.75);
-      resolve({ blob, ext: mime.indexOf('mp4') !== -1 ? 'mp4' : 'webm', drift, partial, estSec: _estSec });
+      resolve({ blob, ext: mime.indexOf('mp4') !== -1 ? 'mp4' : 'webm', drift, partial, estSec: _estSec, recFailed: _recFailed });
     } catch (e) {
       // v507: a cancelled or failed render must not leave the take playing out
       // loud in a detached element, or the recorder running — or the frame loop compositing.
@@ -11674,14 +11688,14 @@ function spRenderBeat(b, W, panelH, pal){
     bodyH = 128 + (b.sub ? 38 : 0);
   } else if (isChips) {
     ctx.font = '700 26px system-ui, sans-serif';
-    rows = []; let row = [], rw = 0;
+    rows = []; let row = [], rw = 0;   // v689: bodyH below now budgets for the sub this branch draws
     b.chips.forEach(ch => {
       const w = ctx.measureText(ch).width + 40;
       if (row.length && rw + w > maxW) { rows.push(row); row = []; rw = 0; }
       row.push({ ch, w }); rw += w + 14;
     });
     if (row.length) rows.push(row);
-    bodyH = rows.length * 66 - 14;
+    bodyH = rows.length * 66 - 14 + (b.sub ? 42 : 0);   // v689: the sub this branch now draws
   } else {
     ctx.font = '800 52px system-ui, sans-serif';
     lines = spWrap(String(b.headline||''), ctx, maxW);
@@ -11734,7 +11748,7 @@ function spRenderBeat(b, W, panelH, pal){
   if (isNum) {
     ctx.fillStyle = pal.text; ctx.font = '800 116px system-ui, sans-serif';
     ctx.fillText(b.value, x, y); y += 128;
-    if (b.sub) { ctx.fillStyle = pal.muted; ctx.font = '500 28px system-ui, sans-serif'; ctx.fillText(String(b.sub).slice(0,42), x, y); }
+    if (b.sub) { ctx.fillStyle = pal.muted; ctx.font = '500 28px system-ui, sans-serif'; ctx.fillText(spFitLine(ctx, b.sub, maxW), x, y); }
   } else if (isChips) {
     ctx.font = '700 26px system-ui, sans-serif';
     rows.forEach(row => {
@@ -11747,6 +11761,14 @@ function spRenderBeat(b, W, panelH, pal){
       });
       y += 66;
     });
+    /* v689 — THE PREVIEW SHOWED THIS SENTENCE AND THE EXPORT DID NOT. brollBeatHtml draws
+       b.sub on a chips beat (:9675); this branch had no sub draw at all, so the person approved a
+       preview reading "Nothing else. No fillers, no sweeteners…" and the finished video had a row
+       of pills and blank space where that line should be. */
+    if (b.sub) {
+      ctx.fillStyle = pal.muted; ctx.font = '500 26px system-ui, sans-serif';
+      ctx.fillText(spFitLine(ctx, b.sub, maxW), x, y + 8);
+    }
   } else {
     ctx.font = '800 52px system-ui, sans-serif';
     lines.forEach(line => {
@@ -11762,7 +11784,7 @@ function spRenderBeat(b, W, panelH, pal){
       }
       y += 62;
     });
-    if (b.sub) { ctx.fillStyle = pal.muted; ctx.font = '500 26px system-ui, sans-serif'; ctx.fillText(String(b.sub).slice(0,44), x, y + 8); }
+    if (b.sub) { ctx.fillStyle = pal.muted; ctx.font = '500 26px system-ui, sans-serif'; ctx.fillText(spFitLine(ctx, b.sub, maxW), x, y + 8); }
   }
   return { base: c, photo: _photoLayer };
 }
@@ -11895,6 +11917,29 @@ function spComposite(ctx, vid, layer, W, H, half, t, dur, tIn, pal){
   ctx.fillStyle = pal.accent;
   ctx.fillRect(0, H-8, W * Math.min(1, t/(dur||1)), 8);
 }
+/* v689 — FIT TO THE COLUMN, NOT TO A CHARACTER COUNT. The two sub lines were cut with
+   .slice(0,42) and .slice(0,44) against a server cap of 110, so up to 66 characters were thrown
+   away mid-word with no ellipsis — the sentence just stopped. And a character count is the wrong
+   unit: measured at the render's real font and column (x=54, W=720 → 612px), an all-caps sub cut
+   at 44 characters is 683px wide and runs OFF the 720px canvas, chopped a second time by the
+   bitmap edge; ordinary prose at 44 characters is 496px and loses 33 characters that would have
+   fitted. This measures, breaks at a word where it can, and says it was cut. */
+function spFitLine(ctx, text, maxW){
+  const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  if (ctx.measureText(t).width <= maxW) return t;
+  const ell = '\u2026';
+  const ellW = ctx.measureText(ell).width;
+  let lo = 0, hi = t.length;
+  while (lo < hi) {                                   // largest prefix whose width + ellipsis fits
+    const mid = Math.ceil((lo + hi) / 2);
+    if (ctx.measureText(t.slice(0, mid)).width + ellW <= maxW) lo = mid; else hi = mid - 1;
+  }
+  let cut = t.slice(0, lo);
+  const sp = cut.lastIndexOf(' ');                    // prefer a word boundary, but never lose most of it
+  if (sp > lo * 0.6) cut = cut.slice(0, sp);
+  return cut.replace(/[\s,;:.\-]+$/, '') + ell;
+}
 function spWrap(text, ctx, maxW){
   const out = [];
   String(text).split('\n').forEach(para => {
@@ -11906,7 +11951,14 @@ function spWrap(text, ctx, maxW){
     });
     if (line) out.push(line);
   });
-  return out.slice(0, 4);
+  /* v689 — a fifth line used to vanish without trace, and `contrast` beats are INSTRUCTED to use
+     line breaks (api/video-beats.js:104 "Put the flip in headline using a line break"), so the
+     punchline of a before/after card could simply disappear. Keep four, but mark the fourth so
+     the card reads as cut rather than as finished. */
+  if (out.length <= 4) return out;
+  const kept = out.slice(0, 4);
+  kept[3] = spFitLine(ctx, kept[3] + ' ' + out.slice(4).join(' '), maxW);
+  return kept;
 }
 
 // Dismissing the share sheet is a CANCEL, not a failed share. Treating it as a failure is how a

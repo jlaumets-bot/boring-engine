@@ -162,7 +162,7 @@ Rules: extract, don't invent. If a field has no evidence in the captions, return
     // fast Apify run → a generous window; slow one → we still return our own error
     // before the platform kills us.
     const llmMs = Math.max(LLM_MIN_MS, Math.min(LLM_MAX_MS, FN_BUDGET_MS - (Date.now() - _t0)));
-    const content = await callLLM({ timeoutMs: llmMs,
+    const content = await callLLM({ deadlineMs: 280000, timeoutMs: llmMs,
       messages: [{ role: 'user', content: prompt }],
       model: 'grok',
       max_tokens: 3200

@@ -93,7 +93,7 @@ If there is no real repeated pattern yet, return fewer rules or none. Quality ov
 
 Return ONLY JSON: {"rules": [{"rule": "...", "evidence": "one short phrase citing what it's based on"}]}`;
 
-    const content = await callLLM({ timeoutMs: 48000,
+    const content = await callLLM({ deadlineMs: 70000, timeoutMs: 48000,
       messages: [{ role: 'user', content: prompt }],
       model: 'grok',
       max_tokens: 700

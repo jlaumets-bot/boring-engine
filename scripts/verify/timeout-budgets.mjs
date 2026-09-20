@@ -11,11 +11,48 @@ for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.
   const llmCalls = (s.match(/callLLM\(/g) || []).length;
   const grok = s.includes('callGrokSearch(');
   if (!llmCalls && !grok) continue;
-  const tos = [...s.matchAll(/timeoutMs\s*:\s*(\d+)/g)].map(m => +m[1]);
-  // A self-imposed total budget (e.g. FN_BUDGET_MS) bounds every leg, so it IS the worst case.
+  /* v689 — THIS CHECK PASSED THREE ENDPOINTS THAT WERE OVER BUDGET.
+     The old model was max(timeoutMs) * (count of callLLM), and it was blind to two things:
+       • EVERY NON-LLM TIMEOUT. api/meme.js awaits a 45s callLLM and then a 50s image call whose
+         timeout is written `timeout: 50000`; api/hook-frame.js fetches a thumbnail twice at 12s
+         each before its 45s callLLM. Neither cost was counted, so 95s and 69s of sequential work
+         both "fit" a 60s budget.
+       • THE RETRY LOOP. callXAI retried while `(Date.now() - t0) < 150000` — a test of whether an
+         attempt may START. The attempt then ran its full timeoutMs on top, so the real worst case
+         per callLLM was 150s + timeoutMs. api/video-beats.js at timeoutMs 285000 could therefore
+         reach 436s against a 300s budget.
+     When the platform kills a function the caller never sees our JSON: it gets Vercel's own 504
+     page, and the app prints the parse error verbatim ("Unexpected token 'A'...").
+     The model now counts what the code actually waits on, and credits deadlineMs — which bounds
+     a whole call including its retries — where an endpoint declares one. */
+  const num = (re) => [...s.matchAll(re)].map(m => +m[1]);
+  const deadlines = num(/deadlineMs\s*:\s*(\d+)/g);
+  const tos = num(/timeoutMs\s*:\s*(\d+)/g);
+  // Non-LLM waits: plain `timeout: N` options, socket setTimeout, and AbortSignal.timeout.
+  const otherTos = [
+    ...num(/[^a-zA-Z]timeout\s*:\s*(\d+)/g),
+    ...num(/\.setTimeout\(\s*(\d+)/g),
+    ...num(/AbortSignal\.timeout\(\s*(\d+)\s*\)/g),
+    ...num(/opts\.timeout\s*\|\|\s*(\d+)/g),
+  ];
   const budgetConst = s.match(/(?:FN_BUDGET_MS|TOTAL_BUDGET_MS|BUDGET_MS)\s*=\s*(\d+)/);
-  let worst = llmCalls ? (budgetConst ? +budgetConst[1] : (tos.length ? Math.max(...tos) * llmCalls : 240000)) : 0;
-  if (grok) { const race = s.match(/setTimeout\(\(\)\s*=>\s*r\(null\),\s*(\d+)\)/); worst += race ? +race[1] : 90000; }
+  let worst = 0;
+  if (llmCalls) {
+    if (budgetConst) worst = +budgetConst[1];                 // a self-imposed total bounds every leg
+    else if (deadlines.length) worst = Math.max(...deadlines) * llmCalls;
+    else if (tos.length) worst = (150000 + Math.max(...tos)) * llmCalls;   // the retry loop, honestly
+    else worst = 240000 * llmCalls;
+  }
+  // Sequential by default: an endpoint that awaits an image call after an LLM call pays for both.
+  if (!budgetConst && otherTos.length) worst += Math.max(...otherTos);
+  /* callGrokSearch honours opts.timeoutMs since v686 — it bounds the socket AND the one retry —
+     so an explicit timeoutMs at the call site is the real cost. A race wrapper still counts, and
+     with neither we assume the function's own 90s default. */
+  if (grok) {
+    const gto = [...s.matchAll(/callGrokSearch\([\s\S]{0,900}?timeoutMs:\s*(\d+)/g)].map(m => +m[1]);
+    const race = s.match(/setTimeout\(\(\)\s*=>\s*r\(null\),\s*(\d+)\)/);
+    worst += gto.length ? Math.max(...gto) : (race ? +race[1] : 90000);
+  }
   const budget = md[name] ?? 10, internal = Math.floor(worst / 1000);
   judged++;
   if (internal > budget) bad.push(`${name}: ${internal}s internal vs ${budget}s budget`);
@@ -23,6 +60,44 @@ for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.
 if (!judged) { console.error('no LLM endpoints found — check is not exercising anything'); process.exit(1); }
 if (bad.length) { console.error('MISMATCHED:\n  ' + bad.join('\n  ')); process.exit(1); }
 console.log(`judged ${judged} LLM endpoints, all internal timeouts fit their budget`);
+
+/* ── the retry loop itself, RUN ─────────────────────────────────────────────────────────────
+   Everything above is arithmetic over the source. It is only true if _roomFor actually honours
+   deadlineMs at runtime — and the bug it replaces was exactly a condition that looked right and
+   asked the wrong question: `(Date.now() - t0) < 150000` tests whether an attempt may START,
+   while the attempt then runs its full timeoutMs on top. So lift the real function and run it. */
+{
+  const llmSrc = fs.readFileSync(path.join(root, 'api', '_llm.js'), 'utf8');
+  const i = llmSrc.indexOf('  const _roomFor = (attempt) => {');
+  if (i < 0) { console.error('RETRY BOUND: _roomFor is gone from api/_llm.js — re-anchor this check'); process.exit(1); }
+  const body = llmSrc.slice(i, llmSrc.indexOf('\n  };', i) + 5);
+  const mk = (deadlineMs, timeoutMs, elapsed) => {
+    const t0 = Date.now() - elapsed;
+    const backoff = () => 1000;                       // fixed, so the assertion is deterministic
+    // eslint-disable-next-line no-new-func
+    const f = new Function('t0', 'deadlineMs', 'timeoutMs', 'backoff',
+      body + '\nreturn _roomFor;')(t0, deadlineMs, timeoutMs, backoff);
+    return f(0);
+  };
+  const problems = [];
+  // With a deadline, a retry may only start if it can FINISH inside it.
+  if (mk(50000, 45000, 10000) !== false)
+    problems.push('with a 50s deadline, 45s per attempt and 10s already gone, another attempt is ' +
+      'allowed to start — it cannot finish, so the platform kills the function instead');
+  if (mk(250000, 45000, 10000) !== true)
+    problems.push('with a 250s deadline and plenty of room, a retry is refused — that removes the ' +
+      'resilience the retry loop exists for');
+  if (mk(50000, 45000, 0) !== true)
+    problems.push('a FIRST retry with a full deadline available is refused');
+  // Without a deadline the old behaviour must be untouched, or every caller changes at once.
+  if (mk(0, 45000, 10000) !== true || mk(0, 45000, 200000) !== false)
+    problems.push('the no-deadline path no longer behaves as it did (elapsed < 150000)');
+  if (problems.length) {
+    console.error('RETRY BOUND BROKEN:\n  ' + problems.join('\n  '));
+    process.exit(1);
+  }
+  console.log('retry bound: a retry starts only when it can finish inside the deadline; callers without one are unchanged');
+}
 
 // ── the Supabase floor ──────────────────────────────────────────────────────────────────────
 // The Supabase helpers share ONE default timeout while every endpoint has its OWN budget, so the

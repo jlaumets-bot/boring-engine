@@ -119,7 +119,7 @@ THE DRAFT (${kindLabel}${fmt ? ', format: ' + fmt : ''}) — ${styleNote}
 ${serialized}
 
 List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voice drift from the approved winners, generic/interchangeable lines, a fuzzy or buried situation. Quote the exact weak phrase. Do NOT suggest: adding product features / USPs / sales angles / "what we do" lines; opening on the product or "someone using our X" (the hook must open on the reader's own situation); or shortening/cutting length — a spoken script SHOULD breathe and tell a story, so its length and natural build-up are FEATURES, not filler. If the draft already lands a relatable situation in the brand's voice, reply with exactly: STRONG`;
-      critique = await callLLM({ timeoutMs: 60000,
+      critique = await callLLM({ deadlineMs: 140000, timeoutMs: 60000,
         messages: [{ role: 'system', content: cSys }, { role: 'user', content: cUser }],
         model: 'grok', max_tokens: 700, engine: (bc.engine || 'grok'),
       }) || '';
@@ -185,7 +185,7 @@ Rewrite with the LIGHTEST touch that fixes those points, keeping the original's 
 
 ${rulePrecedence()}`;
 
-    const out = await callLLM({ timeoutMs: 120000,
+    const out = await callLLM({ deadlineMs: 140000, timeoutMs: 120000,
       messages: [{ role: 'system', content: rSys }, { role: 'user', content: rUser }],
       model: 'grok', max_tokens: 2500, engine: (bc.engine || 'grok'),
     });

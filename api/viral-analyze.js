@@ -89,7 +89,7 @@ Respond with EXACTLY this JSON and nothing else:
 }
 Exactly 3 items in "ideas".`;
 
-    const result = await callLLM({
+    const result = await callLLM({ deadlineMs: 280000,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       model: 'grok',
       max_tokens: 2200,

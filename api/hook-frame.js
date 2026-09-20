@@ -99,7 +99,8 @@ module.exports = async function handler(req, res) {
     if (!img || !img.buf || !img.buf.length) return res.status(200).json({ read: '' });
 
     const mime = (img.type && img.type.indexOf('image/') === 0) ? img.type.split(';')[0] : 'image/jpeg';
-    const read = await callLLM({ timeoutMs: 45000,
+    const read = await callLLM({ timeoutMs: 45000, deadlineMs: 50000,   // v689: bounded — two 12s thumbnail fetches run before this inside one budget
+
       messages: [
         { role: 'system', content: 'You analyze the COVER/HOOK FRAME of a short-form video for a content strategist. Describe ONLY what is visibly in this single frame — never speculate beyond it. Plain tight lines, no markdown headers, no fluff.' },
         { role: 'user', content: 'This is the hook/cover frame of a short-form video. Give a strategist-useful read in 5-9 tight lines:\n- SETTING & SHOT: where it is, how it is framed (selfie / close-up / b-roll / product shot / screen recording)\n- PEOPLE: who is visible, expression, energy, what they are doing\n- ON-SCREEN TEXT: quote it VERBATIM if any (this is often the written hook)\n- VISUAL HOOK: what makes this frame thumb-stopping (face, contrast, odd object, text promise, mid-action moment)\n- STYLE: colors, polish level (raw phone vs produced), any branding visible' }

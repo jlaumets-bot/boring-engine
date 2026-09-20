@@ -468,7 +468,7 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       ? '\n\nA REFERENCE SCREENSHOT is attached to this message. Study it and use what is relevant — the subject, the layout, the vibe, the wording — as inspiration for the idea. Translate it into a brand-true idea in the brand voice; never just describe the image, and never invent brand facts from it.'
       : '';
 
-    const content = await callLLM({ timeoutMs: 90000,
+    const content = await callLLM({ deadlineMs: 93333, timeoutMs: 90000,
       messages: [{ role: 'user', content: prompt + imgNote }],
       model: 'grok',
       max_tokens: 16000,
@@ -574,7 +574,7 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       if (_viol.length) {
         const _bad = Array.from(new Set(_viol.map(v => v.hit))).slice(0, 12).join(', ');
         const _fix = prompt + imgNote + `\n\nCRITICAL FIX: your previous draft used these FORBIDDEN words/topics: ${_bad}. Regenerate ALL ideas with the SAME quality, formats and structure, but with NONE of those words or topics anywhere (not in titles, hooks, scripts, captions or tags). Return the same JSON array.`;
-        const _c2 = await callLLM({ timeoutMs: 90000, messages: [{ role: 'user', content: _fix }], model: 'grok', max_tokens: 16000, engine: (bc.engine || 'grok'), images: refImages.length ? refImages : undefined });
+        const _c2 = await callLLM({ deadlineMs: 93333, timeoutMs: 90000, messages: [{ role: 'user', content: _fix }], model: 'grok', max_tokens: 16000, engine: (bc.engine || 'grok'), images: refImages.length ? refImages : undefined });
         let _i2 = extractJson(_c2);
         if (_i2 && !Array.isArray(_i2)) _i2 = [_i2];
         if (Array.isArray(_i2) && _i2.length) {
@@ -632,7 +632,7 @@ Return ONLY valid JSON object, no other text:
 
 Include all 7 days. 3-4 scenes per day.`;
 
-  const content = await callLLM({
+  const content = await callLLM({ deadlineMs: 93333,
     messages: [{ role: 'user', content: prompt }],
     model: 'grok',
     temperature: 0.8,

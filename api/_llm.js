@@ -46,7 +46,17 @@ function httpsPost(url, headers, body, timeoutMs) {
 // ── xAI (Grok) — OpenAI-compatible API. The ONLY text writer (no fallback). ──
 // `images` (optional): [{ mime, data(base64) }] attached to the last user turn so Grok
 // can actually SEE a screenshot. (Grok is the only writer — there is no fallback.)
-async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images = null, timeoutMs = 0 }) {
+/* v689 — deadlineMs BOUNDS THE WHOLE CALL, RETRIES INCLUDED. The retry gate below was
+   `(Date.now() - t0) < 150000`, checked BEFORE an attempt starts — so an attempt beginning at
+   149,999ms could still run its full timeoutMs on top. Worst case per callLLM was therefore
+   150s + timeoutMs, which is how three endpoints came to overrun their platform budget while
+   every one of them looked fine: api/meme.js (60s budget), api/hook-frame.js (60s) and
+   api/video-beats.js (300s). When the platform kills a function the caller does not get our JSON
+   — it gets Vercel's own 504 page, and the app prints the JSON parse error verbatim
+   ("Unexpected token 'A'..."). deadlineMs makes the loop ask the honest question instead: is
+   there room for another attempt to FINISH? Default 0 keeps the old behaviour for callers that
+   have not been given a budget. */
+async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images = null, timeoutMs = 0, deadlineMs = 0 }) {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return null;
 
@@ -94,12 +104,22 @@ async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images 
   // model fallback, so this retry is the app's only cushion.
   const t0 = Date.now();
   const backoff = a => Math.min(900 * Math.pow(2, a), 4000) + Math.floor(Math.random() * 300);
+  /* v689 — ONE room-check for all three retry loops in this function. Each of them asked
+     `(Date.now() - t0) < 150000`, which only says an attempt may START; the attempt then ran its
+     full timeoutMs on top, so the real worst case was 150s + timeoutMs and three endpoints
+     silently overran their platform budget. With a deadline, ask whether another attempt can
+     FINISH. Without one, keep the old behaviour so untouched callers do not change. */
+  const _roomFor = (attempt) => {
+    const elapsed = Date.now() - t0;
+    if (deadlineMs > 0) return (elapsed + backoff(attempt) + (timeoutMs || 240000)) < deadlineMs;
+    return elapsed < 150000;
+  };
   for (let attempt = 0; attempt < 4; attempt++) {
     let resp;
     try { resp = await httpsPost(url, headers, bodyStr, timeoutMs); }
     catch (e) {
       const isTimeout = /timed out/i.test(String(e && e.message));
-      if (!isTimeout && (Date.now() - t0) < 150000) { await new Promise(r => setTimeout(r, backoff(attempt))); continue; }
+      if (!isTimeout && _roomFor(attempt)) { await new Promise(r => setTimeout(r, backoff(attempt))); continue; }
       // WAS SILENT: a timeout or an exhausted network retry returned null with no log, so the
       // user saw "the AI is having a moment" and the logs showed nothing at all.
       console.log('xAI FAILED after ' + (Date.now() - t0) + 'ms on attempt ' + (attempt + 1) + ' — ' +
@@ -140,12 +160,12 @@ async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images 
         ' — finish_reason=' + (resp.body?.choices?.[0]?.finish_reason) +
         ' usage=' + JSON.stringify(resp.body?.usage || {}) +
         ' model=' + model + ' max_tokens=' + payload.max_tokens);
-      if (attempt < 3 && (Date.now() - t0) < 150000) { await new Promise(r => setTimeout(r, backoff(attempt))); continue; }
+      if (attempt < 3 && _roomFor(attempt)) { await new Promise(r => setTimeout(r, backoff(attempt))); continue; }
       return null;
     }
     const transient = resp.status === 429 || resp.status >= 500;
     console.log('xAI ' + (transient ? 'transient' : 'error') + ' (' + resp.status + ') attempt ' + (attempt + 1) + ': ' + JSON.stringify(resp.body).slice(0, 160));
-    if (transient && (Date.now() - t0) < 150000) { await new Promise(r => setTimeout(r, backoff(attempt))); continue; }
+    if (transient && _roomFor(attempt)) { await new Promise(r => setTimeout(r, backoff(attempt))); continue; }
     return null;
   }
   console.log('xAI gave up after 4 attempts / ' + (Date.now() - t0) + 'ms — model=' + model);
@@ -324,12 +344,12 @@ function callGrokSearch(prompt, opts = {}) {
 let LAST_TRUNCATED = false;
 
 async function callLLM(opts = {}) {
-  const { messages, temperature = 0.7, max_tokens = 2000, images = null, timeoutMs = 0, wantMeta = false } = opts;
+  const { messages, temperature = 0.7, max_tokens = 2000, images = null, timeoutMs = 0, deadlineMs = 0, wantMeta = false } = opts;
 
   // PURE GROK — no fallback (Jörgen's call: rather not generate than fall back to Llama).
   // If xAI is down / out of credits, this throws and the caller shows a retry message.
   LAST_TRUNCATED = false;
-  const text = await callXAI({ messages, temperature, max_tokens, images, timeoutMs });
+  const text = await callXAI({ messages, temperature, max_tokens, images, timeoutMs, deadlineMs });
   // v681: `wantMeta` is opt-in, so every existing caller still gets a plain string.
   if (text) return wantMeta ? { text: text, truncated: LAST_TRUNCATED } : text;
 

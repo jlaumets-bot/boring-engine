@@ -138,7 +138,13 @@ ${body.slice(0, 3000)}`;
       messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }],
       temperature: 0.5,
       max_tokens: 3000,  // v549: reasoning + full JSON headroom so the graphics track never truncates (only actual tokens are billed)
-      timeoutMs: 285000  // v549: use nearly the whole 300s function budget (was 200s) — leave ~15s for JSON parse + response
+      timeoutMs: 240000,
+    // v689 — 285000 was "nearly the whole 300s budget", but the retry loop could start another
+    // attempt at 149,999ms and run the full timeout on top: measured worst case 338s-436s against
+    // a 300s budget, so the platform killed it and the app printed Vercel's 504 page as a JSON
+    // parse error. deadlineMs bounds the WHOLE call, retries included, and the numbers now leave
+    // room for guard() (3 sequential Supabase reads at 8s each) plus loadBrandContext.
+    deadlineMs: 250000
     });
     if (!raw) return res.status(502).json({ error: 'No response from the AI — try again' });
 

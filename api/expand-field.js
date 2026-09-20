@@ -84,7 +84,7 @@ Return ONLY the improved content for this field.`;
        back as ordinary text, because finish_reason was only read on the empty-200 path. A
        field cut off mid-sentence then overwrote the user's own writing, with no diff and no
        undo. Refuse a truncated rewrite, and say when the field was too long to read whole. */
-    const _res = await callLLM({
+    const _res = await callLLM({ deadlineMs: 280000,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

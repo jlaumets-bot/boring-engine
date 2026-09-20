@@ -103,13 +103,13 @@
       "maxDuration": 300
     },
     "api/people-also-ask.js": {
-      "maxDuration": 45
+      "maxDuration": 90
     },
     "api/settings-examples.js": {
       "maxDuration": 30
     },
     "api/health.js": {
-      "maxDuration": 30
+      "maxDuration": 45
     },
     "api/pull-trends-cron.js": {
       "maxDuration": 300
@@ -139,7 +139,7 @@
       "maxDuration": 30
     },
     "api/distill-voice.js": {
-      "maxDuration": 60
+      "maxDuration": 90
     },
     "api/delete-account.js": {
       "maxDuration": 30
@@ -163,10 +163,10 @@
       "maxDuration": 300
     },
     "api/meme.js": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "api/hook-frame.js": {
-      "maxDuration": 60
+      "maxDuration": 90
     },
     "api/stock-photo.js": {
       "maxDuration": 60

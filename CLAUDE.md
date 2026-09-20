@@ -2,6 +2,75 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-20 — v689. SPLIT SCREEN, PART 3 — and a finding far bigger than split screen: EVERY LLM endpoint could overrun its platform budget.
+
+**1. THE RETRY LOOP WAS NEVER BOUNDED BY THE FUNCTION'S BUDGET.** `callXAI` retried while
+`(Date.now() - t0) < 150000` — a test of whether an attempt may **START**. The attempt then ran its
+full `timeoutMs` on top, so the real worst case per `callLLM` was **150s + timeoutMs**. Three
+endpoints were already known to overrun; when the budget gate was rewritten to model this honestly,
+it flagged **ten**. When the platform kills a function the caller never sees our JSON — it gets
+Vercel's own 504 page, and the app prints the parse error verbatim (*"Unexpected token 'A', "An
+error o"... is not valid JSON"*), which is what the person reads.
+
+`callLLM` now takes `deadlineMs`, which bounds the WHOLE call including retries, and all three retry
+loops in `_llm.js` share one `_roomFor(attempt)` that asks the honest question: is there room for
+another attempt to **finish**? With no deadline the old behaviour is untouched, so nothing regressed.
+Every LLM endpoint now passes a deadline derived from its own budget, and three whose budget could
+not hold even one attempt were given room: `distill-voice` 60→90, `health` 30→45,
+`people-also-ask` 45→90. `meme` 60→120 (45s model call **then** a 50s image call) and `hook-frame`
+60→90 (two 12s thumbnail fetches **then** a 45s model call). `video-beats` was 285000ms of timeout
+inside a 300s budget with a retry loop on top — measured worst case 338s–436s — now 240000 with a
+250000 deadline. `crawl-brand`'s Grok web-search leg is bounded at 60s.
+
+**THE GATE WAS THE REAL BUG.** `timeout-budgets.mjs` modelled worst case as
+`max(timeoutMs) × count(callLLM)`. It could not see a plain `timeout: 50000`, a `.setTimeout(...)`,
+an `AbortSignal.timeout(...)`, or the retry loop — so 95s and 69s of sequential work both "fit" a
+60s budget and it printed *"all internal timeouts fit their budget"*. It now counts what the code
+actually waits on, credits `deadlineMs`, and **runs the real `_roomFor`** rather than trusting the
+arithmetic: four mutations proved caught, including the deadline silently reverting to the old
+start-test.
+
+**2. BEAT TEXT WAS CUT TO A CHARACTER COUNT, AND RAN OFF THE CANVAS.** Both sub lines used
+`.slice(0,42)` / `.slice(0,44)` against a 110-character server cap — up to 66 characters gone
+mid-word with no ellipsis, the sentence just stopping. Measured with a real canvas at the render's
+own font and column (x=54, W=720 → 612px):
+```
+"We tested nine best-sellers and only two matched the dose printed on the tub."
+  slice(0,44) -> 686px wide, right edge 740 on a 720px canvas   <-- chopped AGAIN by the bitmap
+  spFitLine   -> 577px, right edge 631, ends "...and only…"
+```
+A character count is wrong in both directions: all-caps ran off the canvas, ordinary prose lost 33
+characters that would have fitted. New `spFitLine` measures, breaks at a word, and marks the cut.
+
+**3. `spWrap` SILENTLY DROPPED A FIFTH LINE** — while `api/video-beats.js:104` *instructs* contrast
+beats to *"put the flip in headline using a line break"*, so the punchline of a before/after card
+could vanish. The tail is now merged into the fourth line and marked when it cannot fit.
+
+**4. A CHIPS BEAT'S SUB WAS IN THE PREVIEW AND NOT IN THE VIDEO.** `brollBeatHtml:9675` draws it;
+the video's chips branch had no sub draw at all. The person approved a sentence the export did not
+contain. Now drawn, with the beat's height budget corrected to make room for it.
+
+**5. `rec.onerror` WAS NEVER ASSIGNED.** If the encoder failed part-way the frame loop still read
+`vid.currentTime` to the end, so `partial` stayed false and only the drift probe noticed — phrasing
+it as *"this phone reported a 12.3s timing wobble"*. A file missing most of its content, described
+as a wobble. Now recorded and reported first, ahead of every other caveat.
+
+GATES: 84 of 84 green. New: `scripts/verify/beat-text-fits.mjs` — runs the real `spFitLine` and
+`spWrap` against stub metrics including a deliberately wide one; five mutations caught, and on its
+first run it caught a weakness in the fix itself (a merged tail that needed no mark), which changed
+the assertion from "must end in an ellipsis" to the property that matters: **no word disappears**.
+`timeout-budgets.mjs` rewritten and given a runtime arm.
+
+**STILL OPEN IN SPLIT SCREEN:**
+- `headline` on `number` beats and `highlight` on `number`/`chips` are generated, truncated and paid
+  for every call, and drawn nowhere.
+- The preview's duration is fiction (`beats.length * 3.25` vs the take's real length); server-side
+  `duration` has zero readers.
+- Memory: 20 Mbps at 1440×2560 = 2.5 MB/s; 429 MB for a 180s take, raw + output alive together
+  = 858 MB, plus up to 78 MB of decoded stock photos held for the session.
+- The shared Pexels key drains at ~16 renders/hour app-wide; only `/api/health` can see it and the
+  app never fetches that.
+
 ## ▶▶ 2026-09-20 — v688. SPLIT SCREEN, PART 2: the graphics stopped following the speech, and the app said the timing was perfect.
 
 **1. A CUE PAST THE LAST WORD THE PHONE HEARD WAS COUNTED AS A MATCH.** `tpVoiceWords` is built from

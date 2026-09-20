@@ -103,7 +103,7 @@ Respond with EXACTLY this JSON and nothing else (omit a field with "" if the for
 
 ${rulePrecedence()}`;
 
-    const content = await callLLM({
+    const content = await callLLM({ deadlineMs: 280000,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       model: 'grok',
       max_tokens: 2500,

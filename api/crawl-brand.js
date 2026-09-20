@@ -166,7 +166,7 @@ WEBSITE CONTENT:
 ${truncated}`;
 
     // Use shared LLM helper (Grok → Groq fallback). More room to fill every field.
-    const content = await callLLM({ timeoutMs: 60000,
+    const content = await callLLM({ deadlineMs: 95000, timeoutMs: 60000,
       messages: [{ role: 'user', content: prompt }],
       model: 'grok',
       temperature: 0.3,
@@ -242,7 +242,7 @@ ${truncated}`;
         if ((process.env.WEB_ENRICH_GROK || 'on').toLowerCase() !== 'off') {
           const gsRaw = await callGrokSearch(
             `Research the brand "${bn}"${what ? ' (which: ' + what.slice(0, 200) + ')' : ''} using LIVE web search — its reviews (Trustpilot, Google, reddit, forums), press/awards, real competitors in the same category, and the WHOLE category's common complaints. Base EVERY field ONLY on what you actually find; empty string (or empty array) if unsupported. Return ONLY this JSON, no prose and no code fences:\n${ENRICH_SCHEMA}`,
-            { maxTokens: 1400 }
+            { maxTokens: 1400, timeoutMs: 60000 }   // v689: bounded — two callLLM legs and a 25s fetch share this 300s budget
           );
           if (gsRaw) { sj = extractJson(gsRaw); if (sj) _via = 'grok-search'; }
         }
@@ -261,7 +261,7 @@ ${ENRICH_SCHEMA}
 
 WEB SEARCH RESULTS:
 ${web.slice(0, 12000)}`;
-            const sraw = await callLLM({ timeoutMs: 60000, messages: [{ role: 'user', content: sprompt }], model: 'grok', temperature: 0.2, max_tokens: 1100 });
+            const sraw = await callLLM({ deadlineMs: 95000, timeoutMs: 60000, messages: [{ role: 'user', content: sprompt }], model: 'grok', temperature: 0.2, max_tokens: 1100 });
             sj = extractJson(sraw); if (sj) _via = 'jina';
           }
         }

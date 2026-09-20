@@ -124,7 +124,7 @@ module.exports = async function handler(req, res) {
         // Bound the filter to 20s (function budget is 45s, SerpAPI ran first) — if Grok is slow the
         // race rejects, the catch below keeps the UNFILTERED list, and PAA never times out / breaks.
         const resp = await Promise.race([
-          callLLM({ timeoutMs: 34000,
+          callLLM({ deadlineMs: 58000, timeoutMs: 34000,
             messages: [
               { role: 'system', content: 'You filter candidate "People Also Ask" search questions down to only the ones genuinely ON-TOPIC and worth answering in content for a SPECIFIC brand. Drop anything tangential, off-niche, or that the brand\'s audience would not care about. Reply with ONLY a JSON array of the kept item numbers, e.g. [0,2,5]. Keep the clearly-relevant ones; when unsure, drop it.' },
               { role: 'user', content: `THE BRAND:\n${brain}\n\nCANDIDATE QUESTIONS:\n${list}\n\nReturn the numbers of ONLY the on-topic ones as a JSON array.` },

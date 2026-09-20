@@ -66,7 +66,7 @@ ${fieldList}
 
 JSON only.`;
 
-    const raw = await callLLM({ timeoutMs: 22000,
+    const raw = await callLLM({ deadlineMs: 10000, timeoutMs: 22000,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

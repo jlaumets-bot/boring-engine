@@ -157,7 +157,7 @@ module.exports = async function handler(req, res) {
     // Try-All 6-parallel burst); if the first parse fails we ask once more for strictly clean JSON.
     var content = '', remix = null;
     for (var _try = 0; _try < 2 && !remix; _try++) {
-      content = await callLLM({
+      content = await callLLM({ deadlineMs: 280000,
         // rulePrecedence() says "read this last", so it is appended HERE, at call time, after
         // imgNote and the retry note. Appending it to the prompt body instead left it buried
         // whenever a reference screenshot was attached or a retry fired — the two paths the old

@@ -305,7 +305,7 @@ module.exports = async function handler(req, res) {
       } else {
         const t0 = Date.now();
         let text = null;
-        try { text = await callLLM({ timeoutMs: 12000, messages: [{ role: 'user', content: 'Reply with the single word: ok' }], max_tokens: 5, temperature: 0 }); } catch (e) {}
+        try { text = await callLLM({ deadlineMs: 25000, timeoutMs: 12000, messages: [{ role: 'user', content: 'Reply with the single word: ok' }], max_tokens: 5, temperature: 0 }); } catch (e) {}
         grok = { ok: !!(text && String(text).trim()), ms: Date.now() - t0 };
         // Logged on the ATTEMPT, not on success: the token is spent either way, and a provider
         // that fails fast is exactly the case an attacker would loop.

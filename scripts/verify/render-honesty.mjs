@@ -416,6 +416,7 @@ if (render) {
        was written twice, read nowhere, and every pattern that mentioned its NAME passed. So lift
        the two real declarations and execute them with the flag set, and require a warning to come
        out the other side. `false && window._spDurEstimated` passes a regex; it fails this. */
+    const encDecl  = (offer.match(/const _encMsg = [\s\S]*?;\n/) || [])[0] || '';
     const estDecl  = (offer.match(/const _estMsg = [\s\S]*?;\n/) || [])[0];
     const totDecl  = (offer.match(/const _tot = [\s\S]*?;\n/) || [])[0] || '';
     const lowDecl  = (offer.match(/const _lowMatch = [\s\S]*?;\n/) || [])[0] || '';
@@ -432,7 +433,7 @@ if (render) {
         const ctx = { window: { _spDurEstimated: flag, _tpBeatTotal: b.total, _tpBeatMatched: b.matched,
                                 _spPhotoMisses: b.misses || 0, _spPhotoWhy: b.why || '' }, out, String, RegExp };
         vm.createContext(ctx);
-        return vm.runInContext(estDecl + totDecl + lowDecl + missDecl + whyDecl + photoDecl + warnDecl + '\n_warn', ctx);
+        return vm.runInContext(encDecl + estDecl + totDecl + lowDecl + missDecl + whyDecl + photoDecl + warnDecl + '\n_warn', ctx);
       };
       const clean = { partial: false, drift: 0, estSec: 19.5 };
       const guessed = run(true, clean);
@@ -472,12 +473,26 @@ if (render) {
       ok(onePlain === '',
          'ITEM2: ONE beat with no matching stock photo is normal and must not raise a warning (' +
          JSON.stringify(onePlain) + '). Warning on every render is how a warning stops being read.');
+      /* v689 — rec.onerror was never assigned, so a failed encode produced a file missing most of
+         its content while `partial` stayed false (the frame loop still read currentTime to the
+         end) and only the drift probe spoke up — calling it a "timing wobble". */
+      const enc = run(false, { partial: false, drift: 2.2, recFailed: 'UnknownError' });
+      ok(typeof enc === 'string' && /encoder/i.test(enc),
+         'ITEM2: the encoder failed mid-record and the sheet does not say so (' + JSON.stringify(enc) +
+         '). A file missing most of its content must not be described as a timing wobble.');
+      const noEnc = run(false, { partial: false, drift: 0, recFailed: '' });
+      ok(noEnc === '', 'ITEM2: a clean render must not mention the encoder (' + JSON.stringify(noEnc) + ')');
       const wobbly = run(true, { partial: false, drift: 2.2, estSec: 19.5 });
       ok(typeof wobbly === 'string' && /guess/i.test(wobbly),
          'ITEM2: when the length was guessed AND the phone reported drift, the drift text wins and ' +
          'the truncation goes unmentioned. Truncation is the worse of the two: ' + JSON.stringify(wobbly));
     }
-    const usesIt = /_estMsg/.test(offer) && /_warn\s*=\s*_estMsg/.test(offer);
+    // The chain may grow at the FRONT (v689 put the encoder failure ahead of it, because a file
+    // missing its content outranks a truncated one) — what matters is that _estMsg comes before
+    // the drift text, not that it is literally first.
+    const chain = (offer.match(/const _warn = [\s\S]*?;\n/) || [''])[0];
+    const usesIt = /_estMsg/.test(offer) && /_estMsg\s*\|\|/.test(chain) &&
+                   chain.indexOf('_estMsg') < chain.indexOf('timing wobble');
     ok(usesIt,
        'ITEM2: the estimated-duration message is not the FIRST warning on the sheet. A truncated ' +
        'video is worse than a wobbly one, so it must win over the drift text rather than be ' +
