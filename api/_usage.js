@@ -1000,6 +1000,25 @@ async function getPlanSnapshot(userId, opts) {
   }
 }
 
+/* v692 round 3 — store a Stripe customer id ONLY if the row has none yet. create-checkout now makes
+   the customer before a first purchase so a second checkout tab lands on the SAME customer (and its
+   open session can be expired). Two tabs can race this: the `stripe_customer_id=is.null` filter makes
+   the first write win and the second a no-op, and the caller re-reads the row to use the winner.
+   Ensures the row exists first (a first purchase may come before any other use of the app).
+   Returns true when the write was accepted (whether or not it changed the row), false on failure. */
+async function setStripeCustomerIfEmpty(userId, customerId) {
+  try {
+    await getOrInitPlan(userId);
+    await sbRequest('PATCH',
+      `/rest/v1/user_plans?user_id=eq.${encodeURIComponent(userId)}&stripe_customer_id=is.null`,
+      { stripe_customer_id: customerId, updated_at: new Date().toISOString() }, { 'Prefer': 'return=minimal' });
+    return true;
+  } catch (e) {
+    console.error('setStripeCustomerIfEmpty FAILED — user=' + userId + ' customer=' + customerId + ':', (e && e.message) || e);
+    return false;
+  }
+}
+
 // Look up a user's Stripe customer id (for opening the billing portal).
 //
 // v683 — THREE ANSWERS, NOT TWO. This used to collapse a failed read into `null`, the same
@@ -1153,6 +1172,7 @@ module.exports = {
   PLAN_LIMITS, ACTION_CREDITS, ACTION_COST, COST_CAP_EUR, RATE_LIMIT_PER_MIN, TRIAL_DAYS,
   creditsFor, costFor, getOrInitPlan, effectivePlan, limitFor,
   usedThisPeriod, usageThisPeriod, getStatus, checkLimit, logUsage, guard, setPlan, userIdByStripe, stripeCustomerId,
+  setStripeCustomerIfEmpty,
   billingUserFor, claimedBrandId,
   setRequestBudget,
   // Period window (pure, testable) + the billing snapshot the money path branches on.

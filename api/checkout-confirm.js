@@ -114,10 +114,47 @@ module.exports = async function handler(req, res) {
     }
     // ───────────────────────────────────────────────────────────────────────────
 
+    // v692 — NO PAID PLAN WITHOUT A SUBSCRIPTION ID. This wrote `stripe_subscription_id: null` whenever
+    // the session carried no subscription, and the webhook now reads a paid row with no subscription
+    // id as HAND-GRANTED — so it would never downgrade it again: a paid plan for as long as the row
+    // lives, whatever happened to the payment. A paid subscription-mode session always has one, so
+    // this is an anomaly: refuse the grant, log what a human needs to fix it, and tell the truth.
+    // 500, not 402 (a 402 opens the upgrade modal — see the note on the failed write below).
+    if (!session.subscription) {
+      console.error('checkout-confirm: PAID SESSION WITHOUT A SUBSCRIPTION — plan NOT granted. user=' + user.id +
+        ' session=' + sessionId + ' customer=' + (session.customer || 'none') +
+        ' plan=' + ((session.metadata && session.metadata.plan) || 'pro') + ' — check it in Stripe and set the plan by hand.');
+      return res.status(500).json({
+        ok: false,
+        planUpdateFailed: true,
+        error: 'Payment went through, but we could not find the subscription it belongs to yet. Refresh in a minute — if your plan still looks wrong, contact support and we will fix it right away.'
+      });
+    }
+
     const plan = (session.metadata && session.metadata.plan) || 'pro';
+
+    // v692 round 2 — TWO LIVE SUBSCRIPTIONS. This write replaced whatever subscription id the row
+    // held, so a second checkout (two tabs) moved the row off a subscription that was still
+    // charging, with nothing logged. Same rule as the webhook (guardDoubleSubscription there): the
+    // row keeps the subscription that is paying, and the duplicate is logged for a refund.
+    const webhook = require('./stripe-webhook');
+    const g = await webhook.guardDoubleSubscription(user.id, session.subscription, secret,
+      { customerId: session.customer || null, source: 'checkout-confirm session=' + sessionId });
+    if (g.retry) {
+      console.error('checkout-confirm: could not check for a second subscription — user=' + user.id + ' session=' + sessionId + ' — ' + g.why);
+      return res.status(503).json({ error: 'Could not confirm your subscription just now — reload in a minute.' });
+    }
+    if (g.keep) {
+      return res.status(409).json({
+        ok: false,
+        doubleSubscription: true,
+        error: 'You already had an active subscription, so this payment started a second one. Email support@contentshrimp.com and we will refund the duplicate.'
+      });
+    }
+
     const planSet = await usage.setPlan(user.id, plan, {
       stripe_customer_id: session.customer || null,
-      stripe_subscription_id: session.subscription || null
+      stripe_subscription_id: session.subscription
     });
 
     // THE CARD IS ALREADY CHARGED BY THIS POINT. The return value used to be discarded and
@@ -142,6 +179,21 @@ module.exports = async function handler(req, res) {
         plan,
         error: 'Payment went through. We could not switch your plan over just yet — refresh in a moment, and if it still looks wrong contact support and we will fix it right away.'
       });
+    }
+
+    // v692 round 2 — RE-CHECK AFTER THE WRITE. The live check above and this write are two steps:
+    // a cancellation applied between them (the webhook's `deleted`) left the row on a paid plan with
+    // a dead subscription id, and no later event exists to repair it. Same re-read as the webhook's
+    // grant (confirmGrant): still live → done; ended → the grant is undone (only while the row
+    // still holds this subscription); cannot read → 503, and the webhook's own grant decides.
+    const c = await webhook.confirmGrant(user.id, session.subscription, secret);
+    if (c.retry) {
+      console.error('checkout-confirm: PLAN WRITTEN BUT NOT CONFIRMED — user=' + user.id + ' session=' + sessionId +
+        ' subscription=' + session.subscription + ' — ' + c.why);
+      return res.status(503).json({ error: 'Could not confirm your subscription just now — reload in a minute.' });
+    }
+    if (c.undone) {
+      return res.status(403).json({ error: 'That subscription is no longer active. Start a new plan from Settings.' });
     }
 
     const status = await usage.getStatus(user.id);

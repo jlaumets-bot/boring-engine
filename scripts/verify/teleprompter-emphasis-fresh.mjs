@@ -93,6 +93,10 @@ const WRITERS = [
   ["Viral rewrite's mirror write", /if\(src && src !== i\)/, 'src', 600],
   ['Quick Post sharpen', /if\(window\._tvIdea\)/, 'window._tvIdea', 600],
   ['a hand edit to a field', /if \(key\) idea\[key\] = after;/, 'idea', 600],
+  // v692: marks are now SAVED with the row, so a stale list would also follow the post to other
+  // devices. Two more paths that replace the text the marks are checked against:
+  ['Quick Post viral twist (tvApplyTwist)', /_RWK\.forEach\(k => \{ if \(nw\[k\] !== undefined && nw\[k\] !== null && asText\(nw\[k\]\)\.trim\(\) !== ''\) i\[k\] = asText\(nw\[k\]\); \}\);/, 'i', 600],
+  ['the statement editor (cmClose)', /state\[cmState\.ideaId\]\.boldText = newText;/, 'state[cmState.ideaId]', 200],
 ];
 // NOT stripped file-wide: app.html is HTML + CSS + JS, so a file-wide /* */ strip mis-pairs on
 // CSS blocks and on */ inside strings, and eats real code (it made all six of these fail at once).

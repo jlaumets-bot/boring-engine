@@ -52,6 +52,8 @@ const net = {
 };
 function reset() {
   net.plans.clear(); net.events.clear(); net.subs.clear(); net.fault = {}; net.writes.length = 0; net.stripeCalls = 0; net.onPatch = null;
+  net.searchVersions = []; net.versionLeak = null;
+  net.searchOverride = null;  // v692 round 3: when set, Stripe Search answers this (a lagging index)
   process.env.STRIPE_SECRET_KEY = TEST_KEY;
 }
 const sp = (p) => new URL('https://h' + p).searchParams;
@@ -59,6 +61,8 @@ const eq = (q, k) => { const v = q.get(k); return v && v.startsWith('eq.') ? v.s
 
 function faultReply(mode) {
   if (!mode) return null;
+  // v692 round 4 — an exact Stripe error reply: { status, body }
+  if (typeof mode === 'object') return { status: mode.status, body: JSON.stringify(mode.body) };
   const m = /^http(\d{3})$/.exec(mode);
   if (m) return { status: Number(m[1]), body: JSON.stringify({ error: { message: 'fault ' + mode } }) };
   if (mode === 'net') return { error: new Error('socket hang up (fault)') };
@@ -105,11 +109,24 @@ function postgrest(o, payload) {
 
 function stripe(o) {
   net.stripeCalls++;
+  if ((o.headers || {})['Stripe-Version'] && !/^\/v1\/subscriptions\/search\?/.test(o.path)) net.versionLeak = o.path;
   let m = o.path.match(/^\/v1\/events\/([^?]+)$/);
   if (m) {
     const f = faultReply(net.fault.event); if (f) return f;
     const e = net.events.get(decodeURIComponent(m[1]));
     return e ? { status: 200, body: JSON.stringify(e) } : { status: 404, body: JSON.stringify({ error: { message: 'No such event' } }) };
+  }
+  // v692 round 3 — Stripe Search by metadata user_id (the webhook's "another live subscription?")
+  const msq = o.path.match(/^\/v1\/subscriptions\/search\?(.*)$/);
+  if (msq && o.method === 'GET') {
+    { const f = faultReply(net.fault.search); if (f) return f; }
+    net.searchVersions.push((o.headers || {})['Stripe-Version'] || null);
+    const qq = new URLSearchParams(msq[1]).get('query') || '';
+    const mu = /metadata\['user_id'\]:'((?:[^'\\]|\\.)*)'/.exec(qq);
+    const uid = mu ? mu[1].replace(/\\(.)/g, '$1') : null;
+    // an override is returned AS IS (a lagging or misbehaving index — round 5: even another user's hit)
+    const data = net.searchOverride || [...net.subs.values()].filter((x) => x && x.metadata && x.metadata.user_id === uid);
+    return { status: 200, body: JSON.stringify({ object: 'search_result', data, has_more: false }) };
   }
   m = o.path.match(/^\/v1\/subscriptions\/([^?]+)$/);
   if (m) {
@@ -441,8 +458,12 @@ for (const st of ['unpaid', 'incomplete_expired', 'past_due', 'absent']) {
     if (st === 'absent') net.subs.delete('sub_A'); else net.subs.set('sub_A', SUB({ status: st }));
   };
   const r5 = await send(event('checkout.session.completed', SESSION()));
-  ck(ok2(r5) && plan('user-a') === 'free' && !row('user-a').stripe_subscription_id,
-    `R: a grant that raced the subscription becoming "${st}" left plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id}`);
+  // v692 — the undo still drops the plan for every non-live status, but the subscription id is
+  // cleared only when the subscription has ENDED. A past_due / unpaid one is still being retried
+  // by Stripe; its id must stay so create-checkout refuses a second subscription.
+  const wantSub = (st === 'past_due' || st === 'unpaid') ? 'sub_A' : null;
+  ck(ok2(r5) && plan('user-a') === 'free' && (row('user-a').stripe_subscription_id || null) === wantSub,
+    `R: a grant that raced the subscription becoming "${st}" left plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id} (want free, sub=${wantSub})`);
 }
 // R (round 3). an unconfirmed checkout grant (re-read failed / undo write failed) answers 503 AND the
 // redelivery repairs it — the checkout path's "not live" branch used to ignore the row
@@ -535,6 +556,341 @@ process.env.STRIPE_SECRET_KEY = 'rk_live_rv_money_gate';
 const x5o = await send('evt_rv_unknown_rk2', { livemode: false });
 ck(ok2(x5o), `X5: a test event at a restricted LIVE key answered ${x5o.code}`);
 process.env.STRIPE_SECRET_KEY = TEST_KEY;
+
+// ── v692 ─────────────────────────────────────────────────────────────────────
+// V1. DUNNING: a subscription that is still alive in Stripe keeps its id on the row (the plan still
+//     drops to free — the owner's access policy), so create-checkout can refuse a second one.
+for (const st of ['past_due', 'unpaid', 'incomplete', 'paused']) {
+  reset();
+  paidRow('user-a');
+  net.subs.set('sub_A', SUB({ status: st }));
+  const v = await send(event('customer.subscription.updated', SUB({ status: st })));
+  ck(ok2(v) && plan('user-a') === 'free', `V1: ${st} answered ${v.code}, plan=${plan('user-a')} (want 2xx + free — the access policy is unchanged)`);
+  ck(row('user-a').stripe_subscription_id === 'sub_A' && row('user-a').stripe_customer_id === 'cus_A',
+    `V1: ${st} left sub=${row('user-a').stripe_subscription_id} customer=${row('user-a').stripe_customer_id} — the id of a subscription Stripe is still charging was cleared, so a second checkout double-bills`);
+  // the card recovers: updated(active) re-grants, as today
+  net.subs.set('sub_A', SUB());
+  const rec = await send(event('customer.subscription.updated', SUB()));
+  ck(ok2(rec) && plan('user-a') === 'pro' && row('user-a').stripe_subscription_id === 'sub_A',
+    `V1: after ${st}, the recovery updated(active) left plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id}`);
+}
+// opposite: a subscription that has truly ENDED has its id cleared (updated or deleted, and a 404)
+for (const [st, type] of [['canceled', 'customer.subscription.updated'], ['incomplete_expired', 'customer.subscription.updated'],
+                          ['canceled', 'customer.subscription.deleted'], ['absent', 'customer.subscription.updated']]) {
+  reset();
+  paidRow('user-a');
+  if (st !== 'absent') net.subs.set('sub_A', SUB({ status: st }));
+  const v = await send(event(type, SUB({ status: st === 'absent' ? 'active' : st })));
+  ck(ok2(v) && plan('user-a') === 'free' && !row('user-a').stripe_subscription_id && row('user-a').stripe_customer_id === 'cus_A',
+    `V1: ${type} with the subscription "${st}" left plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id} customer=${row('user-a').stripe_customer_id} (want free, id cleared, customer kept)`);
+}
+// the full dunning path: past_due keeps the id, and when Stripe finally cancels it the id is cleared
+// — even though the row already says free with the same period end ("already correct" must not hide it)
+reset();
+paidRow('user-a');
+net.subs.set('sub_A', SUB({ status: 'past_due' }));
+await send(event('customer.subscription.updated', SUB({ status: 'past_due' })));
+ck(plan('user-a') === 'free' && row('user-a').stripe_subscription_id === 'sub_A', 'V1: setup — past_due did not leave free + sub_A');
+net.subs.set('sub_A', SUB({ status: 'canceled' }));
+const vEnd = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+ck(ok2(vEnd) && plan('user-a') === 'free' && !row('user-a').stripe_subscription_id,
+  `V1: the deletion after dunning answered ${vEnd.code} and left sub=${row('user-a').stripe_subscription_id} — a dead id stays on the row`);
+const vEndAgain = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+ck(ok2(vEndAgain) && net.writes.filter((w) => w.method === 'PATCH').length === 2,
+  `V1: a redelivered deletion after the id was cleared wrote again (PATCHes=${net.writes.filter((w) => w.method === 'PATCH').length}, want 2)`);
+
+// V2. UNMATCHED: no user_id metadata, no row holds either id, and the lookups SUCCEEDED
+const OLD = now() - 30 * 86400;
+for (const type of ['customer.subscription.updated', 'customer.subscription.deleted']) {
+  reset();
+  net.plans.set('user-b', { user_id: 'user-b', plan: 'pro', stripe_customer_id: 'cus_B', stripe_subscription_id: 'sub_B' });
+  net.subs.set('sub_A', SUB({ status: 'canceled', metadata: {}, created: OLD }));
+  const id = event(type, SUB({ status: 'canceled', metadata: {}, created: OLD }));
+  const v = await send(id);
+  ck(ok2(v) && net.writes.length === 0, `V2: an OLD unmatched ${type} answered ${v.code} (want 2xx, nothing written) — Stripe retries it for three days for nothing`);
+  const line = v.lines.find((l) => /WEBHOOK UNMATCHED/.test(l)) || '';
+  ck(line.includes(id) && line.includes('sub_A') && line.includes('cus_A'), `V2: the unmatched ${type} did not log a WEBHOOK UNMATCHED line naming the event, subscription and customer`);
+  ck(!/@/.test(line), 'V2: the WEBHOOK UNMATCHED line carries an email');
+  ck(plan('user-b') === 'pro', 'V2: an unmatched event touched another customer');
+}
+// opposites: a FRESH unmatched subscription still gets non-2xx (a retry can still match it), and so
+// does one whose age Stripe did not give us; a failed lookup is still 503 whatever the age
+for (const [label, created] of [['fresh (5 min)', now() - 300], ['unknown age', undefined]]) {
+  reset();
+  const s = SUB({ status: 'canceled', metadata: {}, created });
+  net.subs.set('sub_A', s);
+  const v = await send(event('customer.subscription.deleted', s));
+  ck(v.code >= 500 && !v.lines.some((l) => /WEBHOOK UNMATCHED/.test(l)), `V2: an unmatched subscription of ${label} answered ${v.code} — a retry that could still match it was given up`);
+  // round 2: the retry must be the DELIBERATE one, not a crash that happens to be non-2xx
+  ck(v.code === 500 && v.body.error === 'unresolved_user' && !v.lines.some((l) => /UNHANDLED/.test(l)),
+    `V2: an unmatched subscription of ${label} answered ${v.code} ${v.body.error} (want 500 unresolved_user, no crash)`);
+}
+reset();
+net.subs.set('sub_A', SUB({ status: 'canceled', metadata: {}, created: OLD }));
+net.fault.lookup = 'http500';
+const v2f = await send(event('customer.subscription.deleted', SUB({ status: 'canceled', metadata: {}, created: OLD })));
+ck(v2f.code === 503 && v2f.body.error === 'user_lookup_failed', `V2: an OLD subscription whose lookup FAILED answered ${v2f.code} ${v2f.body.error} — a database blip is not "unmatched"`);
+
+// V3. HAND-GRANTED: a paid row with NO subscription id is not Stripe-managed; a late event for an
+//     old subscription (by customer id, or by metadata) must not downgrade it
+for (const [label, meta, type, st, hand] of [['customer id (pro)', {}, 'customer.subscription.deleted', 'canceled', 'pro'],
+                                       ['customer id', {}, 'customer.subscription.deleted', 'canceled'],
+                                       ['metadata', { user_id: 'user-a' }, 'customer.subscription.deleted', 'canceled'],
+                                       ['customer id', {}, 'customer.subscription.updated', 'past_due']]) {
+  reset();
+  // resolved by metadata only when no row holds the customer id either
+  paidRow('user-a', { plan: hand || 'agency', stripe_subscription_id: null, current_period_end: null,
+    stripe_customer_id: label === 'metadata' ? null : 'cus_A' });
+  net.subs.set('sub_A', SUB({ status: st, metadata: meta }));
+  const v = await send(event(type, SUB({ status: st, metadata: meta }), 3600));
+  ck(ok2(v) && plan('user-a') === (hand || 'agency') && net.writes.length === 0,
+    `V3: a late ${type} (${st}) resolved by ${label} answered ${v.code}, plan=${plan('user-a')}, writes=${net.writes.length} — a hand-granted plan was downgraded`);
+  ck(v.lines.some((l) => /HAND-GRANTED PLAN LEFT ALONE/.test(l) && l.includes('sub_A')), `V3: the hand-granted row (${label}) was left alone without a log line`);
+}
+// opposite: the same row holding the subscription IS downgraded by its deletion
+reset();
+paidRow('user-a', { plan: 'agency' });
+net.subs.set('sub_A', SUB({ status: 'canceled', metadata: {} }));
+const v3o = await send(event('customer.subscription.deleted', SUB({ status: 'canceled', metadata: {} })));
+ck(ok2(v3o) && plan('user-a') === 'free' && !row('user-a').stripe_subscription_id, `V3: a Stripe-paid row's own deletion left plan=${plan('user-a')}`);
+
+// ── v692 round 2 ─────────────────────────────────────────────────────────────
+// V1b (gap M5). The "must be cleared" check reads the SUBSCRIPTION id — a row that has no customer
+// id but still holds the dead subscription id must have it cleared, and one whose customer id is
+// set but subscription id already clear must not be written again.
+reset();
+paidRow('user-a', { stripe_customer_id: null });
+net.subs.set('sub_A', SUB({ status: 'past_due' }));
+await send(event('customer.subscription.updated', SUB({ status: 'past_due' })));
+ck(plan('user-a') === 'free' && row('user-a').stripe_subscription_id === 'sub_A', 'V1b: setup — past_due did not leave free + sub_A');
+net.subs.set('sub_A', SUB({ status: 'canceled' }));
+const v1b = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+ck(ok2(v1b) && !row('user-a').stripe_subscription_id, `V1b: with no customer id on the row, the final deletion left sub=${row('user-a').stripe_subscription_id}`);
+reset();
+net.plans.set('user-a', { user_id: 'user-a', plan: 'free', stripe_customer_id: 'cus_A', stripe_subscription_id: 'sub_A', current_period_end: new Date(PERIOD * 1000).toISOString() });
+net.subs.set('sub_A', SUB({ status: 'canceled' }));
+await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+const patches1 = net.writes.filter((w) => w.method === 'PATCH').length;
+await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+ck(!row('user-a').stripe_subscription_id && patches1 === 1 && net.writes.filter((w) => w.method === 'PATCH').length === 1,
+  `V1b: clearing a dead id on a free row took ${patches1} write(s) and the redelivery wrote again (want exactly 1 in total)`);
+
+// W1. a paid checkout with NO subscription grants nothing and never clears the row's id
+reset();
+paidRow('user-a');
+net.subs.set('sub_A', SUB());
+const w1 = await send(event('checkout.session.completed', SESSION({ subscription: null })));
+ck(ok2(w1) && net.writes.length === 0 && plan('user-a') === 'pro' && row('user-a').stripe_subscription_id === 'sub_A',
+  `W1: a paid session without a subscription answered ${w1.code}, wrote ${net.writes.length}, left sub=${row('user-a').stripe_subscription_id} — the row lost its subscription id and can never be downgraded`);
+ck(w1.lines.some((l) => /PAID SESSION WITHOUT A SUBSCRIPTION/.test(l) && l.includes('cs_A')), 'W1: the anomaly was not logged with the session id');
+reset();
+const w1b = await send(event('checkout.session.completed', SESSION({ subscription: null })));
+ck(ok2(w1b) && net.writes.length === 0 && !net.plans.has('user-a'), `W1: with no row, a session without a subscription still granted (writes=${net.writes.length})`);
+
+// W2. TWO LIVE SUBSCRIPTIONS: the row keeps the one that is paying; the new one is logged, not written
+const SUBB = (over) => SUB(Object.assign({ id: 'sub_B' }, over || {}));
+for (const [label, send1] of [['checkout', () => send(event('checkout.session.completed', SESSION({ subscription: 'sub_B', id: 'cs_B' })))],
+                              ['updated(active)', () => send(event('customer.subscription.updated', SUBB()))]]) {
+  reset();
+  paidRow('user-a');
+  net.subs.set('sub_A', SUB());
+  net.subs.set('sub_B', SUBB());
+  const w2 = await send1();
+  ck(ok2(w2) && net.writes.length === 0 && plan('user-a') === 'pro' && row('user-a').stripe_subscription_id === 'sub_A',
+    `W2: ${label} for a second live subscription answered ${w2.code}, wrote ${net.writes.length}, row sub=${row('user-a').stripe_subscription_id} — the paying sub_A is no longer tracked`);
+  ck(w2.lines.some((l) => /DOUBLE SUBSCRIPTION/.test(l) && l.includes('sub_A') && l.includes('sub_B') && l.includes('user-a')), `W2: ${label}: no DOUBLE SUBSCRIPTION line with both ids`);
+}
+// ...and cancelling the duplicate leaves the paying one tracked
+net.subs.set('sub_B', SUBB({ status: 'canceled' }));
+const w2c = await send(event('customer.subscription.deleted', SUBB({ status: 'canceled' })));
+ck(ok2(w2c) && plan('user-a') === 'pro' && row('user-a').stripe_subscription_id === 'sub_A', `W2: cancelling the duplicate left plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id}`);
+// ...and if the OLD one is cancelled instead, the row moves to the surviving one AT ONCE (round 3: it
+// used to drop to free until the survivor's next event, up to a month, and checkout could sell a third)
+reset();
+paidRow('user-a');
+net.subs.set('sub_A', SUB());
+net.subs.set('sub_B', SUBB());
+await send(event('customer.subscription.updated', SUBB()));
+net.subs.set('sub_A', SUB({ status: 'canceled' }));
+const w2t = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+ck(ok2(w2t) && plan('user-a') === 'pro' && row('user-a').stripe_subscription_id === 'sub_B',
+  `W2: cancelling the kept subscription while the other still pays left plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id}`);
+// opposite: the row's subscription is alive but FAILING → the new paying one takes over (and is logged)
+reset();
+paidRow('user-a', { plan: 'free' });
+net.subs.set('sub_A', SUB({ status: 'past_due' }));
+net.subs.set('sub_B', SUBB());
+const w2f = await send(event('customer.subscription.updated', SUBB()));
+ck(ok2(w2f) && plan('user-a') === 'pro' && row('user-a').stripe_subscription_id === 'sub_B' && w2f.lines.some((l) => /DOUBLE SUBSCRIPTION/.test(l)),
+  `W2: a paying subscription over a past_due one answered ${w2f.code}, plan=${plan('user-a')}, sub=${row('user-a').stripe_subscription_id}`);
+// opposite: the row's subscription has ENDED (or Stripe no longer has it) → a normal grant, no DOUBLE line
+for (const st of ['canceled', 'absent']) {
+  reset();
+  paidRow('user-a', { plan: 'free' });
+  if (st !== 'absent') net.subs.set('sub_A', SUB({ status: st }));
+  net.subs.set('sub_B', SUBB());
+  const w2e = await send(event('customer.subscription.updated', SUBB()));
+  ck(ok2(w2e) && plan('user-a') === 'pro' && row('user-a').stripe_subscription_id === 'sub_B' && !w2e.lines.some((l) => /DOUBLE SUBSCRIPTION/.test(l)),
+    `W2: a new subscription after the old one was "${st}" answered ${w2e.code}, sub=${row('user-a').stripe_subscription_id}`);
+}
+// the row's subscription (or the row) cannot be read → 503, nothing written
+reset();
+paidRow('user-a');
+net.subs.set('sub_B', SUBB());
+const realSubsGet = net.subs.get.bind(net.subs);
+net.subs.get = (id) => { if (id === 'sub_A') throw new Error('sub_A read fault'); return realSubsGet(id); };
+const w2r = await send(event('customer.subscription.updated', SUBB()));
+net.subs.get = realSubsGet;
+ck(w2r.code === 503 && net.writes.length === 0 && row('user-a').stripe_subscription_id === 'sub_A', `W2: the row's subscription could not be read and the webhook answered ${w2r.code}, wrote ${net.writes.length}`);
+reset();
+net.subs.set('sub_A', SUB());
+paidRow('user-a', { plan: 'free', stripe_subscription_id: null });
+net.fault.rowread = 'http500';
+const w2rr = await send(event('customer.subscription.updated', SUB()));
+ck(w2rr.code >= 500 && net.writes.length === 0, `W2: the plan row could not be read before a grant and the webhook answered ${w2rr.code}, wrote ${net.writes.length}`);
+
+// ── v692 round 3 ─────────────────────────────────────────────────────────────
+// M1. the row's subscription ends (or fails) while the user still pays through ANOTHER one, on another
+//     customer (two first-purchase tabs) → the row moves to it: its plan, its sub id, its customer id
+const SUBC = (over) => SUB(Object.assign({ id: 'sub_C', customer: 'cus_C', items: { data: [{ price: { id: 'price_rv_agency' } }] } }, over || {}));
+for (const [label, type, st, otherSt] of [['deleted', 'customer.subscription.deleted', 'canceled', 'active'],
+                                          ['past_due', 'customer.subscription.updated', 'past_due', 'active'],
+                                          ['unpaid', 'customer.subscription.updated', 'unpaid', 'trialing'],
+                                          ['absent', 'customer.subscription.updated', 'absent', 'active']]) {
+  reset();
+  paidRow('user-a');
+  if (st !== 'absent') net.subs.set('sub_A', SUB({ status: st }));
+  net.subs.set('sub_C', SUBC({ status: otherSt }));
+  const m1 = await send(event(type, SUB({ status: st === 'absent' ? 'active' : st })));
+  ck(ok2(m1) && plan('user-a') === 'agency' && row('user-a').stripe_subscription_id === 'sub_C' && row('user-a').stripe_customer_id === 'cus_C',
+    `M1: ${label} of the row's subscription while sub_C (${otherSt}, cus_C) still pays left plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id} customer=${row('user-a').stripe_customer_id} — a paying customer was dropped to free`);
+  ck(m1.lines.some((l) => /STILL PAYS THROUGH sub_C/.test(l) && l.includes('sub_A')), `M1: ${label}: the move was not logged with both subscriptions`);
+}
+// opposites: no other subscription, another USER's, one that has ended, or a stale search hit → the downgrade stands
+for (const [label, setup] of [
+  ['none', () => {}],
+  ["another user's", () => net.subs.set('sub_C', SUBC({ metadata: { user_id: 'user-z', plan: 'agency' } }))],
+  ['an ended one', () => net.subs.set('sub_C', SUBC({ status: 'canceled' }))],
+  ['a failing one', () => net.subs.set('sub_C', SUBC({ status: 'past_due' }))],
+  ['a stale search hit (canceled when re-read)', () => { net.subs.set('sub_C', SUBC({ status: 'canceled' })); net.searchOverride = [SUBC()]; }]]) {
+  reset();
+  paidRow('user-a');
+  net.subs.set('sub_A', SUB({ status: 'canceled' }));
+  setup();
+  const m1o = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+  ck(ok2(m1o) && plan('user-a') === 'free' && !row('user-a').stripe_subscription_id && row('user-a').stripe_customer_id === 'cus_A',
+    `M1: with ${label} other subscription the cancellation left plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id} customer=${row('user-a').stripe_customer_id}`);
+}
+// the search failing is not "nothing found": 503, nothing written, and the redelivery applies
+for (const mode of ['http500', 'net', 'http429', 'garbage200']) {
+  reset();
+  paidRow('user-a');
+  net.subs.set('sub_A', SUB({ status: 'canceled' }));
+  net.subs.set('sub_C', SUBC());
+  net.fault.search = mode;
+  const id = event('customer.subscription.deleted', SUB({ status: 'canceled' }));
+  const m1f = await send(id);
+  ck(m1f.code === 503 && net.writes.length === 0 && plan('user-a') === 'pro', `M1: a "${mode}" search failure answered ${m1f.code} and wrote ${net.writes.length}`);
+  net.fault.search = null;
+  const m1r = await send(id);
+  ck(ok2(m1r) && row('user-a').stripe_subscription_id === 'sub_C', `M1: the redelivery after a "${mode}" search failure left sub=${row('user-a').stripe_subscription_id}`);
+}
+// the move's write failing is non-2xx (Stripe retries)
+reset();
+paidRow('user-a');
+net.subs.set('sub_A', SUB({ status: 'canceled' }));
+net.subs.set('sub_C', SUBC());
+net.fault.patch = 'http500';
+const m1w = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+ck(m1w.code >= 500, `M1: a failed move write answered ${m1w.code}`);
+
+// M3. the double-subscription guard KEEPS sub_A, but the row says free (sub_A's recovery event not yet
+//     handled) → the row is granted from sub_A, not left on free
+reset();
+paidRow('user-a', { plan: 'free' });
+net.subs.set('sub_A', SUB());
+net.subs.set('sub_B', SUBB());
+const m3 = await send(event('checkout.session.completed', SESSION({ subscription: 'sub_B', id: 'cs_B' })));
+ck(ok2(m3) && plan('user-a') === 'pro' && row('user-a').stripe_subscription_id === 'sub_A' && m3.lines.some((l) => /DOUBLE SUBSCRIPTION/.test(l)),
+  `M3: the kept, active sub_A left the row plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id} — a paying customer stays on free`);
+// ...from its LIVE price
+reset();
+paidRow('user-a', { plan: 'free' });
+net.subs.set('sub_A', SUB({ items: { data: [{ price: { id: 'price_rv_agency' } }] } }));
+net.subs.set('sub_B', SUBB());
+await send(event('customer.subscription.updated', SUBB()));
+ck(plan('user-a') === 'agency' && row('user-a').stripe_subscription_id === 'sub_A', `M3: the kept sub_A (agency) was granted ${plan('user-a')}`);
+// opposite: the row already matches the kept one → nothing written (W2 above), and a failed sync write is non-2xx
+reset();
+paidRow('user-a', { plan: 'free' });
+net.subs.set('sub_A', SUB());
+net.subs.set('sub_B', SUBB());
+net.fault.patch = 'http500';
+const m3f = await send(event('customer.subscription.updated', SUBB()));
+ck(m3f.code >= 500 && plan('user-a') === 'free', `M3: a failed sync to the kept subscription answered ${m3f.code}`);
+
+// ── v692 round 4 ─────────────────────────────────────────────────────────────
+const SEARCH_OFF = [
+  ['search not available', { status: 400, body: { error: { type: 'invalid_request_error', message: 'Search is not available for your account.' } } }],
+  ['search needs a newer API version', { status: 400, body: { error: { type: 'invalid_request_error', message: 'The Search API requires API version 2020-08-27 or later.' } } }],
+  ['search not enabled (403)', { status: 403, body: { error: { type: 'invalid_request_error', message: 'Search is not enabled for this account.' } } }],
+];
+const SEARCH_BROKEN = [
+  ['an unrelated 400', { status: 400, body: { error: { type: 'invalid_request_error', message: 'Invalid query: unknown field.' } } }],
+  ['a "search unavailable" 500', { status: 500, body: { error: { type: 'invalid_request_error', message: 'Search is not available right now.' } } }],
+  ['a "search unavailable" api_error', { status: 400, body: { error: { type: 'api_error', message: 'Search is not available for your account.' } } }],
+  ['a 429', { status: 429, body: { error: { type: 'invalid_request_error', message: 'Search rate limit: not available, slow down.' } } }],
+];
+// U1. Search missing for this account (region / API version) → the downgrade proceeds WITHOUT the
+//     "another live subscription?" check (pre-round-3 behaviour), logged — never a 503 loop
+for (const [label, fault] of SEARCH_OFF) {
+  reset();
+  paidRow('user-a');
+  net.subs.set('sub_A', SUB({ status: 'canceled' }));
+  net.subs.set('sub_C', SUBC());
+  net.fault.search = fault;
+  const u1 = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+  ck(ok2(u1) && plan('user-a') === 'free' && !row('user-a').stripe_subscription_id,
+    `U1: ${label}: answered ${u1.code}, plan=${plan('user-a')} — a missing Search feature must not stop the downgrade`);
+  ck(u1.lines.filter((l) => /STRIPE SEARCH UNAVAILABLE/.test(l)).length === 1, `U1: ${label}: not logged exactly once as STRIPE SEARCH UNAVAILABLE`);
+}
+// opposites: anything else stays a 503 with nothing written
+for (const [label, fault] of SEARCH_BROKEN) {
+  reset();
+  paidRow('user-a');
+  net.subs.set('sub_A', SUB({ status: 'canceled' }));
+  net.fault.search = fault;
+  const u1o = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+  ck(u1o.code === 503 && net.writes.length === 0 && !u1o.lines.some((l) => /STRIPE SEARCH UNAVAILABLE/.test(l)),
+    `U1: ${label}: answered ${u1o.code}, wrote ${net.writes.length} — only a clear "search unavailable" may skip the check`);
+}
+// the search call (and only it) pins Stripe-Version 2024-06-20
+reset();
+paidRow('user-a');
+net.subs.set('sub_A', SUB({ status: 'canceled' }));
+net.subs.set('sub_C', SUBC());
+await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+ck(net.searchVersions.length === 1 && net.searchVersions[0] === '2024-06-20', `U1: the search call sent Stripe-Version ${JSON.stringify(net.searchVersions)} (want 2024-06-20)`);
+ck(!net.versionLeak, `U1: a non-search call pinned a Stripe-Version (${net.versionLeak})`);
+
+// ── v692 round 5 ─────────────────────────────────────────────────────────────
+// N6. the index hands back ANOTHER user's live subscription → the row never moves to it
+reset();
+paidRow('user-a');
+net.subs.set('sub_A', SUB({ status: 'canceled' }));
+net.subs.set('sub_C', SUBC({ metadata: { user_id: 'user-z', plan: 'agency' } }));
+net.searchOverride = [SUBC({ metadata: { user_id: 'user-z', plan: 'agency' } })];
+const n6 = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+ck(ok2(n6) && plan('user-a') === 'free' && !row('user-a').stripe_subscription_id,
+  `N6: a search hit belonging to user-z moved user-a's row (plan=${plan('user-a')} sub=${row('user-a').stripe_subscription_id})`);
+// opposite: the same hit for THIS user moves it
+reset();
+paidRow('user-a');
+net.subs.set('sub_A', SUB({ status: 'canceled' }));
+net.subs.set('sub_C', SUBC());
+net.searchOverride = [SUBC()];
+const n6o = await send(event('customer.subscription.deleted', SUB({ status: 'canceled' })));
+ck(ok2(n6o) && row('user-a').stripe_subscription_id === 'sub_C', `N6: this user's own hit did not move the row (sub=${row('user-a').stripe_subscription_id})`);
 
 https.request = realRequest;
 clearTimeout(WALL);

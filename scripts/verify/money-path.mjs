@@ -145,6 +145,16 @@ function stripe(opts) {
   // v691 — the webhook decides from the subscription's CURRENT state (events arrive out of order).
   // Like Stripe, the fake holds that state per subscription id, set explicitly by each test with
   // live(); delivering an event does NOT change it, and a subscription it does not hold is a 404.
+  // v692 round 3 — Stripe Search by metadata user_id (the webhook's "another live subscription?")
+  const msq = opts.path.match(/^\/v1\/subscriptions\/search\?(.*)$/);
+  if (msq && opts.method === 'GET') {
+    
+    const qq = new URLSearchParams(msq[1]).get('query') || '';
+    const mu = /metadata\['user_id'\]:'((?:[^'\\]|\\.)*)'/.exec(qq);
+    const uid = mu ? mu[1].replace(/\\(.)/g, '$1') : null;
+    const data = [...net.subs.values()].filter((x) => x && x.metadata && x.metadata.user_id === uid);
+    return { status: 200, body: JSON.stringify({ object: 'search_result', data, has_more: false }) };
+  }
   const ms = opts.path.match(/^\/v1\/subscriptions\/([^?]+)$/);
   if (ms) {
     const cur = net.subs.get(decodeURIComponent(ms[1]));
@@ -434,7 +444,10 @@ const store = {
         store.plans.set(uid, {
           plan, effectivePlan: plan,
           stripeCustomerId: (extra && extra.stripe_customer_id) || prev.stripeCustomerId || null,
-          stripeSubscriptionId: (extra && extra.stripe_subscription_id) || prev.stripeSubscriptionId || null,
+          // v692 — an explicit null CLEARS the id, exactly as the real setPlan's PATCH does. The
+          // stub used to keep the old id, which the webhook now (correctly) sees as "not cleared yet".
+          stripeSubscriptionId: (extra && Object.prototype.hasOwnProperty.call(extra, 'stripe_subscription_id'))
+            ? (extra.stripe_subscription_id || null) : (prev.stripeSubscriptionId || null),
           currentPeriodEnd: (extra && extra.current_period_end) || prev.currentPeriodEnd || null,
         });
         return true;

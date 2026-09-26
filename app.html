@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v691';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v692';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -7978,6 +7978,13 @@ function _buildIdeaRows(brandId) {
     is_generated: idea.isGenerated || false,
     is_remix: idea.isRemix || false,
     original_creator: idea.originalCreator || '',
+    // v692 — the teleprompter's stress marks were never written, so they were lost on reload and
+    // never reached another device. Cleaned and pruned against THIS row's text — see tpCleanEmphasis.
+    // (typeof: scripts/verify/data-integrity.mjs lifts this builder on its own, without the cleaner.)
+    emphasis: (typeof tpCleanEmphasis === 'function')
+      ? tpCleanEmphasis(idea.emphasis, { script: asText(idea.script), boldText: asText(idea.boldText),
+                                         caption: asText(idea.caption), hook: asText(idea.hook) })
+      : [],
   }));
   // Store paaSource mapping in localStorage (no DB column yet)
   const paaMap = {};
@@ -8066,18 +8073,47 @@ async function _saveIdeasToDBNow(brandId, rows) {
     }
   }
 
+  // v692 — A SAVE MUST NEVER BE LOST TO THE NEW EMPHASIS COLUMN. Rows now carry `emphasis`
+  // (sql/ideas-emphasis.sql). PostgREST REJECTS a whole insert that names a column it does not know
+  // (PGRST204, "Could not find the 'emphasis' column of 'ideas' in the schema cache"), so if this app
+  // is live before that SQL has run — or on any database that never got it — every save would fail,
+  // the row-by-row retry would fail too, and the idea would exist only on this device. On exactly
+  // that error the same rows are written again WITHOUT the marks, and later saves this session skip
+  // the column straight away. Only the marks are lost, never the idea. Any other error is untouched.
+  // (Kept inside this function: scripts/verify/data-integrity.mjs lifts it and runs it standalone.)
+  const missingEmphasisCol = (err) => {
+    if (!err) return false;
+    const msg = String((err.message || '') + ' ' + (err.details || '') + ' ' + (err.hint || ''));
+    if (!/emphasis/i.test(msg)) return false;
+    return err.code === 'PGRST204' || err.code === '42703' || /schema cache|does not exist|could not find/i.test(msg);
+  };
+  const withoutEmphasis = (payload) => {
+    const strip = r => { if (!r || typeof r !== 'object') return r; const o = Object.assign({}, r); delete o.emphasis; return o; };
+    return Array.isArray(payload) ? payload.map(strip) : strip(payload);
+  };
+  const insertIdeas = async (payload) => {
+    if (globalThis._ideasNoEmphasisCol) return await sb.from('ideas').insert(withoutEmphasis(payload));
+    const res = await sb.from('ideas').insert(payload);
+    if (res && res.error && missingEmphasisCol(res.error)) {
+      globalThis._ideasNoEmphasisCol = true;
+      try { console.warn('ideas.emphasis column is missing (run sql/ideas-emphasis.sql) — saving without stress marks.'); } catch (e) {}
+      return await sb.from('ideas').insert(withoutEmphasis(payload));
+    }
+    return res;
+  };
+
   // Insert in batches of 50; if a batch fails, retry row-by-row so one bad row can't sink the rest
   let failed = 0, lastErr = null;
   for (let i = 0; i < rows.length; i += 50) {
     const batch = rows.slice(i, i + 50);
     const written = [];
-    const { error } = await sb.from('ideas').insert(batch);
+    const { error } = await insertIdeas(batch);
     if (!error) {
       batch.forEach(r => { if (r.title) written.push(r.title); });
     } else {
       console.error('Ideas batch save error, retrying row-by-row:', error);
       for (const row of batch) {
-        const r2 = await sb.from('ideas').insert(row);
+        const r2 = await insertIdeas(row);
         if (r2.error) { failed++; lastErr = r2.error; console.error('Idea row failed (previous copy KEPT):', row.title, r2.error); }
         else if (row.title) written.push(row.title);
       }
@@ -8211,6 +8247,10 @@ async function loadIdeasFromDB() {
     isGenerated: row.is_generated || false,
     isRemix: row.is_remix || false,
     originalCreator: row.original_creator || '',
+    // v692 — the stress marks were never read back, so the teleprompter lost them after a reload
+    // and on every other device. A row with no emphasis (column not added yet, or an old row) is
+    // simply "no marks": tpCleanEmphasis returns [] and the heuristic takes over, as before.
+    emphasis: tpCleanEmphasis(row.emphasis, { script: row.script, boldText: row.bold_text, caption: row.caption, hook: row.hook }),
     // `doneAt` lives ONLY in this device's localStorage snapshot — the ideas table has no
     // done_at column, so on a SECOND device every finished post had no timestamp and the
     // 30-day Done archive (`!i.doneAt || i.doneAt > cutoff`) never pruned anything.
@@ -12481,6 +12521,34 @@ function tpPruneEmphasis(obj) {
     });
   } catch (e) { try { obj.emphasis = []; } catch (_) {} }
 }
+// v692 — THE MARKS WERE NEVER SAVED, SO THEY VANISHED ON RELOAD AND ON EVERY OTHER DEVICE.
+// `ideas` had no emphasis column, _buildIdeaRows did not write it and the row mapper could not
+// read it: the generator's stress marks lived only in the tab that generated the idea. Now they go
+// to the database with the row — and what goes in (and what comes back out) is cleaned HERE, one
+// rule for both directions: an array of short strings (2-120 chars, max 6, no duplicates) that
+// still appear in the text the teleprompter reads. Junk (objects, nulls, a whole paragraph, a
+// non-array) is dropped; a mark left over from an older version of the script is pruned by the
+// same tpPruneEmphasis every rewrite path uses, so whichever edit path forgot to prune, a stale
+// mark can never be persisted and handed to another device.
+function tpCleanEmphasis(emphasis, body) {
+  try {
+    let list = emphasis;
+    if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { return []; } }
+    if (!Array.isArray(list)) return [];
+    const seen = new Set(), marks = [];
+    for (const m of list) {
+      if (typeof m !== 'string' && typeof m !== 'number') continue;
+      const t = String(m).trim();
+      if (t.length < 2 || t.length > 120) continue;
+      const k = t.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k); marks.push(t);
+    }
+    const o = Object.assign({}, body || {}, { emphasis: marks });
+    tpPruneEmphasis(o);
+    return (Array.isArray(o.emphasis) ? o.emphasis : []).slice(0, 6);
+  } catch (e) { return []; }
+}
 function tpFormatScript(text, emphasis){
   const raw = String(text||'').replace(/\r/g,'').trim();
   if (!raw) return '';
@@ -14889,6 +14957,9 @@ function tvApplyTwist(){
   const beforeBody = i.boldText || i.script || '';
   const _RWK = ['title','hook','script','shots','screen','boldText','caption','tags'];
   _RWK.forEach(k => { if (nw[k] !== undefined && nw[k] !== null && asText(nw[k]).trim() !== '') i[k] = asText(nw[k]); });
+  // v692 — this twist replaced the script but kept the marks for the OLD one (see tpPruneEmphasis);
+  // now that marks are saved with the row, a stale list would also follow the post to other devices.
+  tpPruneEmphasis(i);
   // Update the visible card in place (same pattern as Sharpen — no re-render).
   try {
     const tEl = document.querySelector('#tvResult .tp-result-title'); if (tEl && nw.title) tEl.textContent = nw.title;
@@ -17333,7 +17404,8 @@ function openCarouselMaker(id) {
 function cmClose() {
   if (cmState && cmState.single && cmState.ideaId != null && state[cmState.ideaId]) {
     const newText = (cmState.slides[0].text || '').trim();
-    if (newText) { state[cmState.ideaId].boldText = newText; try { saveIdeasToDB(); } catch(e){} }
+    // v692 — the statement text just changed; drop marks that are no longer in it (see tpPruneEmphasis).
+    if (newText) { state[cmState.ideaId].boldText = newText; tpPruneEmphasis(state[cmState.ideaId]); try { saveIdeasToDB(); } catch(e){} }
   }
   cmState = null;
   const el = document.getElementById('cmOverlay');
@@ -18839,17 +18911,24 @@ function planBoxHtml(){
   var used = (u.used!=null?u.used:0), limit = (u.limit!=null?u.limit:0);
   var pct = limit ? Math.max(3, Math.min(100, Math.round(used/limit*100))) : 0;
   var paid = (plan==='pro'||plan==='agency'||plan==='starter');
+  // v692 — a customer dropped to free for a failed card was shown "Upgrade", and a new checkout
+  // refuses them (409 payment_issue: "update your card in Manage plan & billing") — a button this
+  // box only drew for paid plans. /api/usage now says so (billing.paymentIssue); show the way out.
+  var payIssue = !paid && !!(u.billing && u.billing.paymentIssue);
   var sub;
   if(plan==='trial' && u.trialDaysLeft!=null) sub = u.trialDaysLeft + ' day'+(u.trialDaysLeft===1?'':'s')+' left in your trial · ' + used + '/' + limit + ' posts';
   else sub = used + ' / ' + limit + ' posts this month';
   var btns = '';
-  if(paid){ btns += '<button class="sp-plan-btn primary" onclick="openBillingPortal(this)">Manage plan &amp; billing</button>'; }
+  if(paid || payIssue){ btns += '<button class="sp-plan-btn primary" onclick="openBillingPortal(this)">Manage plan &amp; billing</button>'; }
   else { btns += '<button class="sp-plan-btn primary" onclick="showUpgrade(csUsage)">Upgrade</button>'; }
   return '<div class="sp-plan-top"><div class="sp-plan-name">' + planLabel(plan) + ' plan</div>' + (paid ? '<span class="sp-plan-tag">Active</span>' : '') + '</div>' +
+    (payIssue ? '<div class="sp-plan-sub" id="spPayIssue" role="status"><strong>' + CS_PAY_ISSUE_LINE + '</strong></div>' : '') +
     '<div class="sp-plan-sub">' + sub + '</div>' +
     '<div class="sp-plan-bar"><div class="sp-plan-bar-fill" style="width:' + pct + '%"></div></div>' +
     (btns ? '<div class="sp-plan-btns">' + btns + '</div>' : '');
 }
+// v692 — the one line a customer with a failed card reads (Plan box and the limit modal).
+const CS_PAY_ISSUE_LINE = 'Your last payment failed \u2014 update your card to get your paid plan back.';
 function renderUsagePill(){
   // Trial/usage lives in Settings → Account. Keep data live; refresh any open views.
   var old = document.getElementById('csUsagePill'); if(old) old.remove();
@@ -18898,6 +18977,12 @@ function showUpgrade(info){
   info = info || csUsage || {};
   var plan = info.plan || 'trial';
   var paid = (plan==='pro'||plan==='agency'||plan==='starter');
+  // v692 — a failed card is not an upgrade: their subscription is still alive in Stripe, and a new
+  // checkout is refused (it would bill them twice). Send them to billing instead.
+  if(!paid && csUsage && csUsage.billing && csUsage.billing.paymentIssue){
+    showManageBilling('Your last payment didn\u2019t go through', CS_PAY_ISSUE_LINE + ' No new checkout needed.');
+    return;
+  }
   var existing = document.getElementById('csUpgradeOverlay');
   if(existing) existing.remove();
   var title, body, btnsHtml;
@@ -18956,12 +19041,54 @@ function showCheckoutSuccess(plan){
   var g = document.getElementById('csSuccessGo');
   if(g) g.onclick = function(){ ov.remove(); };
 }
+// v692 r3 — Stripe's hosted invoice page for an unpaid/past_due subscription (create-checkout may send
+// it as `payUrl`: updating the card alone charges nothing until Stripe's next retry, so paying the
+// open invoice is the fast way back). A URL from a response is never opened as-is: https only, and
+// only Stripe's own invoice hosts. Anything else is ignored and the card behaves as before.
+function csSafeStripePayUrl(u){
+  try {
+    if (typeof u !== 'string' || !u) return '';
+    const x = new URL(u);
+    if (x.protocol !== 'https:' || x.username || x.password || x.port) return '';
+    return (x.hostname === 'invoice.stripe.com' || x.hostname === 'pay.stripe.com') ? x.href : '';
+  } catch (e) { return ''; }
+}
+// v692 — the "go to billing" card: used when the answer is the billing portal, not a new checkout.
+function showManageBilling(title, body, payUrl){
+  var _pay = safeUrl(csSafeStripePayUrl(payUrl));   // host allowlist first, then the app-wide scheme check
+  var existing = document.getElementById('csUpgradeOverlay'); if(existing) existing.remove();
+  var ov = document.createElement('div');
+  ov.id = 'csUpgradeOverlay';
+  ov.className = 'cs-upgrade-overlay';
+  ov.onclick = function(e){ if(e.target === ov) ov.remove(); };
+  ov.innerHTML = '<div class="cs-upgrade-card">' +
+    '<div class="cs-upgrade-title">' + escHtml(title) + '</div>' +
+    '<div class="cs-upgrade-body">' + escHtml(body) + '</div>' +
+    (_pay ? '<a class="cs-upgrade-btn" id="csPayNow" href="' + escHtml(_pay) + '" target="_blank" rel="noopener noreferrer" style="display:block;text-align:center;text-decoration:none;box-sizing:border-box">Pay now</a>' : '') +
+    '<button class="' + (_pay ? 'cs-upgrade-alt' : 'cs-upgrade-btn') + '" onclick="openBillingPortal(this)">Manage plan &amp; billing</button>' +
+    '<button class="cs-upgrade-close" id="csUpgradeClose">Close</button>' +
+    '</div>';
+  document.body.appendChild(ov);
+  var c = document.getElementById('csUpgradeClose');
+  if(c) c.onclick = function(){ ov.remove(); };
+}
 async function startCheckout(plan){
   try{
     if(typeof showToast==='function') showToast('Opening checkout…', 2000);
     const r = await fetch('/api/create-checkout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ plan: plan }) });
-    if(r.status === 503){ if(typeof showToast==='function') showToast('Plans are launching soon — thanks for using it!', 4000); return; }
     const d = await r.json().catch(()=>({}));
+    // v692 — a 409 from checkout means "you already have a subscription" (already_subscribed) or
+    // "your card failed, fix it in billing" (payment_issue). Both point at the billing portal; the
+    // toast alone gave no button to get there, and a failed-card customer had no Manage button at all.
+    if(r.status === 409 && d && (d.code === 'payment_issue' || d.manageBilling)){
+      showManageBilling(d.code === 'payment_issue' ? 'Your last payment didn\u2019t go through' : 'You already have a subscription',
+        (typeof d.error === 'string' && d.error) || 'Use Manage plan & billing to change your plan.',
+        d.code === 'payment_issue' ? d.payUrl : '');
+      return;
+    }
+    // v692 — every 503 read "Plans are launching soon", including "we couldn't check your current
+    // subscription — try again in a minute". Say what the server said; the old line only when it said nothing.
+    if(r.status === 503){ if(typeof showToast==='function') showToast((d && typeof d.error === 'string' && d.error) || 'Plans are launching soon — thanks for using it!', 5000); return; }
     if(d && d.url){ window.location.href = d.url; }
     else if(typeof showToast==='function') showToast((d && d.error) || 'Could not open checkout — try again.', 4000);
   }catch(e){ if(typeof showToast==='function') showToast('Could not open checkout — try again.', 4000); }
@@ -18997,8 +19124,18 @@ async function handleCheckoutReturn(){
           // Their card WAS charged; only the plan write failed, and nothing retries it —
           // the webhook finds users by the very ids that failed to write. So do not promise
           // it will fix itself. Say what happened and give them the one action that helps.
+          // v692 r4 — EVERY refusal read as "we couldn't switch your plan over". The server now
+          // answers precisely: 409 doubleSubscription (they were ALREADY paying — the existing plan
+          // stays, the duplicate gets refunded), 403 (that subscription ended), 503 (couldn't verify
+          // — try again in a minute). Its `error` is the truth; the generic line is kept only when
+          // there is no text at all.
           try{ refreshUsage(); }catch(e){}
-          if(typeof showToast==='function') showToast('Payment went through, but we couldn\u2019t switch your plan over. Reload in a minute — if it still says the old plan, email support@contentshrimp.com and we\u2019ll fix it right away.', 12000);
+          var _cErr = (d && typeof d.error === 'string') ? d.error.trim() : '';
+          var _cMsg;
+          if (d && d.doubleSubscription) _cMsg = (_cErr || 'You already had an active subscription, so this payment started a second one. Email support@contentshrimp.com and we\u2019ll refund the duplicate.') + ' Your existing plan is still active \u2014 you haven\u2019t lost anything.';
+          else if (_cErr) _cMsg = _cErr;
+          else _cMsg = 'Payment went through, but we couldn\u2019t switch your plan over. Reload in a minute — if it still says the old plan, email support@contentshrimp.com and we\u2019ll fix it right away.';
+          if(typeof showToast==='function') showToast(_cMsg, 12000);
         }
       } else {
         // Back from Stripe with no session_id: we cannot confirm anything — and saying NOTHING
@@ -19622,7 +19759,37 @@ async function memeApi(body){
   const token = await connToken();
   const resp = await fetch('/api/meme', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(token||'') }, body: JSON.stringify({ brandId: currentBrand && currentBrand.id, ...body }) });
   const data = await resp.json().catch(()=>({}));
-  return { ok: resp.ok, data };
+  return { ok: resp.ok, data, status: resp.status };
+}
+// v692 r3 — A TIMEOUT WAS READ AS "YOUR GEMINI KEY IS MISSING". The meme error handler tested the
+// message for /key|gemini|401|unauthor/ and opened the "Add your free Google Gemini key" form on a
+// match — so a server timeout message that mentioned Gemini, or "Could not reach your saved key just
+// now" (a database blip, 503), told a person with a WORKING key to paste it again. The server now
+// sends a `code`; it is read FIRST. Only a genuine key problem opens the form: an explicit key code,
+// or Google rejecting the key (IMAGE_PROVIDER_ERROR — whose text is Google's own, so it is checked
+// for key words, since a 400 can also be a content refusal). Any other code (OUT_OF_TIME,
+// AI_UNAVAILABLE, IMAGE_BUSY, …) shows the server's own message. With no code, a 5xx is never a key
+// problem, and the old word test is the last fallback for the plain 4xx key answers.
+const MEME_KEY_CODES = { KEY_MISSING: 1, KEY_INVALID: 1, NO_KEY: 1, GEMINI_KEY_MISSING: 1, GEMINI_KEY_INVALID: 1 };
+function memeErrIsKeyProblem(e){
+  const code = String((e && e.code) || '');
+  const msg = String((e && e.message) || '');
+  if (MEME_KEY_CODES[code]) return true;
+  if (code === 'IMAGE_PROVIDER_ERROR') return /api.?key|key not valid|invalid key|401|unauthor|permission/i.test(msg);
+  if (code) return false;
+  if ((Number(e && e.httpStatus) || 0) >= 500) return false;
+  return /key|gemini|401|unauthor/i.test(msg);
+}
+function memeShowError(statusEl, e){
+  if (!statusEl) return;
+  const msg = String((e && e.message) || '');
+  if (memeErrIsKeyProblem(e)) {
+    statusEl.innerHTML = 'Add your free Google Gemini key first (aistudio.google.com), then try again.';
+    try { memeShowKeyForm(); } catch (_) {}
+  } else {
+    statusEl.textContent = (msg && msg !== 'failed') ? msg : "Couldn't make the meme \u2014 try again.";
+  }
+  statusEl.className = 'vl-status warn';
 }
 function renderMeme(){
   const v = document.getElementById('view-meme'); if(!v) return;
@@ -19757,8 +19924,9 @@ async function prodGenerate(){
     const prompt = prodBuildPrompt(desc);
     const refs = (typeof productRefs !== 'undefined' && Array.isArray(productRefs))
       ? productRefs.map(r => r && r.thumb).filter(Boolean).slice(0,3) : [];
-    const { ok, data } = await memeApi({ action:'brandimage', prompt, refs });
-    if(!ok || !data.imageBase64){ throw new Error(data.error || 'failed'); }
+    const { ok, data, status: _prodHttp } = await memeApi({ action:'brandimage', prompt, refs });
+    // v692 r4: carry the server's code and HTTP status to the catch — see memeErrIsKeyProblem.
+    if(!ok || !data.imageBase64){ const _pe = new Error((data && data.error) || 'failed'); _pe.code = (data && data.code) || ''; _pe.httpStatus = _prodHttp || 0; throw _pe; }
     const img = document.getElementById('prodImg');
     const src = 'data:' + (data.mime || 'image/png') + ';base64,' + data.imageBase64;
     if(img){ img.src = src; }
@@ -19766,7 +19934,15 @@ async function prodGenerate(){
     const stage = document.getElementById('prodStage'); if(stage) stage.style.display = 'block';
     if(status){ status.textContent = ''; status.className = 'vl-status'; }
   }catch(e){
-    if(status && e.message !== 'limit_reached'){ status.textContent = (e.message && /key/i.test(e.message)) ? e.message : "Couldn't render the image — try again."; status.className = 'vl-status warn'; }
+    // v692 r4 — only a message containing "key" was shown; every other honest, charge-free answer
+    // (timeout, busy, empty image) became "Couldn't render the image". Show the server's words, and
+    // open the key form only for a genuine key problem — the same rule as the meme (memeErrIsKeyProblem).
+    if(status && e.message !== 'limit_reached'){
+      const _pm = String(e.message || '');
+      status.textContent = (_pm && _pm !== 'failed') ? _pm : "Couldn't render the image — try again.";
+      status.className = 'vl-status warn';
+      if (memeErrIsKeyProblem(e)) { try{ memeShowKeyForm(); }catch(_){} }
+    }
   }
   finally{ stopThinking('prodStatus'); if(btn){ btn.disabled = false; btn.textContent = 'Generate image'; } }
 }
@@ -19851,8 +20027,9 @@ async function memeGenerate(){
     const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
     let _memeRecent = [];
     try { _memeRecent = JSON.parse(lsGet('meme_recent') || '[]'); } catch(e){}
-    const { ok, data } = await memeApi({ action:'generate', topic, brandContext: getBrandContext(), recentMemes: _memeRecent });
-    if(!ok || !data.imageBase64){ throw new Error(data.error || 'failed'); }
+    const { ok, data, status: _memeHttp } = await memeApi({ action:'generate', topic, brandContext: getBrandContext(), recentMemes: _memeRecent });
+    // v692 r3: carry the server's code and HTTP status to the catch — see memeErrIsKeyProblem.
+    if(!ok || !data.imageBase64){ const _me = new Error((data && data.error) || 'failed'); _me.code = (data && data.code) || ''; _me.httpStatus = _memeHttp || 0; throw _me; }
     // Remember this meme's line so the next one won't repeat it (rolling, per-brand, capped).
     // Skipped outright if the brand changed mid-generation — the meme itself is still shown, it
     // just does not join another brand's recent list. Nothing is lost that this brand owns.
@@ -19869,7 +20046,7 @@ async function memeGenerate(){
     };
     img.onerror = () => { if(status){ status.textContent = 'Image could not load — try again.'; status.className='vl-status warn'; } };
     img.src = 'data:' + (data.mime || 'image/png') + ';base64,' + data.imageBase64;
-  }catch(e){ if(status && e.message!=='limit_reached'){ var _m=String(e.message||''); if(/key|gemini|401|unauthor/i.test(_m)){ status.innerHTML = 'Add your free Google Gemini key first (aistudio.google.com), then try again.'; try{ memeShowKeyForm(); }catch(_){} } else { status.textContent = "Couldn't make the meme — try again."; } status.className = 'vl-status warn'; } }
+  }catch(e){ if(status && e.message!=='limit_reached'){ memeShowError(status, e); } }
   finally{ stopThinking('memeStatus'); stopW(); }
 }
 function memeSetStyle(s){ _memeStyle = s; document.querySelectorAll('.meme-style-btn').forEach(b=>b.classList.toggle('on', b.getAttribute('data-s')===s)); memeDraw(); }

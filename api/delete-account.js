@@ -124,17 +124,72 @@ module.exports = async function handler(req, res) {
     // Erasure still proceeds on failure — refusing to delete their data would trade one
     // duty for another — but we say so plainly and log the id so it can be finished by hand.
     if (timeLeft() > 0) {
-      const plan = await sb(SUPABASE_URL, `/rest/v1/user_plans?user_id=eq.${userId}&select=stripe_subscription_id`, 'GET', SUPABASE_SERVICE_ROLE_KEY);
-      const subId = plan.ok && Array.isArray(plan.data) && plan.data[0] && plan.data[0].stripe_subscription_id;
-      if (subId) {
-        const cancelled = await stripeCancel(subId);
+      const plan = await sb(SUPABASE_URL, `/rest/v1/user_plans?user_id=eq.${userId}&select=stripe_subscription_id,stripe_customer_id`, 'GET', SUPABASE_SERVICE_ROLE_KEY);
+      const planRow = plan.ok && Array.isArray(plan.data) && plan.data[0];
+      const subId = planRow && planRow.stripe_subscription_id;
+      const toCancel = subId ? [subId] : [];
+
+      /* v692 round 5 — CANCEL EVERY LIVE SUBSCRIPTION, NOT ONLY THE ONE ON THE ROW. A user can briefly
+         hold two (two checkout tabs; or paying, then clicking again before the webhook granted the
+         first), and the row holds one id. The other one kept charging a deleted account. Stripe
+         Search by the user_id we stamp on every subscription finds them wherever they live; each hit
+         is re-read by id and cancelled only if it is still live AND its user_id is THIS user's —
+         never another user's. Same failure rule as the row's cancel: erasure continues, and the
+         user is told they may still be billed. If Search does not exist for this account (STRIPE
+         SEARCH UNAVAILABLE) only the row's subscription is cancelled, as before. A failed search
+         warns only someone who could have been billed at all (a Stripe customer or subscription on
+         the row, or a row we could not read) — a never-paying user gets no false alarm. */
+      const mayHaveBilling = !plan.ok || !!(planRow && (planRow.stripe_customer_id || planRow.stripe_subscription_id));
+      const secret = process.env.STRIPE_SECRET_KEY;
+      // `found` — Search DID list a live subscription for this user; that alone is reason to warn.
+      const unchecked = (why, status, found) => {
+        console.error('delete-account: COULD NOT CHECK FOR OTHER STRIPE SUBSCRIPTIONS — user=' + userId + ' — ' + why +
+          ' — check this user\'s subscriptions in Stripe by hand.');
+        if (mayHaveBilling || found) {
+          failures.push({ step: 'stripe_search', status: status || 0 });
+          billingLive = billingLive || 'unverified';
+        }
+      };
+      if (!secret) {
+        if (!subId) unchecked('STRIPE_SECRET_KEY is not set');   // with a row sub, the cancel below reports it
+      } else {
+        const wh = require('./stripe-webhook');
+        const found = await wh.searchUserSubscriptions(userId, secret, REQ_TIMEOUT_MS);
+        if (found.unknown) unchecked(found.why, found.status);
+        else if (found.hits) {
+          const cands = found.hits.filter((x) => x && typeof x.id === 'string' && x.id !== subId
+            && typeof x.status === 'string' && !wh.subscriptionEnded(x.status));
+          for (const c of cands) {
+            if (timeLeft() <= 0) { unchecked('out of time before re-reading ' + c.id, 0, true); break; }
+            const live = await wh.liveSubscription(c.id, secret, REQ_TIMEOUT_MS);
+            if (live.unknown) { unchecked('could not re-read ' + c.id + ' — ' + live.why, 0, true); continue; }
+            if (live.absent || wh.subscriptionEnded(live.sub.status)) continue;
+            if (!live.sub.metadata || live.sub.metadata.user_id !== userId) {
+              console.error('delete-account: search returned subscription ' + c.id + ' whose user_id is not this user (' + userId + ') — NOT cancelled.');
+              continue;
+            }
+            toCancel.push(c.id);
+          }
+        }
+      }
+
+      for (const id of toCancel) {
+        // v692 round 5 — the row's subscription is first in the list; an extra one that no longer fits
+        // the time budget is reported exactly like a failed cancel, never silently skipped.
+        if (id !== subId && timeLeft() <= 0) {
+          console.error('delete-account: OUT OF TIME before cancelling Stripe subscription — CANCEL IT MANUALLY:', id);
+          failures.push({ step: 'stripe_cancel', status: 0 });
+          billingLive = id;
+          continue;
+        }
+        const cancelled = await stripeCancel(id);
         if (cancelled.ok) {
-          console.log('delete-account: cancelled Stripe subscription', subId);
+          console.log('delete-account: cancelled Stripe subscription', id);
         } else {
           // Loud, and carried into the response. Only the Stripe object id is logged — never the email.
-          console.error('delete-account: COULD NOT CANCEL Stripe subscription — CANCEL IT MANUALLY:', subId, cancelled.reason);
+          console.error('delete-account: COULD NOT CANCEL Stripe subscription — CANCEL IT MANUALLY:', id, cancelled.reason);
           failures.push({ step: 'stripe_cancel', status: cancelled.status || 0 });
-          billingLive = subId;
+          billingLive = id;
         }
       }
     }

@@ -4,7 +4,7 @@
 // changing BUILD makes this file byte-different, the browser detects a new worker, and `install`
 // pulls the fresh app.html into the SAME stable cache while the OLD copy keeps serving instantly.
 const CACHE = 'cs-shell';   // stable — never rename
-const BUILD = 'v691-1c188e4e';       // ← bump this string on every app.html/asset change to push an update
+const BUILD = 'v692-46063c6f';       // ← bump this string on every app.html/asset change to push an update
 
 // Only the app shell is refreshed on update. Images/icons are cached lazily on first use (never
 // eagerly precached — on a very slow connection an eager 1.8MB precache saturates the pipe and is

@@ -2,6 +2,46 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-26 — v692. THE FIVE OWNER ITEMS FROM THE v690 REVIEW, FIXED (3 fix agents + 2 attackers, up to 5 rounds).
+
+Ledgers + mutation manifests: `.unlazy/owner-fixes-v692/` (git-ignored). 68 (money) + 27 (meme) + 59 (app)
+mutations killed; suite 99/99. SQL applied live 2026-09-26: `sql/ideas-emphasis.sql` (ideas.emphasis jsonb).
+
+**MONEY (create-checkout, stripe-webhook, checkout-confirm, delete-account, _usage).**
+- Dunning: past_due/unpaid/incomplete/paused still drop the plan to free (policy unchanged) but KEEP the
+  sub + customer ids until the sub truly ends (canceled / incomplete_expired / deleted / 404). Checkout reads
+  that sub: active → 409 already_subscribed; failing → 409 `{code:'payment_issue', manageBilling:true, status,
+  payUrl?}` — payUrl = the open invoice's hosted page (`GET /v1/invoices?subscription=&status=open&limit=1`)
+  because an `unpaid` sub is not re-charged by a card update; read failure → 503.
+- One Stripe customer per user: first checkout creates it (POST /v1/customers, Idempotency-Key
+  `contentshrimp-v692-customer-<uid>`), stores it only-if-empty (`_usage.setStripeCustomerIfEmpty`), later
+  checkouts pass `customer`; a missing customer → one retry with email. Other OPEN checkout sessions of that
+  customer are expired first (two tabs can't both pay).
+- Double subscriptions: `guardDoubleSubscription` before every grant (webhook + checkout-confirm) keeps the
+  paying sub tracked and logs `DOUBLE SUBSCRIPTION` (no auto-refund); before any downgrade the webhook searches
+  Stripe (`/v1/subscriptions/search` metadata user_id, `Stripe-Version: 2024-06-20` on search only, hits re-read
+  by id, user_id re-checked) and MOVES the row to another live sub instead of downgrading; checkout refuses when
+  any live sub exists; delete-account cancels every live sub of the user. Search unavailable (narrow 400/403/404
+  match) → `STRIPE SEARCH UNAVAILABLE` + old behaviour; other search failures → 503. NOTE: checkout and
+  downgrades now depend on Stripe Search being up (20 reads/s limit).
+- Paid checkout with no subscription → nothing granted (webhook + checkout-confirm, logged). A row with a paid
+  plan and NO sub id is treated as hand-granted: subscription events never downgrade it (logged). Unmatched
+  subscription events older than 24 h → 200 + `WEBHOOK UNMATCHED`; fresher → 500 (heals the ordering race).
+  checkout-confirm re-checks after its write (reuses the webhook's confirmGrant).
+**APP.** A customer downgraded for a failed card sees "Manage plan & billing", a plain line, and "Pay now" for an
+open invoice (payUrl validated: https, host exactly invoice.stripe.com / pay.stripe.com). `/api/usage` adds
+`billing: {paymentIssue, canManage}` (from the row, no Stripe call). Checkout/confirm errors show the server's
+text. Meme + brandimage errors decide "key problem" by code first — a timeout never opens the Gemini key form.
+**MEME.** Per-request clock: budget 100 s of 120; LLM deadline = min(50 s, left − 16 s); image leg gets a TOTAL
+limit = time left; early check after checkLimit; codes OUT_OF_TIME / IMAGE_FAILED / IMAGE_BUSY / IMAGE_EMPTY /
+IMAGE_PROVIDER_ERROR; every early exit releases the hold (nothing charged).
+**EMPHASIS.** Teleprompter stress marks are saved in `ideas.emphasis` (cleaned: ≤6 phrases, ≤120 chars, pruned
+against the text) and read back; a PGRST204/42703 on the column retries the save without marks (never loses an
+idea); two script-edit paths (viral twist, statement editor) now prune stale marks.
+**LEFT (owner, not bugs):** abandoned first checkouts leave a Stripe customer with no subscription;
+dashboard-made subscriptions without user_id metadata are invisible to the search; the grant-undo path doesn't
+search (next event heals); x.ai credits were empty on 2026-09-25 — top up at console.x.ai.
+
 ## ▶▶ 2026-09-26 — v691. THE PARKED STRIPE WEBHOOK SHIPS (money last, after v690 was verified live).
 
 Branch `wip-stripe-webhook-money` (parked commit + review fixes, rebased cleanly onto v690, labels
