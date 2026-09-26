@@ -2,6 +2,23 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-26 — v691. THE PARKED STRIPE WEBHOOK SHIPS (money last, after v690 was verified live).
+
+Branch `wip-stripe-webhook-money` (parked commit + review fixes, rebased cleanly onto v690, labels
+v687/v690 → v691). The webhook never acknowledges an event it did not apply: re-fetch failures, lookup
+read failures, a missing Stripe key and a live event read with a test key all answer 503 so Stripe
+retries. Plan decisions read the LIVE subscription (`GET /v1/subscriptions/:id`) instead of the event's
+old copy, so late or out-of-order deliveries can no longer re-grant a cancelled customer or downgrade a
+paying one; checkout takes its plan from the live price; a late delete for an OLD sub leaves a row that
+holds a newer sub alone. `confirmGrant` / `undoEndedGrant` repair a grant that raced a cancellation (both
+the subscription and the checkout path; a failed repair is 503 and heals on redelivery). Deleted accounts:
+strict `getPlanSnapshot(userId,{strict:true})` separates "no row" (ack, write nothing) from "could not
+read" (503). Stale window 7 days. Proof: `scripts/verify/rv-money-webhook.mjs` runs the real handler
+against fake Stripe + Supabase with switchable failures (25 mutations killed, incl. 9 found by an
+independent attacker); money-path's fake now keeps per-sub state and 404s unknown subs.
+Cost: one extra Stripe read per subscription event (worst case can pass maxDuration 30 → Vercel 504 →
+Stripe retries; nothing lost). Owner decisions left: see v690 "OWNER DECISIONS".
+
 ## ▶▶ 2026-09-26 — v690. FULL ADVERSARIAL REVIEW of v683–v689 (unlazy ledgers + 4 fix agents + 4 independent attackers, 3 rounds).
 
 Ledgers, findings, mutation manifests and the status log: `.unlazy/review-v690/` (git-ignored). Every
