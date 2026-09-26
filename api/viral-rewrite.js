@@ -1,6 +1,6 @@
 // Viral Rewrite — regenerate a FULL post around a chosen viral angle.
 // Keeps the same format + brand truth/voice; rewrites hook + body + caption + shots + tags.
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, writingCraft, rulePrecedence, extractJson, coerceShape, VIRAL_REWRITE_SHAPE } = require('./_brain');
 
 module.exports = async function handler(req, res) {
@@ -132,6 +132,7 @@ ${rulePrecedence()}`;
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: bc.engine || 'grok' });
     return res.status(200).json({ idea: rewritten });
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('viral-rewrite error:', err);
     return res.status(500).json({ error: 'Viral rewrite failed — try again' });
   }

@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v689';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v690';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -26,7 +26,17 @@
      It now waits. The update is not urgent; their footage is. */
   window._csUpdatePending = false;
   window._csTakeInHand = function(){
-    try { return !!window._tpBlobInHand || !!window._spBusy; } catch(e){ return false; }
+    try {
+      if (window._tpBlobInHand || window._spBusy) return true;
+      // v690 r2 — a take being FILMED is a take in hand too. The 60 s poll and the hold failsafe can
+      // now offer the banner at any moment, and a Refresh mid-take would reload the camera away.
+      if (typeof tpMediaRecorder !== 'undefined' && tpMediaRecorder && tpMediaRecorder.state && tpMediaRecorder.state !== 'inactive') return true;
+      /* v690 — A FINISHED SPLIT SCREEN ON SCREEN IS A TAKE IN HAND, WHATEVER THE FLAGS SAY. A late
+         "Stop and just save my video" hands over the plain take — whose delivery releases the
+         hold — and THEN puts the finished split screen up. The flags then read clear while that
+         video sat on screen under a banner whose only button reloads the page. */
+      return !!(document && document.getElementById && document.getElementById('tpSplitShare'));
+    } catch(e){ return false; }
   };
   window._csShowPendingUpdate = function(){
     try { if (window._csUpdatePending && !window._csTakeInHand()) window._showUpdateBanner(); } catch(e){}
@@ -42,7 +52,9 @@
     // Belt and braces: the hold can be taken AFTER the banner is already on screen.
     btn.onclick=function(){
       if(window._csTakeInHand()){
-        try{ t.textContent='Save your video first'; }catch(e){}
+        // v690 — this used to set the label and then remove the banner in the same tick, so the
+        // tap looked like it did nothing at all. Say it where it can be read.
+        try{ if (typeof showToast === 'function') showToast('Save your video first — the update will wait until you have.', 6000); }catch(e){}
         window._csUpdatePending = true;
         try{ b.remove(); }catch(e){}
         return;
@@ -115,7 +127,10 @@
   window.addEventListener('appinstalled', function () { window._deferredInstallPrompt = null; });
   if ('serviceWorker' in navigator) { window.addEventListener('load', function () { try {
     navigator.serviceWorker.register('/sw.js').then(function(reg){
-      function chk(){ try{ reg.update(); }catch(e){} }
+      // v690 — the held-back update used to be re-offered ONLY from tpReleaseTake, so any hold that
+      // ended another way (the 15-minute failsafe, a sheet removed without a delivery) left it hidden
+      // for the rest of the session. Every poll now re-offers it; _csShowPendingUpdate re-checks the hold.
+      function chk(){ try{ reg.update(); }catch(e){} try{ if(window._csShowPendingUpdate) window._csShowPendingUpdate(); }catch(e){} }
       document.addEventListener('visibilitychange', function(){ if(!document.hidden) chk(); });
       setInterval(chk, 60000);
       reg.addEventListener('updatefound', function(){
@@ -7859,6 +7874,25 @@ async function readJsonOrThrow(resp, what) {
     throw new Error(label + ' came back in a form we could not read. Try again.');
   return data;
 }
+/* v690 — THE AI ACCOUNT BEING PAUSED MUST BE SAID, ONCE, IN THE SERVER'S WORDS. When xAI refuses
+   our account (out of credits / spending limit) every AI endpoint answers 503 with
+   {error: <message>, code: 'AI_UNAVAILABLE'}. About half the callers never read data.error: the
+   automatic refill after every approve, the People-also-ask pull, the hook reader and the settings
+   examples fail silently, and several others say "Could not develop that — try again" or "try
+   again in a moment", which no amount of retrying can fix. The fetch wrapper notes it once for
+   every caller; the generic fallbacks below ask csAiPausedText before inventing a reason. */
+function csNoteAiUnavailable(msg){
+  const m = String(msg || '').trim() || 'The AI writer is paused on our side right now. Please try again later.';
+  try { window._csAiPaused = { at: Date.now(), msg: m }; } catch(e) {}
+  try { if (typeof showToast === 'function') showToast(m, 9000); } catch(e) {}   // showToast drops repeats
+}
+function csAiPausedText(fallback){
+  try {
+    const p = window._csAiPaused;
+    if (p && p.msg && (Date.now() - p.at) < 30000) return p.msg;
+  } catch(e) {}
+  return fallback;
+}
 let _ideasSaveChain = Promise.resolve();
 let _lastIdeasSave = Promise.resolve({ ok: true });
 let _ideasSaveWarnedAt = 0;
@@ -8844,7 +8878,7 @@ function lsGet(base){ try { if(!currentBrand||!currentBrand.id) return null; ret
    and the daily-ping toggle. The user typed a trend, saw the toast, and it was gone
    after the reload with nothing said. The file already owned the right writer —
    _lsWriteGuarded logs and toasts once a minute — and it had ONE call site. */
-function lsSet(base, val){ try { if(!currentBrand||!currentBrand.id) return; _lsWriteGuarded(bkey(base), val); } catch(e){} }
+function lsSet(base, val){ try { if(!currentBrand||!currentBrand.id) return false; return _lsWriteGuarded(bkey(base), val); } catch(e){ return false; } }   // v690: reports whether it stuck
 // Same namespace, same null-brand guard — for DROPPING a value that can no longer be trusted
 // (a stored blob that will not parse). Declared at top level on purpose: a `const` helper
 // defined inside a `try` is block-scoped, so calling it from that block's `catch` throws a
@@ -9694,6 +9728,7 @@ function brollBeatHtml(b){
   }
   if (b.kind === 'number' && b.value) {
     return '<div class="br-sg">' + eb + '<div class="br-num">' + brollEsc(b.value) + '</div>'
+      + (b.headline ? '<div class="br-big" style="font-size:17px;margin-top:8px">' + brollEsc(String(b.headline).replace(/\s+/g, ' ')) + '</div>' : '')   // v690: see spRenderBeat numHead
       + (b.sub ? '<div class="br-sb">' + brollEsc(b.sub) + '</div>' : '') + photo + '</div>';
   }
   if (b.kind === 'chips' && b.chips && b.chips.length) {
@@ -9734,7 +9769,9 @@ function renderBrollStage(beats, secs){
     +     '<div class="br-bar"></div>'
     +   '</div>'
     + '</div>'
-    + '<div class="br-meta">' + beats.length + ' beats · ' + total + 's · generated from your script</div>';
+    // v690 — this said "6 beats · 19.50s", but the finished video is as long as the TAKE: the beats
+    // are stretched across whatever was filmed. A 60-second take never comes out 19.5 seconds long.
+    + '<div class="br-meta">' + beats.length + ' beats · stretched across your take when you film · generated from your script</div>';
 }
 async function openBroll(id){
   openBrollIdea(state[id], id);
@@ -9746,6 +9783,14 @@ function tvOpenBroll(){
   if (!idea) { tvNoIdea('preview'); return; }
   if (!['video','micro','qna'].includes(idea.format)) { tvNoIdea('preview'); return; }
   openBrollIdea(idea, '_tv');
+}
+/* v690 — THE v688 CACHE CHECK COULD NEVER MATCH. beatsCacheGet returns the beats ARRAY itself
+   (the brand/script stamps live on the array), and the check asked for `.beats` on it — always
+   undefined — so every look at the B-roll preview still paid for a fresh graphics track and up to
+   six stock photos, exactly the cost the v688 note says it removed. */
+function _brollCachedData(id, idea){
+  const hit = (typeof beatsCacheGet === 'function') ? beatsCacheGet(id, idea) : null;
+  return (Array.isArray(hit) && hit.length) ? { beats: hit } : null;
 }
 async function openBrollIdea(idea, id){
   if (!idea) return;
@@ -9768,11 +9813,8 @@ async function openBrollIdea(idea, id){
        12% of a free user's month, for identical content. The cache is already fingerprinted by
        brand and script, so a sharpen, a viral rewrite or a brand switch still invalidates it —
        this only skips the call when the answer genuinely cannot have changed. */
-    const _cachedBeats = (typeof beatsCacheGet === 'function') ? beatsCacheGet(id, idea) : null;
-    let data;
-    if (_cachedBeats && _cachedBeats.beats && _cachedBeats.beats.length) {
-      data = _cachedBeats;
-    } else {
+    let data = _brollCachedData(id, idea);   // v690 — see _brollCachedData: the v688 check never matched
+    if (!data) {
       // Lean request — see leanBrandFetch. Same endpoint and same saving as beatsForIdea.
       const resp = await leanBrandFetch('/api/video-beats',
         { script: idea.script || idea.boldText || '', hook: idea.hook || '', title: idea.title || '' },
@@ -9785,7 +9827,8 @@ async function openBrollIdea(idea, id){
     if ((data && data._httpFail) || !data || !data.beats || !data.beats.length) {
       body.innerHTML = '<div class="br-load" style="color:var(--warning,#B45309)">'
         + brollEsc(humanErr(data && data.error, "Couldn't build the graphics track."))
-        + '<br><span>Tap B-roll again to retry.</span></div>';
+        // v690 — the AI account is paused: the server's message already says when; "tap again" would not help.
+        + ((data && data.code === 'AI_UNAVAILABLE') ? '' : '<br><span>Tap B-roll again to retry.</span>') + '</div>';
       return;
     }
     window._brollLast = data;
@@ -9793,15 +9836,20 @@ async function openBrollIdea(idea, id){
     // this script's fingerprint so a later sharpen / viral rewrite / brand switch invalidates it
     // instead of compositing the wrong post's graphics onto a performed take.
     beatsCacheSet(id, idea, data.beats);
+    let _brollPhotoNote = '';
     // v513: the preview must show what the render will show — photos included.
     if (data.beats.some(b => b && b.imageQuery) && typeof spFetchBeatPhotos === 'function') {
       body.innerHTML = '<div class="br-load">Finding the photos…<br><span>free stock, recoloured to your brand</span></div>';
       try { await spFetchBeatPhotos(data.beats); } catch(e){}
+      // v690 — the preview promised photos and then showed text cards without a word when the
+      // shared photo quota was drained. It is the first place anyone sees it, so say it here too.
+      try { _brollPhotoNote = spPhotoMissMsg(window._spPhotoMisses || 0, window._spPhotoWhy || ''); } catch(e){}
     }
     // v514/v515: from Film & Post the natural next step is filming — one button.
     // From Ideas (pending) the sheet is a PURE preview: deciding happens on the
     // card's ✓, so there's exactly one approval path in the app.
     body.innerHTML = renderBrollStage(data.beats, data.secondsPerBeat)
+      + (_brollPhotoNote ? '<div class="br-meta" style="color:var(--warning,#B45309)">' + brollEsc(_brollPhotoNote) + '</div>' : '')
       + (idea.status === 'filming'
           ? '<button class="gen-btn" style="width:100%;margin:14px 0 0" onclick="brollFilmGo(' + id + ')">Film it \u2192</button>'
           : '');
@@ -10449,6 +10497,7 @@ async function startTpRecord() {
     // wraps this handler and only resolve()s AFTER awaiting it, so a rejection left that promise
     // permanently unsettled and stopTpCamera's `await stopTpRecord()` never returned.
     let blob = null, fname = '';
+    try { tpNoteTakeSecs(); } catch(e){}   // v690 r2 — a recorder that stopped by itself never ran stopTpRecord
     try {
       const ext = (tpMediaRecorder.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
       blob = new Blob(tpRecordedChunks, { type: tpMediaRecorder.mimeType || 'video/webm' });
@@ -10554,7 +10603,7 @@ async function startTpRecord() {
   const _rb = document.getElementById('tpRecBtn'); if (_rb) _rb.classList.add('recording');
   const _rl = document.getElementById('tpRecordLbl'); if (_rl) _rl.textContent = 'Stop';
   document.getElementById('teleprompterOverlay').classList.add('recording');
-  tpRecStartTime = Date.now();
+  tpRecStartTime = Date.now(); window._tpLastTakeSecs = 0;   // v690 r2 — see tpNoteTakeSecs
   // v505: THE SCROLL TRACK — sample where the script is, throughout the take.
   // This is "how the script moves", and it exists in BOTH modes (voice-following
   // and timed), so the graphics can be cued off it without depending on speech
@@ -10587,6 +10636,13 @@ async function startTpRecord() {
   return true;
 }
 
+/* v690 r2 — _tpLastTakeSecs was written ONLY by stopTpRecord and never cleared, but a recorder can
+   stop on its own (the camera track ends, the OS takes the camera) and go straight to onstop ->
+   tpOfferSplit. The split-screen render then sized its bitrate and its length guess from the
+   PREVIOUS take. It is now cleared when a take starts, and filled here if nothing else did. */
+function tpNoteTakeSecs(){
+  if (tpRecStartTime && !window._tpLastTakeSecs) window._tpLastTakeSecs = Math.max(3, Math.round((Date.now() - tpRecStartTime) / 1000));
+}
 function stopTpRecord() {
   try { if (typeof window._tpUnbindTakeGuards === 'function') window._tpUnbindTakeGuards(); } catch(e){}   // v560: the take is over on purpose
   if (tpRecStartTime) window._tpLastTakeSecs = Math.max(3, Math.round((Date.now() - tpRecStartTime) / 1000));
@@ -10968,8 +11024,11 @@ function tpOfferSplit(blob, fname){
   /* v687 — tpHoldTake's failsafe drops the flag after 15 minutes, and it is taken ONCE, here.
      A long take plus a slow beats call plus six 40s photo fetches plus the render deadline can
      outrun that, which re-arms the paywall modal and the update banner over a live video. _spBusy
-     covers the whole flow instead of a timer, and is cleared on every exit below. */
-  window._spBusy = true;
+     covers the whole flow instead of a timer, and is cleared on every exit below.
+     v690 — it is now taken AFTER the early `return false` exits below. It used to be taken before
+     them, so every device that gets no split offer (every iPhone: no <video>.captureStream) carried
+     this failsafe-less flag through a plain delivery, and one share promise that never settles
+     (an iOS share sheet left by backgrounding the app) hid every update for the whole session. */
   const id = window._tpSplitIdeaId;
   // `_spIdea` resolves BOTH lanes: a Pipeline idea via state[id], and a Quick Post via '_tv'.
   // Using it here (not just state[id]) matters: a Quick Post lives only in memory, so a sharpen
@@ -10998,6 +11057,7 @@ function tpOfferSplit(blob, fname){
   // v516: no split-screen offer for statements — the graphics engine needs a
   // script's moments; a one-liner would render as padded, repetitive cards.
   if (haveIdea && (state[id] || _spIdea || {}).format === 'statement') return false;
+  window._spBusy = true;   // v690 — see the note at the top of this function
   document.querySelectorAll('.br-backdrop').forEach(x => x.remove());
   const bd = document.createElement('div');
   bd.className = 'br-backdrop';
@@ -11075,6 +11135,10 @@ function tpOfferSplit(blob, fname){
       // (switchBrand → beatsCacheClear) defers releasing its decoded photos instead of
       // pulling them out from under spRenderBeat. Released in the finally below.
       if (beats) { _rBeats = beats; try { beats._csRendering = true; } catch(e){} }
+      // v690 — spFetchBeatPhotos resets these, but it only runs when a beat wants a photo. A build
+      // whose beats want none kept the PREVIOUS build's count and said "No stock photos this time"
+      // about a video that never asked for any.
+      try { window._spPhotoMisses = 0; window._spPhotoWhy = ''; } catch(e){}
       if (typeof spFetchBeatPhotos === 'function' && (beats || []).some(b => b && b.imageQuery)) {
         spTickPhase('photos');
         try { await spFetchBeatPhotos(beats); } catch(e){}
@@ -11141,15 +11205,8 @@ function tpOfferSplit(blob, fname){
          recoloured to your brand" and then quietly hands back plain text panels. */
       const _miss = window._spPhotoMisses || 0;
       const _why = String(window._spPhotoWhy || '');
-      const _photoMsg = _miss > 0
-        ? (/429|quota|http_402|limit/.test(_why)
-            ? ('No stock photos this time — the photo service is rated out for the moment, so ' + _miss + ' card' + (_miss === 1 ? '' : 's') + ' came out as text. Try again later if you want the pictures.')
-            : (/timeout|network/.test(_why)
-              ? ('The photo service did not answer in time, so ' + _miss + ' card' + (_miss === 1 ? '' : 's') + ' came out as text. Your connection may be slow.')
-              : ((_miss >= 3)
-                ? (_miss + ' cards came out as text — no stock photo matched them. The video is fine, it is just plainer.')   // only ever ≥3, so the plural is always right
-                : '')))
-        : '';
+      // v690: the sentence lives in spPhotoMissMsg now, shared with the B-roll preview.
+      const _photoMsg = spPhotoMissMsg(_miss, _why);
       const _encMsg = out.recFailed
         ? ('The phone\u2019s video encoder gave up part-way, so this file is probably missing content. Build it again, or use the plain video below.')
         : '';
@@ -11232,6 +11289,8 @@ function tpSplitResult(bd, outBlob, ext, rawBlob, rawName, warn){
   const close = () => {
     try { URL.revokeObjectURL(url); } catch(e){}
     bd.remove();
+    // v690 — the sheet itself now holds the update back (see _csTakeInHand), so its removal must offer it.
+    try { if (window._csShowPendingUpdate) window._csShowPendingUpdate(); } catch(e){}
     try { if (typeof closeTeleprompter === 'function') closeTeleprompter(); } catch(e){}
   };
   document.getElementById('tpSplitShare').onclick = async () => {
@@ -11303,6 +11362,28 @@ function _spReleaseRender(stream, cap, vid){
   stop(stream); stop(cap);
   try { if (vid && vid.srcObject) vid.srcObject = null; } catch(e){}
 }
+/* v690 — THE OUTPUT BITRATE WAS FIXED AT 20 Mbps WHATEVER THE LENGTH. The take itself is recorded
+   at 20 Mbps (~150 MB a minute) and this render wrote a SECOND file at the same rate, so a
+   three-minute take held ~450 MB of footage plus ~450 MB of render in memory at once — the 858 MB
+   peak measured on a 180 s take, which is what gets a phone tab reaped (and the take with it).
+   Short takes keep the full 20 Mbps; past ~65 s the rate falls so the finished file stays near
+   160 MB, and never below 6 Mbps — still well above what Instagram / TikTok re-encode to. */
+const SP_OUT_MAX_BYTES = 160 * 1024 * 1024;
+function spRenderBitrate(takeSecs){
+  const s = Number(takeSecs);
+  if (!isFinite(s) || s <= 0) return 20000000;
+  return Math.max(6000000, Math.min(20000000, Math.floor(SP_OUT_MAX_BYTES * 8 / (s + 2))));
+}
+/* v690 — THE GUESS IGNORED A NUMBER WE ALREADY HAD. When the phone will not report the take's
+   length, the render guessed beats.length * 3.25 s — at most 19.5 s — and the frame loop stops at
+   that guess, so a three-minute take came out 19.5 s long (v687 made the sheet SAY so; it was still
+   cut). The wall-clock length of the take (_tpLastTakeSecs, set when recording stopped) is a far
+   better guess. Erring long is safe: the render watchdog ends the loop as soon as the video
+   reports `ended` (v690 r2 — before that it ended via the 6 s stall branch, still correctly). */
+function spEstimateDur(guess, takeSecs){
+  const s = Number(takeSecs);
+  return (isFinite(s) && s > 0) ? Math.max(guess, s + 1) : guess;
+}
 function renderSplitScreen(videoBlob, beats, onProgress){
   return new Promise(async (resolve, reject) => {
     // v507/v531: hoisted so ANY failure path can clean up. `_alive` is the frame loop's kill flag:
@@ -11311,8 +11392,8 @@ function renderSplitScreen(videoBlob, beats, onProgress){
     // video), but on a browser WITHOUT rVFC the requestAnimationFrame fallback kept compositing
     // full-resolution frames for the life of the page — on a phone, exactly while the user is
     // sharing. Declared out here so the outer catch can reach it.
-    let _vid = null, _rec = null, _wl = null, _alive = true, _stream = null, _capRef = null;
-  let _estSec = 0;   // v687: the guessed length, when the phone would not report the real one   // v660: refs so the catch path can release the tracks too
+    let _vid = null, _rec = null, _wl = null, _alive = true, _stream = null, _capRef = null;   // v660: refs so the catch path can release the tracks too
+    let _estSec = 0;   // v687: the guessed length, when the phone would not report the real one (v690: tidied — the v660 note had slid onto this line)
     try {
       // v531: an empty graphics track would render layers[-1] = undefined → the
       // no-layer fallback paints cream for the whole clip = a "split" with zero
@@ -11398,7 +11479,7 @@ function renderSplitScreen(videoBlob, beats, onProgress){
           ? 'this phone would not copy the sound out of your take, so the split screen would come out silent'
           : 'this browser cannot copy the sound out of a video, so the split screen would come out silent');
       }
-      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 20000000 });   // v557: crisper 1080p output
+      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: spRenderBitrate(window._tpLastTakeSecs) });   // v557: crisper 1080p output; v690: bounded for long takes — see spRenderBitrate
       _rec = rec;
       window._spLastMime = rec.mimeType || mime;
       const chunks = [];
@@ -11476,7 +11557,7 @@ function renderSplitScreen(videoBlob, beats, onProgress){
         try { vid.currentTime = 0; } catch(e){}
       }
       if (!dur) {
-        dur = beats.length * PER;
+        dur = spEstimateDur(beats.length * PER, window._tpLastTakeSecs);   // v690 — see spEstimateDur
         window._spDurEstimated = true;   // v687: now ACTUALLY surfaced on the result sheet — see _estMsg
         _estSec = dur;
       } else { window._spDurEstimated = false; _estSec = 0; }
@@ -11567,6 +11648,11 @@ function renderSplitScreen(videoBlob, beats, onProgress){
         const finish = () => { _alive = false; lastT = Math.max(lastT, vid.currentTime); cleanupVis(); clearInterval(watch); done(); };
         const watch = setInterval(() => {
           if (window._spCancel) { _alive = false; cleanupVis(); clearInterval(watch); fail(new Error('cancelled')); return; }
+          /* v690 r2 — Chromium gives NO video-frame callback after the last frame, so step() never saw
+             vid.ended and every render ended through the 6 s stall branch below: six seconds of
+             frozen last frame recorded onto the end of every split screen's timing budget. The
+             element says it has ended; believe it. finish() records how far it got, as before. */
+          if (vid.ended) { finish(); return; }
           if (document.hidden) { stalledSince = Date.now(); return; }   // paused on purpose, not stalled
           if (Date.now() > deadline) { _alive = false; cleanupVis(); clearInterval(watch); fail(new Error('render took too long')); return; }
           if (vid.currentTime > lastT + 0.05) { lastT = vid.currentTime; stalledSince = Date.now(); return; }
@@ -11682,10 +11768,14 @@ function spRenderBeat(b, W, panelH, pal){
   const EYE = eyebrow ? 44 : 0;
   const isNum   = b.kind === 'number' && b.value;
   const isChips = b.kind === 'chips' && b.chips && b.chips.length;
+  /* v690 — a number beat's headline was drawn NOWHERE — not here, not in the preview. The prompt
+     tells the model a number beat's "headline stays empty or very short", so when it sent one
+     ("34g" + "of protein") the words that give the figure its meaning were silently dropped. */
+  const numHead = isNum ? String(b.headline || '').replace(/\s+/g, ' ').trim() : '';
   let bodyH = 0, lines = null, rows = null;
 
   if (isNum) {
-    bodyH = 128 + (b.sub ? 38 : 0);
+    bodyH = 128 + (numHead ? 50 : 0) + (b.sub ? 38 : 0);
   } else if (isChips) {
     ctx.font = '700 26px system-ui, sans-serif';
     rows = []; let row = [], rw = 0;   // v689: bodyH below now budgets for the sub this branch draws
@@ -11748,6 +11838,7 @@ function spRenderBeat(b, W, panelH, pal){
   if (isNum) {
     ctx.fillStyle = pal.text; ctx.font = '800 116px system-ui, sans-serif';
     ctx.fillText(b.value, x, y); y += 128;
+    if (numHead) { ctx.fillStyle = pal.text; ctx.font = '800 36px system-ui, sans-serif'; ctx.fillText(spFitLine(ctx, numHead, maxW), x, y); y += 50; }
     if (b.sub) { ctx.fillStyle = pal.muted; ctx.font = '500 28px system-ui, sans-serif'; ctx.fillText(spFitLine(ctx, b.sub, maxW), x, y); }
   } else if (isChips) {
     ctx.font = '700 26px system-ui, sans-serif';
@@ -11771,14 +11862,15 @@ function spRenderBeat(b, W, panelH, pal){
     }
   } else {
     ctx.font = '800 52px system-ui, sans-serif';
-    lines.forEach(line => {
-      if (b.highlight && line.indexOf(b.highlight) >= 0) {
-        const hi = line.indexOf(b.highlight);
-        const before = line.slice(0, hi);
-        const bw = ctx.measureText(before).width, hw = ctx.measureText(b.highlight).width;
+    const _hs = spHighlightSpans(lines, b.highlight);   // v690 — case-insensitive, and across a wrap
+    lines.forEach((line, li) => {
+      const _sp = _hs[li];
+      if (_sp) {
+        const seg = line.slice(_sp[0], _sp[1]);
+        const bw = ctx.measureText(line.slice(0, _sp[0])).width, hw = ctx.measureText(seg).width;
         ctx.fillStyle = pal.accent; spRoundRect(ctx, x+bw-8, y-4, hw+16, 62, 8); ctx.fill();
         ctx.fillStyle = pal.text; ctx.fillText(line, x, y);
-        ctx.fillStyle = pal.accentText; ctx.fillText(b.highlight, x+bw, y);   // recolour so the word reads on the brand accent
+        ctx.fillStyle = pal.accentText; ctx.fillText(seg, x+bw, y);   // recolour so the word reads on the brand accent
       } else {
         ctx.fillStyle = pal.text; ctx.fillText(line, x, y);
       }
@@ -11849,6 +11941,45 @@ function _spPhotoMiss(why){
     console.error('split-screen: a beat has no photo — ' + why);
   } catch(e) {}
 }
+/* v690 — say WHY a beat has no picture, in one place, so the B-roll preview and the finished split
+   screen say the same thing. A rejected or missing photo key (http_401/403, or the bare
+   {empty:true} the server sends when it has no key — recorded as http_200) is NOT "no stock photo
+   matched them": that sentence blamed the script for an outage. */
+function spPhotoMissMsg(miss, why){
+  const n = Number(miss) || 0;
+  if (n <= 0) return '';
+  const w = String(why || '');
+  const cards = n + ' card' + (n === 1 ? '' : 's');
+  if (/429|quota|http_402|limit/.test(w))
+    return 'No stock photos this time — the photo service is rated out for the moment, so ' + cards + ' came out as text. Try again later if you want the pictures.';
+  if (/timeout|network/.test(w))
+    return 'The photo service did not answer in time, so ' + cards + ' came out as text. Your connection may be slow.';
+  if (/^http_(200|401|403|5\d\d)$/.test(w))
+    return 'The photo service is not available right now, so ' + cards + ' came out as text. The video is fine, it is just plainer.';
+  if (n >= 3)
+    return n + ' cards came out as text — no stock photo matched them. The video is fine, it is just plainer.';
+  return '';
+}
+/* v690 — DECODED AT FULL SIZE, KEPT FOR THE SESSION. Each photo arrives at Pexels' large2x
+   (~1880 px on its long side, up to 4 MB) and createImageBitmap decoded it whole: ~9.4 MB of raw
+   pixels each, six at a time in parallel, held in the beats cache for every later render. The photo
+   band is never drawn wider than 720 x SP_SS = 1440 px or taller than 1112 px (a beat with no
+   eyebrow and no text above the photo: (640 - 56 - 28) x 2), so anything bigger is memory the
+   render throws away. Shrink to cover that box —
+   never below it, so nothing gets softer — and close the full-size bitmap. */
+const SP_PHOTO_MAX_W = 1440, SP_PHOTO_MAX_H = 1120;
+async function spDecodePhoto(blob){
+  const full = await createImageBitmap(blob);
+  const w = full && full.width, h = full && full.height;
+  if (!(w > 0 && h > 0)) return full;
+  const k = Math.max(SP_PHOTO_MAX_W / w, SP_PHOTO_MAX_H / h);
+  if (k >= 1) return full;
+  try {
+    const small = await createImageBitmap(full, { resizeWidth: Math.round(w * k), resizeHeight: Math.round(h * k), resizeQuality: 'high' });
+    try { if (typeof full.close === 'function') full.close(); } catch(e) {}
+    return small;
+  } catch(e) { return full; }
+}
 async function spFetchBeatPhotos(beats){
   try { window._spPhotoMisses = 0; window._spPhotoWhy = ''; } catch(e) {}
   const want = (beats || []).filter(b => b && b.imageQuery && !b._imgBlob).slice(0, 6);   // v538: was 4 — later beats were silently photoless
@@ -11879,10 +12010,10 @@ async function spFetchBeatPhotos(beats){
     } catch(e) { _spPhotoMiss((e && e.name === 'AbortError') ? 'timeout' : 'network'); }
     finally { clearTimeout(kill); }
   }));
-  // decode for the canvas renderer
-  await Promise.allSettled((beats || []).filter(b => b && b._imgBlob && !b._img).map(async b => {
-    try { b._img = await createImageBitmap(b._imgBlob); } catch(e) {}
-  }));
+  // decode for the canvas renderer — v690: one at a time, and shrunk to what the band can show
+  for (const b of (beats || []).filter(b => b && b._imgBlob && !b._img)) {
+    try { b._img = await spDecodePhoto(b._imgBlob); } catch(e) {}
+  }
 }
 
 // Where the crop window sits in the source, 0 = top edge, 1 = bottom edge.
@@ -11924,27 +12055,87 @@ function spComposite(ctx, vid, layer, W, H, half, t, dur, tIn, pal){
    at 44 characters is 683px wide and runs OFF the 720px canvas, chopped a second time by the
    bitmap edge; ordinary prose at 44 characters is 496px and loses 33 characters that would have
    fitted. This measures, breaks at a word where it can, and says it was cut. */
+/* v690 r2 — split text into what a reader sees as ONE character. Code points were not enough: a
+   flag is two regional-indicator code points, a family emoji is several joined by U+200D, and an
+   accent can be a separate combining mark — cutting between those drew half a flag, a dangling
+   joiner, or an accent at the start of the next line. Intl.Segmenter knows the real boundaries;
+   engines without it fall back to code points (never a split surrogate pair). */
+function spGraphemes(t){
+  const s = String(t == null ? '' : t);
+  try {
+    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+      return Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s), x => x.segment);
+    }
+  } catch(e) {}
+  return Array.from(s);
+}
+/* v690 — THE HIGHLIGHT THE PREVIEW SHOWED WAS OFTEN MISSING FROM THE VIDEO. The server keeps a
+   highlight when headline.toLowerCase() contains it (api/video-beats.js), and the preview marks it
+   case-insensitively across the whole headline (brollHi). The render looked for it with a
+   case-SENSITIVE indexOf inside ONE wrapped line — so "Two Scoops" in "only two scoops", or any
+   phrase that the wrap split across two lines, was approved in the preview and simply not drawn.
+   This finds it once in the wrapped text and returns, per line, the part of it that line holds. */
+function spHighlightSpans(lines, hl){
+  const out = (lines || []).map(() => null);
+  const h = String(hl == null ? '' : hl).replace(/\s+/g, ' ').trim();
+  if (!h || !out.length) return out;
+  const sepAt = (i) => (lines._glue && lines._glue[i]) ? '' : ' ';   // v690 r2: no space inside a split word
+  const joined = lines.map((ln, i) => ln + (i < lines.length - 1 ? sepAt(i) : '')).join('');
+  const low = joined.toLowerCase();
+  // toLowerCase can change the length of a few characters (e.g. U+0130); offsets must not drift.
+  const hay = (low.length === joined.length) ? low : joined;
+  const at = hay.indexOf(hay === low ? h.toLowerCase() : h);
+  if (at < 0) return out;
+  const end = at + h.length;
+  let off = 0;
+  lines.forEach((ln, i) => {
+    const a = Math.max(at, off), b = Math.min(end, off + ln.length);
+    if (b > a) out[i] = [a - off, b - off];
+    off += ln.length + sepAt(i).length;
+  });
+  return out;
+}
 function spFitLine(ctx, text, maxW){
   const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
   if (!t) return '';
   if (ctx.measureText(t).width <= maxW) return t;
   const ell = '\u2026';
   const ellW = ctx.measureText(ell).width;
-  let lo = 0, hi = t.length;
+  // v690 — cut by CODE POINT, not UTF-16 unit. t.slice(0, mid) could split an emoji's surrogate
+  // pair, and the lone half draws as a replacement box right before the ellipsis.
+  const cps = spGraphemes(t);   // v690 r2: whole graphemes — see spGraphemes
+  let lo = 0, hi = cps.length;
   while (lo < hi) {                                   // largest prefix whose width + ellipsis fits
     const mid = Math.ceil((lo + hi) / 2);
-    if (ctx.measureText(t.slice(0, mid)).width + ellW <= maxW) lo = mid; else hi = mid - 1;
+    if (ctx.measureText(cps.slice(0, mid).join('')).width + ellW <= maxW) lo = mid; else hi = mid - 1;
   }
-  let cut = t.slice(0, lo);
+  let cut = cps.slice(0, lo).join('');
   const sp = cut.lastIndexOf(' ');                    // prefer a word boundary, but never lose most of it
-  if (sp > lo * 0.6) cut = cut.slice(0, sp);
+  if (sp > cut.length * 0.6) cut = cut.slice(0, sp);
   return cut.replace(/[\s,;:.\-]+$/, '') + ell;
 }
 function spWrap(text, ctx, maxW){
   const out = [];
+  // v690 r2 — glue[i] = line i was broken INSIDE a word (no space between it and line i+1), so
+  // spHighlightSpans can rebuild the real text instead of inventing a space in the middle of a word.
+  const glue = [];
   String(text).split('\n').forEach(para => {
     let line = '';
     para.split(' ').forEach(word => {
+      /* v690 — ONE WORD WIDER THAN THE COLUMN RAN OFF THE CANVAS. A line only ever broke BETWEEN
+         words, so a long hashtag, a URL, or any text with no spaces at all (Chinese, Japanese)
+         became one line wider than the 612 px column and was drawn straight off the edge. Break
+         such a word by character, the way a browser does with overflow-wrap. */
+      if (word && ctx.measureText(word).width > maxW) {
+        if (line) { out.push(line); line = ''; }
+        let cur = '';
+        for (const ch of spGraphemes(word)) {   // v690 r2: whole graphemes — see spGraphemes
+          if (cur && ctx.measureText(cur + ch).width > maxW) { out.push(cur); glue[out.length - 1] = true; cur = ch; }
+          else cur += ch;
+        }
+        line = cur;
+        return;
+      }
       const test = line ? line + ' ' + word : word;
       if (ctx.measureText(test).width > maxW && line) { out.push(line); line = word; }
       else line = test;
@@ -11955,9 +12146,10 @@ function spWrap(text, ctx, maxW){
      line breaks (api/video-beats.js:104 "Put the flip in headline using a line break"), so the
      punchline of a before/after card could simply disappear. Keep four, but mark the fourth so
      the card reads as cut rather than as finished. */
-  if (out.length <= 4) return out;
+  if (out.length <= 4) { out._glue = glue; return out; }
   const kept = out.slice(0, 4);
   kept[3] = spFitLine(ctx, kept[3] + ' ' + out.slice(4).join(' '), maxW);
+  kept._glue = glue.slice(0, 3);
   return kept;
 }
 
@@ -11993,7 +12185,11 @@ function tpHoldTake(){
   try {
     window._tpBlobInHand = true;
     clearTimeout(window._tpHoldT);
-    window._tpHoldT = setTimeout(function(){ window._tpBlobInHand = false; }, 900000);
+    window._tpHoldT = setTimeout(function(){
+      window._tpBlobInHand = false;
+      // v690 — the failsafe dropped the hold and never re-offered the update it had held back.
+      try { if (window._csShowPendingUpdate) window._csShowPendingUpdate(); } catch(e){}
+    }, 900000);
   } catch(e){}
 }
 function tpReleaseTake(){
@@ -16671,12 +16867,21 @@ async function nbToggleMic() {
           const b64 = reader.result.split(',')[1];
           const fmt = rec.mimeType.includes('mp4') ? 'mp4' : 'webm';
           const resp = await fetch('/api/transcribe-voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: b64, format: fmt }) });
-          const data = await resp.json();
-          if (input) {
-            input.placeholder = 'Type a thought, or tap the mic and just talk\u2026';
-            if (data.text && data.text.trim()) { input.value = (input.value ? input.value + ' ' : '') + data.text.trim(); input.focus(); try{ voiceLogAdd(data.text, 'notebook', _vg); }catch(_){} }
+          /* v690 — A FAILED TRANSCRIPTION SAID NOTHING. resp.ok and data.error were never read, and a
+             platform 413/504 HTML page threw inside resp.json() into a catch that only reset the
+             placeholder. The user talked for up to a minute and got an empty box and no word why —
+             the same bug v683 fixed in the coach mic, left in its sibling. */
+          const data = await resp.json().catch(() => ({}));
+          if (input) input.placeholder = 'Type a thought, or tap the mic and just talk\u2026';
+          if (resp.ok && data && data.text && data.text.trim()) {
+            if (input) { input.value = (input.value ? input.value + ' ' : '') + data.text.trim(); input.focus(); try{ voiceLogAdd(data.text, 'notebook', _vg); }catch(_){} }
+          } else if (typeof showToast === 'function') {
+            showToast(humanErr(data && data.error, "Couldn't turn that into words — try again, or type it here."), 6000);
           }
-        } catch (e) { if (input) input.placeholder = 'Type a thought, or tap the mic and just talk\u2026'; }
+        } catch (e) {
+          if (input) input.placeholder = 'Type a thought, or tap the mic and just talk\u2026';
+          if (typeof showToast === 'function') showToast("Couldn't send that recording — check your connection and try again.", 6000);
+        }
       };
       reader.readAsDataURL(blob);
     };
@@ -16837,7 +17042,7 @@ async function nbDevelop(id, btn) {
     saveState(); saveGeneratedIdeas(); renderNav();
     if (typeof showToast === 'function') showToast('Turned into a brief \u2192 in your Ideas list', 4500, () => switchView('ideas'));
   } catch (e) {
-    if (typeof showToast === 'function') showToast('Could not develop that \u2014 try again');
+    if (typeof showToast === 'function') showToast(csAiPausedText('Could not develop that \u2014 try again'));   // v690
   }
   btn.disabled = false; btn.textContent = 'Develop into post';
 }
@@ -16905,7 +17110,7 @@ async function sparkDevelop() {
     if (activeView === 'ideas') { renderStats(); renderIdeas(); }
     renderNav();
   } catch (e) {
-    showToast('Could not develop that one — try again');
+    showToast(csAiPausedText('Could not develop that one — try again'));   // v690
   }
   stopW();
   input.disabled = false;
@@ -18191,7 +18396,8 @@ async function fetchHookFrame(url){
     if(!url || !/tiktok\.com|youtu\.?be|youtube\.com/i.test(url)) return null;
     // hook-frame's maxDuration is 60 and its own LLM leg is 45s, so a 30s client budget threw away
     // every read that took a normal amount of time. 55s sits under the platform ceiling.
-    const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), 55000);
+    // v690 — was 55 s; the server legitimately needs up to ~74 s (maxDuration 90), so slow reads were thrown away.
+    const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), 85000);
     const r = await fetch('/api/hook-frame', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url}),signal:ctrl.signal});
     clearTimeout(t);
     if(!r.ok) return null;
@@ -18271,7 +18477,7 @@ async function analyzeViral(){
     if(status){ status.textContent=''; status.className='vl-status'; }
     renderViralResults(data.analysis);
   }catch(e){
-    if(status && e.message!=='limit_reached'){ status.textContent = "That didn't work — try again in a moment."; status.className='vl-status warn'; }
+    if(status && e.message!=='limit_reached'){ status.textContent = csAiPausedText("That didn't work — try again in a moment."); status.className='vl-status warn'; }   // v690
   }finally{
     stopThinking('vlStatus');
     stopW();
@@ -18449,6 +18655,17 @@ async function connToken(){ try{ const { data:{ session } } = await sb.auth.getS
       }
     } catch(e){}
     const _resp = await _origFetch(input, init);
+    // v690 — see csNoteAiUnavailable. AWAITED, not fire-and-forget like the 402 branch below, so the
+    // note is on record before any caller's own catch asks csAiPausedText what went wrong.
+    try {
+      if (_resp && _resp.status === 503) {
+        var _u5 = (_resp.url || '') || (typeof input === 'string' ? input : '');
+        if (_u5.indexOf('/api/') !== -1) {
+          const _d5 = await _resp.clone().json().catch(function(){ return null; });
+          if (_d5 && _d5.code === 'AI_UNAVAILABLE' && typeof csNoteAiUnavailable === 'function') csNoteAiUnavailable(_d5.error);
+        }
+      }
+    } catch(e){}
     try {
       var _u = (_resp && _resp.url) || '';
       /* v676 — 429 was not inspected here at all. Endpoints now answer a burst trip with
@@ -18968,7 +19185,21 @@ function icDraftSave(){
     const g = (id) => ((document.getElementById(id) || {}).value || '');
     const d = { idea: g('icIdea'), url: g('icUrl'), notes: g('icNotes'), img: icRefImage || '', at: Date.now() };
     if (!d.idea.trim() && !d.url.trim() && !d.notes.trim() && !d.img) { lsDel('ic_draft'); return; }
-    lsSet('ic_draft', JSON.stringify(d));
+    const _json = JSON.stringify(d);
+    if (!lsSet('ic_draft', _json)) {
+      /* v690 — ONE BIG SCREENSHOT TOOK THE TYPED WORDS DOWN WITH IT. Text and image were one
+         value, so a full quota refused all of it — and a refused write leaves the OLDER draft in
+         place, so coming back restored stale words. The words are what matter: keep them, and
+         say the picture has to be attached again.
+         v690 r2 — and drop the older draft FIRST. If storage is full of other data, even the
+         words alone can be refused; an older draft must then not survive to be restored in their
+         place. Removing it also frees its own space for the retry. */
+      lsDel('ic_draft');
+      if (!lsSet('ic_draft', _json) && d.img) {
+        d.img = ''; d.imgDropped = true;
+        lsSet('ic_draft', JSON.stringify(d));
+      }
+    }
   } catch(e) {}
 }
 function icDraftLoad(){
@@ -19024,9 +19255,14 @@ function renderIdeaCatcher(){
     if (_draft.url || _draft.notes || _draft.img) { try { icToggleManual(true); } catch(e) {} }
     const el = document.getElementById('icIdea');
     if (el) { try { el.style.height = 'auto'; el.style.height = Math.min(Math.max(el.scrollHeight + 2, 130), 480) + 'px'; } catch(e) {} }
-    if ((_draft.idea || '').trim() || _draft.img) {
+    if ((_draft.idea || '').trim() || _draft.img || _draft.imgDropped) {
       const st = document.getElementById('icStatus');
-      if (st) { st.textContent = 'Picked up where you left off.'; st.className = 'vl-status'; }
+      if (st) {
+        st.textContent = _draft.imgDropped   // v690 — see icDraftSave
+          ? 'Picked up where you left off — your screenshot was too big to keep on this phone, so attach it again.'
+          : 'Picked up where you left off.';
+        st.className = 'vl-status';
+      }
     }
   }
   // #icUrl is an <input>, and the delegated listener that auto-grows the textareas filters on
@@ -21099,7 +21335,7 @@ async function generateAndCacheScenes() {
     }
   } catch(e) {
     debugLog('generateScenes ERROR: ' + e.message);
-    if (container) container.innerHTML = '<span style="font-size:13px;color:var(--text3);">Could not generate scenes. Update brand settings to retry.</span>';
+    if (container) container.innerHTML = '<span style="font-size:13px;color:var(--text3);">' + escHtml(csAiPausedText('Could not generate scenes. Update brand settings to retry.')) + '</span>';   // v690
   } finally {
     // Same pin: clearing the flag on the global `settings` after a switch would clear it on the
     // brand now open, cancelling ITS in-flight spinner.
@@ -22834,7 +23070,12 @@ async function checkAiStatus(btn){
     if(out){
       if(g && g.ok === true){ out.textContent = '✓ Grok connected · ' + (g.ms||'?') + 'ms'; out.className = 'vl-status'; out.style.color = 'var(--success,#4A6B5A)'; }
       else if(g && g.ok === null){ out.textContent = g.reason || 'Sign in to run the check'; out.className = 'vl-status warn'; out.style.color=''; }
-      else { out.textContent = '✗ Grok not responding — check XAI_API_KEY in Vercel'; out.className = 'vl-status warn'; out.style.color=''; }
+      // v690 — the server says WHY. A refused account is the owner's billing problem, so every
+      // customer who taps this sees the neutral sentence (the owner's detail stays in the JSON);
+      // an outage shows the server's own "usually temporary" reason.
+      // http is null only when the key is missing (a config problem, not a spending limit).
+      else if(g && g.state === 'refused'){ out.textContent = (g.http == null) ? '✗ The AI writer isn\u2019t available on our side right now. Nothing is wrong with your account.' : '✗ The AI writer is paused on our side (our AI account hit a limit). Nothing is wrong with your account.'; out.className = 'vl-status warn'; out.style.color=''; }
+      else { out.textContent = '✗ ' + ((g && g.reason) || 'Grok not responding — check XAI_API_KEY in Vercel'); out.className = 'vl-status warn'; out.style.color=''; }
     }
   }catch(e){ if(out){ out.textContent = '✗ Could not reach the status check'; out.className = 'vl-status warn'; out.style.color=''; } }
   finally{ if(btn) btn.disabled = false; }

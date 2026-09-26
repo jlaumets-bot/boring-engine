@@ -1,5 +1,5 @@
 const https = require('https');
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { extractJson } = require('./_brain');
 
 // ── time budget ────────────────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ module.exports = async function handler(req, res) {
     const { url } = req.body || {};
     if (!url || !url.trim()) return res.status(400).json({ error: 'Missing profile URL' });
     try { await require('./_safeurl').assertPublicHttpUrl(url.trim()); }
-    catch (e) { return res.status(400).json({ error: 'That URL is not allowed.' }); }
+    catch (e) { return res.status(400).json({ error: require('./_safeurl').urlRefusalMessage(e, 'That URL is not allowed.') }); }
 
     const apiToken = process.env.APIFY_API_TOKEN;
     if (!apiToken) return res.status(500).json({ error: 'Reading your posts is temporarily unavailable.' });
@@ -162,7 +162,10 @@ Rules: extract, don't invent. If a field has no evidence in the captions, return
     // fast Apify run → a generous window; slow one → we still return our own error
     // before the platform kills us.
     const llmMs = Math.max(LLM_MIN_MS, Math.min(LLM_MAX_MS, FN_BUDGET_MS - (Date.now() - _t0)));
-    const content = await callLLM({ deadlineMs: 280000, timeoutMs: llmMs,
+    // v690 — the deadline was a flat 280s from HERE, after Apify had already spent up to ~80s, so
+    // the retry loop could run the LLM leg far past FN_BUDGET_MS (and past maxDuration). It is now
+    // what is LEFT of the function budget, the same number llmMs is carved from.
+    const content = await callLLM({ deadlineMs: Math.max(LLM_MIN_MS, FN_BUDGET_MS - (Date.now() - _t0)), timeoutMs: llmMs,
       messages: [{ role: 'user', content: prompt }],
       model: 'grok',
       max_tokens: 3200
@@ -174,6 +177,7 @@ Rules: extract, don't invent. If a field has no evidence in the captions, return
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'crawlsocial' });
     return res.status(200).json({ voice, postsAnalyzed: captions.length, platform });
   } catch (e) {
+    const ai = aiUnavailable(e); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('crawl-social error:', e);
     return res.status(500).json({ error: 'Social crawl failed: ' + e.message });
   }
@@ -193,9 +197,13 @@ function apifyRequest(method, path, token, body, timeoutMs) {
       timeout: timeoutMs || 30000
     };
     const req = https.request(options, (resp) => {
-      let data = '';
-      resp.on('data', chunk => data += chunk);
+      // v690 — decode once at the end. `data += chunk` decoded every network chunk on its own, so a
+      // letter split across two chunks (õ, ä, é, emoji) reached the voice extraction as replacement
+      // marks — the brand's own captions, corrupted, mined for "how they really write".
+      const parts = [];
+      resp.on('data', chunk => parts.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk));
       resp.on('end', () => {
+        const data = Buffer.concat(parts).toString('utf8');
         let parsed = null, isJson = true;
         try { parsed = JSON.parse(data); } catch (e) { isJson = false; }
         // An Apify ERROR body (renamed/removed actor id, bad token, rate limit) used to

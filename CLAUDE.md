@@ -2,6 +2,60 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-26 — v690. FULL ADVERSARIAL REVIEW of v683–v689 (unlazy ledgers + 4 fix agents + 4 independent attackers, 3 rounds).
+
+Ledgers, findings, mutation manifests and the status log: `.unlazy/review-v690/` (git-ignored). Every
+fix has a gate that EXECUTES the real code, and a mutation that undoes it and must fail: 56 (AI layer)
++ 14 (backend) + 37 (app.html) + 19 (driver) all killed. Suite: 94+ gates green.
+
+**0. THE AI ACCOUNT RAN OUT OF CREDITS (2026-09-25 05:35, x.ai 403 "used all available credits or
+reached its monthly spending limit") AND EVERY USER WAS TOLD "try again in a few seconds".** New contract
+in `api/_llm.js`: 401/402/403 is recorded per call (`meta.refused`), never retried, and callLLM throws
+`code:'AI_UNAVAILABLE'`; `aiUnavailable(err)` → 503 `{error, code:'AI_UNAVAILABLE'}`. All 16 AI endpoints
+map it before any other reply (coverage tool + a runtime arm through 15 real handlers). No key → its own
+honest sentence (not "hit a limit"). The app shows the server message once and never auto-retries; the
+Settings status check shows customers a neutral sentence and `/api/health?ping=1` names the refusal for
+the owner (`meta.grok.state`, `grok_account_accepted`). "No credits were used" is proven (hold-refund arm 6).
+
+**1. AI LAYER (`_llm.js`).** deadlineMs never cut an attempt short (first attempt ran 240 s past a 93 s
+deadline) → every attempt capped at what is left; retry needs max(15 s, last attempt's duration) of room;
+no backoff sleep after the last attempt; httpsPost timeout is now TOTAL, not idle; a connection dropped
+mid-body no longer hangs forever; UTF-8 split across network chunks no longer becomes junk (also in
+_trends/creator-posts/transcribe-url via `_utf8`); search stream keeps its last event; truncation flag per
+call. remix could run 560 s vs 300 (retry got a second full budget); crawl-social / brand-voice-chat
+budgets fixed; transcribe-voice maxDuration 30→60 (socket waited 50 s), settings-examples 30→45,
+creator-posts 60→90 — post-call Supabase time is now counted by timeout-budgets per call site.
+
+**2. SECURITY.** Every IPv6 literal bypassed the SSRF guard (URL.hostname keeps brackets → isIP 0 → DNS
+failure was treated as a pass): `[::1]`, `[::ffff:127.0.0.1]`, `[fd00:ec2::254]`… all fixed, plus NAT64 /
+6to4 / Teredo / multicast. A failed DNS lookup now REFUSES (code `UNRESOLVED`; users see "We couldn't find
+that website"). DNS rebinding closed: `lookup: safeLookup` on every server-side fetch of a user URL
+(extract-article, crawl-brand, transcribe-url incl. redirect hops, transcribe) — proven by running the real
+handlers against a local "internal" server (0 hits).
+
+**3. APP (app.html).** B-roll cache never matched (every look was a paid call); render bitrate scaled to
+take length (180 s take peaked ~858 MB); render cut takes at a beats×3.25 s guess when the phone hid the
+length; take length reset per take; render now ends on `ended` instead of a 6 s stall; photos decoded one
+at a time and downscaled; number-beat headlines and case-insensitive highlights now drawn; grapheme-safe
+line fitting (flags, ZWJ emoji, accents); Pexels quota failure now visible; Idea Catcher draft never
+restores a stale draft at full storage; update banner never over a take in progress (incl. recording) and
+never stuck; hook-frame client abort 55→85 s.
+
+**4. STRIPE BRANCH `wip-stripe-webhook-money` — reviewed and fixed in its worktree, NOT in v690.** Plan
+decisions now read the live subscription (late/out-of-order events re-granted cancelled customers or
+downgraded paying ones); checkout plan follows the live price; `confirmGrant`/`undoEndedGrant` repair a
+grant that raced a cancellation (both paths); live-event-with-test-key → 503; deleted accounts ack
+without inserting rows; stale window 72 h → 7 days. Ships LAST as its own version after v690 is verified.
+
+**OWNER DECISIONS (not done):** teleprompter emphasis needs an `ideas.emphasis jsonb` column; meme's image
+leg could get a per-request clock; Stripe: past_due downgrades immediately and clears the sub id (a second
+checkout during dunning can double-bill), create-checkout makes a new Stripe customer per checkout, a
+hand-granted plan with no sub id can be downgraded by a late delete of an old sub (SQL-only path).
+
+**WORKSPACE LESSONS:** in the Cowork VM, plain `git status` leaves `.git/index.lock` it cannot delete → use
+`git --no-optional-locks`. `scripts/verify/build-stamp.mjs` rewrites app.html/sw.js while it runs → never
+run it in parallel with other gates or while anyone edits (runner runs it alone first).
+
 ## ▶▶ 2026-09-20 — v689. SPLIT SCREEN, PART 3 — and a finding far bigger than split screen: EVERY LLM endpoint could overrun its platform budget.
 
 **1. THE RETRY LOOP WAS NEVER BOUNDED BY THE FUNCTION'S BUDGET.** `callXAI` retried while

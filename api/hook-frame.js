@@ -8,7 +8,7 @@
 // 200 { read: '' } so the calling flow degrades to exactly the old text-only behavior.
 // The credit is only charged AFTER a frame was actually found (no charge for misses).
 const https = require('https');
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 
 function fetchUrl(url, opts, hops) {
   opts = opts || {}; hops = hops || 0;
@@ -108,7 +108,7 @@ module.exports = async function handler(req, res) {
       temperature: 0.4,
       max_tokens: 600,
       images: [{ mime, data: img.buf.toString('base64') }]
-    }).catch(() => '');
+    }).catch(e => { if (aiUnavailable(e)) throw e; return ''; });   // v690 — only a refusal escapes; any other miss stays an empty read
 
     const out = (read || '').trim();
 
@@ -132,6 +132,7 @@ module.exports = async function handler(req, res) {
 
     return res.status(200).json({ read: out });
   } catch (e) {
+    const ai = aiUnavailable(e); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     return res.status(200).json({ read: '' }); // enhancement layer: never break the caller
   }
 };

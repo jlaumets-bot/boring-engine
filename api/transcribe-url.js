@@ -1,4 +1,8 @@
 const https = require('https');
+/* v690 — `data += chunk` decoded each network chunk on its own, so a letter whose bytes were split
+   across two chunks (õ, ä, emoji) became two junk characters. One decoder per response keeps the
+   split bytes until the rest arrives. Byte caps still count raw Buffer lengths. */
+function _utf8(resp, c) { return (resp.__dec || (resp.__dec = new (require('string_decoder').StringDecoder)('utf8'))).write(c); }
 const http = require('http');
 const { Buffer } = require('buffer');
 
@@ -100,7 +104,7 @@ const handler = async function (req, res) {
     const { url } = req.body || {};
     if (!url) return res.status(400).json({ error: 'Missing video URL' });
     try { await require('./_safeurl').assertPublicHttpUrl(String(url).trim()); }
-    catch (e) { return res.status(400).json({ error: 'That URL is not allowed.' }); }
+    catch (e) { return res.status(400).json({ error: require('./_safeurl').urlRefusalMessage(e, 'That URL is not allowed.') }); }
 
     // Detect platform and get audio download URL
     let audioDownloadUrl;
@@ -195,7 +199,8 @@ const handler = async function (req, res) {
     // Download the audio file — re-validate the third-party URL (it came from tikwm/cobalt,
     // not the user, so it could point at an internal/metadata host).
     try { await require('./_safeurl').assertPublicHttpUrl(audioDownloadUrl); }
-    catch (e) { throw new Error('The video host returned an unsafe download link.'); }
+    // v690 — a DNS blip on the provider's download host is not an "unsafe link".
+    catch (e) { throw new Error(e && e.code === 'UNRESOLVED' ? 'The video host could not be reached. Try again in a minute.' : 'The video host returned an unsafe download link.'); }
     console.log('Downloading audio from:', audioDownloadUrl.substring(0, 80) + '...');
     const audioBuffer = await downloadFile(audioDownloadUrl, { timeoutMs: stageBudget(DOWNLOAD_TIMEOUT_MS, 'audio download') });
     console.log('Downloaded:', audioBuffer.length, 'bytes');
@@ -266,7 +271,11 @@ function fetchJson(url, options, depth, deadlineAt) {
       hostname: parsed.hostname,
       path: parsed.pathname + parsed.search,
       method: options.method || 'GET',
-      headers: headers
+      headers: headers,
+      // v690 r2 — re-check the address actually CONNECTED to, on every hop (assertPublicHttpUrl
+      // only checks a name before the request, so a DNS answer that changes in between — rebinding
+      // — could still reach an internal address). Same guard downloadFile and crawl-brand use.
+      lookup: require('./_safeurl').safeLookup
     };
     request = mod.request(reqOptions, function(resp) {
       if ([301, 302, 303, 307, 308].includes(resp.statusCode) && resp.headers.location) {
@@ -295,7 +304,7 @@ function fetchJson(url, options, depth, deadlineAt) {
           try { request.destroy(); } catch (e) {}
           return;
         }
-        data += chunk;
+        data += _utf8(resp, chunk);
       });
       resp.on('end', function() {
         try { done(JSON.parse(data)); }
@@ -344,7 +353,8 @@ function downloadFile(url, opts) {
     try { parsed = new URL(url); } catch (e) { return fail(new Error(MSG_BAD_LINK), 'unparseable url'); }
     var mod = parsed.protocol === 'https:' ? https : http;
 
-    request = mod.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, function (resp) {
+    // v690 — lookup re-checks the address actually connected (closes DNS rebinding).
+    request = mod.get(url, { lookup: require('./_safeurl').safeLookup, headers: { 'User-Agent': 'Mozilla/5.0' } }, function (resp) {
       if ([301, 302, 303, 307, 308].includes(resp.statusCode) && resp.headers.location) {
         resp.resume();
         var next;
@@ -426,7 +436,7 @@ function whisperTranscribe(provider, audioBuffer, timeoutMs) {
       }
     }, function (resp) {
       var data = '';
-      resp.on('data', function (c) { data += c; });
+      resp.on('data', function (c) { data += _utf8(resp, c); });
       resp.on('end', function () { done({ status: resp.statusCode, body: data }); });
       resp.on('aborted', function () { fail(new Error('The transcription service cut the connection — try again.'), 'connection closed mid-response'); });
       resp.on('error', function (e) { fail(e, 'stream error'); });
@@ -475,7 +485,7 @@ function apifyRequest(method, path, token, body, timeoutMs) {
           try { request.destroy(); } catch (e) {}
           return;
         }
-        data += c;
+        data += _utf8(resp, c);
       });
       resp.on('end', function () { try { done(JSON.parse(data)); } catch (e) { done(data); } });
       resp.on('aborted', function () { fail(new Error(MSG_PROVIDER_SLOW), 'connection closed mid-response'); });

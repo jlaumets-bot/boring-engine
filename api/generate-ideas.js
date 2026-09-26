@@ -1,5 +1,5 @@
 const https = require('https');
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, clarityFlow, spokenShape, spokenExample, antiSlopRhythm, rulePrecedence } = require('./_brain');
 
 // Quick Post's anti-repetition avoid-list used to be ~50 idea titles (~1.6KB) rendered into
@@ -591,6 +591,7 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     return res.status(200).json({ ideas });
 
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('Generate ideas error:', err);
     return res.status(500).json({ error: err.message });
   }

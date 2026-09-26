@@ -304,9 +304,34 @@ module.exports = async function handler(req, res) {
         grok = { ok: null, reason: 'the live check is metered — you are out of credits this period' };
       } else {
         const t0 = Date.now();
-        let text = null;
-        try { text = await callLLM({ deadlineMs: 25000, timeoutMs: 12000, messages: [{ role: 'user', content: 'Reply with the single word: ok' }], max_tokens: 5, temperature: 0 }); } catch (e) {}
+        let text = null, llmErr = null;
+        try { text = await callLLM({ deadlineMs: 25000, timeoutMs: 12000, messages: [{ role: 'user', content: 'Reply with the single word: ok' }], max_tokens: 5, temperature: 0 }); } catch (e) { llmErr = e; }
         grok = { ok: !!(text && String(text).trim()), ms: Date.now() - t0 };
+        /* v690 — A REFUSED ACCOUNT IS NOT AN OUTAGE. The catch above was empty, so "xAI refused our
+           account" (401/402/403: key revoked, out of credits, spending limit hit — fixed only by
+           the owner, in the xAI console) and "xAI did not answer" (an outage or a timeout — fixed
+           by waiting) both came out as a bare {ok:false}. They need opposite responses, and the
+           one the status check exists for — the account ran dry — was indistinguishable from a
+           blip. callLLM marks a refusal with code AI_UNAVAILABLE (api/_llm.js); name it here, and
+           add a separate check so the failing list itself says which one happened. The reason
+           is a fixed string (plus the bare HTTP code), never a provider response body. */
+        if (!grok.ok) {
+          const refused = !!(llmErr && llmErr.code === 'AI_UNAVAILABLE');
+          const why = llmErr && llmErr.refused;
+          grok.state = refused ? 'refused' : 'no-answer';
+          if (refused) grok.http = (typeof why === 'number') ? why : null;
+          grok.reason = !refused
+            ? 'The AI provider did not answer (outage or timeout) — usually temporary; try again in a few minutes.'
+            : why === 'no-key' ? 'The AI key (XAI_API_KEY) is not set on the server.'
+            : why === 401 ? 'The AI provider rejected our API key (HTTP 401) — the key is wrong or was revoked.'
+            : 'The AI provider refused our account' + (typeof why === 'number' ? ' (HTTP ' + why + ')' : '') +
+              ' — out of credits or over the spending limit. Top up in the xAI console; this is billing, not an outage.';
+          // Only a refusal says anything about the account; a provider that never answered
+          // tells us nothing about it, so no claim is made either way.
+          if (refused) add('grok_account_accepted', false);
+        } else {
+          add('grok_account_accepted', true);
+        }
         // Logged on the ATTEMPT, not on success: the token is spent either way, and a provider
         // that fails fast is exactly the case an attacker would loop.
         await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'healthping', model: 'grok' });

@@ -4,7 +4,7 @@
 // Pass 2: rewrite the draft fixing every point — SAME format, structure, and core idea, just tighter.
 // Generic: takes a `content` object of {field: text}, returns the SAME keys sharpened, so it works for
 // posts (hook/script/caption/...), blog (answer), and memes (statement) without per-format branching.
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, clarityFlow, antiSlopRhythm, rulePrecedence, spokenShape } = require('./_brain');
 
 // Formats whose `script` is read aloud to camera. Same set as _brain.SPOKEN_EX_FORMATS.
@@ -124,6 +124,7 @@ List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voi
         model: 'grok', max_tokens: 700, engine: (bc.engine || 'grok'),
       }) || '';
     } catch (e) {
+      if (aiUnavailable(e)) throw e;   // v690 — a refused account is not a critique failure: stop here, do not spend a second refused call
       // Degrading to a single-pass rewrite is the CORRECT fallback — but it used to happen in
       // total silence, so a permanently-failing critique pass would quietly turn Sharpen into a
       // one-pass tool forever and still look fine from the outside. Name it in the logs.
@@ -240,6 +241,7 @@ ${rulePrecedence()}`;
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: bc.engine || 'grok' });
     return res.status(200).json({ sharpened });
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('sharpen error:', err);
     return res.status(500).json({ error: 'Sharpen failed — try again' });
   }

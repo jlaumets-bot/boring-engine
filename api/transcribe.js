@@ -117,9 +117,11 @@ const handler = async function (req, res) {
       // SSRF defense-in-depth: the caption URL comes from YouTube's own data, but
       // guard it anyway before fetching, and time-box the request.
       try { await require('./_safeurl').assertPublicHttpUrl(trackUrl); }
-      catch (e) { return res.status(400).json({ error: 'No captions found for this video. Try a video with subtitles enabled.' }); }
+      // v690 — a DNS blip reaching YouTube's caption host is not "no captions".
+      catch (e) { if (e && e.code === 'UNRESOLVED') return res.status(502).json({ error: "Couldn't reach YouTube's captions. Try again in a minute." }); return res.status(400).json({ error: 'No captions found for this video. Try a video with subtitles enabled.' }); }
       const captionXml = await new Promise((resolve, reject) => {
-        const rq = https.get(trackUrl, { timeout: 15000 }, (resp) => {
+        // v690 — lookup re-checks the address actually connected (closes DNS rebinding).
+        const rq = https.get(trackUrl, { lookup: require('./_safeurl').safeLookup, timeout: 15000 }, (resp) => {
           let data = '';
           resp.on('data', chunk => data += chunk);
           resp.on('end', () => resolve(data));

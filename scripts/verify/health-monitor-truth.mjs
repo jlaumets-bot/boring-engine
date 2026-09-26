@@ -47,6 +47,9 @@ process.env.SUPABASE_URL = 'https://health-gate.invalid';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only-not-a-real-key';
 process.env.APP_BASE_URL = 'https://health-gate.invalid';
 
+// v690: a wall clock — a handler that never answers must fail this gate, not hang it.
+const _wall = setTimeout(() => { console.error('FAIL: wall clock — health-monitor-truth did not finish in 90s'); process.exit(1); }, 90000);
+_wall.unref();
 const fail = (m) => { console.error('FAIL: ' + m); process.exitCode = 1; };
 let failed = 0;
 // Print the ok lines too. A gate that is silent when it passes hides an arm that never ran —
@@ -62,7 +65,7 @@ const realSetTimeout = global.setTimeout;
 // ── one run of the real handler against a scripted Supabase ───────────────────
 // answer(path) -> { status, body } | 'stall'   (stall = accepted then silent)
 // routeStatus  -> number | 'stall'
-async function run({ answer, routeStatus = 200, scale = 1 }) {
+async function run({ answer, routeStatus = 200, scale = 1, query = {} }) {
   const calls = [];
   https.request = (opts, cb) => {
     const req = new EventEmitter();
@@ -105,7 +108,7 @@ async function run({ answer, routeStatus = 200, scale = 1 }) {
   // scheduled. Catch it here so the arms report a real failure instead of an unhandled rejection
   // that scrolls past — a crash must read as "the monitor is broken", loudly.
   let threw = null;
-  try { await handler({ method: 'GET', query: {}, headers: {} }, res); }
+  try { await handler({ method: 'GET', query, headers: { authorization: 'Bearer t' } }, res); }
   catch (e) { threw = (e && e.message) || String(e); }
   const ms = (Date.now() - t0) * scale;
   https.request = realRequest; globalThis.fetch = realFetch; global.setTimeout = realSetTimeout;
@@ -245,5 +248,66 @@ for (const [label, a] of [
   check(green.length === 0, 'ARM 6 (' + label + '): scored ' + JSON.stringify(green) + ' green with no working database.');
 }
 
+// ── ARM 7 (v690): the live AI check names a REFUSED account apart from an OUTAGE ──
+// ?ping=1 used to swallow callLLM's error in an empty catch, so "xAI refused our account"
+// (out of credits / spending limit / revoked key: only the owner can fix it, in the xAI console)
+// and "xAI did not answer" (wait and retry) were one indistinguishable {ok:false}. Runs the real
+// handler and the real api/_llm.js against a scripted x.ai; guard/logUsage are stubbed (the
+// metering of this path is proved elsewhere).
+{
+  const usageKey = require_.resolve(path.join(ROOT, 'api', '_usage.js'));
+  const realUsage = require_.cache[usageKey];
+  let logged = 0;
+  require_.cache[usageKey] = { id: usageKey, filename: usageKey, loaded: true, exports: {
+    COST_CAP_EUR: 25,
+    guard: async () => ({ user: { id: 'u1' }, over: false, billingUserId: 'u1' }),
+    logUsage: async () => { logged++; },
+  } };
+  const hadKey = process.env.XAI_API_KEY;
+  process.env.XAI_API_KEY = 'test-only-not-a-real-key';
+  const isXai = (p) => p.indexOf('/chat/completions') !== -1;
+  const withXai = (x) => (p, m) => (isXai(p) ? x : baseAnswer(ok(HEALTHY_AUDIT))(p, m));
+  const grokOf = (b) => (b && b.meta && b.meta.grok) || {};
+  try {
+    for (const code of [402, 403]) {
+      const { res } = await run({ answer: withXai({ status: code, body: JSON.stringify({ error: 'team out of credits (test)' }) }), query: { ping: '1' }, scale: 100 });
+      const b = res._body, g = grokOf(b);
+      check(res._code === 200, 'ARM 7 (' + code + '): the monitor still answers 200 (got ' + res._code + ')');
+      check(g.ok === false && g.state === 'refused' && g.http === code,
+        'ARM 7 (' + code + '): a refused account is reported as refused, with its HTTP code — got ' + JSON.stringify(g));
+      check(/credits|spending limit/i.test(String(g.reason)) && /not an outage/i.test(String(g.reason)),
+        'ARM 7 (' + code + '): the reason says it is billing, not an outage — got ' + JSON.stringify(g.reason));
+      check(b.failing.includes('grok_account_accepted') && b.failing.includes('grok_live'),
+        'ARM 7 (' + code + '): the failing list itself names the refused account (grok_account_accepted) — got ' + JSON.stringify(b.failing));
+    }
+    {
+      const { res } = await run({ answer: withXai({ status: 401, body: '{}' }), query: { ping: '1' }, scale: 100 });
+      const g = grokOf(res._body);
+      check(g.state === 'refused' && g.http === 401 && /key/i.test(String(g.reason)), 'ARM 7 (401): a rejected key is named as a key problem — got ' + JSON.stringify(g));
+    }
+    // the opposite: an outage (x.ai accepts the connection and never answers) is NOT a refusal
+    {
+      const { res } = await run({ answer: withXai('stall'), query: { ping: '1' }, scale: 100 });
+      const b = res._body, g = grokOf(b);
+      check(res._code === 200 && g.ok === false && g.state === 'no-answer' && /did not answer/i.test(String(g.reason)),
+        'ARM 7 (outage): a provider that never answers is reported as no-answer — got ' + JSON.stringify(g));
+      check(b.failing.includes('grok_live') && !b.checks.some(c => c.name === 'grok_account_accepted'),
+        'ARM 7 (outage): an outage makes no claim about the account either way — got ' + JSON.stringify(b.failing));
+    }
+    // and a working provider is green on both
+    {
+      const { res } = await run({ answer: withXai({ status: 200, body: JSON.stringify({ model: 'grok', choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'ok' } }], usage: {} }) }), query: { ping: '1' }, scale: 100 });
+      const b = res._body, g = grokOf(b);
+      check(g.ok === true && get(b, 'grok_live') && get(b, 'grok_live').ok === true && get(b, 'grok_account_accepted') && get(b, 'grok_account_accepted').ok === true,
+        'ARM 7 (working): a provider that answers is green on grok_live and grok_account_accepted — got ' + JSON.stringify(g) + ' ' + JSON.stringify(b.failing));
+    }
+    check(logged === 5, 'ARM 7: every attempted ping was metered (' + logged + ' of 5)');
+  } finally {
+    if (realUsage) require_.cache[usageKey] = realUsage; else delete require_.cache[usageKey];
+    if (hadKey === undefined) delete process.env.XAI_API_KEY; else process.env.XAI_API_KEY = hadKey;
+  }
+}
+
+clearTimeout(_wall);
 if (failed === 0) console.log('PASS — health-monitor-truth: ' + ISOLATION.length + ' isolation checks cannot be invented, and the worst case fits the budget.');
 else console.error(failed + ' failure(s)');

@@ -41,6 +41,7 @@ import fs from 'node:fs'; import vm from 'node:vm';
 import path from 'node:path'; import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const html = fs.readFileSync(path.join(ROOT, 'app.html'), 'utf8');
+setTimeout(() => { console.log('FAIL: wall clock (60s) exceeded'); process.exit(2); }, 60000).unref();
 let fail = 0; const ok = (c, m) => { if (!c) { console.log('FAIL:', m); fail++; } else console.log('ok:', m); };
 
 // ── a DOM small enough to run the banner, real enough to catch it ────────────
@@ -171,6 +172,175 @@ function runBanner({ takeInHand }) {
      'every "Try the split again" leaked another wake lock and another pair of live tracks');
   const rel = branch.indexOf('_spReleaseRender('), rej = branch.indexOf('return reject(');
   ok(rel > 0 && rej > rel, 'release comes BEFORE the reject (' + rel + ' < ' + rej + ')');
+}
+
+// ══ v690 — the same guarantees, now proven by RUNNING tpOfferSplit ══════════
+// The arms above read tpOfferSplit's text. These lift the real function (and the real banner,
+// hold and result-sheet code) and run them against a fake DOM, a fake renderer and a fake share
+// sheet, so a fix that only LOOKS right in the source cannot pass.
+const grabFn = n => { const i = html.indexOf('\nfunction ' + n + '('); if (i < 0) throw new Error('no ' + n);
+  return html.slice(i + 1, html.indexOf('\n}', i) + 2); };
+function offerWorld({ canCapture = true, beats, render, photos } = {}) {
+  const els = new Map();
+  const el = (id) => { if (!els.has(id)) els.set(id, { id, style: {}, classList: { add() {}, remove() {} }, textContent: '', appendChild() {} }); return els.get(id); };
+  const body = { attached: new Set(), appendChild(n) { this.attached.add(n); n._in = true; }, style: {} };
+  const mk = (tag) => {
+    if (tag === 'canvas') return canCapture ? { captureStream() {} } : {};
+    if (tag === 'video') return canCapture ? { captureStream() {} } : {};
+    return { tag, style: {}, _in: false, innerHTML: '', className: '',
+      get isConnected() { return this._in; }, remove() { this._in = false; body.attached.delete(this); },
+      querySelector: () => null };
+  };
+  const c = { console, Math, String, Number, RegExp, Object, Array, Promise, Date, JSON,
+    // unref'd: tpHoldTake arms a real 15-minute failsafe, which must not hold this process open
+    setTimeout: (fn, ms) => { const t = setTimeout(fn, ms); if (t && t.unref) t.unref(); return t; }, clearTimeout,
+    TP_MIN_TAKE_BYTES: Number((/const TP_MIN_TAKE_BYTES = (\d+)/.exec(html) || [])[1]),
+    state: { 3: { script: 'a b c', format: 'video' } },
+    results: [], shares: [], shownBanner: 0,
+    document: { createElement: mk, querySelectorAll: () => [], body, getElementById: el },
+    _beatsIdeaFor: () => ({ script: 'a b c', format: 'video' }),
+    beatsCacheGet: () => beats, beatsForIdea: async () => beats,
+    spSetupPreview() {}, spNudgeFrame() {}, spKillPreview() {}, closeTeleprompter() {},
+    spTickStart() {}, spTickStop() {}, spTickPhase() {},
+    _beatsStillCached: () => true, _beatsFreeMedia() {},
+    spFetchBeatPhotos: photos || (async () => {}),
+    renderSplitScreen: render,
+    tpShareOrSave: (b, f) => c.shares.push(b),
+    tpSplitResult: (bd, outBlob, ext, raw, fname, warn) => c.results.push({ bd, outBlob, warn }),
+  };
+  c.window = c;
+  c._csShowPendingUpdate = () => { c.shownBanner++; };
+  c.window._tpSplitIdeaId = 3;
+  vm.createContext(c);
+  for (const n of ['tpHoldTake', 'tpReleaseTake', 'spPhotoMissMsg', 'tpOfferSplit']) vm.runInContext(grabFn(n), c);
+  return { c, el, body };
+}
+const BIG = { size: 50000 }, TINY = { size: 400 };
+const cleanOut = (blob) => ({ blob, ext: 'mp4', drift: 0, partial: false, estSec: 0, recFailed: '' });
+const flush = () => new Promise(r => setTimeout(r, 15));
+
+// ── 2x. a late cancel keeps a FINISHED render, and only a finished one ──────
+for (const [label, blob, want] of [['finished', BIG, 1], ['header-only', TINY, 0]]) {
+  let w;
+  const render = async () => { w.el('tpSplitCancel').onclick(); return cleanOut(blob); };   // the tap lands during the flush
+  w = offerWorld({ beats: [{ cue: 'a' }], render });
+  ok(vm.runInContext('tpOfferSplit({ size: 99999 }, "take.mp4")', w.c) === true, label + ': the split offer is made');
+  await w.el('tpSplitGo').onclick();
+  await flush();
+  ok(w.c.shares.length === 1, label + ': the cancel still hands over the plain take at once (' + w.c.shares.length + ')');
+  ok(w.c.results.length === want,
+     label + ': ' + (want ? 'the finished split screen is OFFERED, not thrown away' : 'a header-only file is NOT offered as a video') +
+     ' (' + w.c.results.length + ' result sheets)');
+  if (want) {
+    ok(/already finished/.test(w.c.results[0].warn), 'and the sheet says why it is there: ' + JSON.stringify(w.c.results[0].warn));
+    ok(w.c.window._spCancel === false, 'and the cancel flag is cleared so that sheet is not treated as cancelled');
+    ok(w.c.results[0].bd.isConnected === true, 'and the backdrop the cancel detached is put back');
+  }
+}
+// ── 2y. no split flow, no _spBusy (every iPhone) ────────────────────────────
+{
+  const w = offerWorld({ canCapture: false, beats: [{ cue: 'a' }], render: async () => cleanOut(BIG) });
+  ok(vm.runInContext('tpOfferSplit({ size: 99999 }, "take.mp4")', w.c) === false, 'a phone that cannot capture gets no split offer');
+  ok(!w.c.window._spBusy,
+     'and does NOT carry _spBusy through the plain delivery. That flag has no failsafe; set before the early returns, one ' +
+     'share promise that never settles hid every update for the rest of the session');
+  ok(w.c.window._tpBlobInHand === true, 'the take is still held by the ordinary hold, which does have a failsafe');
+  const w2 = offerWorld({ canCapture: true, beats: [{ cue: 'a' }], render: async () => cleanOut(BIG) });
+  vm.runInContext('tpOfferSplit({ size: 99999 }, "take.mp4")', w2.c);
+  ok(w2.c.window._spBusy === true, 'the opposite arm: when the split flow does start, _spBusy is taken');
+}
+// ── 2z. a build that wants no photos does not inherit the last build's misses
+{
+  const w = offerWorld({ beats: [{ cue: 'a' }, { cue: 'b' }], render: async () => cleanOut(BIG) });
+  w.c.window._spPhotoMisses = 5; w.c.window._spPhotoWhy = 'http_429';   // left over from an earlier build
+  vm.runInContext('tpOfferSplit({ size: 99999 }, "take.mp4")', w.c);
+  await w.el('tpSplitGo').onclick(); await flush();
+  ok(w.c.results.length === 1 && w.c.results[0].warn === '',
+     'a build whose beats want no photos shows no photo warning (' + JSON.stringify(w.c.results[0] && w.c.results[0].warn) + '). ' +
+     'The counters were only reset inside spFetchBeatPhotos, which only runs when a beat wants a photo');
+  const photos = async () => { w2.c.window._spPhotoMisses = 4; w2.c.window._spPhotoWhy = 'http_429'; };
+  const w2 = offerWorld({ beats: [{ cue: 'a', imageQuery: 'x' }], render: async () => cleanOut(BIG), photos });
+  vm.runInContext('tpOfferSplit({ size: 99999 }, "take.mp4")', w2.c);
+  await w2.el('tpSplitGo').onclick(); await flush();
+  ok(w2.c.results.length === 1 && /rated out/.test(w2.c.results[0].warn),
+     'the opposite arm: misses from THIS build are still reported (' + JSON.stringify(w2.c.results[0] && w2.c.results[0].warn) + ')');
+}
+// ── 1d. the result sheet on screen holds the banner; closing it offers it ───
+{
+  const r = mkDom();
+  const ctx = { document: r.document, window: null, toasts: [] };
+  ctx.window = ctx; ctx.location = { reload() { ctx.reloaded = true; } };
+  ctx.showToast = (m) => ctx.toasts.push(m);
+  vm.createContext(ctx); vm.runInContext(bannerSrc, ctx);
+  const sheetBtn = r.document.createElement('button'); sheetBtn.id = 'tpSplitShare'; r.body.appendChild(sheetBtn);
+  ctx.window._showUpdateBanner();
+  ok(!r.document.getElementById('csUpdateBanner') && ctx.window._csUpdatePending === true,
+     'with a finished split screen on screen and the flags clear, the banner still waits. A late cancel releases the ' +
+     'hold through the PLAIN take and then puts the split screen up, so the flags alone read clear over a live video');
+  sheetBtn.remove();
+  ctx.window._csShowPendingUpdate();
+  ok(!!r.document.getElementById('csUpdateBanner'), 'and once the sheet is gone the held-back update appears');
+  // Refresh with a take in hand must SAY something — its label used to vanish with the banner
+  const b = r.document.getElementById('csUpdateBanner');
+  ctx.window._tpBlobInHand = true;
+  b.children.find(x => x.tag === 'button').onclick();
+  ok(!ctx.reloaded && ctx.toasts.some(t => /Save your video first/.test(t)),
+     'tapping Refresh with a take in hand says "Save your video first" where it can be read (' + JSON.stringify(ctx.toasts) + ')');
+}
+{
+  // tpSplitResult's close() is the moment the sheet goes: it must offer the held-back update
+  const els = new Map();
+  const el = (id) => { if (!els.has(id)) els.set(id, { id }); return els.get(id); };
+  const c = { console, Math, String, Date, URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} },
+    File: class { constructor() {} }, navigator: {}, offered: 0,
+    document: { getElementById: el }, closeTeleprompter() {}, showToast() {},
+    tpDownloadBlob: () => true, tpReleaseTake() {}, tpShareOrSave() {}, _tpShareCancelled: () => false };
+  c.window = c; c.window._csShowPendingUpdate = () => { c.offered++; };
+  vm.createContext(c);
+  vm.runInContext(grabFn('tpSplitResult'), c);
+  const bd = { removed: false, remove() { this.removed = true; }, querySelector: () => ({ innerHTML: '' }) };
+  c.BD = bd;
+  vm.runInContext('tpSplitResult(BD, { size: 50000, type: "video/mp4" }, "mp4", { size: 1 }, "raw.mp4", "")', c);
+  el('tpSplitDl').onclick();
+  ok(bd.removed && c.offered >= 1, 'saving from the split result closes the sheet AND offers the held-back update (' + c.offered + ')');
+}
+{
+  // the 15-minute failsafe and the 60s poll both re-offer it
+  const timers = [];
+  const c = { window: null, setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {}, offered: 0 };
+  c.window = c; c._csShowPendingUpdate = () => { c.offered++; };
+  vm.createContext(c);
+  vm.runInContext(grabFn('tpHoldTake'), c);
+  vm.runInContext('tpHoldTake()', c);
+  const fs15 = timers.find(t => t.ms === 900000);
+  ok(!!fs15, 'tpHoldTake still arms its 15-minute failsafe');
+  fs15.fn();
+  ok(c._tpBlobInHand === false && c.offered === 1, 'and when it fires it drops the hold AND re-offers the update (offered ' + c.offered + ')');
+  const chkLine = (/function chk\(\)\{[^\n]*\}/.exec(html) || [''])[0];
+  ok(!!chkLine, 'the 60s update poll is still identifiable');
+  const c2 = { window: null, reg: { update() {} }, offered: 0 };
+  c2.window = c2; c2._csShowPendingUpdate = () => { c2.offered++; };
+  vm.createContext(c2);
+  vm.runInContext(chkLine + '\nchk();', c2);
+  ok(c2.offered === 1, 'and every poll re-offers a held-back update, so no path can leave it hidden for the session');
+}
+
+// ── v690 r2: a take being FILMED holds the banner too ────────────────────────
+{
+  const r = mkDom();
+  const ctx = { document: r.document, window: null };
+  ctx.window = ctx; ctx.location = { reload() { ctx.reloaded = true; } };
+  vm.createContext(ctx); vm.runInContext(bannerSrc, ctx);
+  ctx.tpMediaRecorder = { state: 'recording' };
+  ctx.window._showUpdateBanner();
+  ok(!r.document.getElementById('csUpdateBanner') && ctx.window._csUpdatePending === true,
+     'while the camera is recording the banner waits. The 60 s poll and the hold failsafe can offer it at any moment, and a ' +
+     'Refresh mid-take reloads the camera away with the take in it');
+  ctx.tpMediaRecorder.state = 'paused';
+  ok(ctx.window._csTakeInHand() === true, 'a paused recording counts too');
+  ctx.tpMediaRecorder.state = 'inactive';
+  ctx.window._csShowPendingUpdate();
+  ok(!!r.document.getElementById('csUpdateBanner'), 'the opposite arm: once recording has stopped (and nothing else is held) the update appears');
 }
 
 if (fail === 0) console.log('\nPASS — split-screen-never-lost: the update banner waits, a late cancel keeps the video, and an empty render cannot ship or leak.');

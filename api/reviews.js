@@ -3,7 +3,7 @@
 // no review-page URL hunting) so it works for ANY brand — Grok finds whatever reviews
 // exist (Trustpilot, Google, Amazon, App Store, G2, reddit) and synthesises them.
 // If Grok search is off/unavailable it returns an empty result (graceful, never errors hard).
-const { callGrokSearch } = require('./_llm');
+const { callGrokSearch, aiUnavailable } = require('./_llm');
 const { extractJson } = require('./_brain');
 
 module.exports = async function handler(req, res) {
@@ -37,10 +37,17 @@ module.exports = async function handler(req, res) {
     // v593: cap the search below this function's 60s budget. callGrokSearch's own timeout is 90s, so
     // a slow-but-succeeding search would get the whole request platform-killed (same class of bug as
     // the brand-voice-chat one). Returns null on timeout → handled as "no reviews found".
+    const _gs = {};   // v690 — callGrokSearch writes `refused` here when xAI refuses our account
     const raw = await Promise.race([
-      callGrokSearch(prompt, { maxTokens: 1500 }),
+      callGrokSearch(prompt, { maxTokens: 1500, timeoutMs: 45000, meta: _gs }),
       new Promise(r => setTimeout(() => r(null), 45000))
     ]);
+    // v690 — a refused account used to come back as { empty: true }, which the app shows as "no
+    // reviews found" — a false statement about the user's brand. Say what actually happened.
+    if (!raw && _gs.refused) {
+      const ai = aiUnavailable({ code: 'AI_UNAVAILABLE', refused: _gs.refused });   // v690 r2: a missing key gets its own honest words
+      return res.status(ai.status).json(ai.body);
+    }
     const data = raw ? extractJson(raw) : null;
     if (!data) {
       return res.status(200).json({ reviewInsights: '', empty: true });

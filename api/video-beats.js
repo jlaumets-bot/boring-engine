@@ -2,7 +2,7 @@
 // The user films the top half; these beats drive the animated bottom half. Output is a small,
 // strictly-typed JSON timeline so the same data can feed BOTH the in-app live preview (HTML/CSS)
 // and the HyperFrames MP4 render later — one source of truth, no second design.
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, extractJson } = require('./_brain');
 
 // Kinds the renderer knows how to draw. Anything else is coerced to 'statement'.
@@ -174,6 +174,7 @@ ${body.slice(0, 3000)}`;
     // 3.25s per beat matches the prototype pacing; the renderer can override.
     return res.status(200).json({ beats, secondsPerBeat: 3.25, duration: +(beats.length * 3.25).toFixed(2) });
   } catch (e) {
+    const ai = aiUnavailable(e); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('video-beats error:', e && e.message);
     return res.status(500).json({ error: 'The AI is having a moment. Try again in a few seconds.' });
   }

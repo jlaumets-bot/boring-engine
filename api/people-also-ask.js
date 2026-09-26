@@ -1,4 +1,5 @@
 const https = require('https');
+const { aiUnavailable } = require('./_llm');
 
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
@@ -142,7 +143,12 @@ module.exports = async function handler(req, res) {
           }
         }
       }
-    } catch (_) { questions = unique; }
+    } catch (e) {
+      // v690 — the filter is best-effort, so a refused AI account still returns the real search
+      // results (unfiltered) — but it is named in the logs instead of vanishing like a timeout.
+      if (aiUnavailable(e)) console.error('paa: the AI account is refused (' + e.refused + ') — returning the UNFILTERED list');
+      questions = unique;
+    }
 
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'paa' });
     return res.status(200).json({ questions, count: questions.length });

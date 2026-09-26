@@ -26,7 +26,7 @@ module.exports = async function handler(req, res) {
     const { url } = req.body || {};
     if (!url) return res.status(400).json({ error: 'Missing article URL' });
     try { await require('./_safeurl').assertPublicHttpUrl(String(url).trim()); }
-    catch (e) { return res.status(400).json({ error: 'That URL is not allowed.' }); }
+    catch (e) { return res.status(400).json({ error: require('./_safeurl').urlRefusalMessage(e, 'That URL is not allowed.') }); }
 
     // Fetch the page HTML
     const pageHtml = await fetchPage(url);
@@ -64,6 +64,7 @@ function fetchPage(url, redirectCount = 0) {
 
   return new Promise((resolve, reject) => {
     const req = mod.get(url, {
+      lookup: require('./_safeurl').safeLookup, // v690 — re-check the address actually connected (closes DNS rebinding)
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
       timeout: 15000
     }, (resp) => {

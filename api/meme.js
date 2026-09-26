@@ -3,7 +3,7 @@
 // (gemini-2.5-flash-image / "Nano Banana") renders the background. The headline is
 // composited over the image CLIENT-SIDE so it stays crisp.
 const https = require('https');
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, writingCraft, rulePrecedence, extractJson } = require('./_brain');
 const { encrypt, decrypt } = require('./_publish/crypto');
 const store = require('./_publish/store');
@@ -162,8 +162,9 @@ module.exports = async function handler(req, res) {
       if (_gate && _gate.ok && _gate.hold) require('./_usage').attachHoldRelease(res, _gate.hold);
       if (!_gate.ok) return require('./_usage').denyResponse(res, _gate);
       const _k = await readGeminiKeyEnc(brandId);
-      // 503, not 400: a 5xx is what attachHoldRelease refunds on, so a read we could not make
-      // does not also cost the credit reserved two lines above.
+      // 503, not 400: "try again" is the honest answer to a read we could not make. The credit
+      // reserved above is refunded either way — attachHoldRelease releases any hold still
+      // pending when the response is written (v683), whatever the status.
       if (_k.unknown) return res.status(503).json({ error: KEY_UNREADABLE });
       const enc = _k.enc;
       if (!enc) return res.status(400).json({ error: 'Add your Gemini API key first (in the Memes tab).' });
@@ -242,6 +243,13 @@ module.exports = async function handler(req, res) {
 
     return res.status(400).json({ error: 'Unknown action' });
   } catch (e) {
+    // v690 — a refused AI account (out of credits / spending limit) was answered as a generic
+    // 500 "Meme failed — try again", which can never work until the account is topped up. Say
+    // what it is. The credit reserved above is still pending here (logUsage has not run), so
+    // attachHoldRelease gives it back before this answer goes out — the message's "no credits
+    // were used" is true (scripts/verify/hold-refund.mjs, AI_UNAVAILABLE arm).
+    const ai = aiUnavailable(e);
+    if (ai) return res.status(ai.status).json(ai.body);
     console.error('meme error:', e);
     return res.status(500).json({ error: 'Meme failed — try again.' });
   }

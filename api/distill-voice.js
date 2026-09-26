@@ -1,6 +1,6 @@
 // Brand-brain distillation: turn raw taste signals (edits, dismissals, approvals)
 // into a few DURABLE voice rules the user can confirm into permanent Voice Memory.
-const { callLLM } = require('./_llm.js');
+const { callLLM, aiUnavailable } = require('./_llm.js');
 const { extractJson } = require('./_brain');
 
 // ── INPUT CAPS ───────────────────────────────────────────────────────────────
@@ -106,6 +106,7 @@ Return ONLY JSON: {"rules": [{"rule": "...", "evidence": "one short phrase citin
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'distill' });
     return res.status(200).json({ rules: Array.isArray(parsed.rules) ? parsed.rules.slice(0, 3) : [] });
   } catch (e) {
+    const ai = aiUnavailable(e); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     return res.status(500).json({ error: "Couldn't refine the voice notes — please try again." });
   }
 };

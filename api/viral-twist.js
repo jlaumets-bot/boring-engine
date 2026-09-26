@@ -1,6 +1,6 @@
 // Viral Twist — take an existing idea and return punchier, scroll-stopping angles.
 // Uses TIMELESS virality mechanics (no live-trend data). Stays brand-true and on-voice.
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, writingCraft, rulePrecedence, extractJson, coerceShape, VIRAL_TWIST_SHAPE } = require('./_brain');
 
 module.exports = async function handler(req, res) {
@@ -111,6 +111,7 @@ ${rulePrecedence()}`;
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: bc.engine || 'grok' });
     return res.status(200).json({ twist });
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('viral-twist error:', err);
     return res.status(500).json({ error: 'Viral twist failed — try again' });
   }

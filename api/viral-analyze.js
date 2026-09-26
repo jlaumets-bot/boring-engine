@@ -1,7 +1,7 @@
 // Viral Analyze — reverse-engineer WHY a currently-viral video works, then adapt it
 // to the brand. The human supplies the live trend (transcript/description); the AI
 // extracts the durable mechanics and produces brand-true ideas + a trend takeaway.
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, extractJson, coerceShape, VIRAL_ANALYZE_SHAPE } = require('./_brain');
 
 module.exports = async function handler(req, res) {
@@ -118,6 +118,7 @@ Exactly 3 items in "ideas".`;
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: bc.engine || 'grok' });
     return res.status(200).json({ analysis });
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('viral-analyze error:', err);
     return res.status(500).json({ error: 'Viral analysis failed — try again' });
   }

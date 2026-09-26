@@ -431,8 +431,11 @@ if (render) {
         // with the expression itself and take runInContext's return value.
         const b = beats || { total: 4, matched: 4 };
         const ctx = { window: { _spDurEstimated: flag, _tpBeatTotal: b.total, _tpBeatMatched: b.matched,
-                                _spPhotoMisses: b.misses || 0, _spPhotoWhy: b.why || '' }, out, String, RegExp };
+                                _spPhotoMisses: b.misses || 0, _spPhotoWhy: b.why || '' }, out, String, RegExp, Number };
         vm.createContext(ctx);
+        // v690: the photo sentence moved into spPhotoMissMsg (shared with the B-roll preview), so
+        // the real function is lifted and run too — not a stub of it.
+        vm.runInContext(fnSource('spPhotoMissMsg') || '', ctx);
         return vm.runInContext(encDecl + estDecl + totDecl + lowDecl + missDecl + whyDecl + photoDecl + warnDecl + '\n_warn', ctx);
       };
       const clean = { partial: false, drift: 0, estSec: 19.5 };

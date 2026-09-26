@@ -1,6 +1,6 @@
 const https = require('https');
 const http = require('http');
-const { callLLM, callGrokSearch } = require('./_llm');
+const { callLLM, callGrokSearch, aiUnavailable } = require('./_llm');
 const { extractJson } = require('./_brain');
 
 module.exports = async function handler(req, res) {
@@ -42,7 +42,7 @@ module.exports = async function handler(req, res) {
     if (!url || !url.trim()) return res.status(400).json({ error: 'Missing URL' });
     // SSRF guard. (The one branch that used to skip it, gdoc mode, is gone.)
     try { await require('./_safeurl').assertPublicHttpUrl(url.trim()); }
-    catch (e) { return res.status(400).json({ error: 'That URL is not allowed.' }); }
+    catch (e) { return res.status(400).json({ error: require('./_safeurl').urlRefusalMessage(e, 'That URL is not allowed.') }); }
 
     // REMOVED v636 — the 'fetch-gdoc' mode for the Master Prompt feature, retired.
     // Removing it also drops the SSRF-guard bypass that existed only for this branch.
@@ -294,6 +294,7 @@ ${web.slice(0, 12000)}`;
     return res.status(200).json({ brandInfo, url: siteUrl });
 
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('Crawl error:', err);
     return res.status(500).json({ error: err.message });
   }
@@ -342,6 +343,7 @@ function fetchPage(url) {
       if (depth > 5) return reject(new Error('Too many redirects'));
       const mod = u.startsWith('https') ? https : http;
       mod.get(u, {
+        lookup: require('./_safeurl').safeLookup, // v690 — re-check the address actually connected (closes DNS rebinding)
         headers: {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',

@@ -1,5 +1,5 @@
 const https = require('https');
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock } = require('./_brain');
 
 // v681: how much of a field the model is shown. Anything past this is not read, and the
@@ -122,6 +122,7 @@ Return ONLY the improved content for this field.`;
     return res.status(200).json({ expanded, clipped: _wasClipped, readChars: FIELD_IN_CAP });
 
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('expand-field error:', err);
     return res.status(500).json({ error: "Couldn't expand that field just now — please try again." });
   }

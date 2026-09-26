@@ -1,10 +1,18 @@
 const https = require('https');
 const http = require('http');
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, writingCraft, rulePrecedence, extractJson } = require('./_brain');
+
+/* v690 — THE CLEAN-JSON RETRY GOT A SECOND FULL 280s. Both tries of the loop below passed
+   deadlineMs: 280000, so a first reply that arrived at 250s unparseable started a second call
+   allowed another 280s: 530s against the 300s maxDuration, and the platform's 504 page instead
+   of our message. Both tries now share ONE budget measured from the start of the handler. */
+const REMIX_BUDGET_MS = 280000;
+const REMIX_MIN_RETRY_MS = 20000;   // a second try is only worth starting with this much left
 
 
 module.exports = async function handler(req, res) {
+  const _remixT0 = Date.now();
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
   const origin = req.headers.origin || '';
   res.setHeader('Access-Control-Allow-Origin', allowed.includes(origin) ? origin : allowed[0]);
@@ -157,7 +165,9 @@ module.exports = async function handler(req, res) {
     // Try-All 6-parallel burst); if the first parse fails we ask once more for strictly clean JSON.
     var content = '', remix = null;
     for (var _try = 0; _try < 2 && !remix; _try++) {
-      content = await callLLM({ deadlineMs: 280000,
+      var _left = REMIX_BUDGET_MS - (Date.now() - _remixT0);
+      if (_try > 0 && _left < REMIX_MIN_RETRY_MS) { console.log('remix: only ' + _left + 'ms left — skipping the clean-JSON retry'); break; }
+      content = await callLLM({ deadlineMs: Math.max(1000, _left),
         // rulePrecedence() says "read this last", so it is appended HERE, at call time, after
         // imgNote and the retry note. Appending it to the prompt body instead left it buried
         // whenever a reference screenshot was attached or a retry fired — the two paths the old
@@ -224,6 +234,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ remix });
 
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('Remix error:', err);
     // The raw message used to go to the browser — which on a body-less POST meant the client
     // was shown our own TypeError. Siblings (viral-*, sharpen) all return a written sentence.

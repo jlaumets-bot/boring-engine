@@ -1,4 +1,4 @@
-const { callLLM } = require('./_llm');
+const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, extractJson } = require('./_brain');
 
 // Generates brand-specific "example chip" suggestions for the Settings fields,
@@ -66,7 +66,11 @@ ${fieldList}
 
 JSON only.`;
 
-    const raw = await callLLM({ deadlineMs: 10000, timeoutMs: 22000,
+    // v690 — was deadlineMs 10000 with timeoutMs 22000: a deadline shorter than one attempt. It
+    // meant nothing until the deadline started capping attempts; now it would cut every call at
+    // 10s. 20s + the brand check and the usage write after it (8s Supabase each) fit maxDuration 45
+    // (v690 r2: it was 30, which only fit if both Supabase calls were instant).
+    const raw = await callLLM({ deadlineMs: 20000, timeoutMs: 20000,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -109,6 +113,7 @@ JSON only.`;
     return res.status(200).json({ examples });
 
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('settings-examples error:', err);
     return res.status(500).json({ error: "Couldn't build examples just now." });
   }

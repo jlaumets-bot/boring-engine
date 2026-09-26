@@ -39,6 +39,7 @@ import fs from 'node:fs'; import vm from 'node:vm';
 import path from 'node:path'; import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const html = fs.readFileSync(path.join(ROOT, 'app.html'), 'utf8');
+setTimeout(() => { console.log('FAIL: wall clock (60s) exceeded'); process.exit(2); }, 60000).unref();
 let fail = 0; const ok = (c, m) => { if (!c) { console.log('FAIL:', m); fail++; } else console.log('ok:', m); };
 const grab = n => {
   let i = html.indexOf('\nfunction ' + n + '('); if (i < 0) i = html.indexOf('\nasync function ' + n + '(');
@@ -197,6 +198,105 @@ const grab = n => {
 
   const mixed = bolded(['for 40 months and the business', 'almost died']);
   ok(mixed.includes('almost died'), 'one straddling mark among good ones does not discard the good ones (' + JSON.stringify(mixed) + ')');
+}
+
+// ── v690: a full storage quota keeps the WORDS, not a stale older draft ──────
+{
+  const store = new Map();
+  const els = new Map();
+  const mkEl = (id) => ({ id, value: '' });
+  const c = { console, JSON, Date, Math, String, icRefImage: null,
+    // a storage that refuses anything over 5000 characters, the way a full quota refuses a big screenshot
+    lsSet: (k, v) => { if (String(v).length > 5000) return false; store.set(k, v); return true; },
+    lsGet: (k) => (store.has(k) ? store.get(k) : null),
+    lsDel: (k) => store.delete(k),
+    document: { getElementById: (id) => els.get(id) || null } };
+  vm.createContext(c);
+  vm.runInContext([grab('icDraftSave'), grab('icDraftLoad')].join('\n'), c);
+  for (const id of ['icIdea', 'icUrl', 'icNotes']) els.set(id, mkEl(id));
+  store.set('ic_draft', JSON.stringify({ idea: 'an OLD version of the idea', url: '', notes: '', img: '' }));
+  els.get('icIdea').value = 'The newest wording of the idea, typed after attaching a big screenshot';
+  c.icRefImage = 'data:image/jpeg;base64,' + 'A'.repeat(20000);
+  vm.runInContext('icDraftSave()', c);
+  const d = vm.runInContext('icDraftLoad()', c);
+  ok(d && d.idea === 'The newest wording of the idea, typed after attaching a big screenshot',
+     'with the screenshot too big for storage, the NEW words are kept (' + JSON.stringify(d && d.idea) + '). Text and image ' +
+     'were one value, so the refusal took the words down too and left the older draft to be restored');
+  ok(d && d.img === '' && d.imgDropped === true, 'and the draft says the picture was dropped, so the screen can ask for it again');
+  const r = grab('renderIdeaCatcher');
+  ok(/_draft\.imgDropped/.test(r) && /attach it again/.test(r), 'renderIdeaCatcher tells the person to attach the screenshot again');
+  c.icRefImage = 'data:image/jpeg;base64,SMALL';
+  vm.runInContext('icDraftSave()', c);
+  const d2 = vm.runInContext('icDraftLoad()', c);
+  ok(d2 && d2.img === 'data:image/jpeg;base64,SMALL' && !d2.imgDropped, 'the opposite arm: a screenshot that fits is kept with the words');
+}
+// ── v690: the notebook mic says when transcription failed ────────────────────
+async function nbRun(answer) {
+  const toasts = [];
+  const input = { value: '', placeholder: '', focus() {} };
+  const btn = { classList: { add() {}, remove() {} } };
+  class FakeRec {
+    constructor() { this.state = 'inactive'; this.mimeType = 'audio/webm'; }
+    static isTypeSupported() { return true; }
+    start() { this.state = 'recording'; }
+    stop() { this.state = 'inactive'; try { this.ondataavailable && this.ondataavailable({ data: new Blob(['x']) }); } catch (e) {} this.onstop && this.onstop(); }
+  }
+  class FakeReader { readAsDataURL() { this.result = 'data:audio/webm;base64,AAAA'; setTimeout(() => this.onloadend(), 0); } }
+  const c = { console, JSON, Blob, Promise, String, Date, toasts, _nbRec: null, _micHold: null,
+    setTimeout: (fn, ms) => (ms >= 1000 ? 0 : setTimeout(fn, ms)), clearTimeout: () => {},
+    MediaRecorder: FakeRec, FileReader: FakeReader,
+    brandGate: () => () => true, voiceLogAdd() {}, _micReleaseHandled() {}, _micRelease() {},
+    getMicStream: async () => ({ getTracks: () => [{ stop() {} }] }),
+    showToast: (m) => toasts.push(String(m)),
+    fetch: async () => answer(),
+    document: { getElementById: (id) => (id === 'nbInput' ? input : id === 'nbMic' ? btn : null) } };
+  vm.createContext(c);
+  vm.runInContext(grab('humanErr') + '\n' + grab('nbToggleMic'), c);
+  await vm.runInContext('nbToggleMic()', c);   // start
+  await vm.runInContext('nbToggleMic()', c);   // stop → transcribe
+  await new Promise(r => setTimeout(r, 30));
+  return { toasts, input };
+}
+{
+  const failed = await nbRun(() => new Response(JSON.stringify({ error: 'Transcription is not configured on the server.' }), { status: 500 }));
+  ok(failed.toasts.length === 1 && failed.toasts[0] === 'Transcription is not configured on the server.',
+     'a failed notebook transcription says what the server said (' + JSON.stringify(failed.toasts) + '). It read neither resp.ok ' +
+     'nor data.error, so the person talked for up to a minute and got an empty box and no word why');
+  const html504 = await nbRun(() => new Response('<html>504</html>', { status: 504 }));
+  ok(html504.toasts.length === 1 && /Couldn't turn that into words/.test(html504.toasts[0]),
+     'an HTML error page (a platform 413/504) is reported too, not swallowed by resp.json() (' + JSON.stringify(html504.toasts) + ')');
+  const good = await nbRun(() => new Response(JSON.stringify({ text: 'hello there' }), { status: 200 }));
+  ok(good.toasts.length === 0 && good.input.value === 'hello there',
+     'the opposite arm: a good transcription lands in the box with no toast (' + JSON.stringify(good.input.value) + ')');
+}
+
+// ── v690 r2: a refused save never leaves an OLDER draft to be restored ───────
+{
+  for (const [label, refuseAll] of [['storage refuses everything', true], ['storage accepts', false]]) {
+    const store = new Map(); const els = new Map();
+    const c = { console, JSON, Date, Math, String, icRefImage: null,
+      lsSet: (k, v) => { if (refuseAll) return false; store.set(k, v); return true; },
+      lsGet: (k) => (store.has(k) ? store.get(k) : null),
+      lsDel: (k) => store.delete(k),
+      document: { getElementById: (id) => els.get(id) || null } };
+    vm.createContext(c);
+    vm.runInContext([grab('icDraftSave'), grab('icDraftLoad')].join('\n'), c);
+    for (const id of ['icIdea', 'icUrl', 'icNotes']) els.set(id, { id, value: '' });
+    store.set('ic_draft', JSON.stringify({ idea: 'OLD words', url: '', notes: '', img: '' }));
+    els.get('icIdea').value = 'NEW words typed today';   // no screenshot at all: storage is full of other data
+    vm.runInContext('icDraftSave()', c);
+    const d = vm.runInContext('icDraftLoad()', c);
+    if (refuseAll) ok(d === null,
+      label + ': the OLD draft is gone rather than restored in place of the new words (' + JSON.stringify(d && d.idea) + '). ' +
+      'Coming back to "OLD words" after typing "NEW words" reads as the app silently undoing their work');
+    else ok(d && d.idea === 'NEW words typed today', 'the opposite arm — ' + label + ': the new words replace the old draft');
+  }
+}
+// ── v690 r2: an error response that happens to carry `text` is still an error ─
+{
+  const r = await nbRun(() => new Response(JSON.stringify({ text: 'partial garbage', error: 'Couldn\'t transcribe your voice — please try again.' }), { status: 502 }));
+  ok(r.input.value === '' && r.toasts.length === 1,
+     'a 502 whose body also carries `text` is not pasted into the note (' + JSON.stringify(r.input.value) + ') and the failure is said (' + JSON.stringify(r.toasts) + ')');
 }
 
 if (fail === 0) console.log('\nPASS — idea-mic-emphasis: the draft survives, the mic stops itself and says why, and marks that miss fall back.');

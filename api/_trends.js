@@ -4,6 +4,10 @@
 // back — default 48h, adjustable to 24h / 48h / 1 week / 1 month (no further back).
 // News URLs are built here from keywords only (never a user URL) → no SSRF surface.
 const https = require('https');
+/* v690 — `data += chunk` decoded each network chunk on its own, so a letter whose bytes were split
+   across two chunks (õ, ä, emoji) became two junk characters. One decoder per response keeps the
+   split bytes until the rest arrives. Byte caps still count raw Buffer lengths. */
+function _utf8(resp, c) { return (resp.__dec || (resp.__dec = new (require('string_decoder').StringDecoder)('utf8'))).write(c); }
 
 // Recency window (hours). The UI exposes exactly these; the API clamps to them.
 const DEFAULT_WINDOW_HOURS = 48;
@@ -83,7 +87,7 @@ function fetchNewsRss(query, maxAgeHours) {
           req.destroy();
           return;
         }
-        data += c;
+        data += _utf8(resp, c);
       });
       resp.on('end', () => done({ items: parseRssItems(data) }));
     });
@@ -163,7 +167,7 @@ function apifyReq(method, path, token, body) {
           req.destroy();
           return;
         }
-        data += c;
+        data += _utf8(resp, c);
       });
       resp.on('end', finish);
     });

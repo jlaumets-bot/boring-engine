@@ -18,6 +18,7 @@
 //  3. Cron failure logging + failed/skipped split — STRUCTURAL (source assertions).
 //  4. extract-article content-type guard — STRUCTURAL; its size cap is behavioural (1).
 
+import { StringDecoder as StringDecoderReal } from 'node:string_decoder';
 import http from 'node:http';
 import https from 'node:https';
 import fs from 'node:fs';
@@ -52,6 +53,7 @@ function extractFn(src, name, file) {
 
 const requireStub = (id) => {
   if (String(id).includes('_safeurl')) return { assertPublicHttpUrl: async () => {} };
+  if (id === 'string_decoder') return { StringDecoder: StringDecoderReal }; // v690 _utf8 helper
   throw new Error('unexpected require() in test scope: ' + id);
 };
 
@@ -64,9 +66,13 @@ function extractConst(src, name, file) {
 
 function loadFns(file, names, consts = []) {
   const src = read(file);
+  const fns = names.map(n => extractFn(src, n, file));
+  // v690 — the fetchers now decode through a module-level _utf8(resp, c) helper; lift it too.
+  const helper = src.match(/^function _utf8\(resp, c\) \{[^\n]*\}$/m);
   const body = [
     ...consts.map(c => extractConst(src, c, file)),
-    ...names.map(n => extractFn(src, n, file)),
+    ...(helper && fns.some(f => f.includes('_utf8(')) ? [helper[0]] : []),
+    ...fns,
   ].join('\n');
   return new Function('https', 'http', 'require', 'console',
     `${body}\nreturn { ${names.join(', ')} };`)(https, http, requireStub, console);

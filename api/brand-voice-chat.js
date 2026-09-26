@@ -1,4 +1,4 @@
-const { callLLM, callGrokSearch } = require('./_llm');
+const { callLLM, callGrokSearch, aiUnavailable } = require('./_llm');
 const { extractJson, fullBrandBlock } = require('./_brain');
 
 module.exports = async function handler(req, res) {
@@ -80,7 +80,7 @@ module.exports = async function handler(req, res) {
         const web = await Promise.race([
           callGrokSearch(
             `The founder of "${bc.brandName || 'a brand'}" (${niche}) asked their brand coach: "${q.slice(0, 300)}". Using live web search, return the 3-5 most useful CURRENT facts, trends, or competitor moves that actually help answer this — newest first, each on one line with a source. Only real, recent, verifiable items.`,
-            { maxTokens: 600 }
+            { maxTokens: 600, timeoutMs: 18000 }   // v690: the socket ends with the race, not 90s later
           ),
           new Promise(r => setTimeout(() => r(null), 18000))
         ]);
@@ -139,7 +139,9 @@ If they haven't set the basics yet (brand name, audience), start there before an
       ...trimmedMessages
     ];
 
-    const content = await callLLM({ deadlineMs: 70000, timeoutMs: 44000,
+    // v690 — 70s here after an 18s search left 2s of the 90s maxDuration for guard, brand hydration
+    // and the usage write (an 8s Supabase call on its own). 60s leaves room for them.
+    const content = await callLLM({ deadlineMs: 60000, timeoutMs: 44000,
       messages: fullMessages,
       model: 'grok',
       temperature: 0.8,
@@ -218,6 +220,7 @@ If they haven't set the basics yet (brand name, audience), start there before an
     return res.status(200).json({ reply: cleanContent, suggestion, action, memory });
 
   } catch (err) {
+    const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('Brand voice chat error:', err);
     return res.status(500).json({ error: "The assistant hit a snag — please try again." });
   }

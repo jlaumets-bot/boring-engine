@@ -11,10 +11,16 @@
 // Ranked by RECENCY, not engagement, so this does NOT depend on the still-unverified engagement
 // field names that the v644 strip needs.
 const store = require('./_publish/store');
+/* v690 — `data += chunk` decoded each network chunk on its own, so a letter whose bytes were split
+   across two chunks (õ, ä, emoji) became two junk characters. One decoder per response keeps the
+   split bytes until the rest arrives. Byte caps still count raw Buffer lengths. */
+function _utf8(resp, c) { return (resp.__dec || (resp.__dec = new (require('string_decoder').StringDecoder)('utf8'))).write(c); }
 
 const MAX_CREATORS = 6;      // one run per platform, but keep the result set (and the bill) small
 const POSTS_EACH = 3;
-const RUN_WAIT_S = 35;       // must leave room under maxDuration 60 for the dataset read
+// v690 r2 — maxDuration is 90: 40s run socket + 12s dataset read + the brand check and usage write
+// (8s Supabase each) = 68s. At 60 it only fit when both Supabase calls were instant.
+const RUN_WAIT_S = 35;
 const RUN_TIMEOUT_MS = 40000;
 const DATASET_TIMEOUT_MS = 12000;
 
@@ -33,7 +39,7 @@ function apifyReq(method, path, token, body, timeoutMs) {
         ),
       }, (res) => {
         let raw = '';
-        res.on('data', (c) => { raw += c; if (raw.length > 6e6) { res.destroy(); finish(null); } });
+        res.on('data', (c) => { raw += _utf8(res, c); if (raw.length > 6e6) { res.destroy(); finish(null); } });
         res.on('end', () => {
           // Same reason as _trends.js: a 402/401/429 parses as valid JSON and would otherwise
           // vanish into "no posts came back", which is a completely different problem.

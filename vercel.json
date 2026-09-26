@@ -106,7 +106,7 @@
       "maxDuration": 90
     },
     "api/settings-examples.js": {
-      "maxDuration": 30
+      "maxDuration": 45
     },
     "api/health.js": {
       "maxDuration": 45
@@ -130,7 +130,7 @@
       "maxDuration": 120
     },
     "api/transcribe-voice.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     },
     "api/brand-voice-chat.js": {
       "maxDuration": 90
@@ -196,7 +196,7 @@
       "maxDuration": 30
     },
     "api/creator-posts.js": {
-      "maxDuration": 60
+      "maxDuration": 90
     }
   },
   "crons": [

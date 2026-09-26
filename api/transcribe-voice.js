@@ -96,8 +96,17 @@ module.exports = async function handler(req, res) {
   }
 };
 
+/* v690 — maxDuration was 30s while the Whisper socket waited up to 50s of SILENCE (and an
+   upload or a reply that kept trickling never tripped it at all). A slow transcription was
+   killed by the platform, and the app printed Vercel's 504 page as a JSON parse error instead of
+   our message. The whole request now ends by WHISPER_TOTAL_MS, and vercel.json gives the
+   function 60s: 45s + the 8s usage write fits, with the guard's own reads in the margin. */
+const WHISPER_TOTAL_MS = 45000;
+
 function whisperTranscribe(provider, audioBuffer, filename, mimeType, language) {
   return new Promise((resolve, reject) => {
+    let total = null;
+    const stop = () => { if (total) { clearTimeout(total); total = null; } };
     const boundary = '----WhisperBoundary' + Math.random().toString(36).slice(2);
     const body = buildVoiceMultipart(boundary, provider.model, filename, mimeType, language, audioBuffer);
 
@@ -111,17 +120,23 @@ function whisperTranscribe(provider, audioBuffer, filename, mimeType, language) 
         'Content-Length': body.length,
       },
     }, (resp) => {
-      let data = '';
-      resp.on('data', chunk => data += chunk);
+      // v690 — decode once at the end: `data += chunk` split multi-byte letters (õ, ä, é) that fell
+      // across two network chunks into replacement marks in the user's dictated text.
+      const parts = [];
+      resp.on('data', chunk => parts.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk));
+      resp.on('close', () => { if (resp.complete === false) { stop(); reject(new Error('Transcription connection dropped')); } });
       resp.on('end', () => {
+        stop();
+        const data = Buffer.concat(parts).toString('utf8');
         let text = '', error = '';
         try { const j = JSON.parse(data); text = j.text || ''; error = j.error && j.error.message; }
         catch (e) { error = 'bad transcription response'; }
         resolve({ status: resp.statusCode, text, error });
       });
     });
-    r.on('error', reject);
-    r.setTimeout(50000, () => r.destroy(new Error('Transcription timed out')));
+    r.on('error', (e) => { stop(); reject(e); });
+    r.setTimeout(WHISPER_TOTAL_MS, () => r.destroy(new Error('Transcription timed out')));
+    total = setTimeout(() => { total = null; reject(new Error('Transcription timed out')); try { r.destroy(); } catch (_) {} }, WHISPER_TOTAL_MS);
     r.write(body);
     r.end();
   });

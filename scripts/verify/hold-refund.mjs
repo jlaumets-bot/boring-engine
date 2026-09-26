@@ -33,6 +33,10 @@ const require_ = createRequire(import.meta.url);
 import path from 'node:path'; import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+// v690: a wall clock, so a handler that never answers fails this gate instead of hanging it.
+const _wall = setTimeout(() => { console.log('FAIL: wall clock — hold-refund did not finish in 60s'); process.exit(1); }, 60000);
+_wall.unref();
+
 process.env.SUPABASE_URL = 'https://hold-gate.invalid';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only-not-a-real-key';
 process.env.COST_CAP_EUR = '25';
@@ -45,14 +49,25 @@ const seen = [];
 const sp = (p) => new URL('https://h' + p).searchParams;
 const eq = (s, k) => { const v = s.get(k); return v && v.startsWith('eq.') ? v.slice(3) : null; };
 
+// v690: the AI providers, scripted per arm. xai(payload) / gemini(payload) -> { status, body }.
+const providers = { xai: null, gemini: null, xaiCalls: 0, holdsAtXai: [] };
 function route(opts, payload) {
   seen.push(opts.method + ' ' + opts.path);
+  if (/(^|\.)x\.ai$/.test(String(opts.hostname || ''))) {
+    providers.xaiCalls++;
+    providers.holdsAtXai.push(rows.filter(r => String(r.action || '').startsWith('hold:')).length);
+    return providers.xai ? providers.xai(payload) : { status: 500, body: '{}' };
+  }
+  if (/generativelanguage\.googleapis\.com$/.test(String(opts.hostname || ''))) {
+    return providers.gemini ? providers.gemini(payload) : { status: 500, body: '{}' };
+  }
   const table = opts.path.split('?')[0], s = sp(opts.path);
   if (table === '/rest/v1/user_plans') {
     if (opts.method === 'GET') { const r = plans.get(eq(s,'user_id')); return { status:200, body: JSON.stringify(r?[r]:[]) }; }
     if (opts.method === 'POST') { const b = JSON.parse(payload); plans.set(b.user_id, Object.assign({plan:'free'}, b)); return { status:201, body:'[]' }; }
     if (opts.method === 'PATCH') return { status:204, body:'' };
   }
+  if (table === '/rest/v1/brands' && opts.method === 'GET') return { status:200, body: JSON.stringify([{ user_id: 'USER-1' }]) };
   if (table === '/rest/v1/usage_events') {
     if (opts.method === 'GET') {
       const uid = eq(s,'user_id');
@@ -225,5 +240,88 @@ const req = { method:'POST', headers:{}, body:{} };
   }
   ok(mismatched.length === 0, 'every gated endpoint logs the action it gated: ' + (mismatched.join(' | ') || 'all good'));
 }
+// ── 6. v690: THE AI_UNAVAILABLE 503 GIVES THE CREDIT BACK ────────────────────
+// When xAI refuses our account (401/402/403: out of credits, spending limit, bad key) the user
+// is shown AI_UNAVAILABLE_MESSAGE, which PROMISES "no credits were used". This proves it, with
+// the REAL api/_llm.js reaching a scripted x.ai that answers 402, the real aiUnavailable()
+// mapping, the real guard()/checkLimit reservation and the real attachHoldRelease:
+//   6a  a guard()-gated request that ends in res.status(503).json(aiUnavailable(err).body)
+//   6b  the real api/meme.js "generate" handler end to end (checkLimit + attachHoldRelease)
+//   6c  the opposite arm: the same meme handler with x.ai and Gemini answering is charged ONCE.
+// Each arm also records how many holds existed AT THE MOMENT x.ai was called, so an arm that
+// never reserved anything (and would pass trivially) fails.
+{
+  let aiOk = 0, aiRan = 0;
+  const aiCheck = (c, m) => { aiRan++; ok(c, m); if (c) aiOk++; };
+  process.env.XAI_API_KEY = 'test-only-not-a-real-key';
+  const refuse402 = () => ({ status: 402, body: JSON.stringify({ error: 'Your team has run out of credits (test)' }) });
+  const llm = require_(ROOT + '/api/_llm.js');
+
+  // 6a — guard() + the endpoint contract from PLAN.md I1
+  {
+    rows.length = 0; plans.clear(); plans.set('USER-1', { user_id: 'USER-1', plan: 'pro' });
+    providers.xai = refuse402; providers.xaiCalls = 0; providers.holdsAtXai = [];
+    const res = mkRes();
+    const g = await usage.guard(req, 'remix', res);
+    let answered = null;
+    try {
+      await llm.callLLM({ deadlineMs: 20000, timeoutMs: 10000, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 });
+      answered = await res.status(200).json({ ok: true });
+    } catch (err) {
+      const ai = llm.aiUnavailable(err);
+      answered = ai ? await res.status(ai.status).json(ai.body) : await res.status(500).json({ error: 'generic' });
+    }
+    aiCheck(g.user && !g.over && providers.holdsAtXai[0] === 1, '6a: a credit was reserved when x.ai was called (holds then: ' + JSON.stringify(providers.holdsAtXai) + ')');
+    aiCheck(res.statusCode === 503 && res.sent && res.sent.code === 'AI_UNAVAILABLE', '6a: the refusal reached the caller as 503 AI_UNAVAILABLE (got ' + res.statusCode + ' ' + JSON.stringify(res.sent) + ')');
+    aiCheck(/no credits were used/i.test(String(res.sent && res.sent.error)), '6a: the message makes the promise this arm checks: ' + JSON.stringify(res.sent && res.sent.error));
+    aiCheck(holds() === 0 && done() === 0, '6a: the hold is RELEASED and nothing is charged (holds=' + holds() + ' charged=' + done() + ')');
+  }
+
+  // 6b / 6c — the real meme.js handler (its store, crypto and brand-voice helpers stubbed; _usage and _llm real)
+  const cacheSet = (rel, exp) => { const k = require_.resolve(ROOT + rel); const old = require_.cache[k]; require_.cache[k] = { id: k, filename: k, loaded: true, exports: exp }; return () => { if (old) require_.cache[k] = old; else delete require_.cache[k]; }; };
+  const undo = [
+    cacheSet('/api/_publish/store.js', {
+      getUser: async () => ({ id: 'USER-1' }),
+      userCanAccessBrand: async () => true,
+      rest: async (m, p) => (/gemini_key_enc/.test(p) ? { status: 200, data: [{ gemini_key_enc: 'sealed' }] } : { status: 200, data: [] }),
+      setRequestBudget: () => 8000,
+    }),
+    cacheSet('/api/_publish/crypto.js', { encrypt: (o) => JSON.stringify(o), decrypt: () => ({ key: 'test-only-gemini-key' }) }),
+  ];
+  const memeKey = require_.resolve(ROOT + '/api/meme.js');
+  delete require_.cache[memeKey];
+  const meme = require_(memeKey);
+  const memeReq = () => ({ method: 'POST', headers: { authorization: 'Bearer t', origin: 'https://contentshrimp.com' },
+                           body: { action: 'generate', brandId: 'b1', brandContext: {}, topic: 'mondays' } });
+  const memeRes = () => { const r = mkRes(); r.end = () => r; return r; };
+  try {
+    // 6b — refused
+    rows.length = 0; plans.clear(); plans.set('USER-1', { user_id: 'USER-1', plan: 'pro' });
+    providers.xai = refuse402; providers.xaiCalls = 0; providers.holdsAtXai = [];
+    const res = memeRes();
+    await meme(memeReq(), res);
+    // attachHoldRelease returns the release promise from json(); let it settle
+    for (let i = 0; i < 20 && holds(); i++) await new Promise(r => setTimeout(r, 5));
+    aiCheck(providers.holdsAtXai[0] === 1, '6b: meme.js reserved the meme credit before calling x.ai (holds then: ' + JSON.stringify(providers.holdsAtXai) + ')');
+    aiCheck(res.statusCode === 503 && res.sent && res.sent.code === 'AI_UNAVAILABLE',
+      '6b: meme.js answers a refused AI account with 503 AI_UNAVAILABLE, not "Meme failed — try again" (got ' + res.statusCode + ' ' + JSON.stringify(res.sent) + ')');
+    aiCheck(holds() === 0 && done() === 0, '6b: and its reserved credit is released, nothing charged (holds=' + holds() + ' charged=' + done() + ')');
+
+    // 6c — the opposite: a meme that really was made is charged exactly once
+    rows.length = 0;
+    providers.xai = () => ({ status: 200, body: JSON.stringify({ model: 'grok', choices: [{ finish_reason: 'stop', message: { role: 'assistant',
+      content: '{"headline":"Mondays, again","imagePrompt":"a sleepy office","caption":"same"}' } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }) });
+    providers.gemini = () => ({ status: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgo=' } }] } }] }) });
+    providers.xaiCalls = 0; providers.holdsAtXai = [];
+    const res2 = memeRes();
+    await meme(memeReq(), res2);
+    aiCheck(res2.statusCode === 200 && res2.sent && res2.sent.imageBase64, '6c: with the AI answering, meme.js still makes the meme (got ' + res2.statusCode + ' ' + JSON.stringify(res2.sent).slice(0, 120) + ')');
+    aiCheck(holds() === 0 && done() === 1 && rows[0].action === 'meme', '6c: and it is charged exactly once (holds=' + holds() + ' charged=' + done() + ')');
+  } finally { for (const u of undo) u(); delete require_.cache[memeKey]; providers.xai = providers.gemini = null; }
+  // 9 = 4 (6a) + 3 (6b) + 2 (6c). Fewer RAN means an arm threw part-way: that is a failure too.
+  if (aiRan === 9 && aiOk === 9) console.log('AI_UNAVAILABLE ARM OK');
+  else ok(false, 'AI_UNAVAILABLE arm: ' + aiOk + ' passed of ' + aiRan + ' run (expected 9 of 9)');
+}
+clearTimeout(_wall);
 console.log(fail ? '\nFAIL \u2014 ' + fail + ' check(s) failed' : '\nPASS \u2014 a failed run refunds its credit, a successful one is charged once, and every gated endpoint is wired');
 process.exit(fail?1:0);

@@ -95,6 +95,8 @@ module.exports = async function handler(req, res) {
     let updated = 0, skipped = 0, failed = 0, ranOut = false;
     // v684: brands the loop never reached, as distinct from brands it tried and skipped.
     let untried = 0;
+    // v690: brands whose work was STARTED but cut off when a batch outlived the budget.
+    let abandoned = 0;
     // v670 — WHY a brand was skipped, and WHICH LANE went quiet.
     // `skipped` lumped three different things together: no keywords (a brand that is not set up),
     // no items (every source returned nothing), and out of budget. Only the middle one can mean
@@ -132,6 +134,7 @@ module.exports = async function handler(req, res) {
       if (_left() <= WORST_BATCH_MS) { ranOut = true; untried += (due.length - i); skipped += (due.length - i); break; }
       const batch = due.slice(i, i + CONC);
       let _batchT = null;
+      let _batchDone = 0;   // v690: how many brands in THIS batch reached a verdict before any abandonment
       const _work = Promise.all(batch.map(async (b) => {
         try {
           const kws = deriveKeywords(b);
@@ -243,7 +246,7 @@ module.exports = async function handler(req, res) {
         } catch (e) {
           failed++;
           console.error('pull-trends-cron: brand ' + (b && b.id) + ' (' + ((b && b.brand_name) || 'unnamed') + ') failed — ' + ((e && e.message) || e));
-        }
+        } finally { _batchDone++; }
       }));
       // Guard 2. Whatever the batch is waiting on, it does not get to spend time this function
       // does not have. `_over` is a sentinel rather than a rejection so nothing here can throw.
@@ -254,8 +257,18 @@ module.exports = async function handler(req, res) {
       try { if (_batchT) clearTimeout(_batchT); } catch (_) {}
       if (_over) {
         ranOut = true;
-        untried += (due.length - i);
-        skipped += (due.length - i);
+        /* v690 — THE ABANDONED BATCH WAS COUNTED TWICE. Every brand from index i on was added to
+           `untried` — including brands of THIS batch that had already finished and been counted
+           as updated / skipNoItems / failed. _triedBrands below subtracted them again, so a run
+           whose only finished brand got nothing from any source could compute _triedBrands = 0,
+           skip the all-silent alarm and heartbeat 'ok' with updated 0 — and the log called
+           brands "not attempted at all" that had in fact run. Split the tail honestly: brands of
+           this batch still in flight were ABANDONED, brands after it were never tried. */
+        const _cut = batch.length - _batchDone;
+        const _never = due.length - i - batch.length;
+        abandoned += _cut;
+        untried += _never;
+        skipped += _cut + _never;
         console.error('pull-trends-cron: batch at index ' + i + ' outlived the run budget — abandoning it so the heartbeat still gets written. ' +
                       'Brands in that batch are unchanged and will be picked up next run.');
         break;
@@ -269,7 +282,7 @@ module.exports = async function handler(req, res) {
        having been tried and returned nothing. The two numbers answer different questions and only
        one of them is "how much work is outstanding". */
     if (ranOut) console.log('pull-trends-cron: ran out of budget after ' + (Date.now() - _cronT0) + 'ms — updated ' + updated +
-      ', ' + untried + ' not attempted at all (of ' + due.length + ' due; ' + skipped + ' skipped in total)');
+      ', ' + untried + ' not attempted at all, ' + abandoned + ' cut off mid-run (of ' + due.length + ' due; ' + skipped + ' skipped in total)');
     if (failed) console.error('pull-trends-cron: ' + failed + ' of ' + due.length + ' brand(s) FAILED this run (see the per-brand errors above)');
     console.log('pull-trends-cron: lanes this run — grok=' + laneTotals.grok + ' news=' + laneTotals.news +
       ' x=' + laneTotals.x + ' | updated=' + updated + ' skipped=' + skipped +
@@ -281,7 +294,9 @@ module.exports = async function handler(req, res) {
     // returning null) — not thirty independent no-ops. It used to heartbeat 'ok', so /api/health
     // stayed green while the trends feed quietly stopped updating for everyone.
     // A brand with no keywords is NOT evidence of that: it simply is not set up yet.
-    const _triedBrands = due.length - skipNoKeywords - (ranOut ? Math.max(0, skipped - skipNoKeywords - skipNoItems) : 0);
+    // v690: counted directly — the brands that actually reached a verdict — instead of derived by
+    // subtraction from `skipped`, which double-counted an abandoned batch (see above).
+    const _triedBrands = updated + failed + skipNoItems;
     const _allSilent = _triedBrands > 0 && updated === 0 && skipNoItems >= _triedBrands;
     if (_allSilent) {
       console.error('pull-trends-cron: EVERY source returned nothing for all ' + _triedBrands +
@@ -289,7 +304,7 @@ module.exports = async function handler(req, res) {
         ' x=' + laneTotals.x + '. That is a systematic failure, not a quiet day.');
     }
     const _health = ((failed && !updated) || _allSilent) ? 'error' : 'ok';
-    const _meta = { considered: due.length, updated, skipped, failed, ranOut,
+    const _meta = { considered: due.length, updated, skipped, failed, ranOut, untried, abandoned,
                     skipNoKeywords, skipNoItems, lanes: laneTotals, allSilent: _allSilent };
     await store.heartbeat('pull-trends-cron', _health, _meta);
     return res.status(200).json(Object.assign({ ok: !_allSilent }, _meta));
