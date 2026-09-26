@@ -78,6 +78,7 @@ const DB_MAX_ROWS = 1000;              // what PostgREST silently truncates at
 const net = {
   plans: new Map(),                    // userId -> user_plans row
   events: new Map(),                   // evt_… -> Stripe event object
+  subs: new Map(),                     // sub_… -> the subscription as Stripe holds it NOW (v691)
   usage: new Map(),                    // userId -> [{ action, created_at }] (sorted ASC)
   requests: [],                        // every intercepted request, for anti-vacuous checks
 };
@@ -140,6 +141,15 @@ function stripe(opts) {
     const evt = net.events.get(decodeURIComponent(m[1]));
     if (!evt) return { status: 404, body: JSON.stringify({ error: { message: 'No such event' } }) };
     return { status: 200, body: JSON.stringify(evt) };
+  }
+  // v691 — the webhook decides from the subscription's CURRENT state (events arrive out of order).
+  // Like Stripe, the fake holds that state per subscription id, set explicitly by each test with
+  // live(); delivering an event does NOT change it, and a subscription it does not hold is a 404.
+  const ms = opts.path.match(/^\/v1\/subscriptions\/([^?]+)$/);
+  if (ms) {
+    const cur = net.subs.get(decodeURIComponent(ms[1]));
+    if (!cur) return { status: 404, body: JSON.stringify({ error: { message: 'No such subscription' } }) };
+    return { status: 200, body: JSON.stringify(cur) };
   }
   return { status: 404, body: JSON.stringify({ error: { message: 'unmapped' } }) };
 }
@@ -398,7 +408,7 @@ const store = {
   plans: new Map(),
   setPlanCalls: [],
   setPlanOk: true,
-  reset() { store.plans.clear(); store.setPlanCalls.length = 0; store.setPlanOk = true; },
+  reset() { store.plans.clear(); store.setPlanCalls.length = 0; store.setPlanOk = true; net.subs.clear(); },
 };
 {
   const resolved = require_.resolve(join(API, '_usage.js'));
@@ -413,7 +423,10 @@ const store = {
         }
         return null;
       },
-      async getPlanSnapshot(uid) { return store.plans.get(uid) || null; },
+      async getPlanSnapshot(uid, o) {
+        const r = store.plans.get(uid) || null;
+        return (o && o.strict && !r) ? { missing: true } : r;   // v691 strict mode: "no row" is not null
+      },
       async setPlan(uid, plan, extra) {
         store.setPlanCalls.push({ uid, plan, extra: extra || {} });
         if (!store.setPlanOk) return false;
@@ -464,11 +477,14 @@ const SUB = (over) => Object.assign({
   items: { data: [{ price: { id: 'price_gate_pro' } }] },
   metadata: { user_id: 'user-buyer', plan: 'pro' },
 }, over || {});
+// Set the subscription as Stripe holds it NOW (v691: the webhook reads it; events do not set it).
+const live = (o) => net.subs.set(o.id, JSON.parse(JSON.stringify(o)));
 
 // 4a. checkout.session.completed for a subscription the database has never heard of.
 {
   mark();
   store.reset();
+  live(SUB());
   const id = deliver(SESSION(), 'checkout.session.completed');
   const { res } = await send(id);
   const snap = snapOf();
@@ -497,6 +513,7 @@ const SUB = (over) => Object.assign({
 {
   mark();
   store.reset();
+  live(SUB());
   const { res } = await send(deliver(SUB(), 'customer.subscription.created'));
   const snap = snapOf();
   ck(res._status === 200, `customer.subscription.created answered ${res._status}`);
@@ -516,6 +533,7 @@ const SUB = (over) => Object.assign({
 {
   mark();
   store.reset();
+  live(SUB());
   store.setPlanOk = false;
   const grant = await send(deliver(SESSION(), 'checkout.session.completed'));
   ck(grant.res._status >= 500,
@@ -531,6 +549,7 @@ const SUB = (over) => Object.assign({
   await send(deliver(SESSION(), 'checkout.session.completed'));
   ck(planOf() === 'pro', 'setup for the downgrade case did not grant');
   store.setPlanOk = false;
+  live(SUB({ status: 'canceled' }));
   const down = await send(deliver(SUB({ status: 'canceled' }), 'customer.subscription.deleted'));
   ck(down.res._status >= 500,
     `a failed DOWNGRADE answered ${down.res._status} — a cancelled customer keeps paid access forever and Stripe never retries`);
@@ -540,7 +559,9 @@ const SUB = (over) => Object.assign({
 // 4e. A successful downgrade, and its own idempotency.
 {
   store.reset();
+  live(SUB());
   await send(deliver(SESSION(), 'checkout.session.completed'));
+  live(SUB({ status: 'canceled' }));
   await send(deliver(SUB({ status: 'canceled' }), 'customer.subscription.deleted'));
   ck(planOf() === 'free', 'a cancelled subscription did not downgrade the user');
   const before = store.setPlanCalls.length;
@@ -552,6 +573,7 @@ const SUB = (over) => Object.assign({
 {
   mark();
   store.reset();
+  live(SUB());
   const promo = await send(deliver(SESSION({ payment_status: 'no_payment_required' }), 'checkout.session.completed'));
   ck(promo.res._status === 200 && store.setPlanCalls.length === 0,
     'a 100%-off / unpaid checkout session granted a paid tier');
@@ -568,6 +590,7 @@ const SUB = (over) => Object.assign({
 
   // A brand-new subscription still confirming its first payment is not a cancellation.
   store.reset();
+  live(SUB({ status: 'incomplete' }));
   const incomplete = await send(deliver(SUB({ status: 'incomplete' }), 'customer.subscription.created'));
   ck(incomplete.res._status === 200 && store.setPlanCalls.length === 0,
     'a subscription in `incomplete` (card in 3DS) was treated as a cancellation and downgraded');
@@ -576,6 +599,29 @@ const SUB = (over) => Object.assign({
   const forged = await send('evt_does_not_exist');
   ck(forged.res._status === 200 && store.setPlanCalls.length === 0, 'an event id Stripe does not know still changed a plan');
   note('negative controls hold: unpaid, one-off, unresolvable, incomplete and forged events grant nothing');
+}
+
+// 4h. (v691) Late deliveries decide from Stripe's CURRENT state, not the event's snapshot.
+{
+  mark();
+  store.reset();
+  live(SUB());
+  const lateUpdate = deliver(SUB(), 'customer.subscription.updated');
+  const lateCheckout = deliver(SESSION(), 'checkout.session.completed');
+  await send(deliver(SESSION(), 'checkout.session.completed'));
+  live(SUB({ status: 'canceled' }));
+  await send(deliver(SUB({ status: 'canceled' }), 'customer.subscription.deleted'));
+  ck(planOf() === 'free', 'setup for the late-delivery case did not downgrade');
+  const writesBefore = store.setPlanCalls.length;
+  const u = await send(lateUpdate);
+  ck(u.res._status === 200 && planOf() === 'free',
+    `a LATE subscription.updated(active) after the cancellation left plan=${planOf()} — a cancelled customer got paid access back`);
+  const c = await send(lateCheckout);
+  ck(c.res._status === 200 && planOf() === 'free',
+    `a LATE checkout.session.completed after the cancellation left plan=${planOf()}`);
+  ck(store.setPlanCalls.length === writesBefore,
+    `the late deliveries wrote the plan ${store.setPlanCalls.length - writesBefore} time(s) — they were decided from the event snapshot, not Stripe's current state`);
+  note('late updated/checkout deliveries after a cancellation grant nothing');
 }
 
 // 4g. create-checkout must refuse a second subscription for someone already paying.

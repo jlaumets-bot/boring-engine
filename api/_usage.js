@@ -947,7 +947,7 @@ async function setPlan(userId, plan, extra) {
 }
 
 // Reverse lookup: find the user behind a Stripe subscription/customer (for webhooks).
-/* v687 — THE THIRD PLACE A FAILED READ POSED AS AN ANSWER (after stripeCustomerId in v683 and
+/* v691 — THE THIRD PLACE A FAILED READ POSED AS AN ANSWER (after stripeCustomerId in v683 and
    the health audit in v685). This collapsed an unreachable database into `null`, the same value
    it returns for "no user has this Stripe id", and logged nothing. Its caller, the webhook's
    resolveUserId, turns null into "unresolvable" — which for a subscription event means a plan
@@ -973,11 +973,20 @@ async function userIdByStripe(opts) {
 // write is even needed (the webhook's idempotency check) or whether a user already has a
 // live subscription (create-checkout's double-subscribe refusal).
 // Returns null on ANY failure — callers must treat null as "don't know", never as "no plan".
-async function getPlanSnapshot(userId) {
+// v691 — opts.strict: the one null above means BOTH "no row" and "could not read", and the
+// webhook's downgrade must tell them apart (no row = a deleted account, nothing to downgrade;
+// could not read = retry). Strict callers get { missing: true } | { unknown: true } instead of
+// null. Every existing caller passes no opts and is unaffected.
+async function getPlanSnapshot(userId, opts) {
+  const strict = !!(opts && opts.strict);
   try {
     const rows = await sbRequest('GET', `/rest/v1/user_plans?user_id=eq.${encodeURIComponent(userId)}&select=*`);
+    if (strict && !Array.isArray(rows)) {
+      console.error('getPlanSnapshot: unexpected shape — user=' + userId);
+      return { unknown: true };
+    }
     const row = (Array.isArray(rows) && rows[0]) || null;
-    if (!row) return null;
+    if (!row) return strict ? { missing: true } : null;
     return {
       plan: row.plan || null,
       effectivePlan: effectivePlan(row),
@@ -987,7 +996,7 @@ async function getPlanSnapshot(userId) {
     };
   } catch (e) {
     console.error('getPlanSnapshot FAILED — user=' + userId + ':', (e && e.message) || e);
-    return null;
+    return strict ? { unknown: true } : null;
   }
 }
 
