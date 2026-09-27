@@ -22,7 +22,10 @@ try { ({ COST_CAP_EUR } = require('./_usage')); } catch (_) {}
 // brand_connections stays listed while the (now unused) table still exists in the DB —
 // in-app publishing was removed, but the table was not dropped, and a live table with RLS on
 // and zero policies would otherwise be flagged here.
-const ZERO_POLICY_ALLOWED = ['brand_connections', 'job_heartbeats'];
+// v693: blind_tests (sql/blind-tests.sql) and brand_memory (sql/brand-memory.sql) are service-role
+// only ON PURPOSE — RLS on, no policies, every read/write goes through api/blind-test.js and
+// api/brand-memory.js. A policy on either would let the public anon key reach them.
+const ZERO_POLICY_ALLOWED = ['brand_connections', 'job_heartbeats', 'blind_tests', 'brand_memory'];
 
 // The arrays security_health() always returns. Their PRESENCE is what proves the audit
 // actually ran: a PostgREST error body is also a plain object, and treating one as an
