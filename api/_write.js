@@ -18,7 +18,7 @@
    the endpoints (api/angles.js, api/write.js) and the blind test decide that. */
 
 const crypto = require('crypto');
-const { fullBrandBlock, v2Tones, extractJson, toStr, NO_INVENTION_RULE } = require('./_brain');
+const { fullBrandBlock, v2Tones, extractJson, toStr, NO_INVENTION_RULE, resultsBlock } = require('./_brain');
 
 // v693 — looked up at CALL time, not destructured at load: a harness or the blind test that swaps
 // ./_llm in the require cache after this file loaded must still be the one that gets called.
@@ -873,14 +873,19 @@ function listOf(v, max, each) {
 // v693 — built from an explicit WHITELIST. `script` is the argument, never a field of the shape
 // reply: the shape call can suggest a title or a hook, it cannot touch the words the person says.
 // Every shape field that brings a number the script does not have, or a slot, falls back locally.
-function buildIdea(script, shaped, angle, format, allowedExtra) {
+function buildIdea(script, shaped, angle, format, allowedExtra, hookMaterial) {
   const sh = shaped && typeof shaped === 'object' && !Array.isArray(shaped) ? shaped : {};
   // v693 r2 — a field is refused when it looks like a slot in ANY spelling or brings a fact (number,
   // money, name) the script does not have. The brand's own name is always allowed.
   const allowed = script + '\n' + toStr(allowedExtra);
   const bad = (x) => { SLOT_LIKE_RE.lastIndex = 0; const hit = SLOT_LIKE_RE.test(x || ''); SLOT_LIKE_RE.lastIndex = 0; return !x || hit || /your\s+story\s*[:：]/i.test(x) || inventedFacts(x, allowed).length > 0; };
   const first = firstSpokenLine(script);
-  let hook = clip(sh.hook, 200); if (bad(hook)) hook = first;
+  // content-v3 F3 — three hooks, each guarded against the script AND the material it was allowed to
+  // use (hookMaterial: allowedMaterial() — never the AI-written results or approved posts). `hook`
+  // stays the first one for older clients. A reply with only the legacy `hook` is one candidate.
+  const candidates = Array.isArray(sh.hooks) ? sh.hooks : (sh.hook ? [sh.hook] : []);
+  const hooks = guardHooks(candidates, allowed + '\n' + toStr(hookMaterial), first).hooks;
+  const hook = hooks[0] || first;
   let title = clip(sh.title, 90); if (bad(title)) title = clip(angle.belief, 60);
   let caption = clip(sh.caption, 600); if (bad(caption)) caption = angle.belief;
   const onScreen = listOf(sh.onScreen, 6, 120).filter(x => !bad(x));
@@ -897,7 +902,7 @@ function buildIdea(script, shaped, angle, format, allowedExtra) {
     if (emphasis.length >= 6) break;
   }
   return {
-    title, hook, script,
+    title, hook, hooks, script,
     storySlots: slotsOf(script),
     // A carousel's on-screen text is its slides: taken from the script itself, never re-worded.
     onScreen: format === 'carousel' ? paragraphs(script).map(p => clip(p, 300)).slice(0, 10)
@@ -906,6 +911,48 @@ function buildIdea(script, shaped, angle, format, allowedExtra) {
     belief: angle.belief,
     genFlow: 'v2',
   };
+}
+
+// ── content-v3 F3 — THREE HOOKS ──────────────────────────────────────────────
+// The shape call offers three opening lines for the SAME script (a bold claim, a question or tension,
+// a personal moment), so the founder can film all three and post the best. Each goes through the same
+// fact guard as every other line (inventedFacts against the material the script was allowed to use,
+// plus the script itself): an inventing hook is dropped, a slot is dropped, a line over
+// HOOK_MAX_WORDS words is cut to its first sentence when that fits and dropped when it does not, and
+// near-duplicates count once. Fewer than 2 survivors: the script's own first line is the only hook.
+const HOOK_MAX_WORDS = 20;
+const HOOK_LABEL_RE = /^\s*(?:\(?\d\)?[.):\-]\s*|(?:hook\s*\d*|bold\s+claim|claim|question(?:\s*\/\s*tension)?|tension|personal(?:\s+moment)?)\s*[:\-–—]\s*)/i;
+const wordCount = (x) => toStr(x).split(/\s+/).filter(Boolean).length;
+function guardHooks(list, allowed, fallback) {
+  const out = [], seen = new Set(), dropped = [];
+  for (const raw of (Array.isArray(list) ? list : [])) {
+    let h = toStr(raw && typeof raw === 'object' ? (raw.text || raw.hook || raw.line) : raw).replace(/\s+/g, ' ').trim();
+    h = h.replace(HOOK_LABEL_RE, '').trim();
+    if (/^["“].*["”]$/.test(h)) h = h.slice(1, -1).trim();
+    if (!h) continue;
+    if (wordCount(h) > HOOK_MAX_WORDS) {
+      const first = unmaskDots((maskDots(h).match(/^[^.!?]*[.!?]/) || [''])[0]).trim();
+      if (!first || wordCount(first) > HOOK_MAX_WORDS) { dropped.push({ hook: h, why: 'too_long' }); continue; }
+      h = first;
+    }
+    SLOT_LIKE_RE.lastIndex = 0;
+    const slot = SLOT_LIKE_RE.test(h) || /your\s+story\s*[:：]/i.test(h);
+    SLOT_LIKE_RE.lastIndex = 0;
+    if (slot) { dropped.push({ hook: h, why: 'slot' }); continue; }
+    if (inventedFacts(h, allowed).length) { dropped.push({ hook: h, why: 'invented' }); continue; }
+    const k = h.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k); out.push(clip(h, 200));
+    if (out.length >= 3) break;
+  }
+  if (out.length >= 2) return { hooks: out, fallback: false, dropped };
+  const fb = toStr(fallback).trim();
+  return { hooks: fb ? [fb] : [], fallback: true, dropped };
+}
+// resultsBlock as prompt lines ([] when the brand has no marked results).
+function resultsLines(bc) {
+  const b = resultsBlock(bc || {});
+  return b ? ['', b] : [];
 }
 
 // ── PROMPTS ──────────────────────────────────────────────────────────────────
@@ -927,10 +974,11 @@ function anglesPrompt(bc, src, count) {
     NO_INVENTION_RULE,
     '',
     brandBlockV2(bc),
+  ].concat(resultsLines(bc), [
     '',
     'Reply with ONLY this JSON, no prose, no code fences:',
     '{"angles":[{"belief":"...","why":"...","hookSeed":"..."}]}',
-  ].join('\n');
+  ]).join('\n');
 }
 
 function draftPrompt(bc, src, angle, format, stories) {
@@ -958,6 +1006,8 @@ function draftPrompt(bc, src, angle, format, stories) {
       'REAL STORIES THIS PERSON HAS TOLD BEFORE. Use one ONLY if it genuinely fits this belief; never force one in. Retell it briefly in their words, do not paste it:',
       lines.join('\n'));
   }
+  // content-v3 F2 — how this brand's posted videos did. A pattern to lean on or avoid, never a fact.
+  P.push(...resultsLines(bc));
   P.push('', styleGuide(), '', brandBlockV2(bc), '',
     'Write ONLY the script, as plain text: no title, no labels, no stage directions, no hashtags, no markdown.' +
     (stories.length ? ' Then, on its own last line, write USED STORIES: followed by the ids you used, or USED STORIES: none' : ''));
@@ -1007,7 +1057,8 @@ function shapePrompt(script, format) {
     '>>>',
     '',
     'Reply with ONLY this JSON, no prose, no code fences:',
-    '{"title":"a plain 4-8 word working title","hook":"the first spoken line of the script, or a tighter version with the same meaning","onScreen":["2-5 short text overlays taken from the script"],"caption":"1-3 sentences for the post caption, same voice","shots":["3-6 simple shots one person can film on a phone"],"emphasis":["up to 6 phrases copied EXACTLY from the script: the words to stress when saying it"]}',
+    '{"title":"a plain 4-8 word working title","hooks":["a bold claim: the first spoken line of the script, or a tighter version with the same meaning","a question or tension that opens the same point","a personal moment that opens the same point"],"onScreen":["2-5 short text overlays taken from the script"],"caption":"1-3 sentences for the post caption, same voice","shots":["3-6 simple shots one person can film on a phone"],"emphasis":["up to 6 phrases copied EXACTLY from the script: the words to stress when saying it"]}',
+    'hooks: exactly 3 DIFFERENT opening lines for this same script, each at most ' + HOOK_MAX_WORDS + ' words, in this order: a bold claim, a question or tension, a personal moment. Each must lead into the script as written and say nothing the script does not.',
     'Never invent numbers, names or results. Keep [your story: ...] slots out of every field.',
   ].join('\n');
 }
@@ -1174,7 +1225,7 @@ async function runWrite(opts) {
     } catch (e) { passes.shape = 'failed'; }
   }
 
-  const idea = buildIdea(script, shaped, angle, format, bc.brandName);
+  const idea = buildIdea(script, shaped, angle, format, bc.brandName, allowed);
   return { idea, usedStories: draft.usedStories, usedSpeechSamples, warnings: warningsFor(bc), passes };
 }
 
@@ -1183,7 +1234,7 @@ module.exports = {
   usageModel, writerCall, writerCallResilient, CLAUDE_CALL_PLAN, CLAUDE_THINKING_HEADROOM, LOWER_EFFORT, DRAFT_MAX_TOKENS, SPOKEN_MAX_TOKENS, ANGLES_MAX_TOKENS, SHAPE_MAX_TOKENS, writerEffort, writerProvider, WRITER_EFFORT, startBrandAttribution,
   _internals: {
     normSource, normAngle, slotsOf, inventedFacts, numberTokens, nameTokens, claimTokens, slotifyInvented, slotNeighbourNovelty, spokenRejects, parseDraft, buildIdea, cleanScript,
-    brandBlockV2, allowedMaterial, userFacts, USER_FACT_FIELDS, AI_FILLED_FIELDS, metaOf, warningsFor, speechSamplesFor, normStories, anglesFrom,
+    brandBlockV2, allowedMaterial, userFacts, guardHooks, firstSpokenLine, HOOK_MAX_WORDS, resultsLines, USER_FACT_FIELDS, AI_FILLED_FIELDS, metaOf, warningsFor, speechSamplesFor, normStories, anglesFrom,
     DRAFT_SHARE, SHAPE_SHARE, MIN_SPOKEN_MS, MIN_SHAPE_MS, SHAPE_EFFORT,
   },
 };

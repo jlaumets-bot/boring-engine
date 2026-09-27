@@ -710,6 +710,7 @@ input:focus, textarea:focus, select:focus {
    CHILD of #tvResult, so the parent's margin never applied to it — and it is the most-used
    scroll in the app. */
 .tp-result, .vl-result-head, #ideaContent { scroll-margin-top: 84px; }
+#dqCard, #resToday { scroll-margin-top: 84px; }   /* content-v3: the question card is scrolled to when the push opens the app */
 .header-top {
   display: flex;
   align-items: center;
@@ -3976,6 +3977,28 @@ body:has(.rv2-lab) #voicePill { z-index: 9500; }
 .rv2-lab-label { font-size: 13px; font-weight: 800; margin-bottom: 6px; }
 .rv2-bar { height: 8px; border-radius: 999px; background: var(--surface2); overflow: hidden; margin: 8px 0; }
 .rv2-bar i { display: block; height: 100%; background: #16130F; }
+/* content-v3 — the daily question, "how did it do?", three hooks (tokens only: follows dark mode) */
+#dqSlot:empty, #resSlot:empty { display: none; }
+.dq-card, .res-row { margin: 0 0 12px; }
+.dq-q { font-size: 17px; overflow-wrap: anywhere; }
+.dq-text { width: 100%; box-sizing: border-box; min-height: 84px; font: inherit; font-size: 15px; line-height: 1.5; padding: 10px 12px; border-radius: 12px; border: 1.5px solid var(--border2); background: var(--surface); color: var(--text); resize: vertical; }
+.dq-ok { color: var(--green); font-weight: 600; }
+.res-title { font-size: 14px; font-weight: 700; line-height: 1.4; color: var(--text); margin: 2px 0 8px; overflow-wrap: anywhere; }
+.res-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.res-chip, .hk-opt { font: inherit; cursor: pointer; border: 1.5px solid var(--border2); background: var(--surface); color: var(--text); }
+.res-chip { flex: 1 1 0; min-width: 72px; min-height: 44px; border-radius: 999px; font-size: 14px; font-weight: 700; }
+.res-chip.on, .hk-opt.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.res-url { width: 100%; box-sizing: border-box; margin-top: 8px; min-height: 40px; font: inherit; font-size: 14px; padding: 8px 12px; border-radius: 10px; border: 1.5px solid var(--border2); background: var(--surface); color: var(--text); }
+.res-msg { font-size: 12.5px; line-height: 1.45; color: var(--red); margin-top: 6px; }
+.res-msg:empty { display: none; }
+.hk-sub { font-size: 12px; color: var(--text3); line-height: 1.45; margin: 2px 0 8px; }
+.hk-opt { display: flex; gap: 8px; align-items: flex-start; width: 100%; box-sizing: border-box; text-align: left; border-radius: 12px; padding: 10px 12px; margin: 0 0 6px; font-size: 14px; line-height: 1.4; min-height: 44px; overflow-wrap: anywhere; }
+.hk-n { flex: 0 0 auto; font-weight: 800; font-size: 12px; min-width: 16px; padding-top: 1px; }
+.hk-ask { padding: 14px 16px 12px; }
+.hk-ask-h { font-size: 16px; font-weight: 800; margin: 2px 0; color: var(--text); }
+.tp-pass { margin: 1.4em 0 .5em; }
+.tp-pass:first-child { margin-top: 0; }
+.tp-pass::before { content: attr(data-label); display: inline-block; font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; line-height: 1.3; padding: 4px 10px; border-radius: 999px; background: rgba(249,246,234,.16); color: #F9F6EA; text-shadow: none; }
 .remix-result {
   margin-top: 20px;
   border: 1px solid var(--border);
@@ -6607,6 +6630,7 @@ if (!window.supabase) {
     <button class="tp-play-btn" id="tpPlayBtn" onclick="toggleTpScroll()">&#9654;</button>
     <button class="tp-voice-btn" id="tpVoiceBtn" onclick="tpToggleVoiceFollow(this)" title="Script follows your voice"><span class="vdot"></span>Follow me</button>
     <button class="tp-voice-btn" id="tpBlurBtn" onclick="tpToggleBgBlur(this)" title="Blur the real background behind you"><span class="vdot"></span>Blur bg</button>
+    <button class="tp-voice-btn" id="tpHooksBtn" onclick="tpToggleHooks()" title="Film all the hooks in one go" style="display:none"><span class="vdot"></span>3 hooks</button>
     <span class="tp-speed-label">Speed</span>
     <input type="range" class="tp-speed-slider" id="tpSpeed" min="0.5" max="5" step="0.5" value="2">
     <button class="tp-font-btn" onclick="tpFontDown()">A-</button>
@@ -7904,6 +7928,23 @@ function _buildIdeaRows(brandId) {
     // when set, so a database without the column (sql/ideas-gen-flow.sql) is never asked for it by
     // an old idea; a v2 idea on such a database is saved without it (see insertIdeas).
     ...(idea.genFlow ? { gen_flow: String(idea.genFlow).slice(0, 20) } : {}),
+    // content-v3 — the three hooks, which one went out, and how it did (sql/idea-results.sql). EVERY save
+    // rewrites every row, so a result /api/idea-result wrote would be wiped by the next save unless it
+    // travels here too. Only named when set; a database without the columns gets the row without
+    // them (see insertIdeas).
+    ...(function () {
+      const o = {};
+      const ha = (Array.isArray(idea.hookAlts) ? idea.hookAlts : (Array.isArray(idea.hooks) ? idea.hooks : []))
+        .map(h => String(h == null ? '' : h).replace(/\s+/g, ' ').trim().slice(0, 300)).filter(Boolean).slice(0, 3);
+      if (ha.length >= 2) o.hook_alts = ha;
+      if (Number.isInteger(idea.hookUsed) && idea.hookUsed >= 0 && idea.hookUsed <= 2 && idea.hookUsed < ha.length) o.hook_used = idea.hookUsed;
+      if (idea.result === 'flop' || idea.result === 'ok' || idea.result === 'great') {
+        o.result = idea.result;
+        const d = new Date(Number(idea.resultAt) || 0); if (idea.resultAt && !isNaN(d.getTime())) o.result_at = d.toISOString();
+        const u = String(idea.postUrl == null ? '' : idea.postUrl).trim(); if (/^https:\/\/\S+$/i.test(u) && u.length <= 500) o.post_url = u;
+      }
+      return o;
+    })(),
   }));
   // Store paaSource mapping in localStorage (no DB column yet)
   const paaMap = {};
@@ -7915,6 +7956,11 @@ function _buildIdeaRows(brandId) {
     const bMap = {};
     (Array.isArray(state) ? state : []).forEach(idea => { if (idea && idea.belief && idea.title) bMap[idea.title] = String(idea.belief).slice(0, 140); });
     lsSet('belief_map', JSON.stringify(bMap));
+  } catch(e) {}
+  try {   // content-v3 — which hook went out, also kept on this device (a database without hook_used keeps it here)
+    const hMap = {};
+    (Array.isArray(state) ? state : []).forEach(idea => { if (idea && idea.title && Number.isInteger(idea.hookUsed)) hMap[idea.title] = idea.hookUsed; });
+    lsSet('hook_used_map', JSON.stringify(hMap));
   } catch(e) {}
   return rows;
 }
@@ -8021,13 +8067,14 @@ async function _saveIdeasToDBNow(brandId, rows) {
       const o = Object.assign({}, r);
       if (globalThis._ideasNoEmphasisCol) delete o.emphasis;
       if (globalThis._ideasNoGenFlowCol) delete o.gen_flow;
+      if (globalThis._ideasNoResultCols) { delete o.hook_alts; delete o.hook_used; delete o.result; delete o.result_at; delete o.post_url; }
       return o;
     };
     return Array.isArray(payload) ? payload.map(strip) : strip(payload);
   };
   const insertIdeas = async (payload) => {
     let res = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 4; attempt++) {
       res = await sb.from('ideas').insert(withoutMissing(payload));
       const err = res && res.error;
       if (err && !globalThis._ideasNoEmphasisCol && missingCol(err, 'emphasis')) {
@@ -8038,6 +8085,13 @@ async function _saveIdeasToDBNow(brandId, rows) {
       if (err && !globalThis._ideasNoGenFlowCol && missingCol(err, 'gen_flow')) {
         globalThis._ideasNoGenFlowCol = true;
         try { console.warn('ideas.gen_flow column is missing (run sql/ideas-gen-flow.sql) — saving without the flow tag.'); } catch (e) {}
+        continue;
+      }
+      // content-v3 — the same rule for the columns sql/idea-results.sql adds (one migration, one group):
+      // only the hooks / result are lost, never the idea.
+      if (err && !globalThis._ideasNoResultCols && ['hook_alts', 'hook_used', 'result', 'post_url'].some(c => missingCol(err, c))) {
+        globalThis._ideasNoResultCols = true;
+        try { console.warn('ideas.hook_alts / result columns are missing (run sql/idea-results.sql) — saving without them.'); } catch (e) {}
         continue;
       }
       return res;
@@ -8196,6 +8250,11 @@ async function loadIdeasFromDB() {
     emphasis: tpCleanEmphasis(row.emphasis, { script: row.script, boldText: row.bold_text, caption: row.caption, hook: row.hook }),
     // v693 — read back, or the next save (which rewrites every row) would drop it
     ...(row.gen_flow ? { genFlow: String(row.gen_flow) } : {}),
+    // content-v3 — read back too, or the next save (which rewrites every row) would drop them
+    ...((Array.isArray(row.hook_alts) && row.hook_alts.filter(Boolean).length >= 2) ? { hookAlts: row.hook_alts.filter(Boolean).map(h => String(h)).slice(0, 3) } : {}),
+    ...(Number.isInteger(row.hook_used) ? { hookUsed: row.hook_used } : {}),
+    ...((row.result === 'flop' || row.result === 'ok' || row.result === 'great')
+      ? { result: row.result, resultAt: (Date.parse(row.result_at) || 0), ...(row.post_url ? { postUrl: String(row.post_url) } : {}) } : {}),
     // `doneAt` lives ONLY in this device's localStorage snapshot — the ideas table has no
     // done_at column, so on a SECOND device every finished post had no timestamp and the
     // 30-day Done archive (`!i.doneAt || i.doneAt > cutoff`) never pruned anything.
@@ -8215,6 +8274,10 @@ async function loadIdeasFromDB() {
   try {   // v693 — see _buildIdeaRows
     const bMap = JSON.parse(lsGet('belief_map') || '{}');
     result.forEach(idea => { if (bMap && typeof bMap[idea.title] === 'string' && bMap[idea.title]) idea.belief = bMap[idea.title]; });
+  } catch(e) {}
+  try {   // content-v3 — see _buildIdeaRows
+    const hMap = JSON.parse(lsGet('hook_used_map') || '{}');
+    result.forEach(idea => { if (!Number.isInteger(idea.hookUsed) && hMap && Number.isInteger(hMap[idea.title])) idea.hookUsed = hMap[idea.title]; });
   } catch(e) {}
   return result;
 }
@@ -8570,6 +8633,7 @@ async function initApp() {
       if (todayEl) { todayEl.classList.add('active'); }
     }
 
+    try { if (typeof dqFromUrl === 'function') dqFromUrl(); } catch(e) {}   // content-v3: opened from the daily push → the question card
     try { applyFeatureLocks(); } catch(e) { debugLog('applyFeatureLocks error: ' + e.message); }
 
     setHeaderBrand(settings.brandName);
@@ -9836,6 +9900,9 @@ function openTeleprompter(id) {
   _tpIdeaId = id;
   window._tpSplitIdeaId = id;   // v478: which post's graphics to composite after filming
   tpSyncDoneBtn();
+  // content-v3 — "3 hooks" is per post: opening another post starts in the normal mode
+  if (typeof tpHooks !== 'undefined' && tpHooks.id !== id) { tpHooks.on = false; tpHooks.id = id; }
+  try { if (typeof tpSyncHooksBtn === 'function') tpSyncHooksBtn(idea); } catch (e) {}
   document.getElementById('tpTitle').textContent = idea.title;
   const body = document.getElementById('tpBody');
   if (idea.format === 'statement') {
@@ -9853,7 +9920,8 @@ function openTeleprompter(id) {
   // Teleprompter = ONLY the spoken script — no shot list / on-screen text clutter.
   const _scriptTxt = idea.script || idea.hook || idea.title || '';
   // v485: set for SPEAKING — sentence blocks, sense lines, breath dots, stress marks
-  const _scFmt = tpFormatScript(_scriptTxt, idea.emphasis) || nl2br(_scriptTxt);
+  const _hkP = (typeof tpHooks !== 'undefined' && tpHooks.on && typeof tpHookPasses === 'function') ? tpHookPasses(idea) : null;
+  const _scFmt = _hkP ? tpHookPassesHtml(_hkP, idea.emphasis) : (tpFormatScript(_scriptTxt, idea.emphasis) || nl2br(_scriptTxt));
   body.innerHTML = `<div class="tp-read-line" aria-hidden="true"></div>` + tpPrimer(_scFmt)
     + `<div class="tp-script" style="font-size:${tpFontSize}px">${_scFmt}</div>`;
   body.scrollTop = 0;
@@ -13232,6 +13300,8 @@ function moveStage(id, newStatus) {
   saveState();
   renderPipeline();
   renderNav();
+  // content-v3 — filmed with three hooks: which one went out? (skip allowed)
+  if (newStatus === 'done' && prevStatus !== 'done' && typeof hkAskUsed === 'function') { try { hkAskUsed(id); } catch (e) {} }
   if (typeof mascotReact === 'function') {
     if (newStatus === 'done' || newStatus === 'posted') mascotReact('celebrate', '🎉');
     else if (newStatus === 'filming') mascotReact('nod', '📹');
@@ -14167,6 +14237,7 @@ function renderTodayView() {
   container.innerHTML = `
     <div style="padding:6px 0 12px;max-width:480px;margin:0 auto;">
       ${homeBrainNudgeHtml()}
+      <div id="dqSlot"></div><div id="resSlot"></div>
       <div class="tp-shz" id="tpShz">
         <div class="tp-shz-day">${today} · ${escHtml(community)}</div>
         <div class="tp-shz-stage${_ok ? '' : ' locked'}">
@@ -14185,6 +14256,9 @@ function renderTodayView() {
       <div id="tvResult"></div>
     </div>
   `;
+  // content-v3 — today's question and the latest filmed post waiting for its result
+  try { if (typeof dqMount === 'function') dqMount(); } catch (e) {}
+  try { const _rs = document.getElementById('resSlot'); if (_rs && typeof resTodayHtml === 'function') _rs.innerHTML = resTodayHtml(); } catch (e) {}
 }
 function setTvDelivery(d){ window._tvDelivery = (d==='faceless'?'faceless':'faceon'); try{ lsSet('tv_delivery', window._tvDelivery); }catch(e){} renderTodayView(); }
 // ── v442 "Pick the angle myself" sheet — the escape hatch for format + delivery ──
@@ -15826,6 +15900,9 @@ function renderDetailContent(idea) {
       </div>
     </div>`;
   }
+  // content-v3 — the three hooks as options, and (once filmed) how it did
+  if (typeof ideaHooksHtml === 'function') html += ideaHooksHtml(idea);
+  if (typeof resDetailHtml === 'function') html += resDetailHtml(idea);
   if(hasPreview) {
     html += `<div class="detail-section"><div class="detail-label">${idea.format==='statement'?'Text':'Preview'} ${sectionCopyBtn(idea.boldText, idea.format==='statement'?'text':'preview')}</div><div class="detail-text preview">${nl2br(idea.boldText)}</div></div>`;
   }
@@ -20438,6 +20515,9 @@ function rv2OriginFor(name, meta) {
       }, classicLabel: 'Use the classic answer instead',
       onSaved: () => { try { paaUsed.add(q.toLowerCase().trim()); savePAAState(); } catch (e) {} try { renderPAASection(); } catch (e) {} } });
   }
+  // content-v3 — "Turn into a script" on today's question: the founder's own answer is the source
+  if (name === 'question') return Object.assign(base, { title: 'Turn your answer into a script', extra: { sparkSource: true },
+    classicLabel: 'Use the classic writer instead' });
   if (name === 'quickpost') return Object.assign(base, { title: "Today's post",
     extra: Object.assign({ community: m.community || 'All', day: m.day || undefined }, m.delivery ? { delivery: m.delivery } : {}),
     classic: () => generateTodayTabPost(), classicLabel: 'Use the classic Quick Post instead' });
@@ -20673,6 +20753,7 @@ function rv2BuildIdea(s) {
   if (taken.has(title.toLowerCase())) { let n = 2; while (taken.has((title + ' (' + n + ')').toLowerCase())) n++; title = title + ' (' + n + ')'; }
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const isRemix = !s.origin || s.origin.name === 'remix';
+  const _ha = (typeof ideaHookAlts === 'function') ? ideaHookAlts(w.hooks) : [];   // content-v3: the three hooks
   return { idea: Object.assign({
     id: (Array.isArray(state) ? state.length : 0), title: title, hook: txt(w.hook).trim(), script: script,
     screen: screen, boldText: boldText,
@@ -20682,7 +20763,7 @@ function rv2BuildIdea(s) {
     dismissReason: null, assignee: '', isGenerated: true, isRemix: isRemix,
     originalCreator: isRemix ? ((s.source && s.source.creator) || '') : '', genFlow: 'v2',
     belief: String((s.picked && s.picked.belief) || '').slice(0, 140), createdAt: Date.now(), freshAt: Date.now()
-  }, (s.origin && s.origin.extra) || {}) };
+  }, _ha.length ? { hookAlts: _ha } : {}, (s.origin && s.origin.extra) || {}) };
 }
 // v693 r3 — SAVED MEANS SAVED. The run and its draft are cleared, and "Saved" is said, only once the
 // database confirms. On a failed save the idea is taken back out of the list and the script stays
@@ -20699,7 +20780,7 @@ async function rv2Save() {
   const existing = (s.savedIdea && Array.isArray(state) && state.indexOf(s.savedIdea) >= 0) ? s.savedIdea : null;
   let idea = built.idea;
   const inIdeas = (typeof IDEAS !== 'undefined' && Array.isArray(IDEAS) && IDEAS !== state);
-  if (existing) { ['script', 'boldText', 'screen', 'emphasis'].forEach(f => { existing[f] = built.idea[f]; }); idea = existing; }
+  if (existing) { ['script', 'boldText', 'screen', 'emphasis', 'hookAlts'].forEach(f => { if (f in built.idea || f !== 'hookAlts') existing[f] = built.idea[f]; }); idea = existing; }
   const left = rv2Slots(idea.script).length;
   s.saving = true; s.err = ''; rv2Render();
   if (!existing) { state.push(idea); if (inIdeas) IDEAS.push(idea); }
@@ -20934,6 +21015,8 @@ function rv2TagFlow(idea) {
   const b = typeof o.belief === 'string' ? o.belief.replace(/\s+/g, ' ').trim().slice(0, 140) : '';
   if (b) { o.belief = b; o.genFlow = 'v2-batch'; }
   else { delete o.belief; delete o.genFlow; }
+  // content-v3 — the writer's three openings for the same script, saved with the idea as hook_alts
+  if (typeof ideaHookAlts === 'function') { const ha = ideaHookAlts(o.hooks); if (ha.length) o.hookAlts = ha; }
   return o;
 }
 
@@ -21508,6 +21591,357 @@ function removeRemix(idx) {
   saveRemixes();
   renderRemixResults();
 }
+
+/* content-v3 (leaf U) — BEGIN. Three things a chat window can't do (.unlazy/content-v3/PLAN.md):
+   F1 the app asks the founder one question a day and keeps the answer as a story,
+   F2 it asks how a filmed post did (Flopped / OK / Great) so the writers learn from it,
+   F3 the writer gives three openings for the same script and the teleprompter films all three.
+   Every function here is a top-level declaration so scripts/verify/rv3-ui-1.mjs can run it. */
+
+// ═══ F3 THREE HOOKS ═══
+// 2-3 different, non-empty openings; anything else is "no hooks" ([]).
+function ideaHookAlts(v) {
+  const out = [], seen = new Set();
+  (Array.isArray(v) ? v : []).forEach(h => {
+    const t = String(h == null ? '' : h).replace(/\s+/g, ' ').trim().slice(0, 300);
+    const k = t.toLowerCase();
+    if (t && !seen.has(k) && out.length < 3) { seen.add(k); out.push(t); }
+  });
+  return out.length >= 2 ? out : [];
+}
+function ideaHooksInner(idea) {
+  const alts = ideaHookAlts(idea && idea.hookAlts);
+  if (!alts.length) return '';
+  const cur = String((idea && idea.hook) == null ? '' : idea.hook).replace(/\s+/g, ' ').trim().toLowerCase();
+  return '<div class="detail-label">' + alts.length + ' hooks</div>'
+    + '<div class="hk-sub">Tap one to make it the main hook. In the teleprompter, "' + alts.length + ' hooks" films them all in one go.</div>'
+    + alts.map((h, k) => '<button type="button" class="hk-opt' + (h.toLowerCase() === cur ? ' on' : '') + '" aria-pressed="' + (h.toLowerCase() === cur) + '"'
+      + ' onclick="event.stopPropagation();hkPick(' + Number(idea.id) + ',' + k + ')"><span class="hk-n">' + (k + 1) + '</span><span>' + escapeHtml(h) + '</span></button>').join('');
+}
+// the idea view: the hooks as options (nothing when the idea has fewer than 2)
+function ideaHooksHtml(idea) {
+  const inner = ideaHooksInner(idea);
+  return inner ? '<div class="detail-section hk-box" id="hk-' + Number(idea.id) + '">' + inner + '</div>' : '';
+}
+// tapping a hook makes it the idea's main hook (the script is left as it is) and saves
+function hkPick(id, k) {
+  const idea = Array.isArray(state) ? state[id] : null;
+  const alts = ideaHookAlts(idea && idea.hookAlts);
+  if (!idea || !alts[k]) return false;
+  idea.hook = alts[k];
+  try { saveState(); } catch (e) {}
+  const box = document.getElementById('hk-' + id);
+  if (box) box.innerHTML = ideaHooksInner(idea);
+  return true;
+}
+// Teleprompter "3 hooks": pass 1 = hook 1 + the script, then each other hook on its own.
+// The script usually opens with a hook already — that opening is dropped so pass 1 never says two.
+let tpHooks = { on: false, id: null };
+function tpHookPasses(idea) {
+  const alts = ideaHookAlts(idea && idea.hookAlts);
+  if (alts.length < 2) return null;
+  const norm = t => String(t == null ? '' : t).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  let body = String((idea.script == null ? '' : idea.script)).trim();
+  const lines = body.split('\n');
+  if (norm(lines[0]) && alts.some(h => norm(h) === norm(lines[0]))) body = lines.slice(1).join('\n').trim();
+  else {
+    const hit = alts.find(h => body.toLowerCase().startsWith(h.toLowerCase()));
+    if (hit) body = body.slice(hit.length).trim();
+  }
+  const n = alts.length;
+  const passes = [{ n: 1, of: n, label: 'Hook 1 of ' + n + ' + script', text: alts[0] + (body ? '\n' + body : '') }];
+  for (let k = 1; k < n; k++) passes.push({ n: k + 1, of: n, label: 'Hook ' + (k + 1) + ' of ' + n + ' — just this line', text: alts[k] });
+  return passes;
+}
+// The labels are drawn by CSS (::before of data-label), so "Follow me" never tries to match them as words.
+function tpHookPassesHtml(passes, emphasis) {
+  return (passes || []).map(p => '<div class="tp-pass" data-label="' + escapeHtml(p.label) + '"></div>'
+    + (tpFormatScript(p.text, emphasis) || nl2br(p.text))).join('');
+}
+function tpSyncHooksBtn(idea) {
+  const b = document.getElementById('tpHooksBtn');
+  if (!b) return false;
+  const passes = (idea && idea.format !== 'statement') ? tpHookPasses(idea) : null;
+  b.style.display = passes ? 'inline-flex' : 'none';
+  if (passes) { b.innerHTML = '<span class="vdot"></span>' + passes.length + ' hooks'; b.classList.toggle('on', !!tpHooks.on); }
+  return !!passes;
+}
+function tpToggleHooks() {
+  const id = (typeof _tpIdeaId !== 'undefined') ? _tpIdeaId : null;
+  const idea = (id != null && Array.isArray(state)) ? state[id] : null;
+  if (!idea || idea.format === 'statement' || !tpHookPasses(idea)) return false;
+  if (typeof tpMediaRecorder !== 'undefined' && tpMediaRecorder && tpMediaRecorder.state === 'recording') {
+    try { showToast('Stop recording first, then switch.'); } catch (e) {}
+    return false;
+  }
+  tpHooks.on = !tpHooks.on; tpHooks.id = id;
+  openTeleprompter(id);
+  if (tpHooks.on) { try { showToast('Say hook 1 with the script, then hook 2 and hook 3 on their own. Keep the best take.', 6000); } catch (e) {} }
+  return tpHooks.on;
+}
+// Marking a post filmed asks which opening went out. Kept on the idea (saved with the idea and
+// on this device) and sent with the result later — /api/idea-result needs a result, so never alone.
+function hkAskUsed(id) {
+  const idea = Array.isArray(state) ? state[id] : null;
+  const alts = ideaHookAlts(idea && idea.hookAlts);
+  if (!idea || alts.length < 2 || Number.isInteger(idea.hookUsed) || idea._hkSkipped) return false;
+  let wrap = document.getElementById('hkAsk');
+  if (!wrap) { wrap = document.createElement('div'); wrap.id = 'hkAsk'; document.body.appendChild(wrap); }
+  wrap.setAttribute('data-title', String(idea.title == null ? '' : idea.title));
+  wrap.setAttribute('data-brand', String((typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || ''));
+  wrap.innerHTML = '<div class="more-backdrop" onclick="hkAskSkip()"></div><div class="more-sheet hk-ask" role="dialog" aria-label="Which hook did you post?">'
+    + '<div class="hk-ask-h">Which hook did you post?</div><div class="hk-sub">So your next scripts learn which kind of opening works for you.</div>'
+    + alts.map((h, k) => '<button type="button" class="hk-opt" onclick="hkSetUsed(' + k + ')"><span class="hk-n">' + (k + 1) + '</span><span>' + escapeHtml(h) + '</span></button>').join('')
+    + '<div class="rv2-foot"><button type="button" class="rv2-link" onclick="hkAskSkip()">Skip</button></div></div>';
+  return true;
+}
+function hkAskIdea() {
+  const w = document.getElementById('hkAsk');
+  if (!w) return null;
+  const bid = String((typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || '');
+  if (w.getAttribute('data-brand') !== bid) return null;   // the brand changed under the sheet
+  const t = w.getAttribute('data-title');
+  return (Array.isArray(state) ? state : []).find(i => i && String(i.title == null ? '' : i.title) === t) || null;
+}
+function hkAskClose() { const w = document.getElementById('hkAsk'); if (w) { try { w.remove(); } catch (e) { w.innerHTML = ''; } } }
+function hkSetUsed(k) {
+  const idea = hkAskIdea();
+  hkAskClose();
+  const alts = ideaHookAlts(idea && idea.hookAlts);
+  if (!idea || !(k >= 0 && k < alts.length)) return false;
+  idea.hookUsed = k;
+  try { saveState(); } catch (e) {}
+  try { showToast('Got it — hook ' + (k + 1) + '. Tell us how the post did in a day or so.', 4000); } catch (e) {}
+  return true;
+}
+function hkAskSkip() { const idea = hkAskIdea(); if (idea) idea._hkSkipped = true; hkAskClose(); }
+
+// ═══ F2 "HOW DID IT DO?" ═══
+const RES_LABELS = { flop: 'Flopped', ok: 'OK', great: 'Great' };
+const RES_WAIT_MS = 24 * 3600 * 1000;
+let _resOff = false;            // the server said the results columns aren't there yet: no row anywhere
+const _resBusy = new Set();     // titles whose result is on its way
+// Asked once a filmed post has had a day out there. doneAt is set when it is marked done (moveStage)
+// and kept on this device; an idea with no doneAt at all (older posts, or a row from another device
+// that lost it) is asked straight away rather than never.
+function resEligible(idea, now) {
+  if (_resOff || !idea || idea.status !== 'done' || idea.result) return false;
+  const at = Number(idea.doneAt) || 0;
+  return !at || ((now || Date.now()) - at >= RES_WAIT_MS);
+}
+function resControlsHtml(idea, where) {
+  const id = Number(idea.id), cur = idea.result || '';
+  return '<div class="res-chips">' + ['flop', 'ok', 'great'].map(r => '<button type="button" class="res-chip' + (cur === r ? ' on' : '') + '" aria-pressed="' + (cur === r) + '"'
+      + ' onclick="event.stopPropagation();resSet(' + id + ',\'' + r + '\',\'' + where + '\')">' + RES_LABELS[r] + '</button>').join('') + '</div>'
+    + '<input type="url" inputmode="url" class="res-url" id="resUrl-' + where + '-' + id + '" placeholder="Post link (optional)" maxlength="500" value="'
+      + escapeHtml(idea.postUrl || '') + '" onclick="event.stopPropagation()">'
+    + '<div class="res-msg" id="resMsg-' + where + '-' + id + '" role="status"></div>';
+}
+// Today: the latest filmed post still waiting for its result (one at a time)
+function resTodayHtml() {
+  const now = Date.now();
+  const list = (Array.isArray(state) ? state : []).filter(i => resEligible(i, now))
+    .sort((a, b) => (Number(b.doneAt) || 0) - (Number(a.doneAt) || 0));
+  const idea = list[0];
+  if (!idea) return '';
+  return '<div class="rv2-card res-row" id="resToday"><div class="rv2-lbl">How did it do?</div>'
+    + '<div class="res-title">' + escapeHtml(asText(idea.title)) + '</div>' + resControlsHtml(idea, 't') + '</div>';
+}
+// the idea's own view: set or change it any time once it is filmed
+function resDetailHtml(idea) {
+  if (_resOff || !idea || idea.status !== 'done') return '';
+  return '<div class="detail-section res-detail" id="resD-' + Number(idea.id) + '"><div class="detail-label">How did it do?</div>' + resControlsHtml(idea, 'd') + '</div>';
+}
+function resRepaint(idea) {
+  const t = document.getElementById('resSlot');
+  if (t) t.innerHTML = resTodayHtml();
+  const id = Number(idea && idea.id);
+  const d = document.getElementById('resD-' + id);
+  if (d && Array.isArray(state) && state[id] === idea) d.innerHTML = _resOff ? '' : '<div class="detail-label">How did it do?</div>' + resControlsHtml(idea, 'd');
+}
+function resMsg(id, where, text) {
+  const el = document.getElementById('resMsg-' + where + '-' + id);
+  if (el) el.textContent = text; else { try { showToast(text, 6000); } catch (e) {} }
+}
+// The ideas table is rewritten on every save (new row ids), so the row is found by title, after
+// any save still in flight has landed.
+async function resDbId(idea, brandId) {
+  try { if (typeof _ideasSaveChain !== 'undefined' && _ideasSaveChain) await _ideasSaveChain; } catch (e) {}
+  if (!sb || !brandId || !idea || !idea.title) return null;
+  const r = await sb.from('ideas').select('id').eq('brand_id', brandId).eq('title', String(idea.title))
+    .order('created_at', { ascending: false }).range(0, 0);
+  if (!r || r.error || !Array.isArray(r.data) || !r.data.length) return null;
+  return r.data[0].id;
+}
+async function resSet(id, result, where) {
+  const idea = Array.isArray(state) ? state[id] : null;
+  if (!idea || !RES_LABELS[result] || _resOff || idea.status !== 'done') return false;
+  const key = String(idea.title == null ? '' : idea.title);
+  if (_resBusy.has(key)) return false;
+  const brandId = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || null;
+  if (!brandId) return false;
+  const urlEl = document.getElementById('resUrl-' + where + '-' + id);
+  const url = String((urlEl && urlEl.value) || '').trim();
+  if (url && (!/^https:\/\/\S+$/i.test(url) || url.length > 500)) { resMsg(id, where, 'A post link has to start with https:// (and be under 500 characters).'); return false; }
+  const prev = { result: idea.result, resultAt: idea.resultAt, postUrl: idea.postUrl };
+  idea.result = result; idea.resultAt = Date.now(); if (url) idea.postUrl = url;   // shown at once
+  _resBusy.add(key);
+  resRepaint(idea);
+  let r = null;
+  try {
+    const dbId = await resDbId(idea, brandId);
+    if (dbId == null) r = { ok: false, status: 0, data: { error: "Couldn't find this post in your account just now — try again in a moment." } };
+    else {
+      const body = { ideaId: dbId, result: result };
+      if (url) body.postUrl = url;
+      if (Number.isInteger(idea.hookUsed) && idea.hookUsed >= 0 && idea.hookUsed <= 2) body.hookUsed = idea.hookUsed;
+      r = await rv2Post('/api/idea-result', body);
+    }
+  } catch (e) { r = { ok: false, status: 0, data: { error: _leanErrMsg(e, "Couldn't reach the server — try again.") } }; }
+  _resBusy.delete(key);
+  if (r && r.ok) {
+    resRepaint(idea);
+    if (where === 't') { try { showToast('Saved — your next ideas learn from it.', 3500); } catch (e) {} }
+    return true;
+  }
+  idea.result = prev.result; idea.resultAt = prev.resultAt; idea.postUrl = prev.postUrl;   // roll back
+  if (r && r.status === 503 && r.data && r.data.code === 'results_not_ready') { _resOff = true; resRepaint(idea); return false; }
+  resRepaint(idea);
+  resMsg(id, where, rv2ErrText(r, "Couldn't save that — try again."));
+  return false;
+}
+
+// ═══ F1 THE DAILY QUESTION ═══
+let _dq = null;               // { brandId, day, status: loading|ready|answered|error|hidden, q, date, err, draft, answer, saving }
+let _dqOpenPending = false;   // the app was opened from the daily push (q=1): open the card once it is there
+function dqLocalDay() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function dqReadAnswer() {
+  try { const d = JSON.parse(lsGet('dq_answer') || 'null'); return (d && typeof d === 'object') ? d : null; } catch (e) { return null; }
+}
+// Today calls this on every render: it loads once per brand per day and otherwise just paints.
+function dqMount() {
+  const bid = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || null;
+  if (!bid) { dqRender(); return; }
+  if (!_dq || _dq.brandId !== bid || _dq.day !== dqLocalDay()) { dqLoad(); return; }
+  dqRender();
+}
+async function dqLoad() {
+  const bid = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || null;
+  if (!bid) return;
+  const s = { brandId: bid, day: dqLocalDay(), status: 'loading', q: null, date: '', err: '', draft: '', answer: '', saving: false };
+  _dq = s; dqRender();
+  let r;
+  try { r = await rv2Post('/api/daily-question', { action: 'get', brandId: bid }); } catch (e) { r = { ok: false, status: 0, data: {} }; }
+  if (_dq !== s) return;   // another brand (or a newer load) took over
+  // not deployed yet (404) or not ready (503): no card at all, nothing broken on screen
+  if (r.status === 404 || r.status === 503) { s.status = 'hidden'; dqRender(); _dqOpenPending = false; return; }
+  const q = r.ok && r.data ? r.data.question : null;
+  if (!q || q.id == null || !String(q.text == null ? '' : q.text).trim()) {
+    s.status = 'error';
+    s.err = r.ok ? "Today's question didn't come through — try again." : (r.status === 0 ? "Couldn't reach the server — try again." : rv2ErrText(r, "Couldn't load today's question — try again."));
+    dqRender(); return;
+  }
+  s.q = { id: q.id, text: String(q.text).trim().slice(0, 400), kind: String(q.kind == null ? '' : q.kind) };
+  s.date = String(r.data.date == null ? '' : r.data.date);
+  if (r.data.answeredToday === true) {
+    s.status = 'answered';
+    const mine = dqReadAnswer();
+    if (mine && String(mine.questionId) === String(s.q.id) && mine.date === s.date && mine.text) s.answer = String(mine.text);
+  } else s.status = 'ready';
+  dqRender();
+  if (_dqOpenPending) dqOpen();
+}
+function dqHtml(s) {
+  const bid = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || null;
+  if (!s || s.status === 'hidden' || !bid || s.brandId !== bid) return '';
+  let h = '<div class="rv2-card dq-card" id="dqCard"><div class="rv2-step">Today’s question</div>';
+  if (s.status === 'loading') return h + '<div class="rv2-sub">Getting today’s question…</div></div>';
+  if (!s.q) return h + '<div class="rv2-err" role="alert">' + escapeHtml(s.err) + '</div><div class="rv2-actions"><button type="button" onclick="dqLoad()">Try again</button></div></div>';
+  h += '<div class="rv2-h dq-q">' + escapeHtml(s.q.text) + '</div>';
+  if (s.status === 'answered') {
+    h += '<div class="rv2-note dq-ok" role="status">Saved — it’s in your story bank.</div>';
+    if (s.answer) h += '<div class="rv2-actions"><button type="button" class="primary" id="dqScriptBtn" onclick="dqToScript(this)">Turn into a script</button></div>';
+    return h + '</div>';
+  }
+  const mic = (typeof ICO === 'object' && ICO && ICO.mic) ? ICO.mic : '';
+  return h + '<div class="rv2-sub">Answer in your own words — a real example beats a polished one. It goes into your story bank, so your scripts can use it.</div>'
+    + '<textarea id="dqText" class="dq-text" rows="3" placeholder="Say it or type it…" oninput="dqDraft(this.value)">' + escapeHtml(s.draft || '') + '</textarea>'
+    + (s.err ? '<div class="rv2-err" role="alert">' + escapeHtml(s.err) + '</div>' : '')
+    + '<div class="rv2-actions"><button type="button" class="vl-mic dq-mic" id="dqMic" onclick="dqDictate(this)" aria-label="Answer by voice">' + mic + ' Say it</button>'
+    + '<button type="button" class="primary" id="dqSaveBtn" onclick="dqSave()"' + (s.saving ? ' disabled' : '') + '>' + (s.saving ? 'Saving…' : 'Save') + '</button></div></div>';
+}
+function dqRender() { const el = document.getElementById('dqSlot'); if (el) el.innerHTML = dqHtml(_dq); }
+function dqDraft(v) { if (_dq) _dq.draft = String(v == null ? '' : v); }
+function dqDictate(btn) { return dictateInto('dqText', btn, 'Answering today’s question'); }
+async function dqSave() {
+  const s = _dq;
+  if (!s || !s.q || s.saving || s.status !== 'ready') return false;
+  const el = document.getElementById('dqText');
+  const raw = String((el ? el.value : s.draft) == null ? '' : (el ? el.value : s.draft)).replace(/\s+/g, ' ').trim();
+  if (!raw) { s.err = 'Type or say your answer first.'; dqRender(); return false; }
+  let text = raw;
+  if (text.length > 600) { text = text.slice(0, 600); const sp = text.lastIndexOf(' '); if (sp > 360) text = text.slice(0, sp); }
+  s.draft = raw; s.saving = true; s.err = ''; dqRender();
+  const _sameBrand = brandGate();   // the answer is kept on THIS brand's device store only if it is still open
+  let r;
+  try { r = await rv2Post('/api/daily-question', { action: 'answer', brandId: s.brandId, questionId: s.q.id, text: text }); } catch (e) { r = { ok: false, status: 0, data: {} }; }
+  s.saving = false;
+  if (_dq !== s) return false;
+  const code = String((r.data && (r.data.code || r.data.error)) || '');
+  if (r.ok && code !== 'memory_write_unknown') {
+    s.status = 'answered'; s.answer = text; s.draft = '';
+    try { if (_sameBrand()) lsSet('dq_answer', JSON.stringify({ date: s.date, questionId: s.q.id, text: text })); } catch (e) {}
+    try { if (typeof bmInvalidate === 'function') bmInvalidate(); } catch (e) {}
+    dqRender(); return true;
+  }
+  if (code === 'memory_full') s.err = 'Your story bank is full — delete one in Settings.';
+  else if (code === 'memory_write_unknown') s.err = 'Couldn’t confirm it was saved — check your stories.';
+  else if (r.status === 0) s.err = 'Couldn’t reach the server — your answer is still here. Try again.';
+  else s.err = rv2ErrText(r, 'Couldn’t save your answer — try again.');
+  dqRender(); return false;
+}
+// the answer becomes the source of the normal opinion-first writer (the rv2 sheet)
+function dqToScript(btn) {
+  const s = _dq;
+  if (!s || !s.q || !s.answer) return false;
+  const text = ('THE QUESTION I WAS ASKED: ' + s.q.text + '\n\nMY ANSWER, IN MY OWN WORDS: ' + s.answer).slice(0, 12000);
+  return rv2Start(btn || null, { kind: 'note', text: text }, { host: 'rv2Sheet', origin: { name: 'question', meta: { questionId: String(s.q.id) } } });
+}
+function dqOpen() {
+  _dqOpenPending = true;
+  if (!(typeof currentBrand !== 'undefined' && currentBrand)) return false;   // opened once a brand is there
+  try { if (typeof activeView !== 'undefined' && activeView !== 'today' && typeof switchView === 'function') switchView('today'); } catch (e) {}
+  const s = _dq;
+  if (!s || s.status === 'loading') return false;   // dqLoad opens it when it arrives
+  _dqOpenPending = false;
+  const card = document.getElementById('dqCard');
+  if (!card) return false;
+  try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+  const ta = document.getElementById('dqText');
+  if (ta && s.status === 'ready') { try { ta.focus(); } catch (e) {} }
+  return true;
+}
+// The daily push opens /app.html?...&q=1: open the question card and take q out of the address.
+function dqFromUrl() {
+  let p;
+  try { p = new URLSearchParams(location.search); } catch (e) { return false; }
+  if (p.get('q') !== '1') return false;
+  p.delete('q');
+  const qs = p.toString();
+  try { history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + (location.hash || '')); } catch (e) {}
+  dqOpen();
+  return true;
+}
+// A window that was already open is only focused by the notification (sw.js), never reloaded.
+try {
+  if (typeof navigator !== 'undefined' && navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+    navigator.serviceWorker.addEventListener('message', function (e) { if (e && e.data && e.data.type === 'cs-open-question') { try { dqOpen(); } catch (_) {} } });
+  }
+} catch (e) {}
+/* content-v3 (leaf U) — END */
 
 // Non-blocking clipboard copy — never uses a blocking prompt() (which freezes the page,
 // especially on mobile). Falls back to a hidden textarea + execCommand, then a gentle toast.

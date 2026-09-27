@@ -532,6 +532,61 @@ function storiesBlock(bc, cap) {
   return 'REAL STORIES THIS PERSON HAS TOLD (true, in their own words). Where a line needs proof, use one of these ONLY if it genuinely fits: retell it briefly, never paste it and never embellish it. Where none fits, write a [your story: <what to tell>] slot instead:\n' + lines.join('\n');
 }
 
+// content-v3 F2 — WHAT WORKED FOR THIS BRAND. bc.results (api/_brandctx.js loadResults): the latest
+// ideas the founder marked after posting — [{title, hook, hookAlts[], hookUsed, result}], newest
+// first. Great/OK ones are patterns to lean on, flops are angles and hooks not to repeat; when the
+// founder said which of the three hooks was posted on a great one, the winning hook's STYLE is named.
+// Everything in here is text THIS APP wrote, so the block says it is a pattern, never a fact: the
+// writers keep it out of their allowed material (api/_write.js userFacts never reads bc.results).
+// Bounded: whole lines only, at most `cap` characters (default RESULTS_BLOCK_CAP); the flops get
+// their own share so a long run of wins can never push every "don't repeat this" out.
+const RESULTS_BLOCK_CAP = 1400;
+function hookStyleOf(h) {
+  const s = String(h == null ? '' : h).trim();
+  if (!s) return '';
+  if (/\?["'”’)]*\s*$/.test(s)) return 'a question / tension opener';
+  if (/^(?:i|i'm|i’m|i've|i’ve|i'd|i’d|i was|my|me|when i|the day i|last (?:week|month|year)|yesterday|this morning)\b/i.test(s)) return 'a personal-moment opener';
+  return 'a bold-claim opener';
+}
+function resultsBlock(bc, cap) {
+  const list = (Array.isArray(bc && bc.results) ? bc.results : []).filter(r => r && ['great', 'ok', 'flop'].includes(r.result));
+  if (!list.length) return '';
+  const max = Number(cap) > 0 ? Number(cap) : RESULTS_BLOCK_CAP;
+  const one = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
+  const posted = (r) => {
+    const alts = Array.isArray(r.hookAlts) ? r.hookAlts : [];
+    const used = Number.isInteger(r.hookUsed) && alts[r.hookUsed] ? one(alts[r.hookUsed], 160) : '';
+    return { hook: used || one(r.hook, 160), known: !!used };
+  };
+  const line = (r) => {
+    const p = posted(r);
+    const t = one(r.title, 90);
+    let s = '- ' + r.result.toUpperCase() + ': ' + (t ? '"' + t + '"' : '(untitled)') + (p.hook ? ', opened with "' + p.hook + '"' : '');
+    if (r.result === 'great' && p.known) s += ' (the winning hook was ' + hookStyleOf(p.hook) + ')';
+    return s;
+  };
+  const pack = (rows, budget) => {
+    const out = []; let used = 0;
+    for (const r of rows) { const l = line(r); if (used + l.length + 1 > budget) break; out.push(l); used += l.length + 1; }
+    return out;
+  };
+  const wins = list.filter(r => r.result !== 'flop').sort((a, b) => (a.result === 'great' ? 0 : 1) - (b.result === 'great' ? 0 : 1));
+  const flops = list.filter(r => r.result === 'flop');
+  const flopShare = wins.length ? Math.floor(max * 0.4) : max;
+  const flopLines = pack(flops, flopShare);
+  const winLines = pack(wins, max - flopLines.reduce((n, l) => n + l.length + 1, 0));
+  const parts = [];
+  if (winLines.length) {
+    parts.push('Worked (lean on the angle and the kind of opening line, never reuse the wording):', ...winLines);
+    const styles = wins.filter(r => r.result === 'great').map(posted).filter(p => p.known).map(p => hookStyleOf(p.hook));
+    const top = styles.sort((a, b) => styles.filter(x => x === b).length - styles.filter(x => x === a).length)[0];
+    if (top && styles.filter(x => x === top).length >= 2) parts.push('Posted hooks that did great were mostly ' + top + '.');
+  }
+  if (flopLines.length) parts.push('Flopped (do NOT repeat this angle or this hook):', ...flopLines);
+  if (!parts.length) return '';
+  return 'WHAT WORKED FOR THIS BRAND (how its own posted videos actually did, as the founder marked them). These are patterns, never facts: nothing here may be stated as a fact, number or result.\n' + parts.join('\n');
+}
+
 function writingCraft(opts) {
   opts = opts || {};
   const P = [];
@@ -734,4 +789,4 @@ const VIRAL_ANALYZE_SHAPE = {
   takeaway: 'str',
 };
 
-module.exports = { NO_INVENTION_RULE, v2Tones, spokenV2, storiesBlock, antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };
+module.exports = { NO_INVENTION_RULE, v2Tones, spokenV2, storiesBlock, resultsBlock, hookStyleOf, RESULTS_BLOCK_CAP, antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };

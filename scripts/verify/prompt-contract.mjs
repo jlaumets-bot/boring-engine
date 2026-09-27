@@ -182,6 +182,8 @@ if (GI_KEYS) {
     else if (k === 'format') reply[k] = 'video';
     else if (k === 'tone') reply[k] = 'deadpan';
     else if (k === 'emphasis') reply[k] = ['ZCONTRACT_EMPHASIS_ONE', 'ZCONTRACT_EMPHASIS_TWO'];
+    // content-v3 F3: three distinct hooks, the first one equal to `hook` (a clean reply the guard keeps).
+    else if (k === 'hooks') reply[k] = ['ZCONTRACT_HOOK', 'ZCONTRACT_HOOK_QUESTION?', 'ZCONTRACT_HOOK_MOMENT'];
     else reply[k] = 'ZCONTRACT_' + k.toUpperCase();
   }
   const full = await run('generate-ideas.js', IDEAS_BODY, [JSON.stringify([reply])], CRON);

@@ -126,6 +126,7 @@ ok(runDue([sub({ subscription:{} })], at('2026-09-22T09:00:00Z')).length === 1, 
   // worst case, every number taken from the file
   const worst = budget*2 /* userCanAccessBrand: two sequential requests */
               + DB /* getBrandActivity */ + DB /* loadBrandContext */
+              + (num('QUESTION_TIMEOUT_MS') || 0) /* content-v3 F1: today's question read */
               + 10000 /* the generate floor */ + PUSH + DB /* last_sent_at */;
   ok(MIN >= worst, 'MIN_SLICE_MS (' + MIN + ') now covers the measured worst case (' + worst + 'ms)');
   ok(RUN + 0 <= 300000, 'RUN_BUDGET_MS stays inside maxDuration 300000');

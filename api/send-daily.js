@@ -41,11 +41,16 @@ const RUN_BUDGET_MS   = 245000; // stop STARTING new subscribers after this (max
    NEVER reached, and every subscriber the loop had not got to MISSES THAT DAY, because the
    due filter matches each of them at exactly one UTC hour. pull-trends-cron hit precisely
    this (a 504 before its heartbeat) and was given TWO guards; this file's comment says
-   "same shape as pull-trends-cron" but only ever had the first one. Now it has both. */
-const MIN_SLICE_MS    = 125000; // never START a subscriber without room for its worst case
+   "same shape as pull-trends-cron" but only ever had the first one. Now it has both.
+   content-v3 F1 adds ONE read per subscriber — today's question (todaysQuestion below), capped at
+   QUESTION_TIMEOUT_MS = 5s — so the worst case is now 40 + 20 + 5 + 20 + 10 + 15 + 20 = 130s, and
+   the reserve moves with it. A question read that fails or stalls is dropped, never retried. */
+const MIN_SLICE_MS    = 130000; // never START a subscriber without room for its worst case
 const GEN_TIMEOUT_MS  = 75000;  // hard cap on ONE /api/generate-ideas call
 const PUSH_TIMEOUT_MS = 15000;  // hard cap on ONE web-push delivery
 const DB_TIMEOUT_MS   = 20000;  // hard cap on ONE Supabase request
+const QUESTION_TIMEOUT_MS = 5000; // hard cap on the ONE daily-question read (content-v3 F1)
+const PUSH_BODY_MAX   = 240;    // idea line + "Today's question: …" — the idea part is cut first
 
 module.exports = async function handler(req, res) {
   // This cron has maxDuration 300; the shared Supabase timeout defaults to 4s because the
@@ -211,6 +216,13 @@ module.exports = async function handler(req, res) {
           skipped++;
           return;   // v677: inside the per-subscriber async function now — see guard 2
         }
+        /* content-v3 F1 — TODAY'S QUESTION rides along on the push (same pick as /api/daily-question,
+           from the same read). Only for a brand that checked out above (brandId, never sub.brand_id),
+           only while unanswered today, and NEVER at the idea's expense: todaysQuestion() cannot
+           throw, is capped at QUESTION_TIMEOUT_MS, and a failed read just means no question line. */
+        const question = brandId
+          ? await todaysQuestion(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, brandId, nowUtc)
+          : null;
         // Cap this subscriber's generation so it can never overrun the budget: we always
         // keep >= 15s of the slice for the push + the last_sent_at write. Measured AFTER the
         // access check so its round trips come out of THIS slice rather than the run's tail.
@@ -226,7 +238,7 @@ module.exports = async function handler(req, res) {
 
         if (daysSince >= 2 && sub.motivation_on !== false) {
           // Gone quiet + reminders on → motivational nudge (their real numbers, no idea gen).
-          payload = JSON.stringify(motivationalPush(act, daysSince));
+          payload = withQuestion(motivationalPush(act, daysSince), question);
         } else {
           // Active → today's Quick Post idea (the existing behaviour).
           let bc = {};
@@ -275,7 +287,7 @@ module.exports = async function handler(req, res) {
               gen.plan + ' ' + gen.used + '/' + gen.limit + ') — sending the generic push, no generated brief');
           }
           const idea = gen && gen.ideas && gen.ideas[0];
-          payload = JSON.stringify(idea ? {
+          payload = withQuestion(idea ? {
             title: `Today's post is ready`,
             body: `${idea.title} — "${(idea.hook || '').slice(0, 90)}"`,
             url: '/app.html'
@@ -283,7 +295,7 @@ module.exports = async function handler(req, res) {
             title: 'Time to make something',
             body: 'One tap, one post — your Quick Post is waiting.',
             url: '/app.html'
-          });
+          }, question);
         }
 
         await webpush.sendNotification(sub.subscription, payload, { timeout: PUSH_TIMEOUT_MS });
@@ -448,6 +460,46 @@ async function getBrandActivity(base, key, brandId) {
   const posted = arr.filter(r => POSTED.includes(String(r.status || '').toLowerCase())).length;
   const lastCreated = arr.length ? arr[0].created_at : null;
   return { total: arr.length, posted, lastCreated };
+}
+
+// content-v3 F1 — today's question for a VERIFIED brand, or null. Never throws: any failure (a
+// non-2xx, a stall past QUESTION_TIMEOUT_MS, a socket error) is logged and the push goes out
+// without the question. An unreadable answered-list is NOT "nothing answered", so no question is
+// sent on a failed read rather than one the founder may already have answered.
+async function todaysQuestion(base, key, brandId, now) {
+  try {
+    const Q = require('./_questions');
+    const r = await sbRequest(base, key, 'GET', '/rest/v1' + Q.answeredPath(brandId), null, QUESTION_TIMEOUT_MS);
+    if (!r || r.status < 200 || r.status >= 300 || !Array.isArray(r.data)) {
+      console.error('send-daily: daily-question read failed for brand ' + brandId + ' (' + ((r && r.status) || 'no response') +
+        ') — sending the push without the question');
+      return null;
+    }
+    const st = Q.questionFor(brandId, Q.utcDate(now), r.data);
+    if (!st || !st.question || st.answeredToday) return null;
+    return { id: st.question.id, text: st.question.text };
+  } catch (e) {
+    console.error('send-daily: daily-question read failed for brand ' + brandId + ' — sending the push without the question: ' +
+      ((e && e.message) || e));
+    return null;
+  }
+}
+
+// The push JSON. With a question: the body gets a second line "Today's question: …" (the FIRST part
+// is shortened if the two would pass PUSH_BODY_MAX), data carries question {id, text}, and the click
+// URL gains q=1 so the app opens the question card. Without one: exactly the message as before.
+function withQuestion(msg, q) {
+  if (!q || !q.id || !q.text) return JSON.stringify(msg);
+  const line = "Today's question: " + q.text;
+  let head = String(msg.body || '');
+  const room = PUSH_BODY_MAX - line.length - 1;
+  if (head.length > room) head = room > 1 ? head.slice(0, room - 1).trimEnd() + '\u2026' : '';
+  const url = String(msg.url || '/app.html');
+  return JSON.stringify(Object.assign({}, msg, {
+    body: head ? head + '\n' + line : line,
+    url: url + (url.includes('?') ? '&' : '?') + 'q=1',
+    question: { id: q.id, text: q.text },
+  }));
 }
 
 // Motivational re-engagement push — their real numbers + the compounding message.

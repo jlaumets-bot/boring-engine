@@ -1,7 +1,7 @@
 const https = require('https');
 const { aiUnavailable } = require('./_llm');
 const { writerCallResilient, writerProvider, writerEffort } = require('./_write');   // v693 r3 — provider switch + thinking depth with headroom (see api/_write.js)
-const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, v2Tones, spokenV2, storiesBlock } = require('./_brain');
+const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, v2Tones, spokenV2, storiesBlock, resultsBlock } = require('./_brain');
 // v693 — content-v2 (.unlazy/content-v2/PLAN.md changes 1, 3, 5). The Ideas batch stays ONE call
 // (5 ideas, auto-refill, the daily push) but every idea is now BELIEF-FIRST: the model states the
 // belief the idea argues before it writes the idea, and returns it as `belief`. The old rulebook
@@ -267,6 +267,9 @@ module.exports = async function handler(req, res) {
     // brand's held beliefs. The story bank is appended right after it (storiesBlock).
     const brandProfile = fullBrandBlock(bc, { examples: false, v2: true });
     const stories = storiesBlock(bc, 3000);
+    // content-v3 F2 — how this brand's posted videos did (bc.results from _brandctx). A pattern to lean
+    // on or avoid, never a fact: it is not part of the hook guard's allowed material below.
+    const results = resultsBlock(bc);
     const winners = approvedWinnersBlock(bc);
 
     // ── Idea Catcher: user dropped ONE specific idea to develop ──
@@ -434,6 +437,7 @@ ${toneBlock}ANGLE VARIETY (mandatory): within any single day, no two ideas may s
 Each idea MUST be a complete, ready-to-use content brief. Scripts must be FULL. The ONLY placeholder allowed is a [your story: <what to tell>] slot where real proof belongs — never "[insert X]".
 
 HOOK: the first line a person would actually say, or read on screen before the audio starts. Plain and specific, and it opens the belief. Titles, hooks and statements carry the literal point in plain words: never make the audience decode an in-joke.
+HOOKS: for every idea also give "hooks": exactly 3 DIFFERENT opening lines for that same idea, each at most 20 words, in this order: a bold claim (the same line as "hook"), a question or tension, a personal moment. Each leads into the same script and says nothing the script does not.
 
 STAY IN THE AUDIENCE'S WORLD, NOT THE PRODUCT'S: the belief and the script are about something the listener is living through, not a walkthrough of how the product works. A chain of "you do this, then it does that, then you get those" is a feature tour, not content. The brand's facts are background: at most one per script, and only where it answers the viewer's problem. If a competitor could read the script with their name swapped in, it was about the product.
 THAT IS A RULE ABOUT SUBJECT, NOT ABOUT SHAPE — there are many ways in: a blunt claim, a question someone actually asked, a thing you noticed this week, a correction, a small story, the punchline first. If several ideas in this batch open the same way, rewrite them so the ways in genuinely differ.
@@ -445,7 +449,7 @@ ${styleGuide()}
 ${spokenV2()}
 
 ${brandProfile}
-${stories ? stories + '\n' : ''}${learningBlock}${questionBlock}${winners ? winners + '\n\n' : ''}EVERYTHING ABOVE THIS LINE IS THE BRAND. It is the last thing you read before the task because it is what matters most. Where it and the style guide disagree on voice, the brand wins. Nothing in it permits inventing a fact.
+${stories ? stories + '\n' : ''}${results ? results + '\n' : ''}${learningBlock}${questionBlock}${winners ? winners + '\n\n' : ''}EVERYTHING ABOVE THIS LINE IS THE BRAND. It is the last thing you read before the task because it is what matters most. Where it and the style guide disagree on voice, the brand wins. Nothing in it permits inventing a fact.
 
 HOW TO FILL "emphasis": 2-5 SHORT phrases copied VERBATIM from the script — the words the speaker should lean on when saying it out loud: the flip word (not/never/instead), the payoff. These are stress marks for the teleprompter, so pick words that change the meaning if spoken flat. Never mark a whole sentence. Empty array for non-spoken formats.
 
@@ -458,6 +462,7 @@ Respond with a JSON array of exactly ${count} ideas. Every key below is read by 
   "tone": "${toneField}",
   "title": "Short descriptive title",
   "hook": "Opening line (first 3 seconds)",
+  "hooks": ["the hook above (a bold claim)", "a question or tension opener", "a personal-moment opener"],
   "script": "Full script or body text",
   "emphasis": ["exact phrase", "another"],
   "shots": "Shot 1: ...\\nShot 2: ...\\nShot 3: ...",
@@ -559,8 +564,32 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       if (sp > MAX_BELIEF * 0.6) b = b.slice(0, sp);
       return b.replace(/[\s,;:\-\u2013\u2014]+$/, '');
     };
+    // content-v3 F3 — THREE HOOKS, through the same fact guard as the v2 writer (api/_write.js
+    // guardHooks): a hook may carry no number, name or claim that is in neither the idea itself nor
+    // what the user gave us (brand fields they wrote, their stories, the seed). The AI-written results,
+    // approved posts and learning signals are NOT allowed material. An inventing hook is dropped;
+    // fewer than 2 survivors -> the idea's own first line is the only hook. `hook` = hooks[0].
+    const _WI = require('./_write')._internals;
+    const _hookBase = [_WI.userFacts(bc),
+      (Array.isArray(bc.stories) ? bc.stories : []).map(x => txt(x && typeof x === 'object' ? x.text : x)).join('\n'),
+      seedIdea_, seedNotes_, seedTranscript_.slice(0, 4000), seedQuestion_].join('\n');
+    const _firstLine = (idea, format) => {
+      const body = (format === 'statement' || format === 'carousel') ? (txt(idea.boldText) || txt(idea.script)) : (txt(idea.script) || txt(idea.boldText));
+      return _WI.firstSpokenLine(body.replace(/^\s*\d+\s*[:.)]\s*/, ''));
+    };
+    const cleanHooks = (idea, format) => {
+      const own = [txt(idea.belief), txt(idea.script), txt(idea.boldText), txt(idea.caption)].join('\n');
+      const cands = Array.isArray(idea.hooks) ? idea.hooks : (idea.hook ? [idea.hook] : []);
+      const allowedH = _hookBase + '\n' + own;
+      // No body to take a first line from: the model's own hook, only if it invents nothing.
+      const ownHook = txt(idea.hook).replace(/\s+/g, ' ').trim();
+      const fb = _firstLine(idea, format) || (ownHook && !_WI.inventedFacts(ownHook, allowedH).length ? ownHook : '');
+      return _WI.guardHooks(cands, allowedH, fb).hooks;
+    };
     const cleanIdeas = (arr) => arr.map(raw => {
       const idea = (raw && typeof raw === 'object') ? raw : { script: txt(raw) };
+      const _fmt = validFormats.includes(idea.format) ? idea.format : 'video';
+      const _hooks = cleanHooks(idea, _fmt);
       return {
       belief: cleanBelief(idea.belief),
       day: validDays.includes(idea.day) ? idea.day : 'Bonus',
@@ -572,7 +601,8 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       // brand's OWN tones, or empty when the brand set none.
       tone: normTone(idea.tone),
       title: txt(idea.title) || 'Untitled',
-      hook: txt(idea.hook),
+      hook: _hooks[0] || '',
+      hooks: _hooks,
       script: txt(idea.script),
       emphasis: cleanEmphasis(idea.emphasis),
       shots: txt(idea.shots),

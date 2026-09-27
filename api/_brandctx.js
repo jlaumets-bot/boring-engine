@@ -217,7 +217,7 @@ function contextFromBrandRow(b) {
 // v693 — the brand-memory keys are NOT brand fields. The client's `bcFields` counts its local
 // settings and knows nothing about memory, so counting stories/beliefs here would let a brand with
 // a thin (stale) row but a full story bank look healthy and skip the 424 re-send it needs.
-const MEMORY_KEYS = new Set(['beliefs', 'stories', 'speechSamples', 'memoryUnavailable']);
+const MEMORY_KEYS = new Set(['beliefs', 'stories', 'speechSamples', 'memoryUnavailable', 'results', 'resultsUnavailable']);
 
 function populatedFieldCount(bc) {
   let n = 0;
@@ -328,6 +328,55 @@ async function loadMemory(brandId, owner) {
     return Object.assign(memoryFromRows(r.data, ownerId), { memoryUnavailable: false });
   } catch (e) {
     return unavailable();
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// ── content-v3 F2 — WHAT HAPPENED AFTER POSTING ─────────────────────────────────────────────────
+// The latest RESULTS_MAX ideas the founder marked (flop / ok / great, api/idea-result.js), newest
+// first, one per title (the app saves an idea as a fresh copy, so a title can briefly exist twice):
+//   bc.results            [{title, hook, hookAlts[], hookUsed, result}]
+//   bc.resultsUnavailable true when the read failed, timed out, or sql/idea-results.sql has not run
+// Same discipline as loadMemory: ONE bounded query, in parallel with the other reads, raced against
+// RESULTS_READ_MS on top of store.js's own timeout; never rejects; a failure is "no block", never a
+// failed brand load. The text is what THIS APP wrote (titles, hooks), so it feeds only _brain.js
+// resultsBlock — it is never allowed material for the fact guard (api/_write.js userFacts).
+const RESULTS_MAX = 30;
+const RESULTS_READ_MS = 3000;
+const RESULTS_COLS = 'title,hook,hook_alts,hook_used,result,result_at';
+function resultsFromRows(rows) {
+  const out = [], seen = new Set();
+  const one = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
+  for (const r of (Array.isArray(rows) ? rows : [])) {
+    if (!r || !['flop', 'ok', 'great'].includes(r.result)) continue;
+    const title = one(r.title, 120);
+    const k = title.toLowerCase();
+    if (k && seen.has(k)) continue;
+    if (k) seen.add(k);
+    const hookAlts = (Array.isArray(r.hook_alts) ? r.hook_alts : []).filter(h => typeof h === 'string' && h.trim()).slice(0, 3).map(h => one(h, 200));
+    const hu = Number.isInteger(r.hook_used) && r.hook_used >= 0 && r.hook_used < hookAlts.length ? r.hook_used : null;
+    out.push({ title, hook: one(r.hook, 200), hookAlts, hookUsed: hu, result: r.result });
+    if (out.length >= RESULTS_MAX) break;
+  }
+  return out;
+}
+async function loadResults(brandId) {
+  const none = () => ({ results: [], resultsUnavailable: true });
+  let timer = null;
+  try {
+    const read = Promise.resolve().then(() => store.rest('GET', '/ideas?brand_id=eq.' + encodeURIComponent(brandId) +
+      '&result=not.is.null&select=' + RESULTS_COLS + '&order=result_at.desc&limit=' + (RESULTS_MAX * 2)));
+    read.catch(() => {});
+    const timedOut = new Promise(resolve => {
+      timer = setTimeout(() => resolve(null), RESULTS_READ_MS);
+      if (timer && timer.unref) timer.unref();
+    });
+    const r = await Promise.race([read, timedOut]);
+    if (!r || !(r.status >= 200 && r.status < 300) || !Array.isArray(r.data)) return none();
+    return { results: resultsFromRows(r.data), resultsUnavailable: false };
+  } catch (e) {
+    return none();
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -453,13 +502,13 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
         '&order=created_at.desc&limit=8')
     : null;
 
-  let brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory;
+  let brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory, results;
   // v693 — user_id rides along so memory can put the OWNER's speech samples first; it is not a
   // brand field and contextFromBrandRow never reads it.
   const brandP = store.rest('GET', '/brands?id=eq.' + encodeURIComponent(brandId) + '&select=' + BRAND_ROW_COLUMNS + ',user_id');
   brandP.catch(() => {});   // answered by the Promise.all below
   try {
-    [brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory] = await Promise.all([
+    [brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory, results] = await Promise.all([
       brandP,
       getRows(sameQ),
       otherQ ? getRows(otherQ) : Promise.resolve([]),
@@ -468,6 +517,7 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
       getRows(ideasPath(brandId, 'status=eq.dismissed&select=title&order=created_at.desc&limit=6')),
       getRows(ideasPath(brandId, 'select=title&order=created_at.desc&limit=40')),
       loadMemory(brandId, brandP.then(b => (b && Array.isArray(b.data) && b.data[0] && b.data[0].user_id) || null)),   // v693 — never rejects
+      loadResults(brandId),   // content-v3 F2 — never rejects
     ]);
   } catch (e) {
     return { ok: false, reason: 'db_error' };
@@ -525,6 +575,10 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
   bc.stories = mem.stories;
   bc.speechSamples = mem.speechSamples;
   bc.memoryUnavailable = mem.memoryUnavailable;
+  // content-v3 F2 — what happened after posting (see loadResults). Never allowed material.
+  const res = results || { results: [], resultsUnavailable: true };
+  bc.results = res.results;
+  bc.resultsUnavailable = res.resultsUnavailable;
 
   return { ok: true, bc, avoidTitles, fields: populatedFieldCount(bc) };
 }
@@ -540,6 +594,10 @@ module.exports = {
   dayCommunitiesFrom,
   memoryFromRows,
   loadMemory,
+  loadResults,
+  resultsFromRows,
+  RESULTS_MAX,
+  RESULTS_READ_MS,
   MEMORY_CAPS,
   MEMORY_READ_MS,
   MEMORY_QUERY,

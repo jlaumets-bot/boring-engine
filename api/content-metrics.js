@@ -72,6 +72,50 @@ async function countByRows(brandId, sinceIso, timed) {
   return { counts, genFlowColumn: withFlow, complete: false };
 }
 
+// content-v3 F2 — HOW THE POSTED ONES DID, per flow: {great, ok, flop} from ideas.result
+// (sql/idea-results.sql, marked through api/idea-result.js). Same window and filter as the counts
+// above (AI ideas created since `since`), paged the same way. It never costs the rest of the answer:
+// the result column not existing yet -> resultsColumn:false; a read that fails or runs out of time ->
+// resultsUnavailable:true and no per-flow results. A missing gen_flow column counts every result as v1.
+async function resultCounts(brandId, sinceIso, timed) {
+  let withFlow = true;
+  const counts = {};
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const cols = withFlow ? 'gen_flow,result' : 'result';
+    const p = '/ideas?brand_id=eq.' + encodeURIComponent(brandId) + '&is_generated=is.true&result=not.is.null' +
+      '&created_at=gte.' + encodeURIComponent(sinceIso) + '&select=' + cols +
+      '&order=created_at.desc&limit=' + PAGE + '&offset=' + (page * PAGE);
+    const r = await timed(() => store.rest('GET', p));
+    if (r && r.status >= 400 && r.data && (r.data.code === '42703' || r.data.code === 'PGRST204')) {
+      const msg = String(r.data.message || '') + ' ' + String(r.data.details || '');
+      if (withFlow && /gen_flow/i.test(msg) && !/\bresult\b/i.test(msg)) { withFlow = false; page = -1; for (const k of Object.keys(counts)) delete counts[k]; continue; }
+      return { missing: true };
+    }
+    if (!okStatus(r) || !Array.isArray(r.data)) return { error: true };
+    for (const row of r.data) {
+      const res = row && row.result;
+      if (res !== 'great' && res !== 'ok' && res !== 'flop') continue;
+      const flow = (withFlow && row.gen_flow) ? String(row.gen_flow) : 'v1';
+      const c = counts[flow] || (counts[flow] = { great: 0, ok: 0, flop: 0 });
+      c[res]++;
+    }
+    if (r.data.length < PAGE) return { counts, complete: true };
+  }
+  return { counts, complete: false };
+}
+// Adds results to the response in place (see resultCounts). Never throws.
+async function withResults(out, brandId, sinceIso, timed) {
+  let rc;
+  try { rc = await resultCounts(brandId, sinceIso, timed); }
+  catch (e) { rc = { error: true }; }
+  if (rc.missing) { out.resultsColumn = false; return out; }
+  out.resultsColumn = true;
+  if (rc.error) { out.resultsUnavailable = true; return out; }
+  for (const f of out.flows) f.results = Object.assign({ great: 0, ok: 0, flop: 0 }, rc.counts[f.flow] || {});
+  if (!rc.complete) out.resultsPartial = true;
+  return out;
+}
+
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com', 'https://bettercontent.app', 'https://boring-engine.vercel.app'];
   const origin = req.headers.origin || '';
@@ -110,7 +154,7 @@ module.exports = async function handler(req, res) {
         c.generated += Number(row.generated) || 0;
         c.filmed += Number(row.filmed) || 0;
       }
-      return res.status(200).json({ flows: shape(counts), since, days, genFlowColumn: true });
+      return res.status(200).json(await withResults({ flows: shape(counts), since, days, genFlowColumn: true }, brandId, since, timed));
     }
     if (!fnMissing(r)) {
       console.error('content-metrics: content_metrics() answered ' + (r && r.status) + ' — ' + String((r && r.raw) || '').slice(0, 200));
@@ -121,7 +165,7 @@ module.exports = async function handler(req, res) {
     const out = { flows: shape(alt.counts), since, days, genFlowColumn: alt.genFlowColumn };
     if (!alt.genFlowColumn) out.note = 'The ideas table has no gen_flow column yet, so every idea is counted as v1. Run sql/ideas-gen-flow.sql.';
     if (!alt.complete) out.partial = true;
-    return res.status(200).json(out);
+    return res.status(200).json(await withResults(out, brandId, since, timed));
   } catch (err) {
     if (err && err.code === 'timeout') { console.error('content-metrics: request budget of ' + LIMITS.budgetMs + 'ms used up'); return tooSlow(); }
     console.error('content-metrics error:', (err && err.message) || err);
@@ -130,3 +174,4 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports._limits = LIMITS;
+module.exports._resultCounts = resultCounts;

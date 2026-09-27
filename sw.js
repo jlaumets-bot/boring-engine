@@ -220,7 +220,14 @@ self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = (e.notification.data && e.notification.data.url) || '/app.html';
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    for (const c of list) { if (c.url.includes('/app.html') && 'focus' in c) return c.focus(); }
+    for (const c of list) {
+      if (c.url.includes('/app.html') && 'focus' in c) {
+        // content-v3 — the daily push carries today's question (url has q=1). A window that is already
+        // open is only focused, never reloaded, so it is told to open the question card itself.
+        if (/[?&]q=1(?:[&#]|$)/.test(url)) { try { c.postMessage({ type: 'cs-open-question' }); } catch (_) {} }
+        return c.focus();
+      }
+    }
     return clients.openWindow(url);
   }));
 });
