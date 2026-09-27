@@ -185,7 +185,6 @@ const IDEAS_REPLY = JSON.stringify([{
 const REMIX_REPLY = JSON.stringify({ originalSummary: 's', remixTitle: 't', remixHook: 'h', remixScript: 'sc', remixFormat: 'video', remixCaption: 'c', remixHashtags: '#a', whyItWorks: 'w' });
 const TWIST_REPLY = JSON.stringify({ angles: [{ angle: 'Contrarian', hook: 'h', why: 'w' }], spicy: { hook: 'h', why: 'w' }, tip: 't' });
 const REWRITE_REPLY = JSON.stringify({ title: 't', hook: 'h', script: 's', shots: '', screen: '', boldText: '', caption: '', tags: '#a' });
-const BLOG_REPLY = JSON.stringify([{ question: 'q', answer: 'a', htmlContent: '<article></article>', category: 'Hydration', wordCount: 300 }]);
 const SHARPEN_CRITIQUE = 'The hook buries the number.';
 const SHARPEN_REPLY = JSON.stringify({ hook: 'Turn the packet over.', script: 'Find the sodium number.' });
 
@@ -366,10 +365,8 @@ const main = async () => {
   const others = [
     ['viral-twist.js', { idea: { title: 't', hook: 'h', script: 's', format: 'video' }, brandContext: BC }, [TWIST_REPLY], 0],
     ['viral-rewrite.js', { idea: { title: 't', hook: 'h', script: 's', format: 'video' }, angle: { angle: 'Contrarian', hook: 'h' }, brandContext: BC }, [REWRITE_REPLY], 0],
-    ['meme.js', { action: 'generate', brandId: 'brand-1', topic: 'labels', brandContext: BC }, ['not json — stop before the image call'], 0],
     ['sharpen.js', { kind: 'post', format: 'video', content: { hook: 'Turn it over.', script: 'Find the sodium number on the back.' }, brandContext: BC }, [SHARPEN_CRITIQUE, SHARPEN_REPLY], 1],
     ['remix.js', { postDescription: 'a viral label-reading video', creatorName: 'someone', platform: 'tiktok', remixMode: 'remix', brandContext: BC }, [REMIX_REPLY], 0],
-    // generate-blog.js: RETIRED v627 (410 stub — the blog feature was removed). Do not re-add.
   ];
   for (const [file, body, replies, callIdx] of others) {
     const r = await run(file, body, replies);

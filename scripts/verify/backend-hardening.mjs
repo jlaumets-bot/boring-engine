@@ -263,7 +263,7 @@ function crawlSocial() {
 // ── [4] PostgREST path encoding ───────────────────────────────────────────────
 function postgrestEncoding() {
   console.log('\n[4] STRUCTURAL — PostgREST filter values are encodeURIComponent\'d');
-  const files = ['_usage.js', 'meme.js', 'pull-trends.js'];
+  const files = ['_usage.js', 'pull-trends.js'];
   for (const f of files) {
     const src = read(f);
     // Any `eq.${` / `gte.${` / `lte.${` that is NOT immediately encodeURIComponent(.
@@ -340,7 +340,7 @@ function moduleIntegrity() {
   };
   const req = createRequire(import.meta.url);
   const handlers = ['transcribe', 'transcribe-voice', 'crawl-social', 'people-also-ask',
-    'meme', 'stripe-webhook', 'remix', 'expand-field'];
+    'stripe-webhook', 'remix', 'expand-field'];
   try {
     for (const f of handlers) {
       try {

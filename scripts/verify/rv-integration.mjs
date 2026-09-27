@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GATE: the four cross-file items the v690 review handed back to the driver.
+// GATE: the cross-file items the v690 review handed back to the driver.
 //
 // A  DNS rebinding. assertPublicHttpUrl resolves a name once; the fetch then resolves it again, so a
 //    name with a 0-second TTL can answer a public address first and 127.0.0.1 / 169.254.169.254
@@ -17,8 +17,7 @@
 //    the text must come out intact (the old `data += chunk` gives junk; asserted as the opposite).
 // C  Status check. RUN the real checkAiStatus from app.html with a fake fetch: a refused account's
 //    server reason must be shown; ok:true and ok:null keep their old texts.
-// D  Hook-frame read. The app's abort must leave room for the server (maxDuration from vercel.json)
-//    and still fire before it: 0.8 * max <= abort < max.
+// (D, the hook-frame abort budget, was removed with the hook-frame feature on 2026-09-27.)
 //
 // RUN: node scripts/verify/rv-integration.mjs    EXPECT: prints "RV INTEGRATION OK" and exits 0.
 import fs from 'node:fs'; import path from 'node:path'; import vm from 'node:vm';
@@ -108,7 +107,7 @@ const bytes = Buffer.from('õä😀 ok', 'utf8');
 const parts = [bytes.subarray(0, 1), bytes.subarray(1, 5), bytes.subarray(5)];   // splits õ and 😀
 let naive = ''; for (const p of parts) naive += p;
 check(naive !== 'õä😀 ok', 'B (control): the naive join did not corrupt — the split is not exercising anything');
-for (const f of ['api/_trends.js', 'api/creator-posts.js', 'api/transcribe-url.js']) {
+for (const f of ['api/_trends.js', 'api/transcribe-url.js']) {
   const src = read(f);
   const m = src.match(/^function _utf8\(resp, c\) \{[^\n]*\}$/m);
   if (!m) { fails.push('B: ' + f + ' has no _utf8 helper'); continue; }
@@ -151,14 +150,6 @@ if (start > 0 && end > start) {
   const t3 = await runStatus({ ok: true, ms: 5 });
   check(/connected/.test(t3), 'C (opposite): ok:true must still say connected, got "' + t3 + '"');
 }
-
-// ── D ──
-const vj = JSON.parse(read('vercel.json'));
-const max = (vj.functions && vj.functions['api/hook-frame.js'] && vj.functions['api/hook-frame.js'].maxDuration) * 1000;
-const hf = app.slice(app.indexOf('async function fetchHookFrame(url){'));
-const ab = Number((hf.match(/setTimeout\(\(\)=>ctrl\.abort\(\), (\d+)\)/) || [])[1]);
-check(max > 0 && ab > 0, 'D: could not read hook-frame maxDuration or the app abort');
-check(ab >= 0.8 * max && ab < max, 'D: app aborts hook-frame at ' + ab + ' ms; server may run ' + max + ' ms');
 
 clearTimeout(wall);
 if (fails.length) { console.log('RV INTEGRATION FAILED'); for (const f of fails) console.log('FAIL: ' + f); process.exit(1); }

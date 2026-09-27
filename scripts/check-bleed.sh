@@ -21,7 +21,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 # Surfaces that must stay vertical-neutral (shared across all brands).
-FILES=$(ls api/*.js app.html 2>/dev/null | grep -v -E 'api/meme\.js|api/_publish/')
+FILES=$(ls api/*.js app.html 2>/dev/null | grep -v -E 'api/_publish/')
 
 # HARD: words that have no legitimate reason to sit in a neutral, multi-brand prompt.
 HARD='electrolyt|hydrat|sodium|potassium|magnesium|\bLMNT\b|1000mg|zero sugar|\bketo\b|\bmacros\b|gatorade|liquid iv|boring electrolytes|health-conscious'

@@ -1,5 +1,5 @@
 // Shared brand-brain context blocks.
-// Goal: every generation surface (ideas, remix, viral, meme) uses the SAME taught
+// Goal: every generation surface (ideas, remix, viral) uses the SAME taught
 // signals, so what the user teaches in one place shows up everywhere. Wording here
 // mirrors api/generate-ideas.js so behaviour stays consistent across the app.
 
@@ -51,7 +51,7 @@ const BRAND_HEADING = 'BRAND PROFILE';
 // and _brandctx.js hydrates the same key server-side — but this renderer only ever read
 // `bc.dayMap`, a STRING that only generateNewIdeas, autoRefillCheck and the Quick Post lanes
 // hand-build before sending. So every other generator (sharpen, remix, viral-twist,
-// viral-rewrite, meme, brand-voice-chat) rendered NO "Weekly content calendar" section at all,
+// viral-rewrite, brand-voice-chat) rendered NO "Weekly content calendar" section at all,
 // and lost the 60/40 variety rule that lives in its note — silently, because both files looked
 // correct on their own.
 // Reading both keys fixes it in one place. The `dayMap` STRING path is returned verbatim, so the
@@ -456,12 +456,12 @@ WHAT NOT TO COPY — THE STRUCTURE, THE TOPIC, THE VOICE. ${V.note}, but that is
 
 // ── Shared WRITING CRAFT ─────────────────────────────────────────────────────
 // The proven copy rules (hooks, AI-tell blacklist, human voice, clarity/flow, spoken/scan shape,
-// self-check) that used to live only inside generate-ideas. Every copywriting surface (remix, blog,
-// meme, viral, quick post…) should include this so they all write to the SAME bar. Improve it here →
+// self-check) that used to live only inside generate-ideas. Every copywriting surface (remix,
+// viral, quick post…) should include this so they all write to the SAME bar. Improve it here →
 // every generator improves.
-// opts.hooks (default true) — include the hook rules (skip for blog/meme where there's no scroll hook).
+// opts.hooks (default true) — include the hook rules (skip where there's no scroll hook).
 // opts.spoken (default false) — the spoken/video script shape (video/reel/qna scripts).
-// opts.scan  (default false) — the written scannability layer (blog / long written content).
+// opts.scan  (default false) — the written scannability layer (long written content).
 // Rhythm/drama AI tells + the brand-wins precedence rule. Exported separately because
 // generate-ideas.js and sharpen.js keep their own tuned prompts and do NOT call writingCraft.
 function antiSlopRhythm() {
@@ -589,13 +589,6 @@ const FORMAT_SPEC = {
   statement: 'Bold text graphic. boldText = the full statement (2-5 short sentences, setup + payoff, stands alone). script = 2-3 delivery-tip lines only.',
   carousel: 'Instagram carousel. boldText = numbered slide texts; slide 1 forces the swipe. caption = the post caption.',
   static: 'Single image post. caption = 1-3 sentences in brand voice — this IS the writing.',
-  blog: 'Answer-first article: the first 1-2 sentences answer the question directly, THEN supporting depth. Natural headers, real specifics, no fluff intro.',
-  // "One DEADPAN line" prescribed a register to every brand, including the warm and the playful
-  // ones — the same class of default persona as the hardcoded "Alex Hormozi style" removed in v640,
-  // and it sat in SHAPE & TARGET LENGTH, the position closest to the task, where it outranked the
-  // brand's own stated tone. The SHAPE (one line, point first, no setup) is the real spec; the
-  // voice belongs to the brand.
-  meme: 'One line baked into the image — plain-language point first, no setup, no explanation. Deliver it in the brand\'s own voice from the BRAND PROFILE; do not default to deadpan or any other register the brand has not asked for.',
 };
 function formatSpec(fmt) { return FORMAT_SPEC[fmt] || ''; }
 

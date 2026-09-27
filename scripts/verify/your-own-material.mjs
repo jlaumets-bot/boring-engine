@@ -29,10 +29,6 @@
 //      innerHTML, so switching tab and back detached it. Thirty seconds of speech gone, a
 //      credit spent, and no message — the "Could not hear that" branch only fires on empty text.
 //
-//   5. "CLEAR" DESTROYED EVERY UPLOADED PRODUCT PHOTO ON ONE TAP, no confirm, no undo — from a
-//      one-word control sitting mid-sentence. Those are photos the user took; nothing
-//      regenerates them. deleteBmCategory and deleteBrand both confirm, and destroy less.
-//
 //   6. "OPEN IN IDEAS →" JUMPED TO THE WRONG POST. The id was taken from IDEAS.length, but ids
 //      index `state`, and the two drift as soon as anything pushes to state alone (autoRefill,
 //      usePAAQuestion both do). It reads as "my brief didn't save".
@@ -45,7 +41,7 @@
 //   The guard is RUN in both states, with a mutation arm proving the all-true initial value
 //   really does read as "loaded". The disarm is checked by ORDER — it must come after
 //   currentBrand is known and BEFORE the first load starts, because order is the whole defect.
-//   notifyListLoadFailed, prodClearRefs and nbSaveAsRule are all EXECUTED, the last one against
+//   notifyListLoadFailed and nbSaveAsRule are both EXECUTED, the last one against
 //   both a successful and a refused save. The failure-path scan is DERIVED: every
 //   _markListLoad(..., false) in the file must be followed by a notification, so a sixth list
 //   added later cannot be silent.
@@ -127,22 +123,6 @@ const grab = n => { let i = html.indexOf('\nfunction '+n+'('); if(i<0) i = html.
   const postAt = code.indexOf("const ta = document.getElementById('icIdea');   // v680");
   ok(postAt > -1, 'it is re-queried after the await');
   ok(/_icLostTranscript/.test(code), 'and a transcript with nowhere to go is handed back rather than dropped');
-}
-// ── 5. clearing the product photos must ask first ──────────────────────────
-{
-  const f = grab('prodClearRefs');
-  ok(/confirm\(/.test(f), 'prodClearRefs confirms before destroying uploaded photos');
-  const confirmAt = f.indexOf('confirm('), clearAt = f.indexOf('productRefs.length = 0;', f.indexOf('confirm('));
-  ok(confirmAt > -1 && clearAt > confirmAt, 'and the confirm comes first');
-  // run it both ways
-  for (const [answer, want] of [[false, 3], [true, 0]]) {
-    const c = { console, productRefs: [{a:1},{b:2},{c:3}], confirm: () => answer,
-      saveProductRefs: ()=>{ c.saved = true; }, memeRenderRefNote: ()=>{}, renderRefGrid: ()=>{}, Array };
-    vm.createContext(c); vm.runInContext(f, c); vm.runInContext('prodClearRefs()', c);
-    ok(vm.runInContext('productRefs.length', c) === want,
-       'answering ' + (answer ? 'yes' : 'no') + ' leaves ' + vm.runInContext('productRefs.length', c) + ' photos');
-    if (!answer) ok(!c.saved, 'and answering no writes nothing to the database');
-  }
 }
 // ── 6. "Open in Ideas" must point at the right post ────────────────────────
 {

@@ -180,13 +180,13 @@ ok(/const BRAIN_POWERS = \{\s*voiceSample:/.test(app), 'E9 BRAIN_POWERS explains
   ok(/HOW THIS PERSON ACTUALLY TALKS — 2 recent/.test(o) && /THIS IS THE VOICE/.test(o), 'F9 with no sample the notes carry the heading and the rule');
   ok(/'voiceLog'/.test(between(app, 'const BRAIN_DERIVED_KEYS', ';')), 'F10 voiceLog is DERIVED — it does not count toward the completeness meters');
   ok(/voiceLog:\s*Array\.isArray\(v\.voiceLog\)/.test(ctxSrc), 'F11 _brandctx hydrates the log for lean callers');
-  // every in-scope mic is hooked, gated on a record-start brandGate; the sample fields and meme/product are NOT
+  // every in-scope mic is hooked, gated on a record-start brandGate; the sample fields are NOT
   for (const [fn, src] of [['function nbToggleMic() {', 'notebook'], ['function icMicToggle(){', 'catcher'], ['function sparkToggleMic() {', 'catcher'], ['function bvStartMic() {', 'coach'], ['function vlMicToggle(){', 'viral']]) {
     const body = between(app, fn, '\n}\n');
     ok(body.includes("voiceLogAdd(data.text, '" + src + "', _vg)") && body.includes('const _vg = (typeof brandGate'), 'F12 ' + src + ' mic feeds the log, brand-gated at record-start');
   }
   const di = between(app, 'function dictateInto(taId, btn, label){', '\n}\n');
-  ok(di.includes("taId==='remixDescription'") && di.includes('voiceLogAdd'), 'F13 dictateInto feeds it ONLY for the Remix description (not the sample fields, not meme/product)');
+  ok(di.includes("taId==='remixDescription'") && di.includes('voiceLogAdd'), 'F13 dictateInto feeds it ONLY for the Remix description (not the sample fields)');
   ok(!/teleprompter|tpVoice/.test(src) && !between(app, 'function startTpRecord', '\n}\n').includes('voiceLogAdd'), 'F14 the teleprompter never feeds it (that is them reading OUR script)');
   const ui = between(app, 'class="sp-voice-learn"', 'Customer Pain Points');
   ok(ui.includes("updateSetting('voiceLearn'") && ui.includes('voiceLogRemove(') && /Never the teleprompter/.test(ui), 'F15 Settings shows the toggle, the kept notes with a forget button, and says what is excluded');

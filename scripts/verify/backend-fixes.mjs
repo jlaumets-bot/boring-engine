@@ -14,7 +14,7 @@
 //     assert the returned promise SETTLES inside a deadline. A control case runs the
 //     pre-fix pattern against the same server and must NOT settle — proving the test
 //     discriminates rather than passing vacuously.
-//  2. Usage logging (video-beats, hook-frame) — STRUCTURAL (source assertions).
+//  2. Usage logging (video-beats) — STRUCTURAL (source assertions).
 //  3. Cron failure logging + failed/skipped split — STRUCTURAL (source assertions).
 //  4. extract-article content-type guard — STRUCTURAL; its size cap is behavioural (1).
 
@@ -187,10 +187,6 @@ function structural() {
   check(/logUsage\(\{[^}]*action:\s*'beats'/s.test(vb), "video-beats.js calls logUsage with action 'beats'");
   check(vb.indexOf("guard(req, 'beats')") < vb.indexOf('logUsage('), 'video-beats.js logs usage after the guard');
   check(vb.indexOf('logUsage(') < vb.lastIndexOf('secondsPerBeat: 3.25'), 'video-beats.js logs usage before returning 200');
-
-  const hf = read('hook-frame.js');
-  check(/logUsage\(\{[^}]*action:\s*'hookframe'/s.test(hf), "hook-frame.js calls logUsage with action 'hookframe'");
-  check(/if \(out\) \{[\s\S]{0,600}logUsage\(/.test(hf), 'hook-frame.js only logs when a read was actually produced (no charge for misses)');
 
   console.log('\n[3] STRUCTURAL — cron failures are logged and counted separately');
   const cron = read('pull-trends-cron.js');

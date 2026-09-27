@@ -16,8 +16,8 @@
 //      was fixed; the fix only ever covered csUsage === null, never the fail-open half.
 //
 //   2. "REBUILD THE SIDEBAR ONCE" REBUILT IT AFTER EVERY ACTION. The guard asked whether a
-//      `.ds-lock` pill was missing. _dsItem only renders that pill for 'blog' and 'meme', and
-//      both are shelved (CS_SHELVED), so the sidebar can never contain one — the condition was
+//      `.ds-lock` pill was missing. _dsItem only rendered that pill for 'blog' and 'meme', and
+//      both were shelved (both since removed), so the sidebar can never contain one — the condition was
 //      permanently true. refreshUsage runs 1.2s after every successful /api/ call, so for every
 //      free-plan user the whole left sidebar was destroyed and re-created a second after each
 //      generation, remix or trend pull: flicker, lost hover, lost scroll, forever.
@@ -123,8 +123,8 @@ ok(vm.runInContext('csUsageLoadFailed', c) === false, 'and clears the failure fl
   m = mk(); usage.denyResponse(m.res, { reason:'limit', plan:'free', used:40, limit:40, trialEndsAt:null });
   ok(m.r.code === 402 && m.r.body.error === 'limit_reached', 'a real limit still answers 402 limit_reached');
   ok(m.r.body.used === 40 && m.r.body.limit === 40, 'and still carries the numbers the upgrade modal shows');
-  m = mk(); usage.denyResponse(m.res, { reason:'feature', feature:'meme', plan:'free' });
-  ok(m.r.code === 402 && m.r.body.error === 'feature_locked' && m.r.body.feature === 'meme', 'a feature lock still answers feature_locked');
+  m = mk(); usage.denyResponse(m.res, { reason:'feature', feature:'multibrand', plan:'free' });
+  ok(m.r.code === 402 && m.r.body.error === 'feature_locked' && m.r.body.feature === 'multibrand', 'a feature lock still answers feature_locked');
   m = mk(); usage.denyResponse(m.res, { reason:'cost_cap', plan:'trial', used:5, limit:150 });
   ok(m.r.code === 402 && m.r.body.error === 'limit_reached', 'a cost-cap trip still blocks the request');
 }

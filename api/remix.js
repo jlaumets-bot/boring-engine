@@ -118,8 +118,8 @@ module.exports = async function handler(req, res) {
     // `brandContext.brandId` was never a key getBrandContext() produced, so this row was
     // always attributed to a null brand. A lean request finally names the brand — use it.
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
-    // client and went into usage_events unverified. Same pattern as pull-trends.js /
-    // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
+    // client and went into usage_events unverified. Same pattern as pull-trends.js:
+    // a check that cannot run leaves the row unattributed, never unlogged.
     const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'remix', model: bc.engine || 'grok' });
     return res.status(200).json({ remix });
@@ -190,8 +190,8 @@ function buildLegacyRemixPrompt(bc, inp) {
   // instruction. Worse in production — `postDescription` carries up to 12,000 characters of
   // transcript in exactly that gap, so the thing being remixed drowned the brand doing the
   // remixing. Measured against generate-ideas (winners at 88.8%, 2,932 chars from the output)
-  // and against meme / viral-rewrite / viral-twist / sharpen, which ALREADY land their winners
-  // at 78-82% because fullBrandBlock renders the winners last inside the block — those four were
+  // and against viral-rewrite / viral-twist / sharpen, which ALREADY land their winners
+  // at 78-82% because fullBrandBlock renders the winners last inside the block — those three were
   // measured and deliberately left alone. Now: opener -> craft rules -> SOURCE + task -> BRAND.
   // A pure re-order of existing text, plus ONE new framing line: the brand's own best posts now
   // sit directly above the output instruction, so the model must be told they are proof of how

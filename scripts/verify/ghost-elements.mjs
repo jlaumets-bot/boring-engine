@@ -45,10 +45,9 @@ const KNOWN = {
   promptCopiedMsg:      'prompt-builder cluster — unreachable',
   promptHistory:        'prompt-builder cluster — unreachable',
   promptRefGrid:        'prompt-builder cluster — unreachable',
-  // The meme / product-reference tools are DELIBERATELY shelved (CS_SHELVED = { blog, meme }).
-  // Their markup was removed and the renderers deliberately kept so the flag can revive them —
-  // app.html says so in as many words. Deleting these would destroy that revive path.
-  refGrid:              'shelved meme/product-ref tool (CS_SHELVED) — renderer kept on purpose',
+  // The product-reference grid's markup is gone; its renderer is null-guarded and still called
+  // after reference photos change (the Meme tool that also used it was removed 2026-09-27).
+  refGrid:              'product-ref grid — markup gone, renderer null-guarded',
   sparkInput:           'shelved spark tool — reader is null-guarded',
   sparkMicBtn:          'shelved spark tool — reader is null-guarded',
   sparkBtn:             'shelved spark tool — reader is null-guarded',

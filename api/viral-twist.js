@@ -104,8 +104,8 @@ ${rulePrecedence()}`;
     const twist = coerceShape(_raw, VIRAL_TWIST_SHAPE);
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
-    // client and went into usage_events unverified. Same pattern as pull-trends.js /
-    // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
+    // client and went into usage_events unverified. Same pattern as pull-trends.js:
+    // a check that cannot run leaves the row unattributed, never unlogged.
     const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: require('./_write').usageModel(bc) });
     return res.status(200).json({ twist });

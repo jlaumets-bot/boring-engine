@@ -105,7 +105,7 @@ const MUTATIONS = [
   {
     name: 'quick-lane ink ring silently changed in LIGHT mode too',
     expect: /changed in LIGHT mode/i,
-    apply: (s) => s.replace('<div id="memeQuick" style="background:var(--surface,#fff);border:1.5px solid #16130F;', '<div id="memeQuick" style="background:var(--surface,#fff);border:1.5px solid var(--border2,#16130F);'),
+    apply: (s) => s.replace('<div id="remixQuick" style="background:var(--surface,#fff);border:1.5px solid #16130F;', '<div id="remixQuick" style="background:var(--surface,#fff);border:1.5px solid var(--border2,#16130F);'),
   },
   {
     name: 'brand-brain card title reverted to inline ink',

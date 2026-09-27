@@ -3,7 +3,7 @@
 // Pass 1: the brand's honest editor lists concrete weaknesses vs the brand + its APPROVED WINNERS.
 // Pass 2: rewrite the draft fixing every point — SAME format, structure, and core idea, just tighter.
 // Generic: takes a `content` object of {field: text}, returns the SAME keys sharpened, so it works for
-// posts (hook/script/caption/...), blog (answer), and memes (statement) without per-format branching.
+// posts (hook/script/caption/...) without per-format branching.
 const { aiUnavailable } = require('./_llm');
 const { fullBrandBlock, rulePrecedence, spokenV2 } = require('./_brain');
 // v693 — content-v2 writing rules (.unlazy/content-v2/PLAN.md change 3): the short style guide
@@ -97,9 +97,7 @@ module.exports = async function handler(req, res) {
       carousel: 'These are carousel slides — keep the same number of slides and their story flow.',
       static: 'This is a caption — keep the same length and conversational voice.',
     };
-    const styleNote = (kind === 'blog')
-      ? 'This is a blog article — keep the full length and every section; sharpen the writing, do NOT summarize or shorten it.'
-      : (STYLE[fmt] || 'Keep the same length, voice and natural spoken flow as the original.');
+    const styleNote = STYLE[fmt] || 'Keep the same length, voice and natural spoken flow as the original.';
 
     // ── TIME BUDGET ───────────────────────────────────────────────────
     // This handler makes TWO SEQUENTIAL LLM calls. `_llm.httpsPost` defaults to 240000ms when no
@@ -151,8 +149,8 @@ List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voi
     // Already great → don't burn the second call or risk making it worse.
     if (/^\s*STRONG\b/i.test(critique)) {
       // Only attribute the usage row to a brand the caller actually owns — this id comes from the
-      // client and went into usage_events unverified. Same pattern as pull-trends.js /
-      // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
+      // client and went into usage_events unverified. Same pattern as pull-trends.js:
+      // a check that cannot run leaves the row unattributed, never unlogged.
       const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
       await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: require('./_write').usageModel(bc) });
       return res.status(200).json({ sharpened: content, unchanged: true });
@@ -167,7 +165,7 @@ List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voi
     //
     // Applied ONLY to a spoken script, and scoped so it cannot fight the two deliberate rules this
     // handler already has: the hard same-length cap, and the ban on adding product facts.
-    const isSpokenDraft = kind !== 'blog' && SPOKEN_FORMATS.indexOf(fmt) >= 0;
+    const isSpokenDraft = SPOKEN_FORMATS.indexOf(fmt) >= 0;
     const spokenCounterweight = isSpokenDraft
       ? `\nTHE DRAFT IS A SPOKEN SCRIPT. The rule below governs the SHAPE of its sentences only: it does not license making the script longer or shorter, and it never means adding facts, product lines or new material. The same-length rule still holds.\n\n${spokenV2()}\n`
       : '';
@@ -225,8 +223,8 @@ ${rulePrecedence()}`;
     }
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
-    // client and went into usage_events unverified. Same pattern as pull-trends.js /
-    // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
+    // client and went into usage_events unverified. Same pattern as pull-trends.js:
+    // a check that cannot run leaves the row unattributed, never unlogged.
     const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: require('./_write').usageModel(bc) });
     return res.status(200).json({ sharpened });

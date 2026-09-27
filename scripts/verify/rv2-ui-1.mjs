@@ -122,7 +122,7 @@ const c = {
   localStorage: { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => { store.set(k, String(v)); }, removeItem: k => { store.delete(k); } },
   showToast: (m) => toasts.push(String(m)), btnWork: () => () => {}, flushBrandSave: async () => {}, getBrandContext: () => ({ brandName: 'X', usps: 'y' }),
   _humanEditedTitles: () => [], saveState() {}, saveGeneratedIdeas() { c.__saves = (c.__saves || 0) + 1; return Promise.resolve(saveResult); },
-  renderNav() {}, switchView() {}, renderRemixHookRead() {}, mascotReact() {},
+  renderNav() {}, switchView() {}, mascotReact() {},
   saveSettings() { c.__settingsSaved = (c.__settingsSaved || 0) + 1; }, renderSettingsPanel() {},
   getMicStream: async () => { c.__mics = (c.__mics || 0) + 1; if (micGate) await micGate; return { getTracks: () => [{ stop() {} }] }; },
   showVoicePill() {}, hideVoicePill() {}, micErrMsg: () => 'mic', _micReleaseHandled() {}, _micRelease() {},

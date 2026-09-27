@@ -17,7 +17,7 @@
 //   - aiUnavailable() of an ordinary error is null (it must not swallow other failures).
 //   ENDPOINT ARM (v690): the REAL endpoint handlers, loaded with only auth/metering stubbed and
 //   the same in-memory xAI, answer a refused account with 503 + code AI_UNAVAILABLE — including
-//   the ones whose inner try/catch used to swallow it (hook-frame, sharpen) and reviews.js, which
+//   the one whose inner try/catch used to swallow it (sharpen) and reviews.js, which
 //   only uses the web search. The opposite arm: an ordinary xAI error (400) is NOT reported as
 //   AI_UNAVAILABLE by any of them, and people-also-ask (AI is only its filter) still answers 200.
 //   Prints "ENDPOINT ARM OK" when every handler behaves.
@@ -149,7 +149,6 @@ check(aiUnavailable(null) === null && aiUnavailable(new Error('x')) === null, 'a
     ['sharpen', { content: { hook: 'Coffee tips', script: 'Grind finer. Brew cooler.' }, kind: 'idea', format: 'video', brandContext: bc }],
     ['brand-voice-chat', { messages: [{ role: 'user', content: 'help me sharpen my hook' }], brandContext: bc }],
     ['generate-ideas', { brandContext: bc, count: 1 }],
-    ['hook-frame', { url: 'https://www.youtube.com/watch?v=abcdefghijk' }],
     ['crawl-social', { url: 'https://www.instagram.com/acmecoffee' }],
     ['crawl-brand', { url: 'https://acme.example' }],
     ['reviews', { brandName: 'Acme Coffee', website: 'acme.example' }],
@@ -169,7 +168,7 @@ check(aiUnavailable(null) === null && aiUnavailable(new Error('x')) === null, 'a
     plan = [[403, CREDIT_403]]; calls = 0;
     const r = await run(name, body);
     // One refused request is the whole story: an inner catch that swallows it (sharpen's critique
-    // pass, hook-frame's .catch) spends a second refused call before the user hears anything.
+    // pass) spends a second refused call before the user hears anything.
     check(calls === 1, 'ENDPOINT ' + name + ': a refused account must stop after ONE AI request, saw ' + calls);
     check(r.statusCode === 503 && r.body && r.body.code === 'AI_UNAVAILABLE' && !/few seconds/i.test(String(r.body.error || '')),
       'ENDPOINT ' + name + ': a refused account must answer 503 + AI_UNAVAILABLE, got ' + r.statusCode + ' ' + JSON.stringify(r.body).slice(0, 160));

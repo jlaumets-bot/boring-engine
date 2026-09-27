@@ -2,6 +2,18 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-27 — v695. FOUR FEATURES RETIRED (owner: "loose the functions that dont help").
+
+Removed: Blog (api/generate-blog.js + screen/nav/tour/FAQ), Meme & Image Maker (api/meme.js, incl. its product-image
+mode), Hook frame (api/hook-frame.js; Remix + Viral analyze no longer read the cover frame), Creator posts
+(api/creator-posts.js, the "What they just posted" box). Why: usage_events since July — meme/hookframe/creatorposts
+0 uses ever, blog 0 in 30 days; long-form + one-off extras don't serve find → write → film. Chat AIs do them equally.
+KEPT: Article extract — Remix sends non-TikTok/YouTube links to /api/extract-article. Gates: meme-clock.mjs deleted;
+removed-feature arms dropped from ~20 gates. COVERAGE LOST: hold-refund 6b/6c (the only end-to-end run of the
+checkLimit refund path, via meme.js); 6a (guard refund) remains — rebuild 6b/6c on generate-ideas if touched.
+LEFT: brands.gemini_key_enc column + its trigger (security-fixes-batch2.sql) are now unused — retire with care.
+Old usage rows untouched.
+
 ## ▶▶ 2026-09-27 — v694. THE APP RUNS ON GROK 4.7 (owner: "grok 4.7 … needs to be inside the app the main").
 
 Default xAI model `grok-4.6` → `grok-4.7` in api/_llm.js (callXAI + the web-search leg) and api/blind-test.js.

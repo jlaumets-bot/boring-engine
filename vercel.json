@@ -144,9 +144,6 @@
     "api/delete-account.js": {
       "maxDuration": 30
     },
-    "api/generate-blog.js": {
-      "maxDuration": 300
-    },
     "api/crawl-social.js": {
       "maxDuration": 300
     },
@@ -161,12 +158,6 @@
     },
     "api/viral-analyze.js": {
       "maxDuration": 300
-    },
-    "api/meme.js": {
-      "maxDuration": 120
-    },
-    "api/hook-frame.js": {
-      "maxDuration": 90
     },
     "api/stock-photo.js": {
       "maxDuration": 60
@@ -194,9 +185,6 @@
     },
     "api/usage.js": {
       "maxDuration": 30
-    },
-    "api/creator-posts.js": {
-      "maxDuration": 90
     },
     "api/angles.js": {
       "maxDuration": 120

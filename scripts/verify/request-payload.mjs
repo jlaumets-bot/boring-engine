@@ -83,7 +83,7 @@ if (m) {
 }
 
 // ── 2b. btnWork's DEFAULT guards every other generate button (Ideas, Remix, Sharpen,
-//        Meme, Viral, Idea Catcher). Same bug, wider blast radius. ────────────
+//        Viral, Idea Catcher). Same bug, wider blast radius. ────────────
 const bw = app.match(/opts\.maxMs\s*\|\|\s*(\d+)/);
 check('could not find btnWork default maxMs', !!bw);
 if (bw) {

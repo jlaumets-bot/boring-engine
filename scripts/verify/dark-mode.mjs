@@ -512,7 +512,7 @@ for (const sel of ['.vl-win-chip.active', '.idea-pick.on', '.dismiss-popup .dp-o
 checkPair('action-circle approve (lavender)', '.action-circle.approve');
 
 // --- contrast failures (fix 7) --------------------------------------------
-for (const sel of ['.tour-btn.primary', '.blog-filter-btn.active', '.paa-badge', '.bm-link-editor-actions .bm-save-btn', '.sp-invite-btn.primary', '.bm-add-row button']) {
+for (const sel of ['.tour-btn.primary', '.paa-badge', '.bm-link-editor-actions .bm-save-btn', '.sp-invite-btn.primary', '.bm-add-row button']) {
   checkPair(`contrast ${sel}`, sel);
 }
 
@@ -559,7 +559,7 @@ checkInline('settings add-community +', /style="(padding:10px 18px;border:none;b
 
 /* ══════════════════════════ CHECK 3 — no white inline islands ══════════════════════════ */
 {
-  const ids = ['remixQuick', 'vlQuick', 'memeQuick'];
+  const ids = ['remixQuick', 'vlQuick'];
   for (const id of ids) {
     const re = new RegExp(`<div[^>]*id="${id}"[^>]*style="([^"]*)"`, 'i');
     const m = re.exec(html);

@@ -33,7 +33,6 @@ module.exports = async function handler(req, res) {
   // `used` stayed 0 forever and the gate could not have fired even if it had been read.
   // Any signed-in account could drain the Pexels quota without bound. This branch plus the
   // logUsage further down are the two halves of the fix; either alone does nothing.
-  // Shape copied from hook-frame.js.
   if (_g.over) {
     // 429 rather than 402 on a BURST trip: this endpoint fires ~6 at a time per video
     // render, making it the most burst-prone call in the app, and app.html's global fetch
@@ -129,7 +128,7 @@ module.exports = async function handler(req, res) {
     // METER IT — the other half of the gate above. Without this, `used` never moves and the
     // limit can never be reached. Logged only once we hold a real photo, so a miss
     // ({empty:true}) is free — same "charge for real work, never for a miss" rule as
-    // hook-frame.js. Placed BEFORE any header or body write so it can never interleave with
+    // every other metered endpoint. Placed BEFORE any header or body write so it can never interleave with
     // the byte stream, and awaited rather than fire-and-forget because work started after the
     // response can be frozen by the platform and simply lost. logUsage already swallows its
     // own errors; the try/catch is belt-and-braces so a metering hiccup can never cost the

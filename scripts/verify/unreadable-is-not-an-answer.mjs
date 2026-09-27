@@ -20,10 +20,7 @@
 //      turns null into 400 no_subscription — so on any Supabase hiccup the one self-serve route
 //      to cancel or fix a failing card answered "you have no subscription". The sibling on the
 //      same table states the rule it broke: "callers must treat null as don't know".
-//   3. "ADD YOUR GEMINI API KEY FIRST" TO USERS WHOSE KEY WAS STORED. All three key lookups in
-//      meme.js read ((r.data || [])[0] || {}).gemini_key_enc, so a PostgREST 5xx asserted "no
-//      key": has-key answered 200 {hasKey:false} and the UI re-opened the key form, inviting
-//      the user to re-paste a Google API key over a problem that was never theirs.
+//   3. (retired 2026-09-27 with the Meme feature: its key lookup read a failed row as "no key".)
 //   4. A COMPETITOR PULSE REPORTED AS SAVED. pull-trends.js discarded its PATCH result and set
 //      competitorMoves on the next line regardless. With Prefer: return=minimal the status is
 //      the only evidence a write happened.
@@ -141,46 +138,6 @@ const PGERR = (status, msg) => ({ status, body: JSON.stringify({ code: '57014', 
   ok(/customerId\s*&&\s*customerId\.unknown/.test(portalSrc) && /503/.test(portalSrc),
      'create-portal-session answers 503 "try again", not 400 no_subscription, when the lookup could not be made — ' +
      'otherwise a customer trying to cancel is told there is nothing to cancel, and keeps being charged');
-}
-
-// ── 3. meme.js must not blame the user for a database error ──────────────────
-{
-  const brandOk = (p) => {
-    if (p.includes('/brand_members')) return { status: 200, body: JSON.stringify([{ brand_id: 'b1' }]) };
-    if (p.includes('/auth/v1/user')) return { status: 200, body: JSON.stringify({ id: 'u1' }) };
-    if (p.includes('/brands') && p.includes('gemini_key_enc')) return PGERR(503, 'canceling statement due to statement timeout');
-    if (p.includes('/brands')) return { status: 200, body: JSON.stringify([{ id: 'b1', user_id: 'u1' }]) };
-    return { status: 200, body: '[]' };
-  };
-  await withSupabase(brandOk, async () => {
-    const handler = fresh('api/meme.js');
-    const res = mkRes();
-    await handler({ method: 'POST', headers: { authorization: 'Bearer t', origin: 'https://contentshrimp.com' },
-                    body: { brandId: 'b1', action: 'has-key' } }, res);
-    ok(res._code !== 200 || !res._body || res._body.hasKey !== false,
-       "has-key must not answer 200 {hasKey:false} when the row could not be read — the UI's own else-branch " +
-       '("Couldn\'t check your key just now — retry") exists for this and never fired. Got ' +
-       res._code + ' ' + JSON.stringify(res._body));
-  });
-  await withSupabase((p) => p.includes('gemini_key_enc')
-      ? { status: 200, body: JSON.stringify([{ gemini_key_enc: 'sealed' }]) } : brandOk(p), async () => {
-    const handler = fresh('api/meme.js');
-    const res = mkRes();
-    await handler({ method: 'POST', headers: { authorization: 'Bearer t', origin: 'https://contentshrimp.com' },
-                    body: { brandId: 'b1', action: 'has-key' } }, res);
-    ok(res._code === 200 && res._body && res._body.hasKey === true,
-       'a readable row with a stored key still answers {hasKey:true} (got ' + res._code + ' ' + JSON.stringify(res._body) + ')');
-  });
-  // the generate paths must answer 5xx, so attachHoldRelease gives the reserved credit back
-  // Strip comments first: the fix's own comment QUOTES the old pattern, and a name in a
-  // comment is not a call site. Whole-line // only, plus /* */ (this is plain JS, not app.html).
-  const memeSrc = fs.readFileSync(path.join(ROOT, 'api/meme.js'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, '');
-  const reads = (memeSrc.match(/gemini_key_enc/g) || []).length;
-  ok(!/\(\(r\.data \|\| \[\]\)\[0\] \|\| \{\}\)\.gemini_key_enc/.test(memeSrc),
-     'no key lookup reads r.data without checking the status (' + reads + ' mentions of the column remain)');
-  ok((memeSrc.match(/_k\.unknown\) return res\.status\(503\)/g) || []).length >= 2,
-     'both generate paths answer 503 on an unreadable read, so the credit they just reserved is refunded');
 }
 
 // ── 4. an unchecked PATCH is not a save ──────────────────────────────────────

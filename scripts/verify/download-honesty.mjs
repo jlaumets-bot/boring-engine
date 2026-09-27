@@ -13,7 +13,7 @@
 //     2. The <a> was never added to the document. Firefox ignores a click on a detached anchor.
 //     3. `URL.revokeObjectURL` ran on the very next line, which can cancel a download that has
 //        not started.
-//   memeDownload already had all three right. The fix is that code, shared.
+//   The fix is one shared helper that gets all three right.
 //
 //   NOTE ON WHAT THIS GATE DOES NOT PIN. Deleting the explicit `if (!blob)` check does NOT fail
 //   here, and that is correct rather than an escape: `URL.createObjectURL(null)` throws, the inner
@@ -137,7 +137,7 @@ if (!/document\.body\.appendChild\(a\)/.test(fn('canvasDownloadPng'))) {
 // has no toBlob to be null). Neither is the bug; both are legitimate. A new canvas download that
 // calls toBlob by hand, on the other hand, has skipped the null check and fails here.
 {
-  const ALLOWED = ['canvasDownloadPng', 'memeDownload'];
+  const ALLOWED = ['canvasDownloadPng'];
   const owners = ALLOWED.map(n => {
     const st = html.indexOf('function ' + n + '(');
     return st < 0 ? null : [st, html.indexOf('\n}', st) + 2];
@@ -155,7 +155,7 @@ if (!/document\.body\.appendChild\(a\)/.test(fn('canvasDownloadPng'))) {
         '. Use canvasDownloadPng — that is why it exists.');
   }
   if (owners.length !== ALLOWED.length) {
-    bad('canvasDownloadPng or memeDownload is gone, so this rule is no longer anchored to anything.');
+    bad('canvasDownloadPng is gone, so this rule is no longer anchored to anything.');
   }
 }
 

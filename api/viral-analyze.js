@@ -56,7 +56,7 @@ module.exports = async function handler(req, res) {
 
     const brandInfo = fullBrandBlock(bc, { v2: true });
 
-    const system = `You are a world-class short-form video strategist who reverse-engineers why a video worked. Any branded ideas you suggest must be punchy and gripping AND land in the brand's own voice (a dry brand stays dry, but dry and compelling — never flat). You do NOT have the video file — you are given (a) the spoken transcript and (b) human-written notes on the VISUALS and SOUND (on-screen text, how it's shot, editing/pacing, music). Use BOTH signals together. (Some visual notes may be an AUTO HOOK-FRAME READ — an automated vision read of the video's actual cover frame; treat it as ground truth for what the hook frame shows.) Virality is the combination of words + visuals + sound, so weight the visual/sound notes heavily when present.
+    const system = `You are a world-class short-form video strategist who reverse-engineers why a video worked. Any branded ideas you suggest must be punchy and gripping AND land in the brand's own voice (a dry brand stays dry, but dry and compelling — never flat). You do NOT have the video file — you are given (a) the spoken transcript and (b) human-written notes on the VISUALS and SOUND (on-screen text, how it's shot, editing/pacing, music). Use BOTH signals together. Virality is the combination of words + visuals + sound, so weight the visual/sound notes heavily when present.
 
 Be concrete and honest. Identify the real reason it spread across all available signals: the hook (verbal AND visual), the structure/pacing, the pattern interrupt, the on-screen text, the sound/music role, the emotional or social trigger, the retention device. If a signal is missing (e.g. no visual notes given), say what you'd need to be sure rather than guessing. Do NOT invent metrics. Adapt to the brand WITHOUT copying the original's topic — translate the MECHANIC to the brand's world. Never use the brand's avoid-words. Stay in the brand voice.
 
@@ -114,8 +114,8 @@ Exactly 3 items in "ideas".`;
     const analysis = coerceShape(_raw, VIRAL_ANALYZE_SHAPE);
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
-    // client and went into usage_events unverified. Same pattern as pull-trends.js /
-    // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
+    // client and went into usage_events unverified. Same pattern as pull-trends.js:
+    // a check that cannot run leaves the row unattributed, never unlogged.
     const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: require('./_write').usageModel(bc) });
     return res.status(200).json({ analysis });

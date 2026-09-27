@@ -22,7 +22,7 @@ function body(name) {
 }
 
 /* ── FIX 3: the wizard must collect everything the app then demands ─────────── */
-// isBrandMinimumMet() gates the Shazam circle + Pipeline/Remix/Blog tabs; the
+// isBrandMinimumMet() gates the Shazam circle + Pipeline/Remix tabs; the
 // "brand brain is still empty" modal additionally needs getBrainStats().filled > 2.
 const min = body('isBrandMinimumMet');
 ok(min, 'FIX3: isBrandMinimumMet() not found');

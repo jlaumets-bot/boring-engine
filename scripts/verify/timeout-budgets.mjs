@@ -39,8 +39,8 @@ for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.
   if (!llmCalls && !grok) continue;
   /* v689 — THIS CHECK PASSED THREE ENDPOINTS THAT WERE OVER BUDGET.
      The old model was max(timeoutMs) * (count of callLLM), and it was blind to two things:
-       • EVERY NON-LLM TIMEOUT. api/meme.js awaits a 45s callLLM and then a 50s image call whose
-         timeout is written `timeout: 50000`; api/hook-frame.js fetches a thumbnail twice at 12s
+       • EVERY NON-LLM TIMEOUT. The meme endpoint (removed 2026-09-27) awaited a 45s callLLM and then a 50s image call whose
+         timeout is written `timeout: 50000`; the hook-frame endpoint (also removed) fetched a thumbnail twice at 12s
          each before its 45s callLLM. Neither cost was counted, so 95s and 69s of sequential work
          both "fit" a 60s budget.
        • THE RETRY LOOP. callXAI retried while `(Date.now() - t0) < 150000` — a test of whether an
@@ -109,8 +109,9 @@ for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.
   judged++;
   if (internal > budget) bad.push(`${name}: ${internal}s internal vs ${budget}s budget`);
 }
-// v690 r2 — APIFY ENDPOINTS WITHOUT AN AI CALL were never judged. creator-posts claimed "40s run +
-// 12s read fits 60s" while its brand check and usage write (8s each) still followed.
+// v690 r2 — APIFY ENDPOINTS WITHOUT AN AI CALL were never judged. creator-posts (removed 2026-09-27,
+// the only such endpoint then) claimed "40s run + 12s read fits 60s" while its brand check and usage
+// write (8s each) still followed. The loop stays so any future Apify-only endpoint is judged.
 let apifyJudged = 0;
 for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.js') && !f.startsWith('_'))) {
   const s = fs.readFileSync(path.join(root, 'api', f), 'utf8');
@@ -122,7 +123,7 @@ for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.
   const budget = md[name] ?? 10;
   if (Math.floor(worst / 1000) > budget) bad.push(`${name}: ${Math.floor(worst / 1000)}s (Apify run + dataset read + Supabase after) vs ${budget}s budget`);
 }
-if (!apifyJudged) { console.error('no Apify endpoint found — the creator-posts check is not exercising anything'); process.exit(1); }
+if (!apifyJudged) console.log('note: no Apify-only endpoint exists right now (creator-posts was removed) — the Apify arm had nothing to judge');
 if (!judged) { console.error('no LLM endpoints found — check is not exercising anything'); process.exit(1); }
 if (bad.length) { console.error('MISMATCHED:\n  ' + bad.join('\n  ')); process.exit(1); }
 console.log(`judged ${judged} LLM endpoints, all internal timeouts fit their budget`);

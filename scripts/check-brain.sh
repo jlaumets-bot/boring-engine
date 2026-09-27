@@ -48,7 +48,7 @@ fi
 # ── 2) Brain coverage: text-gen surfaces must use the shared brain ──────────
 # Surfaces that generate brand copy for the user. Each MUST require _brain and
 # render the full profile via fullBrandBlock(). Add new text generators here.
-TEXT_GEN="expand-field generate-blog generate-ideas meme remix settings-examples viral-analyze viral-rewrite viral-twist"
+TEXT_GEN="expand-field generate-ideas remix settings-examples viral-analyze viral-rewrite viral-twist"
 
 brain_bad=""
 block_bad=""

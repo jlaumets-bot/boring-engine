@@ -14,8 +14,8 @@
 //   class 6 (unauthenticated endpoints) tested /guard\(|_requireUser|requireUser|CRON_SECRET|
 //   getUser\(/ against the raw file, so the word counted wherever it appeared — including inside
 //   a comment or a string. It then still reported three false positives, because it knew only
-//   one shape of authentication: delete-account.js (Bearer token), generate-blog.js (a 410 stub
-//   that does nothing at all) and stripe-webhook.js (authenticated by re-fetching the event from
+//   one shape of authentication: delete-account.js (Bearer token), a since-deleted 410 stub
+//   that did nothing at all, and stripe-webhook.js (authenticated by re-fetching the event from
 //   Stripe by id with our secret key) were all called unguarded. Now each recognised form of
 //   authentication is named, and matched against comment/string-stripped code.
 //
@@ -91,7 +91,7 @@ const DEVICE_GLOBAL = new Set([
 //    claim that the same value is right for every brand on this device — justify it in the comment.
 add('bare localStorage write bypassing lsSet (brand-bleed risk)',
   [...app.matchAll(/localStorage\.setItem\(\s*['"`]([\w-]+)['"`]/g)].map(m => m[1])
-    .filter(k => !/^(cs_last_brand|bn-dark-mode|_ls_ns_migrated|tp_|mascot_|blog_started|home-brain-open|boring_pro_tools_open|tp_primer_v2|trend_window_hours)/.test(k))
+    .filter(k => !/^(cs_last_brand|bn-dark-mode|_ls_ns_migrated|tp_|mascot_|home-brain-open|boring_pro_tools_open|tp_primer_v2|trend_window_hours)/.test(k))
     .filter(k => !DEVICE_GLOBAL.has(k))
     .filter(k => !/^notebook_/.test(k)));
 

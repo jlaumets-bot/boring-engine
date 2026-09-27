@@ -370,7 +370,6 @@ const precedenceUsers = [
   ['viral-rewrite.js', { idea: { title: 't', hook: 'h', script: 's', format: 'video' }, angle: { angle: 'a', hook: 'h' }, brandContext: BC }, [REWRITE_REPLY], {}],
   ['viral-twist.js', { idea: { title: 't', hook: 'h', script: 's', format: 'video' }, brandContext: BC }, [JSON.stringify({ angles: [{ angle: 'a', hook: 'h', why: 'w' }], spicy: { hook: 'h', why: 'w' }, tip: 't' })], {}],
   ['remix.js', { postDescription: 'a viral label video', creatorName: 'someone', platform: 'tiktok', remixMode: 'remix', brandContext: BC }, [JSON.stringify({ originalSummary: 's', remixTitle: 't', remixHook: 'h', remixScript: 'sc', remixFormat: 'video', remixCaption: 'c', remixHashtags: '#a', whyItWorks: 'w' })], {}],
-  ['meme.js', { action: 'generate', brandId: 'brand-1', topic: 'labels', brandContext: BC }, ['not json — stop before the image call'], {}],
 ];
 for (const [file, body, replies, headers] of precedenceUsers) {
   const r = await run(file, body, replies, headers);

@@ -88,7 +88,7 @@ const c = {
   lsSet: (k, v) => { store.set(k, v); return true; }, lsGet: k => (store.has(k) ? store.get(k) : null), lsDel: k => store.delete(k),
   showToast: (m) => toasts.push(String(m)), btnWork: () => () => {}, flushBrandSave: async () => {}, getBrandContext: () => ({ brandName: 'X' }),
   _humanEditedTitles: () => [], saveState() { c.__saveState = (c.__saveState || 0) + 1; }, saveGeneratedIdeas() { return Promise.resolve({ ok: true }); }, DELIVERY_FORMATS: new Set(['video', 'micro', 'qna', 'statement']), saveIdeasToDB() { c.__saveDb = (c.__saveDb || 0) + 1; },
-  renderNav() {}, switchView() {}, renderRemixHookRead() {}, mascotReact() {}, refreshCurrentView() { c.__refresh = (c.__refresh || 0) + 1; }, renderRemixResults() {},
+  renderNav() {}, switchView() {}, mascotReact() {}, refreshCurrentView() { c.__refresh = (c.__refresh || 0) + 1; }, renderRemixResults() {},
   notebookNotes: [{ id: 'n1', text: 'Customers keep asking if cheaper is worse. It is not, and here is why.' }],
   nbDevelop: (id) => classic.push('nbDevelop:' + id), ideaDevelop: () => classic.push('ideaDevelop'),
   usePAAQuestion: (i, f) => classic.push('usePAAQuestion:' + i + ':' + f), generateTodayTabPost: () => classic.push('generateTodayTabPost'),

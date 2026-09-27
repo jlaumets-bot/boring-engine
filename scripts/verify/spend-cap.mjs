@@ -8,7 +8,7 @@
 //   2. the cost fuse defaulted to 0 (off), so the one control built for runaway spend
 //      depended on an env var nobody had set
 //   3. crawl-brand and extract-article authenticated but never called checkLimit
-//   4. hook-frame issued up to 4 outbound HTTPS fetches BEFORE authenticating
+//   4. (retired 2026-09-27 with hook-frame: it fetched before authenticating)
 //   5. nothing in the codebase rate-limited anything
 //
 // Run:  node scripts/verify/spend-cap.mjs
@@ -86,7 +86,7 @@ if (noCost.length) fail.push('action(s) with a credit weight but no ACTION_COST 
       if (lit) sites.push({ action: lit[2], file: f, how: 'guard(var ' + v + ')' });
       else unresolved.push(`${f}: guard(req, ${v}) — cannot resolve the action name statically`);
     }
-    // checkLimit(userId, credits, 'action') — the lane meme.js and generate-ideas.js use
+    // checkLimit(userId, credits, 'action') — the lane generate-ideas.js uses
     for (const m of src.matchAll(/checkLimit\([^;]*?,\s*(['"])([\w.-]+)\1\s*\)/g)) sites.push({ action: m[2], file: f, how: 'checkLimit' });
   }
   if (unresolved.length) fail.push('gated action(s) not statically resolvable — write the action as a ' +
@@ -208,8 +208,6 @@ if (!/gate && _cbGuard\.gate\.used\) > 0|used\) > 0/.test(cbSrc)) {
                                check: (s) => /require\(['"]\.\/_requireUser['"]\)/.test(s) && /CONTENT_LAB_USER_IDS/.test(s) },
     'push-key.js':           { why: 'returns the public VAPID key only — public by design',
                                check: (s) => /VAPID_PUBLIC_KEY/.test(s) && s.length < 2000 },
-    'generate-blog.js':      { why: 'RETIRED stub — answers 410 and does nothing else',
-                               check: (s) => /status\(410\)/.test(s) },
     'pull-trends-cron.js':   { why: 'Vercel cron — authorised by CRON_SECRET, not by a user plan',
                                check: (s) => /CRON_SECRET/.test(s) },
     'send-daily.js':         { why: 'Vercel cron — authorised by CRON_SECRET, not by a user plan',
@@ -256,21 +254,6 @@ if (!/gate && _cbGuard\.gate\.used\) > 0|used\) > 0/.test(cbSrc)) {
        `${ungated.length} ungated`);
 }
 
-// ── 4. hook-frame must authenticate before any outbound fetch ─────────────────
-const hf = read('api/hook-frame.js');
-const iGuard = hf.indexOf('.guard(req');
-const iFetch = hf.search(/\n\s*const img = await resolveThumb\(/);
-if (iGuard === -1) {
-  fail.push('api/hook-frame.js no longer calls guard()');
-} else if (iFetch === -1) {
-  fail.push('api/hook-frame.js: could not locate the resolveThumb() call to order-check');
-} else if (iGuard > iFetch) {
-  fail.push('api/hook-frame.js fetches the thumbnail (up to 4 outbound HTTPS requests, 4MB each) ' +
-            'BEFORE authenticating — move guard() above resolveThumb()');
-} else {
-  note('hook-frame authenticates before its first outbound fetch');
-}
-
 // ── 5. a per-user burst limit must exist and be reachable ─────────────────────
 if (!(Number(usage.RATE_LIMIT_PER_MIN) > 0)) {
   fail.push('no per-user rate limit is configured (RATE_LIMIT_PER_MIN is ' + usage.RATE_LIMIT_PER_MIN + ')');
@@ -301,4 +284,4 @@ if (fail.length) {
   for (const f of fail) console.error('  - ' + f);
   process.exit(1);
 }
-console.log('PASS: spend-cap — no zero-credit actions, every gated action is in both weight maps, cost fuse armed, NO api endpoint is ungated (every one meters or is named+justified in the allowlist), hook-frame authenticates first, burst limit active');
+console.log('PASS: spend-cap — no zero-credit actions, every gated action is in both weight maps, cost fuse armed, NO api endpoint is ungated (every one meters or is named+justified in the allowlist), burst limit active');

@@ -24,7 +24,7 @@
 //      only trace was a log line accusing them of a security anomaly. `false` now means
 //      denied; a check that could not run throws, and the caller that deletes must not act
 //      on it. Every other caller already degrades safely — this gate does not re-check those,
-//      but api/meme.js was given an explicit 503 branch rather than a misleading 403.
+//      but api/meme.js (since removed) was given an explicit 503 branch rather than a misleading 403.
 //
 //   3. RE-OPENING THE ONBOARDING WIZARD LEFT A DEAD SCREEN WITH NO WAY OUT. A successful crawl
 //      hides #obStep1Form and shows #obCrawlAnimation; obShowWizard restored the finish button

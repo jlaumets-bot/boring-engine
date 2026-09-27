@@ -6,7 +6,7 @@ const { AsyncLocalStorage } = require('async_hooks');
  * Shared LLM helper — PURE GROK (xAI). NO fallback of any kind. If xAI is down / out of
  * credits the call throws and the caller shows a retry message. (No Groq/Llama, no OpenAI,
  * no Claude.) The only non-Grok AI left in the whole app is the TTS spoken-reply in
- * /api/speak (OpenAI) and image generation in /api/meme (the user's OWN Gemini key).
+ * /api/speak (OpenAI).
  *
  * `model`/`engine` opts are still accepted (call sites pass model:'grok' etc.) but
  * IGNORED — the model is always Grok. Bump it with the XAI_MODEL env var
@@ -77,8 +77,8 @@ function httpsPost(url, headers, body, timeoutMs) {
    `(Date.now() - t0) < 150000`, checked BEFORE an attempt starts — so an attempt beginning at
    149,999ms could still run its full timeoutMs on top. Worst case per callLLM was therefore
    150s + timeoutMs, which is how three endpoints came to overrun their platform budget while
-   every one of them looked fine: api/meme.js (60s budget), api/hook-frame.js (60s) and
-   api/video-beats.js (300s). When the platform kills a function the caller does not get our JSON
+   every one of them looked fine (api/video-beats.js among them, 300s; the other two have
+   since been removed). When the platform kills a function the caller does not get our JSON
    — it gets Vercel's own 504 page, and the app prints the JSON parse error verbatim
    ("Unexpected token 'A'..."). deadlineMs makes the loop ask the honest question instead: is
    there room for another attempt to FINISH? Default 0 keeps the old behaviour for callers that

@@ -39,7 +39,7 @@ const TRIAL_DAYS = 7;   // v470: was 21 — Jörgen: "21 days too long, 7 is ok"
 // Tools that are PAID-only once the trial ends. The free plan keeps the daily
 // creation loop (quick post / ideas / remix / viral / notebook); these are the
 // heavy "grow" tools. Trial + starter/pro/agency are never blocked by this.
-const FREE_LOCKED_ACTIONS = { blog: 1, meme: 1, brandimage: 1 };
+const FREE_LOCKED_ACTIONS = {};   // v2026-09-27: its only members (blog, meme, brandimage) were removed with their features
 
 // Weight heavier actions as more "credits" (the user-facing post budget).
 //
@@ -60,14 +60,13 @@ const FREE_LOCKED_ACTIONS = { blog: 1, meme: 1, brandimage: 1 };
 //   0.25  one small LLM call, or a single plain page fetch with no LLM
 //   0.1   a cheap keyless lookup that fires in bulk (~6 stockphoto calls per video render)
 const ACTION_CREDITS = {
-  ideas: 1, quickpost: 1, meme: 1, remix: 1, viral: 1, expand: 1, beats: 1,
-  blog: 3, transcribe: 2, brandimage: 1,
+  ideas: 1, quickpost: 1, remix: 1, viral: 1, expand: 1, beats: 1,
+  transcribe: 2,
   image: 2, imageedit: 2, transcribeurl: 2,
   // ── formerly 0 (see the note above) ────────────────────────────────────────
   crawlbrand: 3,          // <=10 page fetches + a Grok web search + 2 Grok calls, 300s budget
   crawlsocial: 2,         // paid Apify actor run (up to 40 posts) + an LLM voice extraction
   pulltrends: 2,          // Apify + Grok web search + News RSS
-  creatorposts: 2,        // manual-only Apify run per platform over the brand's bookmarked creators
   paa: 2,                 // up to 5 SerpAPI searches (real quota) + an LLM relevance pass
   listen: 2,              // Apify (no live caller today — registered so a revival is not a hole)
   inspiration: 2,         // Exa/Apify (same)
@@ -84,7 +83,6 @@ const ACTION_CREDITS = {
                           // stray caller is priced, not defaulted to 1 credit as an unknown action.
   extractarticle: 0.25,   // one page fetch + regex extraction, no LLM
   stockphoto: 0.1,        // keyless Pexels lookup; ~6 fire in parallel per video render
-  hookframe: 1,           // was unregistered (defaulted to 1) — pinned so it cannot drift to 0
   // TWO sequential LLM calls (critique at 700 tokens, then a rewrite at 2500), so it costs more
   // than any single-call action. It was in NEITHER map — the only guard() action in the whole API
   // that was missing from both — so it silently defaulted to 1 credit / €0.01 and the fuse
@@ -140,10 +138,10 @@ const RATE_WINDOW_MS = 60000;
 
 const ACTION_COST = {
   stockphoto: 0.001,
-  crawlgdoc: 0.001, extractarticle: 0.001, hookframe: 0.01,
+  crawlgdoc: 0.001, extractarticle: 0.001,
   // cheap text (Grok/Groq)
-  ideas: 0.006, quickpost: 0.006, meme: 0.006, remix: 0.008, viral: 0.008, beats: 0.006,
-  expand: 0.005, blog: 0.02, distill: 0.006, voicechat: 0.006, searchimages: 0.01, brandimage: 0.003, settingsexamples: 0.004,
+  ideas: 0.006, quickpost: 0.006, remix: 0.008, viral: 0.008, beats: 0.006,
+  expand: 0.005, distill: 0.006, voicechat: 0.006, searchimages: 0.01, settingsexamples: 0.004,
   // paid search quota — one PAA call issues up to 5 SerpAPI searches, not one
   paa: 0.05,
   // audio
@@ -155,9 +153,6 @@ const ACTION_COST = {
   // was 0 "free — Google News RSS": the lane also runs a paid Apify search and a Grok
   // web search now, so a 0 here understated it to the fuse.
   pulltrends: 0.05,
-  // Higher than pulltrends because bookmarks skew TikTok, and TikTok video scraping runs
-  // ~$2-3.10/1k results against ~$0.15-0.40/1k for tweets. Manual-only, so it fires rarely.
-  creatorposts: 0.08,
   // Two Grok calls, the second with a 2500-token budget — ~2.5x a single `ideas` call.
   sharpen: 0.015,
   // One 5-token, temperature-0 Grok reply — the smallest real model call in the app.
@@ -821,7 +816,6 @@ async function getStatus(userId, opts) {
    cannot leave twenty-two of them behind again. */
 function denyResponse(res, gate) {
   const g = gate || {};
-  // meme.js carried this branch alone; it belongs with the others.
   if (g.reason === 'feature') {
     return res.status(402).json({ error: 'feature_locked', feature: g.feature || undefined, plan: g.plan });
   }
@@ -1173,8 +1167,7 @@ function claimedBrandId(req) {
    every real x.ai failure lands there. It is gated as 'crawlbrand' = 3 credits. Measured: a
    free user (40) who taps "Pull reviews" three times during an x.ai outage is shown 10/40
    used, has received nothing, and meets the upgrade wall — the exact harm v678 was written to
-   prevent, through the door it left open. Same shape in creator-posts.js (no token / no
-   profiles saved), hook-frame.js (bad url / no frame / caught error), distill-voice.js
+   prevent, through the door it left open. Same shape in two since-removed endpoints, distill-voice.js
    (model returned nothing) and stock-photo.js (five paths).
 
    The honest question is not "what status did it answer" but "was anything actually charged".
@@ -1183,8 +1176,8 @@ function claimedBrandId(req) {
    hold that is STILL PENDING when the response is written means logUsage never ran, which
    means no credit was spent — whatever the code says. Refund on that, and a handler cannot
    invent a new silent-failure path this misses. A genuinely empty-but-real result keeps its
-   charge, because that path logs: creator-posts.js:189 logs before answering {empty:true} on
-   a scrape that ran and found nothing, and stays charged. */
+   charge, because that path logs before answering {empty:true} on a call that ran and found
+   nothing, and stays charged. */
 function attachHoldRelease(res, hold) {
   if (!res || !hold || typeof res.json !== 'function' || res.__csHoldPatched) return;
   res.__csHoldPatched = true;

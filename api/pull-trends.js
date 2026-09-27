@@ -1,6 +1,6 @@
 // On-demand: pull fresh, timely topic ideas for a brand from Google News RSS.
 // Free (no paid API) — metered at 0 credits / 0 €. Returns clean topic strings the
-// frontend merges into the brand's trend store, which flows into Ideas / Blog / Quick Post.
+// frontend merges into the brand's trend store, which flows into Ideas / Quick Post.
 const { pullAllTrends, pullCompetitorPulse, scoreTrends } = require('./_trends');
 const store = require('./_publish/store');
 const COMP_STALE_MS = 7 * 24 * 3600 * 1000; // same weekly staleness rule as the cron

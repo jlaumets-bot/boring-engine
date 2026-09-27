@@ -129,7 +129,7 @@ module.exports = async function handler(req, res) {
   add('config_supabase', !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY));
   add('config_llm_key', !!process.env.XAI_API_KEY); // Grok only: GROQ is Whisper dictation, it cannot write text
   // Granular key presence (booleans only). XAI = all text (Grok); GROQ = Whisper
-  // dictation; OPENAI = TTS speak-back. Gemini image keys are per-brand, not env.
+  // dictation; OPENAI = TTS speak-back.
   add('config_xai_key', !!process.env.XAI_API_KEY);
   add('config_groq_key', !!process.env.GROQ_API_KEY);
   add('config_openai_key', !!process.env.OPENAI_API_KEY);

@@ -110,8 +110,8 @@ Return ONLY the improved content for this field.`;
     const expanded = String((_res && _res.text) || '').trim();
     const _wasClipped = currentValue.trim().length > FIELD_IN_CAP;
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
-    // client and went into usage_events unverified. Same pattern as pull-trends.js /
-    // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
+    // client and went into usage_events unverified. Same pattern as pull-trends.js:
+    // a check that cannot run leaves the row unattributed, never unlogged.
     const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'expand', model: require('./_write').usageModel(bc) });
     // v681: tell the client when part of the field was never read, so it can warn rather than

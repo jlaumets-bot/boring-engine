@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v694';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v695';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -367,14 +367,14 @@ body {
      content-sized buttons on two consistent heights (44 primary / 38 utility), related actions
      collected into HORIZONTAL rows (form panels become wrap-rows: block fields span, buttons
      flow onto one shared row), primary pushed to the row's right in composer forms. ── */
-  .gen-btn, .tp-generate-btn, .generate-ideas-btn, .blog-generate-btn, .batch-enter, #dfyReqBtn {
+  .gen-btn, .tp-generate-btn, .generate-ideas-btn, .batch-enter, #dfyReqBtn {
     width: auto !important; min-width: 0 !important; height: 44px; min-height: 44px !important;
     padding: 0 26px !important; font-size: 14px !important;
     display: inline-flex !important; align-items: center; justify-content: center; gap: 8px;
     margin: 0 !important; align-self: flex-start; white-space: nowrap; box-sizing: border-box;
   }
   .batch-enter { margin: 0 0 16px !important; }
-  .vl-mic, .sp-extra-btn, .prod-upload-btn {
+  .vl-mic, .sp-extra-btn {
     width: auto !important; min-width: 0 !important; height: 44px; min-height: 44px !important; /* v432: ONE control height (44) — mixed 38/44 in a shared row read as messy */
     padding: 0 22px !important; font-size: 13px !important;
     display: inline-flex !important; align-items: center; justify-content: center; gap: 7px;
@@ -413,7 +413,6 @@ body {
      (.vt-copy/.vt-use/.canva-link/.copy-reel-btn/.cm-card-btn) keeps its v406 small standard.
      Chips/tabs/filters and the sidebar keep their own systems. */
   .detail-btn, .pipe-btn, .tp-action-btn,
-  .blog-approve-btn, .blog-reject-btn, .blog-expand-btn,
   .nb-act:not(.del), .sp-expand-btn, .sp-ask-btn, .brain-rule-btn,
   .batch-cancel, .batch-all, .batch-go,
   .dp-cancel, .dp-custom-send, .dz-btn, .fq-done-btn, .sp-invite-btn, .sp-plan-btn {
@@ -422,11 +421,8 @@ body {
     display: inline-flex !important; align-items: center !important; justify-content: center !important;
     gap: 6px; box-sizing: border-box; white-space: nowrap;
   }
-  .blog-card-actions .blog-x-btn { padding: 0 14px !important; }
   /* icon circles: one diameter across the app */
   .action-circle, .pipe-undo, .nb-act.del, .assign-avatar { width: 40px !important; height: 40px !important; min-height: 0 !important; padding: 0 !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; }
-  /* Blog card actions: compact pills in a row, not stretched thirds of the card */
-  .blog-card-actions button { flex: 0 0 auto !important; min-width: 0; padding-left: 18px; padding-right: 18px; }
   /* Delivery segment (HOW YOU'LL MAKE IT) joins the left alignment. !important because the base
      rules live LATER in this stylesheet and win at equal specificity (cascade lesson: this media
      block is EARLY in the file — later same-specificity base rules beat non-!important overrides). */
@@ -705,7 +701,7 @@ input:focus, textarea:focus, select:focus {
 /* v472: the sticky header used to swallow the first lines of anything we
    scrollIntoView (QA: remix + Trends results "top lines cut off"). One rule,
    every auto-scrolled result target. */
-#remixResults, #rv2Panel, #vlResults, #tvResult, #icResult, #memeStage, .list-card, .pipeline-card { scroll-margin-top: 84px; }
+#remixResults, #rv2Panel, #vlResults, #tvResult, #icResult, .list-card, .pipeline-card { scroll-margin-top: 84px; }
 /* v593: the sticky brand header was still clipping these when scrolled to — QA saw it on Pipeline
    (expanded post card), Settings (Content Mix accordion title) and Questions (first question card). */
 .pipeline-card-detail, .list-card-detail, .sp-section, .sp-field, .paa-section, .paa-card, .paa-question { scroll-margin-top: 84px; }
@@ -2881,7 +2877,6 @@ input:focus, textarea:focus, select:focus {
 .vl-fmt { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); }
 .vl-idea-hook { font-size: 17px; font-weight: 700; color: var(--text); line-height: 1.3; }
 .vl-idea-script { font-size: 13px; color: var(--text2); margin-top: 8px; line-height: 1.5; white-space: pre-wrap; }
-/* Meme Maker */
 /* Light "group panel" — bounds a logical group of controls on a screen so a function's parts
    read as distinct sections instead of one long float. Cream fill + hairline border + soft
    shadow do the work on the cream page. Cream = grouping; lavender stays reserved for the ONE
@@ -2890,24 +2885,6 @@ input:focus, textarea:focus, select:focus {
 .grp-panel:last-child { margin-bottom: 0; }
 .grp-panel > :first-child { margin-top: 0; }
 .grp-panel > :last-child { margin-bottom: 0; }
-.meme-key-form, .meme-key-set { margin: 4px 0 14px; }
-.meme-key-set { font-size: 13px; color: var(--text2); display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface2); border: 1px solid var(--surface3); border-radius: var(--radius-sm); }
-.meme-style-row { display: flex; gap: 8px; justify-content: center; margin: 4px 0 10px; }
-.meme-style-btn { font-size: 12px; font-weight: 600; padding: 7px 16px; border: 1.5px solid var(--surface3); background: var(--surface); color: var(--text2); border-radius: 999px; cursor: pointer; }
-.meme-style-btn.on { background: var(--text); color: #fff; border-color: var(--text); }
-.meme-mode-row { display: flex; gap: 8px; margin: 4px 0 10px; }
-.meme-mode-btn { flex: 1; font-size: 13px; font-weight: 700; padding: 10px 12px; border: 1.5px solid var(--surface3); background: var(--surface); color: var(--text2); border-radius: var(--radius-sm); cursor: pointer; transition: transform 0.14s var(--ease-out), background 0.14s ease, color 0.14s ease, border-color 0.14s ease; }
-.meme-mode-btn:active { transform: scale(0.97); }
-.meme-mode-btn.on { background: var(--text); color: #fff; border-color: var(--text); }
-.prod-upload-btn { display: inline-block; align-self: flex-start; font-size: 13px; font-weight: 600; color: var(--text2); padding: 8px 14px; border: 1.5px dashed var(--surface3); border-radius: var(--radius-sm); cursor: pointer; transition: transform 0.14s var(--ease-out), border-color 0.14s ease; }
-.prod-upload-btn:active { transform: scale(0.97); }
-.prod-upload-btn:hover { border-color: var(--text3); }
-.prod-api-hint { font-size: 12.5px; line-height: 1.5; color: var(--text3); margin: 0 0 12px; padding: 10px 12px; background: var(--surface2); border: 1px solid var(--surface3); border-radius: var(--radius-sm); }
-.prod-ref-note { font-size: 12.5px; line-height: 1.5; color: var(--text3); }
-.prod-ref-note .prod-ref-on { color: var(--text2); }
-@media (prefers-reduced-motion: reduce){ .meme-mode-btn, .prod-upload-btn { transition: none; } .meme-mode-btn:active, .prod-upload-btn:active { transform: none; } }
-.meme-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-.meme-actions .detail-btn { flex: 1; min-width: 110px; }
 .vl-edit-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); margin: 12px 0 4px; }
 .vl-edit-hook { width: 100%; box-sizing: border-box; font-weight: 700; }
 .vl-edit-script { width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical; line-height: 1.5; }
@@ -2917,24 +2894,6 @@ input:focus, textarea:focus, select:focus {
 .vl-trend-panel { margin: 4px 0 14px; padding: 12px 16px; background: var(--surface2); border: 1px solid var(--surface3); border-radius: var(--radius-sm); }
 /* v646: the v645 .vl-watch fold was replaced by the two Trends tabs — the tab IS the fold, so no
    fold CSS is needed here. Tabs reuse .create-sub-tab(s). */
-/* v647 — "What they just posted" in Remix. White cards on cream, same as the Trends strip, so
-   both "here is someone else's post, make it yours" surfaces read identically. */
-#remixCpBox:empty { display: none; }
-.cp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  font-size: 13px; font-weight: 700; color: var(--text); margin: 12px 0 8px; }
-.cp-refresh { flex: 0 0 auto; background: var(--surface); color: var(--text); border: 1.5px solid #16130F;
-  border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 700; cursor: pointer; }
-.cp-refresh:active { transform: scale(0.96); }
-.cp-empty { font-size: 12.5px; color: var(--text3); line-height: 1.55; margin: 0 0 12px; }
-.cp-list { display: flex; flex-direction: column; gap: 10px; margin: 0 0 14px; }
-.cp-post { background: var(--surface); border: 1.5px solid var(--border2); border-radius: 12px; padding: 12px 14px; }
-.cp-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.cp-plat { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-  background: var(--surface2); border: 1px solid var(--border2); border-radius: 999px; padding: 2px 8px; color: var(--text3); }
-.cp-handle { font-size: 12px; font-weight: 700; color: var(--text2); }
-.cp-text { font-size: 13px; line-height: 1.5; color: var(--text); margin-bottom: 10px; }
-.cp-text.cp-notext { color: var(--text3); font-style: italic; }
-.cp-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 /* v644 — "Worth making yours": the only actionable item on the Trends screen. White cards on the
    panel's cream so they read as things you DO, not more topics you read. */
 .vl-top-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -3629,12 +3588,11 @@ input:focus, textarea:focus, select:focus {
   }
   /* ONE mobile size for every in-card ACTION button across the app = the .detail-btn standard
      (44px tall, 14px, 12x16 padding). Unifies Ideas/Pipeline (.detail-btn), Pipeline card (.pipe-btn),
-     Quick Post (.tp-action-btn), Blog (.blog-*), Notebook (.nb-act), Settings field actions
-     (.sp-expand-btn/.sp-ask-btn), and Meme result (uses .detail-btn). Deliberately EXCLUDES: the big
-     full-width generate CTAs (.gen-btn family, 50px), chips/tabs (.filter-chip/.tp-cat/.meme-mode-btn/
+     Quick Post (.tp-action-btn), Notebook (.nb-act) and Settings field actions
+     (.sp-expand-btn/.sp-ask-btn). Deliberately EXCLUDES: the big
+     full-width generate CTAs (.gen-btn family, 50px), chips/tabs (.filter-chip/.tp-cat/
      .create-sub-tab/.sp-chip), inline mini-utilities (.vt-copy/.vt-use/.canva-link/.copy-reel-btn/
-     .cm-card-btn), and compact icon buttons (.nb-act.del/.pipe-undo/.blog-x-btn keep their own width). */
-  .blog-approve-btn, .blog-reject-btn, .blog-expand-btn,
+     .cm-card-btn), and compact icon buttons (.nb-act.del/.pipe-undo keep their own width). */
   .pipe-btn, .tp-action-btn, .nb-act:not(.del), .sp-expand-btn, .sp-ask-btn, .brain-rule-btn {
     padding: 12px 16px;
     font-size: 14px;
@@ -5263,7 +5221,7 @@ body, body * {
 @media (prefers-reduced-motion: reduce) { .bv-overlay .bv-mic-btn.recording { animation: none; } }
 
 /* Flow-style outlined surfaces, everywhere */
-.list-card, .pipeline-card, .blog-card, .fq-item, .stat-sq, .sp-section, .more-sheet, .bv-suggestion {
+.list-card, .pipeline-card, .fq-item, .stat-sq, .sp-section, .more-sheet, .bv-suggestion {
   border: 1.5px solid #16130F !important;
   box-shadow: none !important;
   border-radius: 16px !important;
@@ -5422,16 +5380,16 @@ body, body * {
 @media (max-width: 600px) { .stats-bar { max-width: none; } }
 
 @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.list-card, .pipeline-card, .blog-card, .fq-item { animation: cardIn 0.32s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
-.list-card:nth-child(2), .pipeline-card:nth-child(2), .blog-card:nth-child(2), .fq-item:nth-child(2) { animation-delay: 0.03s; }
-.list-card:nth-child(3), .pipeline-card:nth-child(3), .blog-card:nth-child(3), .fq-item:nth-child(3) { animation-delay: 0.06s; }
-.list-card:nth-child(4), .pipeline-card:nth-child(4), .blog-card:nth-child(4), .fq-item:nth-child(4) { animation-delay: 0.09s; }
-.list-card:nth-child(5), .pipeline-card:nth-child(5), .blog-card:nth-child(5), .fq-item:nth-child(5) { animation-delay: 0.12s; }
-.list-card:nth-child(n+6), .pipeline-card:nth-child(n+6), .blog-card:nth-child(n+6), .fq-item:nth-child(n+6) { animation-delay: 0.15s; }
+.list-card, .pipeline-card, .fq-item { animation: cardIn 0.32s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.list-card:nth-child(2), .pipeline-card:nth-child(2), .fq-item:nth-child(2) { animation-delay: 0.03s; }
+.list-card:nth-child(3), .pipeline-card:nth-child(3), .fq-item:nth-child(3) { animation-delay: 0.06s; }
+.list-card:nth-child(4), .pipeline-card:nth-child(4), .fq-item:nth-child(4) { animation-delay: 0.09s; }
+.list-card:nth-child(5), .pipeline-card:nth-child(5), .fq-item:nth-child(5) { animation-delay: 0.12s; }
+.list-card:nth-child(n+6), .pipeline-card:nth-child(n+6), .fq-item:nth-child(n+6) { animation-delay: 0.15s; }
 .fq-item.leaving, .pipeline-card.leaving { transition: transform 0.2s ease, opacity 0.2s ease; transform: translateX(36px); opacity: 0; }
 .tp-generate-btn:active, .fq-done-btn:active, .pipe-btn:active { transform: scale(0.97); }
 @media (prefers-reduced-motion: reduce) {
-  .list-card, .pipeline-card, .blog-card, .fq-item { animation: none; }
+  .list-card, .pipeline-card, .fq-item { animation: none; }
   .fq-item.leaving, .pipeline-card.leaving { transition: none; }
 }
 .spark-bar { display: flex; gap: 8px; margin-bottom: 16px; }
@@ -5477,7 +5435,7 @@ body, body * {
 }
 .sp-ask-btn:hover { border-color: var(--gold); color: var(--text); }
 
-.nav-tab.more-tab { display: flex; } /* always shown — it's the only gateway to Idea Catcher, What-people-search, Trends, Meme Maker & Done-for-you */
+.nav-tab.more-tab { display: flex; } /* always shown — it's the only gateway to Idea Catcher, What-people-search, Trends & Done-for-you */
 .more-backdrop { position: fixed; inset: 0; background: rgba(20,16,12,0.35); z-index: 290; animation: moreFade 0.18s ease; }
 .more-sheet {
   position: fixed; left: 10px; right: 10px; bottom: calc(64px + env(safe-area-inset-bottom));
@@ -5555,7 +5513,7 @@ body, body * {
 
 .al-banner-anim { display: none !important; }
 :root { --mono: ui-monospace,'SF Mono',Menlo,Consolas,'Roboto Mono',monospace; }
-.stat-pill .num, .tab-count, .fq-count, .blog-card-meta, .tp-day-badge {
+.stat-pill .num, .tab-count, .fq-count, .tp-day-badge {
   font-family: var(--mono); font-variant-numeric: tabular-nums;
 }
 .stat-pill .label { letter-spacing: 0.14em; }
@@ -5596,7 +5554,7 @@ body, body * {
   .header-btn svg { display: inline-block; width: 16px; height: 16px; }
   .logout-btn { font-size: 11px; padding: 8px 10px; }
   /* bottom bar: 5 tabs — Quick Post/Ideas/Pipeline/Remix/More (v437: Coach moved to More; the mascot is the coach's doorway on-screen) */
-  .nav-tab[data-tab="blog"], .nav-tab[data-tab="notebook"] { display: none; }   /* v597: Remix is back in the bar (before More) — reverses the v572 move into the More sheet */
+  .nav-tab[data-tab="notebook"] { display: none; }   /* v597: Remix is back in the bar (before More) — reverses the v572 move into the More sheet */
   .nav-tab.coach-tab { display: none; }
   .nav-tab.more-tab { display: flex; }
 }
@@ -5604,7 +5562,6 @@ body, body * {
   /* readability bumps on phones */
   .pipeline-stage-tab { font-size: 12px !important; padding: 10px 12px !important; min-width: 76px !important; }
   .stat-pill .label { font-size: 11px !important; }
-  .blog-card-answer { font-size: 14px; }
 }
 @media (min-width: 601px) and (max-width: 1000px) {
   /* nav can overflow in the tablet squeeze — make it scrollable instead of cut off */
@@ -5633,78 +5590,10 @@ body, body * {
 .pro-toggle-chevron { width: 16px; height: 16px; transition: transform 0.2s; }
 .pro-tools-toggle.open .pro-toggle-chevron { transform: rotate(180deg); }
 
-/* ===== AEO BLOG TAB ===== */
-.blog-header { padding: 20px 0 12px; }
-.blog-header h2 { font-size: 26px; font-weight: 800; letter-spacing: -0.6px; margin: 0 0 4px; }
-.blog-header p { font-size: 13px; color: var(--text3); margin: 0; }
-.blog-controls { display: flex; align-items: center; justify-content: space-between; padding: 0 16px 12px; gap: 12px; }
-.blog-generate-btn {
-  padding: 10px 18px; border-radius: 999px; border: 1.5px solid #16130F; cursor: pointer;
-  font-size: 13px; font-weight: 700; color: #16130F; background: #E7DAF9;
-  transition: transform 160ms ease-out, opacity 0.2s, background 0.2s, color 0.2s;
-}
-.blog-generate-btn:active { transform: scale(0.97); }
-.blog-generate-btn:hover { background: #333333; color: #fff; }
-.blog-generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.blog-toggle-track {
-  width: 40px; height: 22px; border-radius: 11px; background: var(--surface3); cursor: pointer;
-  position: relative; transition: background 0.2s;
-}
-.blog-toggle-track.on { background: var(--green); }
-.blog-toggle-knob {
-  width: 18px; height: 18px; border-radius: 50%; background: #fff;
-  position: absolute; top: 2px; left: 2px; transition: transform 0.2s var(--ease-out);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-}
-.blog-toggle-track.on .blog-toggle-knob { transform: translateX(18px); }
-.blog-list { padding: 0 0 120px; display: flex; flex-direction: column; gap: 10px; }
-.blog-card {
-  background: var(--surface); border-radius: var(--radius); padding: 16px;
-  border: 1px solid var(--border2); transition: box-shadow 0.2s;
-}
-.blog-card-question { font-size: 16px; font-weight: 700; letter-spacing: -0.2px; margin: 0 0 8px; color: var(--text); line-height: 1.35; }
-.blog-card-answer { font-size: 14px; color: var(--text2); line-height: 1.6; margin: 0 0 12px; }
-.blog-card-answer.collapsed { max-height: 5.2em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
-.blog-card-answer h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.2px; color: var(--text); margin: 16px 0 6px; }
-.blog-card-answer h3 { font-size: 15.5px; font-weight: 700; color: var(--text); margin: 14px 0 5px; }
-.blog-card-answer h4 { font-size: 14px; font-weight: 700; color: var(--text); margin: 12px 0 4px; }
-.blog-card-answer p { margin: 0 0 10px; }
-.blog-card-answer ul, .blog-card-answer ol { margin: 0 0 10px; padding-left: 20px; }
-.blog-card-answer li { margin: 0 0 5px; }
-.blog-card-answer strong { color: var(--text); font-weight: 700; }
-.blog-card-answer > *:first-child { margin-top: 0; }
-.blog-card-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text4); margin-bottom: 12px; }
-.blog-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-/* Labelled actions share the row 3-up so text fits and they wrap to a clean 2nd row (no squish, no clipped ✕) */
-.blog-card-actions button { flex: 1 1 calc(33.333% - 4px); min-width: 0; }
-/* Reject ✕ stays compact so it never balloons on the wrapped 2nd row; Copy fills the rest */
-.blog-card-actions .blog-x-btn { flex: 0 0 auto; padding-left: 18px; padding-right: 18px; }
-.blog-approve-btn, .blog-reject-btn, .blog-expand-btn {
-  padding: 7px 14px; border-radius: var(--radius-sm); border: none; cursor: pointer;
-  font-size: 12px; font-weight: 700; transition: transform 160ms ease-out;
-}
-.blog-approve-btn:active, .blog-reject-btn:active, .blog-expand-btn:active { transform: scale(0.97); }
-/* role-based fills: Approve = lavender primary; Improve/Edit/Copy (all wear .blog-reject-btn) = neutral secondary; only the actual ✕ is destructive */
-.blog-approve-btn { background: var(--lav,#E7DAF9); color: #16130F; }
-.blog-reject-btn { background: #fff; color: #16130F; }
-.blog-expand-btn { background: var(--surface2); color: #16130F; }
-.blog-x-btn { background: #fff !important; color: var(--red) !important; }
-.blog-card.approved { border-left: 3px solid var(--green); }
-.blog-card.rejected { opacity: 0.45; }
-.blog-empty { text-align: center; padding: 60px 20px; color: var(--text4); font-size: 14px; }
-.blog-empty svg { display: block; margin: 0 auto 12px; opacity: 0.3; }
-.blog-status-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-.blog-status-badge.approved { background: var(--green-bg); color: var(--green); }
-.blog-status-badge.posted { background: var(--blue-bg); color: var(--blue); }
-.blog-status-badge.rejected { background: var(--red-bg); color: var(--red); }
-.blog-filter-row { display: flex; gap: 6px; padding: 0 0 12px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
-.blog-filter-row::-webkit-scrollbar { display: none; }
-.blog-filter-btn { padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border2); background: var(--surface); font-size: 12px; font-weight: 600; color: var(--text3); cursor: pointer; white-space: nowrap; }
-.blog-filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 /* Kill the exposed horizontal scrollbar on every chip/tab row (Android Chrome showed a grey bar
-   between the blog filters and the cards, clipping the pills). Rows stay scrollable, just no bar. */
-.filter-row, .pipeline-stages, .create-sub-tabs, .source-tabs, .bm-bar, .borrow-row, .blog-filter-row, .tp-cats, .search-tags { scrollbar-width: none; -ms-overflow-style: none; }
-.filter-row::-webkit-scrollbar, .pipeline-stages::-webkit-scrollbar, .create-sub-tabs::-webkit-scrollbar, .source-tabs::-webkit-scrollbar, .bm-bar::-webkit-scrollbar, .borrow-row::-webkit-scrollbar, .blog-filter-row::-webkit-scrollbar, .tp-cats::-webkit-scrollbar, .search-tags::-webkit-scrollbar { display: none; }
+   between a filter row and the cards, clipping the pills). Rows stay scrollable, just no bar. */
+.filter-row, .pipeline-stages, .create-sub-tabs, .source-tabs, .bm-bar, .borrow-row, .tp-cats, .search-tags { scrollbar-width: none; -ms-overflow-style: none; }
+.filter-row::-webkit-scrollbar, .pipeline-stages::-webkit-scrollbar, .create-sub-tabs::-webkit-scrollbar, .source-tabs::-webkit-scrollbar, .bm-bar::-webkit-scrollbar, .borrow-row::-webkit-scrollbar, .tp-cats::-webkit-scrollbar, .search-tags::-webkit-scrollbar { display: none; }
 .stmt-tpl-chip{font:600 12px/1 Archivo,sans-serif;padding:7px 12px;border-radius:999px;border:1.5px solid var(--border,#DDD7C3);background:#fff;color:#16130F;cursor:pointer;letter-spacing:.02em;}
 .stmt-tpl-chip.on{background:#E7DAF9;border-color:#16130F;}
 .dp-sub{font-size:12px;color:var(--text3,#8A8270);margin:-2px 0 12px;line-height:1.4;}
@@ -5725,28 +5614,24 @@ body, body * {
    coherent separate patterns. Reversible: delete this block to revert. */
 .generate-ideas-btn, .gen-btn, .ob-btn, .ob-voice-btn, .ob-example-chip, .bv-ob-finish-btn,
 .pipe-btn, .create-sub-tab, .creator-add-btn, .filter-chip, .paa-use-btn, .paa-fmt-chip, .paa-refresh-btn,
-.meme-style-btn, .meme-mode-btn, .detail-btn, .copy-reel-btn, .canva-link, .cm-card-btn,
-.cm-detail-btn, .cm-open-btn, .cm-download-btn, .cm-aspect-btn, .meme-download-btn, .meme-detail-btn,
-.export-btn, .logo-upload-btn, .sp-chip, .sp-expand-btn, .sp-invite-btn, .sp-fill-btn, .sp-ask-btn,
-.tp-cat, .tp-action-btn, .tp-generate-btn, .blog-generate-btn, .blog-approve-btn, .blog-reject-btn,
-.blog-improve-btn, .blog-edit-btn, .blog-x-btn, .vt-copy, .vt-use, .prod-upload-btn, .sp-extra-btn {
+.detail-btn, .copy-reel-btn, .canva-link, .cm-card-btn,
+.cm-detail-btn, .cm-open-btn, .cm-download-btn, .cm-aspect-btn, .export-btn, .logo-upload-btn, .sp-chip, .sp-expand-btn, .sp-invite-btn, .sp-fill-btn, .sp-ask-btn,
+.tp-cat, .tp-action-btn, .tp-generate-btn, .vt-copy, .vt-use, .sp-extra-btn {
   border-radius: 999px !important;
   box-sizing: border-box;
 }
 /* consistent ink outline — same list, minus the dashed upload/add zones which keep their dashed cue */
 .generate-ideas-btn, .gen-btn, .ob-btn, .ob-voice-btn, .ob-example-chip, .bv-ob-finish-btn,
 .pipe-btn, .create-sub-tab, .creator-add-btn, .filter-chip, .paa-use-btn, .paa-fmt-chip, .paa-refresh-btn,
-.meme-style-btn, .meme-mode-btn, .detail-btn, .copy-reel-btn, .canva-link, .cm-card-btn,
-.cm-detail-btn, .cm-open-btn, .cm-download-btn, .cm-aspect-btn, .meme-download-btn, .meme-detail-btn,
-.export-btn, .logo-upload-btn, .sp-chip, .sp-expand-btn, .sp-invite-btn, .sp-fill-btn, .sp-ask-btn,
-.tp-cat, .tp-action-btn, .tp-generate-btn, .blog-generate-btn, .blog-approve-btn, .blog-reject-btn,
-.blog-improve-btn, .blog-edit-btn, .blog-x-btn, .vt-copy, .vt-use {
+.detail-btn, .copy-reel-btn, .canva-link, .cm-card-btn,
+.cm-detail-btn, .cm-open-btn, .cm-download-btn, .cm-aspect-btn, .export-btn, .logo-upload-btn, .sp-chip, .sp-expand-btn, .sp-invite-btn, .sp-fill-btn, .sp-ask-btn,
+.tp-cat, .tp-action-btn, .tp-generate-btn, .vt-copy, .vt-use {
   border: 1.5px solid #16130F !important;
 }
 /* tiny inline copy icon -> circle, matching the round icon-button family */
 .section-copy-btn { border-radius: 50% !important; }
 
-/* ===== ROLE-BASED FILLS + quite-monochrome (v275) — make the WHOLE app read like the blog card =====
+/* ===== ROLE-BASED FILLS + quite-monochrome (v275) — make the WHOLE app read as one card system =====
    white = secondary/neutral · lavender = the ONE primary per card · red text = destructive.
    !important + specificity: base class -> white; the .variant (2 classes) -> lavender/red wins over it. */
 .pipe-btn, .detail-btn, .tp-action-btn, .canva-link, .cm-card-btn, .cm-detail-btn, .copy-reel-btn,
@@ -5754,7 +5639,7 @@ body, body * {
   background: #fff !important; color: #16130F !important;
 }
 .pipe-btn.next, .detail-btn.primary, .tp-action-btn.approve,
-.cm-download-btn, .meme-download-btn, .vt-use {
+.cm-download-btn, .vt-use {
   background: var(--lav,#E7DAF9) !important; color: #16130F !important;
 }
 .tp-action-btn.dismiss, .detail-btn.dismiss { color: var(--red) !important; }
@@ -5763,7 +5648,7 @@ body, body * {
 .pipe-undo .btn-ic, .action-circle .btn-ic { width: 18px; height: 18px; margin: 0; vertical-align: middle; }
 .nb-act.del .btn-ic { width: 15px; height: 15px; margin: 0; vertical-align: middle; }
 /* close/remove glyph circles — guarantee the x sits dead-centre (several had no flex-centring) */
-.conn-x, .cs-onb-x, .pwa-banner-close, .blog-x-btn, .ref-card-remove, .bm-entry-del { display: inline-flex !important; align-items: center; justify-content: center; line-height: 1; }
+.conn-x, .cs-onb-x, .pwa-banner-close, .ref-card-remove, .bm-entry-del { display: inline-flex !important; align-items: center; justify-content: center; line-height: 1; }
 /* format tags: QUITE monochrome (not full) — one neutral outlined chip; the faint per-format text tint stays */
 .format-tag { background: var(--surface2,#F5F1E3) !important; border: 1px solid var(--border2,#DDD7C3) !important; }
 /* mini / inline utility buttons — ONE small size tier so they're consistent with EACH OTHER (v406).
@@ -6008,7 +5893,6 @@ body, body * {
 [data-theme="dark"] .detail-btn.primary,
 [data-theme="dark"] .tp-action-btn.approve,
 [data-theme="dark"] .cm-download-btn,
-[data-theme="dark"] .meme-download-btn,
 [data-theme="dark"] .vt-use {
   background: var(--lav,#E7DAF9) !important; color: #16130F !important;
 }
@@ -6020,7 +5904,6 @@ body, body * {
    !important is required — a stylesheet rule cannot otherwise beat an inline style. */
 [data-theme="dark"] #remixQuick,
 [data-theme="dark"] #vlQuick,
-[data-theme="dark"] #memeQuick,
 [data-theme="dark"] .as-close { border-color: var(--border2) !important; }
 
 /* the v274 sweep forces `border: 1.5px solid #16130F !important` on .filter-chip,
@@ -6115,7 +5998,6 @@ body, body * {
 /* ── contrast: #fff on --accent (#B0B0B0) / --gold (#C8C8C8) is ~1.4-1.9:1.
       Flip the label to --bg so a light fill carries dark text. ──────────────── */
 [data-theme="dark"] .tour-btn.primary,
-[data-theme="dark"] .blog-filter-btn.active,
 [data-theme="dark"] .paa-badge,
 [data-theme="dark"] .bm-link-editor-actions .bm-save-btn,
 [data-theme="dark"] .sp-invite-btn.primary { color: var(--bg) !important; }
@@ -6495,9 +6377,8 @@ if (!window.supabase) {
       #vlManualPanel.vl-manual-hidden{display:none !important;}
       /* v461: same fold for Idea Catcher's optional reference panel */
       #icManualPanel.ic-manual-hidden{display:none !important;}
-      /* v455: same fold for the Ideas generate module ("Plan my week") + the Meme topic inputs ("Make a meme") */
+      /* v455: same fold for the Ideas generate module ("Plan my week") */
       #ideasManualPanel.ideas-manual-hidden{display:none !important;}
-      #memeManualPanel.meme-manual-hidden{display:none !important;}
       /* ===== v286: reusable witty "working" state for ANY generate/scan button ===== */
       .btn-working{position:relative;overflow:hidden;pointer-events:none;cursor:progress;}
       .btn-working::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(22,19,15,0.10) 50%,transparent 75%);background-size:220% 100%;animation:bwSweep 1.15s linear infinite;pointer-events:none;}
@@ -6522,9 +6403,6 @@ if (!window.supabase) {
       @media (prefers-reduced-motion: reduce){#remixQuickBtn,#remixQuickBtn.btn-working{animation:none;}#remixQuickBtn.btn-working::before{animation:none;opacity:0;}}
       </style>
       <div id="remixBorrowStrip" class="remix-borrow-strip"></div>
-      <!-- v647: recent posts from the bookmarked creators above. MANUAL refresh only — every pull
-           is a paid Apify run, and Remix is intent-driven so there is nothing to pre-pull for. -->
-      <div id="remixCpBox"></div>
 
       <div id="remixQuick" style="background:var(--surface,#fff);border:1.5px solid #16130F;border-radius:16px;padding:16px;margin:0 0 14px;">
         <div style="font-size:19px;font-weight:800;letter-spacing:-0.01em;line-height:1.25;margin-bottom:4px;">Seen something that works? Make it yours.</div>
@@ -6636,14 +6514,6 @@ if (!window.supabase) {
 
   </div> <!-- /view-create -->
 
-  <div class="view" id="view-blog">
-    <div class="blog-header">
-      <h2>Blog &amp; AI-Search</h2>
-      <p>Full posts with schema + FAQ markup baked in — built to get cited by ChatGPT, Claude &amp; Google AI and rank in "People Also Ask." Approve, copy, paste it on your site.</p>
-    </div>
-    <div class="blog-filter-row" id="blogFilterRow"></div>
-    <div class="blog-list" id="blogList"></div>
-  </div> <!-- /view-blog -->
 
   <div class="view" id="view-notebook">
     <div class="nb-header">
@@ -6698,8 +6568,6 @@ if (!window.supabase) {
     <div id="vlResults"></div>
     </div> <!-- /vlPanel-analyze -->
   </div>
-
-  <div class="view" id="view-meme"></div>
 
   <div class="view" id="view-idea"></div>
 
@@ -7369,7 +7237,7 @@ async function switchBrand(brandId) {
       Promise.resolve().then(() => _live() ? loadTeamData() : null).catch(() => {})
     ]);
     if (myToken !== _switchSeq) return;   // superseded during the parallel loads
-    // Reset voice coach; reload THIS brand's blog posts + PAA from its own namespace
+    // Reset voice coach; reload THIS brand's PAA from its own namespace
     bvState.messages = [];
     // Drop the split-screen graphics cache: it is keyed by array index, and `state` was just
     // rebuilt with fresh index-based ids, so idea 3 here is a DIFFERENT post than idea 3 was.
@@ -7403,7 +7271,6 @@ async function switchBrand(brandId) {
     // face-on founder brand left the toggle on faceless, `renderIdeaDelivery()` re-rendered it
     // showing the PREVIOUS brand's setting, and the next batch generated in the wrong shape.
     try { window._ideaDelivery = 'faceon'; window._remixDelivery = 'faceon'; } catch(e) {}
-    try { loadBlogPosts(); } catch(e) { blogPosts = []; }
     try { if (typeof loadPAAState === 'function') loadPAAState(); } catch(e) {}
     if (myToken !== _switchSeq) return;                       // a newer switch won — don't render this (older) brand
     // Update UI
@@ -7474,7 +7341,6 @@ async function addNewBrand() {
   bookmarkCategories = [];
   promptHistory = [];
   bvState.messages = [];
-  if (typeof blogPosts !== 'undefined') blogPosts = [];
   // Clear the previous brand's "What people search" data so it can't bleed into
   // the new brand (paaQuestions is in-memory and otherwise survives brand creation).
   try { paaQuestions = []; paaUsed = new Set(); paaCollapsed = false; } catch(e) {}
@@ -8690,9 +8556,6 @@ async function initApp() {
       _listLoadOk = { remixes: false, productRefs: false, bookmarks: false, promptHistory: false, notebook: false };
     }
 
-    // Load blog posts from localStorage
-    try { loadBlogPosts(); } catch(e) { debugLog('loadBlogPosts error: ' + e.message); }
-
     // Render — each wrapped so one failure doesn't kill the rest
     try { renderNav(); } catch(e) { debugLog('renderNav error: ' + e.message); }
 
@@ -8974,11 +8837,9 @@ let state, activeView = "today", activeFilter = "all", activeFormat = "all", act
 let expandedIds = new Set(), openDismissPopup = null;
 let notebookNotes = [];
 let settings = defaultSettings();
-const BLOG_KEY = 'boring_blog_posts';
-let blogPosts = [], blogFilter = 'all', blogGenerating = false;
 
 // ── Per-brand localStorage namespacing ──────────────────────────────────────
-// Pipeline status, trends, edit signals, PAA and blog posts used to live under
+// Pipeline status, trends, edit signals and PAA used to live under
 // GLOBAL keys, so switching brands could bleed one brand's data into another.
 // bkey() scopes them to the current brand; lsGet/lsSet use it. A one-time,
 // NON-DESTRUCTIVE migration seeds the active brand's namespace from any existing
@@ -8994,7 +8855,7 @@ function bkey(base){
 // Null-safe at the primitive level: with NO real brand (e.g. mid new-brand onboarding)
 // reads return null and writes are skipped, so the shared "::_none" namespace is never
 // used as a data source or sink — closing the cross-brand bleed for EVERY per-brand cache
-// (pipeline status, edit signals, trends, blog, PAA…) in one place. Real per-brand data
+// (pipeline status, edit signals, trends, PAA…) in one place. Real per-brand data
 // still round-trips through bk() = base::brandId.
 function lsGet(base){ try { if(!currentBrand||!currentBrand.id) return null; return localStorage.getItem(bkey(base)); } catch(e){ return null; } }
 /* v674 — THIS BARE CATCH WAS SILENT TOTAL DATA LOSS ON A FULL PHONE.
@@ -9009,10 +8870,10 @@ function lsSet(base, val){ try { if(!currentBrand||!currentBrand.id) return fals
 // defined inside a `try` is block-scoped, so calling it from that block's `catch` throws a
 // ReferenceError and takes out the whole error path.
 function lsDel(base){ try { if(!currentBrand||!currentBrand.id) return; localStorage.removeItem(bkey(base)); } catch(e){} }
-const _LS_NS_KEYS = [STORAGE_KEY, BLOG_KEY, 'edit_signals', 'brand_trends', 'paa_questions', 'paa_used', 'paa_collapsed'];
+const _LS_NS_KEYS = [STORAGE_KEY, 'edit_signals', 'brand_trends', 'paa_questions', 'paa_used', 'paa_collapsed'];
 function migrateLegacyLS(){
   // DISABLED (v385) — this used to seed a brand's namespace from the legacy GLOBAL
-  // localStorage keys. But those globals accumulated a MIX of every brand's blog posts
+  // localStorage keys. But those globals accumulated a MIX of every brand's cached content
   // + "People search" questions from before per-brand namespacing existed, so it could
   // bleed one brand's cached content into another — including a freshly-created brand
   // (which then showed the previous brands' China/electrolyte content). No-op now.
@@ -9021,17 +8882,16 @@ function migrateLegacyLS(){
   // old migration, use clearBrandLocalCache().
   return;
 }
-// Clears ONLY the current brand's namespaced localStorage caches (blog posts, "People
-// search" questions, taught trends). Local cache only — ideas, pipeline, brand voice and
+// Clears ONLY the current brand's namespaced localStorage caches ("People search"
+// questions, taught trends). Local cache only — ideas, pipeline, brand voice and
 // everything in the DB are untouched. Fixes a brand that inherited another brand's cache.
 function clearBrandLocalCache(){
-  if (typeof confirm === 'function' && !confirm("Clear this brand's cached blog posts & 'People search' questions?\n\nLocal cache only — your ideas, pipeline and brand voice are safe.")) return;
+  if (typeof confirm === 'function' && !confirm("Clear this brand's cached 'People search' questions & taught trends?\n\nLocal cache only — your ideas, pipeline and brand voice are safe.")) return;
   // Through lsDel, not localStorage.removeItem(bkey(…)): bkey() falls back to the SHARED
   // "::_none" bucket with no brand loaded, so the raw form clears a bucket every brand shares.
-  try { ['boring_blog_posts','paa_questions','paa_used','paa_collapsed','brand_trends'].forEach(base => { try { lsDel(base); } catch(e){} }); } catch(e){}
-  try { if (typeof blogPosts !== 'undefined') blogPosts = []; if (typeof saveBlogPosts === 'function') saveBlogPosts(); } catch(e){}
+  try { ['paa_questions','paa_used','paa_collapsed','brand_trends'].forEach(base => { try { lsDel(base); } catch(e){} }); } catch(e){}
   try { if (typeof paaQuestions !== 'undefined') { paaQuestions = []; paaUsed = new Set(); paaCollapsed = false; } if (typeof savePAAState === 'function') savePAAState(); } catch(e){}
-  if (typeof showToast === 'function') showToast("Cleared this brand's cached blog & questions ✓");
+  if (typeof showToast === 'function') showToast("Cleared this brand's cached questions & trends ✓");
   if (typeof refreshCurrentView === 'function') refreshCurrentView();
 }
 
@@ -9280,10 +9140,8 @@ const TAB_INFO = {
   ideas: 'A 7-day calendar of full briefs — hook, script, caption and shot list. Approve, dismiss, or expand any idea.',
   pipeline: 'Track approved ideas through production: Ready → Film & Post → Done.',
   create: 'Remix any post, article or TikTok/YouTube link into your voice — six ways: remix, simplify, flip, swap formats, series or roast.',
-  blog: 'Full blog posts with schema + FAQ, built to get cited by ChatGPT, Claude & Google AI.',
   notebook: 'Type or talk any thought → turn it into a post or a saved voice rule.',
-  coach: 'Talk to your brand brain — sharpen your voice by chatting, and it applies what it learns across every tool.',
-  meme: 'Two makers on your own free Gemini key: on-brand memes with the caption baked in, plus product & lifestyle shots rendered from your real product photos.'
+  coach: 'Talk to your brand brain — sharpen your voice by chatting, and it applies what it learns across every tool.'
 };
 
 function renderNav() {
@@ -9295,7 +9153,6 @@ function renderNav() {
     {id:"ideas",label:"Ideas",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',count:null},
     {id:"pipeline",label:"Pipeline",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',count:inProd||null},
     {id:"create",label:"Remix",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',count:remixCount||null},
-    {id:"blog",label:"Blog",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',count:blogPosts.filter(p=>p.status==='pending').length||null},
     {id:"notebook",label:"Notebook",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',count:(typeof notebookNotes!=='undefined'?notebookNotes.length:0)||null},
   ];
   const coachTab = {id:"coach",label:"Assistant",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>'};
@@ -9306,7 +9163,7 @@ function renderNav() {
     </button>`
   ).join('') + `<button class="nav-tab coach-tab" data-tab="coach" onclick="bvTabClick()" onpointerdown="bvTabDown()" onpointerup="bvTabUp()" onpointercancel="bvTabUp()" onpointerleave="bvTabUp()">
     <span class="tab-icon">${coachTab.icon}</span>${coachTab.label}
-  </button><button class="nav-tab more-tab ${(activeView==='blog'||activeView==='notebook'||activeView==='viral'||activeView==='meme')?'active':''}" data-tab="more" onclick="toggleMoreSheet()">
+  </button><button class="nav-tab more-tab ${(activeView==='notebook'||activeView==='viral')?'active':''}" data-tab="more" onclick="toggleMoreSheet()">
     <span class="tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span>More
   </button>`;
   // Fix SVG stroke color in active tabs
@@ -9320,7 +9177,7 @@ function toggleFilters(headerEl) {
   body.classList.toggle('open');
 }
 
-const VIEW_ORDER = ['today','ideas','pipeline','create','blog','notebook','viral','meme','idea','questions'];
+const VIEW_ORDER = ['today','ideas','pipeline','create','notebook','viral','idea','questions'];
 
 // ===== DESKTOP SIDEBAR (≥900px) — injected once; the mobile bottom nav is untouched =====
 var DS_ICONS = {
@@ -9329,8 +9186,6 @@ var DS_ICONS = {
   pipeline:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
   create:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',
   idea:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 014 10c-1 1-1 2-1 3H9c0-1 0-2-1-3a6 6 0 014-10z"/></svg>',
-  blog:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
-  meme:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
   viral:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s5 3 5 8a5 5 0 01-10 0c0-2 1-3 1-3s0 2 2 2c1 0 1-2 0-4 0-2 2-3 2-3z"/></svg>',
   notebook:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',
   questions:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
@@ -9338,14 +9193,13 @@ var DS_ICONS = {
   settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.3l2-1.6-2-3.4-2.4 1a7 7 0 00-2.2-1.3L14 2h-4l-.3 2.4a7 7 0 00-2.2 1.3l-2.4-1-2 3.4 2 1.6A7 7 0 005 12a7 7 0 00.1 1.3l-2 1.6 2 3.4 2.4-1a7 7 0 002.2 1.3L10 22h4l.3-2.4a7 7 0 002.2-1.3l2.4 1 2-3.4-2-1.6z"/></svg>',
   shrimp:'<svg viewBox="0 0 24 24" fill="none" stroke="#16130F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12c0-4 3-7 7-7s7 3 7 7-3 5-7 5c-3 0-4 2-4 2"/><circle cx="15" cy="10" r="1" fill="#16130F"/></svg>'
 };
-function _dsItem(v,label){ var _lk = (typeof csIsFree==='function' && csIsFree() && (v==='blog'||v==='meme')) ? '<span class="ds-lock">Pro</span>' : ''; return '<button class="ds-item" data-view="'+v+'" onclick="switchView(\''+v+'\')">'+(DS_ICONS[v]||'')+'<span>'+label+'</span>'+_lk+'</button>'; }
+function _dsItem(v,label){ return '<button class="ds-item" data-view="'+v+'" onclick="switchView(\''+v+'\')">'+(DS_ICONS[v]||'')+'<span>'+label+'</span></button>'; }
 function buildDesktopSidebar(){
   try{
     if(document.getElementById('desktopSidebar')) return;
     var h = '<div class="ds-logo"><span>'+DS_ICONS.shrimp+'</span>Content Shrimp</div>';
     h += _dsItem('today','Quick Post')+_dsItem('ideas','Ideas')+_dsItem('pipeline','Pipeline');
-    h += '<div class="ds-lbl">Create</div>'+_dsItem('create','Remix')+_dsItem('idea','Idea Catcher')+_dsItem('viral','Trends')+((typeof csShelved==='function'&&csShelved('meme'))?'':_dsItem('meme','Meme'));
-    if (!(typeof csShelved==='function' && csShelved('blog'))) h += '<div class="ds-lbl">Grow</div>'+_dsItem('blog','Blog & AI-search');
+    h += '<div class="ds-lbl">Create</div>'+_dsItem('create','Remix')+_dsItem('idea','Idea Catcher')+_dsItem('viral','Trends');
     h += '<div class="ds-lbl">Tools</div>'+_dsItem('notebook','Notebook')+_dsItem('questions','What people search');
     h += '<div class="ds-spring"></div><div class="ds-bottom">'+
       '<button class="ds-item ds-coach" onclick="bvTabClick()">'+DS_ICONS.coach+'<span>Talk to your coach</span></button>'+
@@ -9365,7 +9219,6 @@ function syncDesktopNav(){
       ideas:(typeof getPendingIdeas==='function'?getPendingIdeas().length:0),
       pipeline:(typeof state!=='undefined'?state.filter(function(i){return i&&i.status==='filming';}).length:0),
       create:(typeof remixes!=='undefined'?remixes.length:0),
-      blog:(typeof blogPosts!=='undefined'?blogPosts.filter(function(p){return p.status==='pending';}).length:0),
       notebook:(typeof notebookNotes!=='undefined'?notebookNotes.length:0)
     };
     sb.querySelectorAll('[data-view]').forEach(function(b){
@@ -9382,8 +9235,6 @@ setTimeout(buildDesktopSidebar, 1500);
 function toggleMoreSheet() {
   if (document.getElementById('moreSheetWrap')) { closeMoreSheet(); return; }
   const remixCount = (typeof remixes !== 'undefined' && remixes.length) || 0;
-  const blogPending = (typeof blogPosts !== 'undefined' && blogPosts.filter(p => p.status === 'pending').length) || 0;
-  const _lk = (typeof csIsFree==='function' && csIsFree()) ? '<span class="more-lock">Pro</span>' : '';
   const wrap = document.createElement('div');
   wrap.id = 'moreSheetWrap';
   wrap.innerHTML = `
@@ -9410,20 +9261,6 @@ function toggleMoreSheet() {
         <span class="more-row-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
         <span class="more-row-text"><strong>Trends</strong><small>Rising topics, competitor moves &mdash; and turn any viral video into yours</small></span>
       </button>
-      ${(typeof csShelved==='function' && csShelved('meme')) ? '' : `
-      <button class="more-row" onclick="moreGo('meme')">
-        <span class="more-row-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>
-        <span class="more-row-text"><strong>Meme &amp; Image Maker</strong><small>On-brand memes + product/lifestyle shots on your own Gemini key</small></span>
-        ${_lk}
-      </button>`}
-      ${(typeof csShelved==='function' && csShelved('blog')) ? '' : `
-      <div style="height:1px;background:var(--border2);margin:12px 12px 4px;"></div>
-      <div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;padding:2px 16px 6px;">Grow</div>
-      <button class="more-row" onclick="moreGo('blog')">
-        <span class="more-row-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
-        <span class="more-row-text"><strong>Blog &amp; AI-search</strong><small>Full posts built to get cited by ChatGPT, Claude &amp; Google AI</small></span>
-        ${_lk || (blogPending ? `<span class="tab-count">${blogPending}</span>` : '')}
-      </button>`}
       <!-- Done-for-you removed from menu (concierge service not offered). View, renderDfy, dfySubmit, endpoint & dfy_requests table left intact — restore this button to bring it back. Creator invite remains in Settings. -->
       <div style="text-align:center;font-size:12px;color:var(--text3);padding:12px 0 2px;">
         <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Terms</a> ·
@@ -9440,7 +9277,7 @@ function closeMoreSheet() { const w = document.getElementById('moreSheetWrap'); 
 // ── Per-function FAQ ("Open FAQ only about this function") ──
 const FN_FAQ_TITLE = {
   today:'Quick Post', ideas:'Ideas', idea:'Idea Catcher', questions:'What people search',
-  create:'Remix', viral:'Trends', meme:'Meme & Image Maker', blog:'Blog',
+  create:'Remix', viral:'Trends',
   pipeline:'Pipeline', notebook:'Notebook', dfy:'Done-for-you'
 };
 const FN_FAQ = {
@@ -9464,7 +9301,7 @@ const FN_FAQ = {
   ],
   questions: [
     { q:'What is this?', a:'Real questions people type into Google and AI about your niche — straight from search data, not made up.' },
-    { q:'How do I use them?', a:'Turn any question into content. They make great Q&A hooks and blog posts because you already know people are asking.' },
+    { q:'How do I use them?', a:'Turn any question into content. They make great Q&A hooks because you already know people are asking.' },
     { q:'Under the hood — where do these come from?', a:"Live People-Also-Ask and autocomplete data for your niche is pulled from search, de-duplicated and ranked by relevance to your brand — real demand signals, not guesses." }
   ],
   create: [
@@ -9477,16 +9314,6 @@ const FN_FAQ = {
     { q:'What is Trends?', a:"Your niche's rising topics and competitor moves, pulled in for you — plus paste any blowing-up video and it reverse-engineers why it works into ideas in your voice." },
     { q:'What does "Teach my brand this trend" do?', a:'It saves the trend\'s mechanic (not the topic) to your brain and rides it in your next ideas for about 2 months, then it expires on its own.' },
     { q:'Under the hood — what is it actually analysing?', a:"It separates the transportable mechanic — pattern-interrupt, curiosity gap, pacing — from the one-off topic, scores why it spread, then re-expresses that mechanic through your brand brain." }
-  ],
-  meme: [
-    { q:'How do memes work?', a:'Your brand voice writes the joke; the image AI paints a text-free background; the caption is stamped on cleanly. You review before posting.' },
-    { q:'Why do I need a Gemini key?', a:"The image is generated on Google's model, billed to your own key. The joke-writing uses your brand brain." },
-    { q:'Under the hood — how does the image stay clean?', a:"Your brand voice writes the line first; the image model is prompted for a text-free background; then the caption is composited on in a separate pass — so the type stays crisp instead of the garbled text raw image generation produces." }
-  ],
-  blog: [
-    { q:'What are these posts for?', a:'Answer-engine-optimized articles built to get cited by ChatGPT, Perplexity, and Google AI, and to rank in "People Also Ask."' },
-    { q:'Why only 3 drafts at a time?', a:'To keep quality high. Approve or reject a draft to free a slot, then generate the next.' },
-    { q:'Under the hood — why do these get cited by AI?', a:'When AI tools — ChatGPT, Google AI answers, Siri — pick something to quote, they do not read a page the way a person does. They scan for hidden labels that tell them "this is the question, this is the answer, read this part aloud." Every post you copy has those labels built in: it is tagged as a real article with a clear question and answer, the headline and answer are marked so voice assistants can read them aloud, and it is written answer-first around the exact questions people actually search. That is the same behind-the-scenes structure big publishers use to get cited by AI — and most AI-written posts skip it completely.' }
   ],
   pipeline: [
     { q:'What is Pipeline?', a:'Everything you approved, ready to film and post — plus what\'s already done. Your production to-do list.' },
@@ -9526,10 +9353,8 @@ function renderFnFaq(view, el){
 function switchView(view) {
   // v444: shelved tools are gone for everyone (flip CS_SHELVED to revive).
   if (typeof csShelved==='function' && csShelved(view)) { if(typeof showToast==='function') showToast('Shelved for now — we went all-in on the daily tools.'); return; }
-  // Paid-only tools on the free plan: explain + offer upgrade instead of the view.
-  if ((view==='blog'||view==='meme') && typeof csIsFree==='function' && csIsFree()) { showFeatureLock(view); return; }
   // Close any open feedback/dismiss sheet so it can never persist across screens
-  try { if(typeof closeDismissSheet==='function')closeDismissSheet(); if(typeof closeApproveSheet==='function')closeApproveSheet(); if(typeof closeBlogSheet==='function')closeBlogSheet(); } catch(e){}
+  try { if(typeof closeDismissSheet==='function')closeDismissSheet(); if(typeof closeApproveSheet==='function')closeApproveSheet(); } catch(e){}
   openDismissPopup = null; openApprovePopup = null;
   const oldIdx = VIEW_ORDER.indexOf(activeView);
   const newIdx = VIEW_ORDER.indexOf(view);
@@ -9549,10 +9374,8 @@ function switchView(view) {
   else if(view==='questions') renderPAASection();
   else if(view==='pipeline') { renderPipeline(); }
   else if(view==='create') { renderCreate(); try{ renderRemixBorrowStrip(); }catch(e){} try{ renderRemixDelivery(); }catch(e){} }
-  else if(view==='blog') renderBlog();
   else if(view==='notebook') renderNotebook();
   else if(view==='viral') renderViralLab();
-  else if(view==='meme') renderMeme();
   else if(view==='idea') renderIdeaCatcher();
   else if(view==='dfy') renderDfy();
   try { renderFnFaq(view, el); } catch(e){}
@@ -9560,7 +9383,7 @@ function switchView(view) {
 
 // These views rebuild their whole container on in-view actions (generate, select, feedback),
 // which would drop the FAQ. Wrap them so the FAQ is re-appended after every render.
-['renderTodayView','renderMeme','renderIdeaCatcher','renderDfy'].forEach(function(nm){
+['renderTodayView','renderIdeaCatcher','renderDfy'].forEach(function(nm){
   var orig = window[nm];
   if (typeof orig !== 'function' || orig.__faqWrapped) return;
   var wrapped = function(){ var r = orig.apply(this, arguments); try{ renderFnFaq(activeView, document.getElementById('view-'+activeView)); }catch(e){} return r; };
@@ -13613,7 +13436,7 @@ let _brainFieldKeysCache = null;
 // sample of how they talk, so the last few feed the brain beside the deliberate voice sample.
 // Sources (Jörgen's call): notebook, Idea Catcher, the coach, Remix "describe it", Viral Lab "see &
 // hear". NOT the teleprompter — that is them reading the app's script, which would be the model
-// learning from itself through their mouth. NOT meme/product topics — instructions, not voice.
+// learning from itself through their mouth. NOT image/product prompts — instructions, not voice.
 // Floor of 30 words so "make it shorter" never counts. Brand-gated at WRITE time with the gate the
 // caller captured at RECORD START: the transcript comes back async, the exact v643 switch-race shape.
 // Visible + toggleable in Settings (voiceLearn), on by default — it is their own brain.
@@ -13838,7 +13661,7 @@ function brainHeroVisual(){
 function _startBrainStream(){
   if(window._bhTick) clearInterval(window._bhTick);
   var SRC=['Your website','Competitors','Reviews & reputation','Market complaints','Your social posts','Viral posts you feed','Google “People Also Ask”','Live trends','News · X · RSS','What you approve','How you edit drafts','Words to avoid'];
-  var TOOL=['Ideas','Quick posts','Viral angles','Remixes','Trends','Pipeline'];   // v605: dropped shelved Blog & Memes
+  var TOOL=['Ideas','Quick posts','Viral angles','Remixes','Trends','Pipeline'];
   if(typeof window._bhSi!=='number'){window._bhSi=0;window._bhTi=0;window._bhN=0;}
   window._bhTick=setInterval(function(){
     var stages=document.querySelectorAll('.bh-stage');
@@ -16082,7 +15905,7 @@ function escJs(s) {
 }
 /* v614 XSS: nl2br LOOKED like an escaping helper and was used like one across ~20
    innerHTML sinks, but only turned \n into <br>. It now escapes FIRST and inserts the
-   <br> after — the same order blogBodyHtml already used. */
+   <br> after. */
 function nl2br(s) {
   return String(s == null ? '' : s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
@@ -16114,45 +15937,6 @@ function safeUrl(u, opts) {
   return '';
 }
 
-// Render a blog body (markdown-ish) into safe structured HTML: headings, paragraphs, lists, bold/italic.
-function blogBodyHtml(src) {
-  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const inline = s => esc(s)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^*])\*(?!\s)([^*]+?)\*/g, '$1<em>$2</em>');
-  // Line-based parse: the model often puts an intro line + bullets in ONE block (no blank line)
-  // or uses "•" — block-based parsing rendered those as inline dashes. Group consecutive lines instead.
-  const isBul = l => /^\s*[-*•·]\s+/.test(l);
-  const isNum = l => /^\s*\d+[.)]\s+/.test(l);
-  const isHead = l => /^#{1,3}\s+/.test(l);
-  const lines = String(src || '').replace(/\r/g,'').split('\n');
-  let out = '', i = 0;
-  while (i < lines.length) {
-    const l = lines[i];
-    if (!l.trim()) { i++; continue; }
-    if (/^###\s+/.test(l)) { out += '<h4>' + inline(l.replace(/^###\s+/,'')) + '</h4>'; i++; continue; }
-    if (/^##\s+/.test(l)) { out += '<h3>' + inline(l.replace(/^##\s+/,'')) + '</h3>'; i++; continue; }
-    if (/^#\s+/.test(l)) { out += '<h2>' + inline(l.replace(/^#\s+/,'')) + '</h2>'; i++; continue; }
-    if (isBul(l)) {
-      let items = '';
-      while (i < lines.length && isBul(lines[i])) { items += '<li>' + inline(lines[i].replace(/^\s*[-*•·]\s+/,'')) + '</li>'; i++; }
-      out += '<ul>' + items + '</ul>'; continue;
-    }
-    if (isNum(l)) {
-      let items = '';
-      while (i < lines.length && isNum(lines[i])) { items += '<li>' + inline(lines[i].replace(/^\s*\d+[.)]\s+/,'')) + '</li>'; i++; }
-      out += '<ol>' + items + '</ol>'; continue;
-    }
-    const para = [];
-    while (i < lines.length && lines[i].trim() && !isBul(lines[i]) && !isNum(lines[i]) && !isHead(lines[i])) { para.push(lines[i]); i++; }
-    let p = para.join('\n').trim();
-    // The model sometimes wraps an ENTIRE paragraph in ** ** — strip the outer bold so it isn't all-bold.
-    const whole = p.match(/^\*\*([\s\S]+)\*\*$/);
-    if (whole && !whole[1].includes('**')) p = whole[1];
-    out += '<p>' + inline(p).replace(/\n/g,'<br>') + '</p>';
-  }
-  return out || '<p>' + inline(src || '') + '</p>';
-}
 
 function toggleExpand(id) { if(openDismissPopup!==null)return; expandedIds.has(id)?expandedIds.delete(id):expandedIds.add(id); refreshCurrentView(); }
 function quickApprove(id) { reindexIdeas(); if(!state[id])return; state[id].status="filming"; state[id].approvedAt=Date.now(); state[id].dismissReason=null; saveState(); renderNav(); refreshCurrentView(); autoRefillCheck(state[id].day, state[id].format); window._apJumpId = id; showApprovePopupFn(id); }
@@ -17322,7 +17106,6 @@ function refreshCurrentView() {
   else if(activeView==='ideas') { renderStats(); renderIdeas(); renderFilmingQueue(); }
   else if(activeView==='pipeline') renderPipeline();
   else if(activeView==='create') renderCreate();
-  else if(activeView==='blog') renderBlog();
   // Auto-render statement + static previews
   requestAnimationFrame(() => {
     expandedIds.forEach(id => {
@@ -17629,8 +17412,7 @@ function stmtAutoRender(ideaId) {
 //   2. The <a> was never added to the document. Firefox ignores a click on a detached anchor.
 //   3. `URL.revokeObjectURL` ran on the very next line, which can cancel a download that has not
 //      started yet.
-// memeDownload already got all three right; this is that code, shared, so a fourth button cannot
-// get it wrong again. Returns true only when a file was really handed to the browser.
+// This is that code, shared, so a fourth button cannot get it wrong again. Returns true only when a file was really handed to the browser.
 function canvasDownloadPng(canvas, filename, say) {
   const tell = typeof say === 'function' ? say
     : (m) => { if (typeof showToast === 'function') showToast(m, 5000); };
@@ -17647,7 +17429,7 @@ function canvasDownloadPng(canvas, filename, say) {
            in-app browsers — nothing is written and no error is raised. The app SHIPS as an
            installable PWA. So "Download All 8 Slides" counted eight successes and said
            "Downloaded 8 slides!" with zero files written. _tpDownloadsInert already detects
-           exactly this and was never consulted here; memeDownload already shares instead.
+           exactly this and was never consulted here.
            Share where downloading does nothing, and never claim a file that was not produced. */
         const a = document.createElement('a');
         const inert = (typeof _tpDownloadsInert === 'function') ? _tpDownloadsInert(a) : false;
@@ -18519,22 +18301,6 @@ function sharpenRemix(i, btn){
   }});
 }
 
-// Blog — sharpen the title + body, then clear the cached HTML so it rebuilds (with schema) on copy/publish.
-function sharpenBlog(id, btn){
-  const post = (typeof blogPosts!=='undefined' && blogPosts) ? blogPosts.find(p=>p.id===id) : null;
-  if(!post){ if(typeof showToast==='function') showToast('Could not find that post'); return; }
-  const content = {};
-  if(post.question && String(post.question).trim()) content.question = post.question;
-  if(post.answer && String(post.answer).trim()) content.answer = post.answer;
-  sharpenNow({ kind:'blog', format:'blog', content, btn, apply:(nw)=>{
-    if(nw.question!=null && String(nw.question).trim()) post.question = nw.question;
-    if(nw.answer!=null && String(nw.answer).trim()) post.answer = nw.answer;
-    post.htmlContent = '';   // answer changed → force buildBlogHTML to regenerate with fresh schema
-    post._expanded = true;
-    try{ saveBlogPosts(); }catch(e){}
-    if(typeof renderBlog==='function') renderBlog();
-  }});
-}
 
 // ===== VIRAL LAB =====
 let _vlIdeas = [];
@@ -18553,41 +18319,9 @@ function vlTab(which){
     if(t) t.style.display = (w === 'analyze') ? 'none' : '';
   }catch(e){}
 }
-// ── Hook-frame vision (v438): Grok's read of the video's cover frame. Best-effort —
-// returns null on ANY failure so every caller degrades to the old text-only behavior.
-const HOOK_READ_MARK = 'HOOK-FRAME READ';
-// v440: the hook-frame read lives in its OWN read-only panel under the description box —
-// NEVER inside the user's source-text field (it read as "my transcript came out remixed").
-function renderRemixHookRead(read) {
-  window._remixHookRead = read || '';
-  let p = document.getElementById('remixHookRead');
-  const ta = document.getElementById('remixDescription');
-  if (!read) { if (p) p.remove(); return; }
-  if (!p && ta) {
-    p = document.createElement('div');
-    p.id = 'remixHookRead';
-    p.style.cssText = 'margin-top:10px;padding:12px 16px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:12px;font-size:13px;line-height:1.5;color:var(--text2);';
-    ta.insertAdjacentElement('afterend', p);
-  }
-  if (p) p.innerHTML = '<div style="font-size:11px;font-weight:800;letter-spacing:0.5px;color:var(--text3);margin-bottom:6px;">WHAT THE COVER FRAME SHOWS · read automatically, used in the remix</div>' + String(read).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-}
-async function fetchHookFrame(url){
-  try{
-    if(!url || !/tiktok\.com|youtu\.?be|youtube\.com/i.test(url)) return null;
-    // hook-frame's maxDuration is 60 and its own LLM leg is 45s, so a 30s client budget threw away
-    // every read that took a normal amount of time. 55s sits under the platform ceiling.
-    // v690 — was 55 s; the server legitimately needs up to ~74 s (maxDuration 90), so slow reads were thrown away.
-    const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), 85000);
-    const r = await fetch('/api/hook-frame', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url}),signal:ctrl.signal});
-    clearTimeout(t);
-    if(!r.ok) return null;
-    const d = await r.json().catch(()=>null);
-    return (d && d.read) ? d.read : null;
-  }catch(e){ return null; }
-}
 // ── v451 Shazam-ified Viral Lab quick lane: one box → the SAME analyzeViral ───
-// analyzeViral already auto-fetches transcripts from links (+ hook-frame vision
-// in parallel), so the quick lane just routes the paste into the right input.
+// analyzeViral already auto-fetches transcripts from links, so the quick lane just
+// routes the paste into the right input.
 function vlToggleManual(show){
   const p = document.getElementById('vlManualPanel'); if (!p) return;
   if (show === true) { p.classList.remove('vl-manual-hidden'); return; }
@@ -18620,7 +18354,6 @@ async function analyzeViral(){
   let content = (pasteEl && pasteEl.value || '').trim();
   if(!url && !content){ if(status){ status.textContent='Paste a video link, or paste/describe the video below.'; status.className='vl-status warn'; } return; }
   const stopW = btnWork(btn, 'viral');
-  const _hookP = url ? fetchHookFrame(url) : Promise.resolve(null); // vision read of the cover frame, in parallel
   if(results) results.innerHTML = '';
   let platform = '';
   try{
@@ -18645,8 +18378,7 @@ async function analyzeViral(){
     }
     if(!content || !content.trim()){ if(status){ status.textContent='No transcript found — paste/describe the video below.'; status.className='vl-status warn'; } stopW(); return; }
     startThinking('vlStatus','viral');
-    let visualNotes = (document.getElementById('vlVisuals') && document.getElementById('vlVisuals').value || '').trim();
-    try { const _hr = await _hookP; if (_hr) { visualNotes = (visualNotes ? visualNotes + '\n\n' : '') + 'AUTO ' + HOOK_READ_MARK + " (what the video's cover frame actually shows):\n" + _hr; } } catch(e) {}
+    const visualNotes = (document.getElementById('vlVisuals') && document.getElementById('vlVisuals').value || '').trim();
     // Lean request — see leanBrandFetch. The transcript + the see/hear notes are the user's own
     // material and travel; the brand snapshot rode along on top of them and no longer does.
     const resp = await leanBrandFetch('/api/viral-analyze',
@@ -18834,7 +18566,7 @@ async function connToken(){ try{ const { data:{ session } } = await sb.auth.getS
 // ── Attach the signed-in user's token to EVERY same-origin /api/ call ──
 // Single choke point so the backend can reject anonymous abuse of the paid AI
 // endpoints without editing every fetch site. Calls that already set Authorization
-// (meme, delete-account) keep theirs.
+// (delete-account) keep theirs.
 (function(){
   if (window.__apiAuthPatched) return; window.__apiAuthPatched = true;
   const _origFetch = window.fetch.bind(window);
@@ -18903,9 +18635,7 @@ async function connToken(){ try{ const { data:{ session } } = await sb.auth.getS
             var bodyObj = {}; try { bodyObj = JSON.parse((init && init.body) || '{}'); } catch(e){}
             if (_u.indexOf('/api/generate-ideas') !== -1) {
               markOnb((bodyObj.seedIdea || bodyObj.seedNotes || bodyObj.seedTranscript) ? 'ideaCatcher' : 'firstPost');
-            } else if (_u.indexOf('/api/generate-blog') !== -1) markOnb('blog');
-            else if (_u.indexOf('/api/viral-') !== -1) markOnb('viral');
-            else if (_u.indexOf('/api/meme') !== -1 && bodyObj.action === 'generate') markOnb('meme');
+            } else if (_u.indexOf('/api/viral-') !== -1) markOnb('viral');
           }
         } catch(e){}
       }
@@ -18995,8 +18725,8 @@ async function refreshUsage(){
     try { if (typeof syncPushTimezone === 'function') syncPushTimezone(); } catch(e){}
     try { renderOnb(); } catch(e){}
     /* v676 — "rebuild ONCE" REBUILT IT AFTER EVERY SINGLE ACTION.
-       The guard asked whether a `.ds-lock` pill was missing from the sidebar. _dsItem only
-       ever renders that pill for 'blog' and 'meme', and both are shelved (CS_SHELVED), so
+       The guard asked whether a `.ds-lock` pill was missing from the sidebar. _dsItem no
+       longer renders that pill at all (its only users, Blog and Meme, were removed), so
        the sidebar can never contain one — the condition was permanently true. refreshUsage
        runs 1.2s after every successful /api/ call, so for every free-plan user the whole
        left sidebar was destroyed and re-created a second after each generation, remix or
@@ -19072,11 +18802,9 @@ function renderUsagePill(){
 // excellently, beats a wide half-toolkit). Flip a flag to false to revive — every
 // view, renderer, endpoint and table stays intact. In-app publishing was removed
 // entirely (v-pubremoval): posting is done by hand from the share sheet / copy.
-const CS_SHELVED = { blog: true, meme: true };
+const CS_SHELVED = {};   // nothing shelved: Blog and Meme were removed outright (2026-09-27)
 function csShelved(v){ try { return !!CS_SHELVED[v]; } catch(e){ return false; } }
 const CS_PAID_TOOLS = {
-  blog:       { name: 'Blog & AI-search',      why: 'Full articles with schema + FAQ, built to get your brand cited by ChatGPT, Claude & Google AI — copy each one straight onto your site.' },
-  meme:       { name: 'Meme & Image Maker',    why: 'On-brand memes and product/lifestyle shots, generated on your own Gemini key.' },
   multibrand: { name: 'Multiple brands',       why: 'Free covers one brand. Run every client or side-brand from its own brand brain on a paid plan.' }
 };
 function csIsFree(){ try { return !!(csUsage && csUsage.plan === 'free'); } catch(e){ return false; } }
@@ -19319,14 +19047,12 @@ var ONB_STEPS = [
   { key:'firstPost',   label:'Generate your first post',           go:function(){ if(typeof switchView==='function') switchView('today'); } },
   { key:'trainBrain',  label:'Train your brain (edit or keep 3)',  go:function(){ if(typeof switchView==='function') switchView('ideas'); } },
   { key:'ideaCatcher', label:'Drop a half-baked idea',             go:function(){ if(typeof switchView==='function') switchView('idea'); } },
-  { key:'blog',        label:'Write a blog post',                  go:function(){ if(typeof switchView==='function') switchView('blog'); } },
-  { key:'viral',       label:'Try a viral twist',                  go:function(){ if(typeof switchView==='function') switchView('viral'); if(typeof vlTab==='function') vlTab('analyze'); } },
-  { key:'meme',        label:'Make a meme',                        go:function(){ if(typeof switchView==='function') switchView('meme'); } }
+  { key:'viral',       label:'Try a viral twist',                  go:function(){ if(typeof switchView==='function') switchView('viral'); if(typeof vlTab==='function') vlTab('analyze'); } }
 ];
 function renderOnb(){
   loadOnb();
   var d = onbDerived();
-  var STEPS = ONB_STEPS.filter(function(s){ return !(typeof csShelved==='function' && csShelved(s.key)); });   // v571: drop shelved tools (meme, blog)
+  var STEPS = ONB_STEPS.filter(function(s){ return !(typeof csShelved==='function' && csShelved(s.key)); });   // v571: drop shelved tools
   var state = {}; STEPS.forEach(function(s){ state[s.key] = csOnb[s.key] || d[s.key] || false; });
   var done = STEPS.filter(function(s){ return state[s.key]; }).length;
   var total = STEPS.length;
@@ -19363,8 +19089,6 @@ function renderOnb(){
 const THINK_LINES = {
   ideas: ['Opening your brand brain','Recalling what you approved','Finding an angle you can own','Writing it in your voice','Cutting anything generic','Sharpening the hook','Almost there'],
   viral: ['Reverse-engineering the hook','Working out why it popped','Keeping the mechanic, not the topic','Rebuilding it in your voice','Checking your brand brain','Tightening it up'],
-  meme: ['Reading your sense of humor','Writing the joke','Finding the deadpan','Painting a clean background','Stamping the caption'],
-  image: ['Reading your product photos','Setting up the shot','Getting the light right','Matching your product','Rendering — this takes a moment'],
   redo: ['Re-reading what you flagged','Learning from your edit','Keeping what worked','Rewriting in your voice','Almost there'],
   generic: ['Consulting your brand brain','Writing in your voice','Making it sound like you','Almost there']
 };
@@ -19391,9 +19115,7 @@ const BTN_WORK_LINES = {
   ideas: ['Opening your brand brain','Recalling what you approved','Finding an angle you can own','Writing it in your voice','Cutting anything generic','Sharpening the hook','Almost there'],
   post: ['Reading the original','Working out why it worked','Rebuilding it in your voice','Consulting your brand brain','Sharpening the hook','Almost there'],
   remix: ['Reading the original','Working out why it worked','Borrowing the structure, not the words','Rebuilding it as you','Checking your brand brain','Baking in your facts','Almost there'],
-  blog: ['Opening your brand brain','Picking a question people search','Writing it in your voice','Baking in schema + FAQ','Tightening every line','Almost there'],
   viral: ['Reverse-engineering the hook','Working out why it popped','Keeping the mechanic, not the topic','Rebuilding it in your voice','Checking your brand brain','Tightening it up'],
-  meme: ['Reading your sense of humor','Writing the joke','Finding the deadpan','Painting a clean background','Stamping the caption'],
   redo: ['Re-reading what you flagged','Learning from your edit','Keeping what worked','Rewriting in your voice','Almost there'],
   questions: ['Asking what people really search','Pulling live questions','Ranking by what matters to you','Almost there'],
   generic: ['Consulting your brand brain','Writing in your voice','Making it sound like you','Almost there']
@@ -19413,7 +19135,7 @@ function btnWork(btn, setOrLines, opts){
     clearInterval(iv); clearTimeout(safety);
     try { btn.classList.remove('btn-working'); btn.removeAttribute('aria-busy'); btn.disabled = wasDisabled; btn.innerHTML = orig; } catch(_){}
   };
-  // 240s, not 90s. This default guards EVERY generate button (Ideas, Remix, Sharpen, Meme, Viral,
+  // 240s, not 90s. This default guards EVERY generate button (Ideas, Remix, Sharpen, Viral,
   // Idea Catcher). The heavy endpoints have maxDuration 300, so a 90s client abort was cutting off
   // work the server was still doing — proven on 2026-08-27, when /api/generate-ideas returned 200
   // while the phone showed "Timed out". On a slow mobile link the UPLOAD alone can outlast 90s.
@@ -19880,381 +19602,6 @@ async function dfySubmit(btn){
 }
 
 
-// ===== MEME MAKER =====
-let _memeStyle = 'band';
-window._memeData = null;
-async function memeApi(body){
-  const token = await connToken();
-  const resp = await fetch('/api/meme', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(token||'') }, body: JSON.stringify({ brandId: currentBrand && currentBrand.id, ...body }) });
-  const data = await resp.json().catch(()=>({}));
-  return { ok: resp.ok, data, status: resp.status };
-}
-// v692 r3 — A TIMEOUT WAS READ AS "YOUR GEMINI KEY IS MISSING". The meme error handler tested the
-// message for /key|gemini|401|unauthor/ and opened the "Add your free Google Gemini key" form on a
-// match — so a server timeout message that mentioned Gemini, or "Could not reach your saved key just
-// now" (a database blip, 503), told a person with a WORKING key to paste it again. The server now
-// sends a `code`; it is read FIRST. Only a genuine key problem opens the form: an explicit key code,
-// or Google rejecting the key (IMAGE_PROVIDER_ERROR — whose text is Google's own, so it is checked
-// for key words, since a 400 can also be a content refusal). Any other code (OUT_OF_TIME,
-// AI_UNAVAILABLE, IMAGE_BUSY, …) shows the server's own message. With no code, a 5xx is never a key
-// problem, and the old word test is the last fallback for the plain 4xx key answers.
-const MEME_KEY_CODES = { KEY_MISSING: 1, KEY_INVALID: 1, NO_KEY: 1, GEMINI_KEY_MISSING: 1, GEMINI_KEY_INVALID: 1 };
-function memeErrIsKeyProblem(e){
-  const code = String((e && e.code) || '');
-  const msg = String((e && e.message) || '');
-  if (MEME_KEY_CODES[code]) return true;
-  if (code === 'IMAGE_PROVIDER_ERROR') return /api.?key|key not valid|invalid key|401|unauthor|permission/i.test(msg);
-  if (code) return false;
-  if ((Number(e && e.httpStatus) || 0) >= 500) return false;
-  return /key|gemini|401|unauthor/i.test(msg);
-}
-function memeShowError(statusEl, e){
-  if (!statusEl) return;
-  const msg = String((e && e.message) || '');
-  if (memeErrIsKeyProblem(e)) {
-    statusEl.innerHTML = 'Add your free Google Gemini key first (aistudio.google.com), then try again.';
-    try { memeShowKeyForm(); } catch (_) {}
-  } else {
-    statusEl.textContent = (msg && msg !== 'failed') ? msg : "Couldn't make the meme \u2014 try again.";
-  }
-  statusEl.className = 'vl-status warn';
-}
-function renderMeme(){
-  const v = document.getElementById('view-meme'); if(!v) return;
-  if(!currentBrand){ v.innerHTML = '<div class="vl-head"><h2>Meme Maker</h2><p class="vl-sub">Pick a brand first.</p></div>'; return; }
-  v.innerHTML = `
-    <div class="vl-head">
-      <h2>Meme &amp; Image Maker</h2>
-      <p class="vl-sub">Runs on your own Google Gemini key — free to get, and currently the only image API that renders these well. Make an on-brand meme with the caption baked in, or a product / lifestyle shot guided by your product photos. Review before you post.</p>
-    </div>
-    <div id="memeKeyRow"></div>
-    <div class="grp-panel">
-    <div class="meme-mode-row">
-      <button class="meme-mode-btn on" data-m="meme" onclick="memeSetMode('meme')">${ICO.smile} Meme</button>
-      <button class="meme-mode-btn" data-m="product" onclick="memeSetMode('product')">${ICO.image} Product / lifestyle image</button>
-    </div>
-    <div id="memeModeMeme">
-      <!-- v455: Meme Shazam quick lane — one tap, no topic needed; topic inputs fold below -->
-      <div id="memeQuick" style="background:var(--surface,#fff);border:1.5px solid #16130F;border-radius:16px;padding:16px;margin:0 0 14px;">
-        <div style="font-size:15px;font-weight:800;margin-bottom:4px;">Make a meme</div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">An on-brand joke in your voice &mdash; no topic needed, one tap.</div>
-        <button class="gen-btn" style="width:100%;margin-top:0;" id="memeQuickBtn" onclick="memeQuickGo(this)">Make a meme &rarr;</button>
-        <button class="tp-shz-angle" style="margin-top:6px;padding:6px 10px;" onclick="memeToggleManual()">or pick the topic myself<span class="fold-caret" aria-hidden="true">▾</span></button>
-      </div>
-      <div id="memeManualPanel" class="meme-manual-hidden">
-      <div class="vl-input">
-        <textarea id="memeTopic" class="vl-paste" style="min-height:clamp(160px, 34vh, 460px);" placeholder="Topic or angle (optional) — e.g. 'people who overthink simple decisions'"></textarea>
-        <button class="vl-mic" id="memeMicBtn" onclick="dictateInto('memeTopic', this, 'Describing the meme')" title="Dictate" aria-label="Dictate by voice">${ICO.mic} Dictate the topic</button>
-        <button class="gen-btn" id="memeGenBtn" onclick="memeGenerate()" style="margin-top:0;">Generate meme</button>
-      </div>
-      </div><!-- /memeManualPanel (v455) — memeStatus + memeStage stay OUTSIDE the fold -->
-      <div id="memeStatus" class="vl-status"></div>
-      <div id="memeStage" style="display:none;">
-        <canvas id="memeCanvas" style="width:100%;max-width:380px;display:block;margin:10px auto;border-radius:var(--radius-sm);box-shadow:0 2px 14px rgba(0,0,0,0.12);aspect-ratio:1;"></canvas>
-        <div class="meme-style-row">
-          <button class="meme-style-btn on" data-s="band" onclick="memeSetStyle('band')">Clean band</button>
-          <button class="meme-style-btn" data-s="impact" onclick="memeSetStyle('impact')">Classic</button>
-        </div>
-        <label class="vl-edit-label">Caption (edit freely)</label>
-        <input id="memeHeadline" class="sp-input" oninput="memeDraw()" placeholder="Your meme caption">
-        <div class="meme-actions">
-          <button class="detail-btn" onclick="memeDownload()">⬇ Download</button>
-          <button class="detail-btn" onclick="memeGenerate()">↻ Regenerate</button>
-          <button class="detail-btn" onclick="memeCopyCaption(this)">Copy caption</button>
-        </div>
-      </div>
-    </div>
-    <div id="memeModeProduct" style="display:none;">
-      <p class="prod-api-hint">Powered by your Google Gemini key — the one image API that handles product and lifestyle shots well right now. Free to get at aistudio.google.com; add it in the box above. Add your product photos below and it'll follow them closely.</p>
-      <div class="vl-input" style="flex-direction:column;align-items:stretch;gap:10px;">
-        <textarea id="prodDesc" class="sp-input" rows="3" style="width:100%;box-sizing:border-box;resize:vertical;" placeholder="Describe the shot — e.g. 'the product resting on a mossy rock beside a stream, soft morning light, cinematic, shallow depth of field'"></textarea>
-        <button class="vl-mic" id="prodMicBtn" onclick="dictateInto('prodDesc', this, 'Describing the shot')" style="margin-top:8px;" title="Dictate" aria-label="Dictate by voice">${ICO.mic} Dictate the shot</button>
-        <label class="prod-upload-btn" for="prodRefInput"><svg class="btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> Add product photos (optional)</label>
-        <input id="prodRefInput" type="file" accept="image/*" multiple style="display:none;" onchange="prodAddRefs(event)">
-        <div id="prodRefNote" class="prod-ref-note"></div>
-        <button class="gen-btn" id="prodGenBtn" onclick="prodGenerate()">Generate image</button>
-      </div>
-      <div id="prodStatus" class="vl-status"></div>
-      <div id="prodStage" style="display:none;">
-        <img id="prodImg" alt="Generated image" style="width:100%;max-width:420px;display:block;margin:10px auto;border-radius:var(--radius-sm);box-shadow:0 2px 14px rgba(0,0,0,0.12);">
-        <div class="meme-actions">
-          <button class="detail-btn" onclick="prodDownload()">⬇ Download</button>
-          <button class="detail-btn" onclick="prodGenerate()">↻ Regenerate</button>
-        </div>
-      </div>
-    </div>
-    </div>`;
-  memeCheckKey();
-  memeRenderRefNote();
-}
-let _memeMode = 'meme';
-function memeSetMode(m){
-  _memeMode = (m === 'product') ? 'product' : 'meme';
-  const me = document.getElementById('memeModeMeme'); const pr = document.getElementById('memeModeProduct');
-  if(me) me.style.display = (_memeMode === 'meme') ? 'block' : 'none';
-  if(pr) pr.style.display = (_memeMode === 'product') ? 'block' : 'none';
-  document.querySelectorAll('.meme-mode-btn').forEach(b => b.classList.toggle('on', b.getAttribute('data-m') === _memeMode));
-  if(_memeMode === 'product') memeRenderRefNote();
-}
-function memeRenderRefNote(){
-  const el = document.getElementById('prodRefNote'); if(!el) return;
-  const n = (typeof productRefs !== 'undefined' && Array.isArray(productRefs)) ? productRefs.length : 0;
-  if(n > 0){
-    el.innerHTML = `<span class="prod-ref-on">${ICO.image} Using your ${n} reference photo${n!==1?'s':''} — the render will follow your product closely. <button type="button" class="vt-copy" onclick="prodClearRefs()">Clear</button></span>`;
-  } else {
-    el.innerHTML = `<span class="prod-ref-off">Add 2–3 photos of your product above and shots will follow it closely. Works without them too — it'll render a generic scene.</span>`;
-  }
-}
-function prodAddRefs(event){
-  const files = (event && event.target && event.target.files) || [];
-  let pending = files.length;
-  if(!pending) return;
-  for(const file of files){
-    const reader = new FileReader();
-    reader.onload = async function(e){
-      try{
-        const resized = await resizeImage(e.target.result, 1024);
-        productRefs.push({ name: file.name, thumb: resized, addedAt: Date.now() });
-        saveProductRefs();
-      }catch(_){
-        // Was an empty catch — a photo the browser couldn't read just never appeared.
-        if(typeof showToast==='function') showToast('Couldn’t read "' + (file.name || 'that photo') + '" — try a different one.', 5000);
-      }
-      if(--pending <= 0){ memeRenderRefNote(); if(typeof renderRefGrid==='function') renderRefGrid(); }
-    };
-    reader.readAsDataURL(file);
-  }
-  event.target.value = '';
-}
-function prodClearRefs(){
-  if(typeof productRefs === 'undefined' || !Array.isArray(productRefs)) return;
-  /* v680 — ONE MIS-TAP DESTROYED EVERY UPLOADED PRODUCT PHOTO, PERMANENTLY. The control is a
-     one-word "Clear" sitting mid-sentence next to "Using your 6 reference photos", and it goes
-     straight to _replaceBrandRows with an empty list, which deletes every row. These are photos
-     the user took — nothing regenerates them. deleteBmCategory and deleteBrand both confirm
-     first, and they destroy less. */
-  if (productRefs.length && typeof confirm === 'function' &&
-      !confirm('Remove all ' + productRefs.length + ' reference photo' + (productRefs.length === 1 ? '' : 's') +
-               '? You will need to upload them again.')) return;
-  productRefs.length = 0;
-  if(typeof saveProductRefs === 'function') saveProductRefs();
-  memeRenderRefNote();
-  if(typeof renderRefGrid==='function') renderRefGrid();
-}
-async function prodGenerate(){
-  const btn = document.getElementById('prodGenBtn'); const status = document.getElementById('prodStatus');
-  const descEl = document.getElementById('prodDesc');
-  const desc = (descEl ? descEl.value : '').trim();
-  if(!desc){ if(status){ status.textContent = 'Describe the shot first.'; status.className = 'vl-status warn'; } return; }
-  if(btn){ btn.disabled = true; btn.textContent = 'Rendering…'; }
-  startThinking('prodStatus','image');
-  try{
-    const prompt = prodBuildPrompt(desc);
-    const refs = (typeof productRefs !== 'undefined' && Array.isArray(productRefs))
-      ? productRefs.map(r => r && r.thumb).filter(Boolean).slice(0,3) : [];
-    const { ok, data, status: _prodHttp } = await memeApi({ action:'brandimage', prompt, refs });
-    // v692 r4: carry the server's code and HTTP status to the catch — see memeErrIsKeyProblem.
-    if(!ok || !data.imageBase64){ const _pe = new Error((data && data.error) || 'failed'); _pe.code = (data && data.code) || ''; _pe.httpStatus = _prodHttp || 0; throw _pe; }
-    const img = document.getElementById('prodImg');
-    const src = 'data:' + (data.mime || 'image/png') + ';base64,' + data.imageBase64;
-    if(img){ img.src = src; }
-    window._prodData = { src, desc };
-    const stage = document.getElementById('prodStage'); if(stage) stage.style.display = 'block';
-    if(status){ status.textContent = ''; status.className = 'vl-status'; }
-  }catch(e){
-    // v692 r4 — only a message containing "key" was shown; every other honest, charge-free answer
-    // (timeout, busy, empty image) became "Couldn't render the image". Show the server's words, and
-    // open the key form only for a genuine key problem — the same rule as the meme (memeErrIsKeyProblem).
-    if(status && e.message !== 'limit_reached'){
-      const _pm = String(e.message || '');
-      status.textContent = (_pm && _pm !== 'failed') ? _pm : "Couldn't render the image — try again.";
-      status.className = 'vl-status warn';
-      if (memeErrIsKeyProblem(e)) { try{ memeShowKeyForm(); }catch(_){} }
-    }
-  }
-  finally{ stopThinking('prodStatus'); if(btn){ btn.disabled = false; btn.textContent = 'Generate image'; } }
-}
-function prodBuildPrompt(desc){
-  const bc = (typeof getBrandContext === 'function') ? getBrandContext() : {};
-  const bits = [];
-  bits.push('Create a high-quality, photorealistic marketing image. NO text, words, letters, captions, watermarks or logos anywhere in the image.');
-  bits.push('Scene: ' + desc);
-  if(bc && bc.brandName) bits.push('Brand: ' + bc.brandName + '.');
-  if(bc && bc.visualStyle) bits.push('Visual style: ' + String(bc.visualStyle).slice(0,300) + '.');
-  const n = (typeof productRefs !== 'undefined' && Array.isArray(productRefs)) ? productRefs.length : 0;
-  if(n > 0){
-    bits.push('I am attaching ' + n + ' reference photo(s) of the actual product. Study them carefully and match the exact product shape, proportions, material, colour, and any label design precisely — the product in the generated image must look identical to the reference.');
-  }
-  bits.push('Composition: clean, well-lit, professional, natural depth of field. Suitable for social media.');
-  return bits.join(' ');
-}
-function prodDownload(){
-  const say = function(m, ms){ if(typeof showToast==='function') showToast(m, ms || 5000); };
-  const src = (window._prodData && window._prodData.src) || (document.getElementById('prodImg')||{}).src;
-  if(!src){ say('Generate an image first — then you can download it.'); return; }
-  try{
-    const a = document.createElement('a'); a.href = src; a.download = 'image-' + Date.now() + '.png';
-    document.body.appendChild(a); a.click(); a.remove();
-    say('Saved to your phone — check Downloads', 6000);
-  }catch(e){ say("Couldn't save the image — try again."); }
-}
-async function memeCheckKey(){
-  const row = document.getElementById('memeKeyRow'); if(!row) return;
-  const { ok, data } = await memeApi({ action:'has-key' });
-  if(ok && data.hasKey){ window._memeHasKey = true; row.innerHTML = `<div class="meme-key-set">${ICO.key} Gemini key connected ✓ <button class="vt-copy" onclick="memeShowKeyForm()">Change</button></div>`; }
-  else if(ok){ window._memeHasKey = false; memeShowKeyForm(); }
-  else { row.innerHTML = `<div class="meme-key-set">Couldn't check your key just now — <button class="vt-copy" onclick="memeCheckKey()">retry</button></div>`; }
-  memeSyncGenBtn();
-}
-function memeSyncGenBtn(){
-  const b = document.getElementById('memeGenBtn'); if(!b) return;
-  if(window._memeHasKey === false){ b.disabled = true; b.style.opacity = '1'; b.style.background = 'var(--surface2)'; b.style.color = '#16130F'; b.style.cursor = 'not-allowed'; b.textContent = 'Add your Gemini key first ↑'; }
-  else { b.disabled = false; b.style.opacity = ''; b.style.background = ''; b.style.color = ''; b.style.cursor = ''; b.textContent = 'Generate meme'; }
-}
-// ===== v455: Meme Shazam quick lane — one tap, topic optional =====
-function memeToggleManual(show){
-  const p = document.getElementById('memeManualPanel'); if (!p) return;
-  if (show === true) { p.classList.remove('meme-manual-hidden'); return; }
-  p.classList.toggle('meme-manual-hidden');
-}
-async function memeQuickGo(btn){
-  // Rides memeGenerate() untouched: empty #memeTopic → api/meme picks a brand-relevant topic;
-  // no Gemini key → memeGenerate's v355 path warns in #memeStatus (outside the fold), opens the
-  // key form in #memeKeyRow, and memeSaveKey auto-continues via _memeWantGen. The quick button
-  // only adds its own visible working state (the classic btn sits in the folded panel).
-  const stopW = btnWork(btn, 'meme');
-  try { await memeGenerate(); } finally { stopW(); }
-}
-function memeShowKeyForm(){
-  const row = document.getElementById('memeKeyRow'); if(!row) return;
-  row.innerHTML = `<div class="meme-key-form"><div class="vl-field-label">Your Google Gemini API key <span class="vl-hint">— get one free at aistudio.google.com → "Get API key". Stored encrypted, never shown again.</span></div><input id="memeKeyInput" class="sp-input" type="password" placeholder="AIza..." autocomplete="off" style="width:100%;box-sizing:border-box;"><button class="gen-btn" onclick="memeSaveKey()" style="width:100%;margin-top:10px;">Save</button></div>`;
-}
-async function memeSaveKey(){
-  const el = document.getElementById('memeKeyInput'); const k = el ? el.value.trim() : '';
-  if(!k){ if(typeof showToast==='function') showToast('Paste your Gemini key'); return; }
-  const { ok, data } = await memeApi({ action:'save-key', geminiKey:k });
-  if(ok && data.ok){ if(typeof showToast==='function') showToast('Gemini key saved ✓'); await memeCheckKey(); if(window._memeWantGen && window._memeHasKey){ window._memeWantGen=false; try{ memeGenerate(); }catch(_){} } }
-  else { if(typeof showToast==='function') showToast(data.error || 'Could not save key'); }
-}
-async function memeGenerate(){
-  const btn = document.getElementById('memeGenBtn'); const status = document.getElementById('memeStatus');
-  const topic = (document.getElementById('memeTopic') || {}).value || '';
-  if(window._memeHasKey === false){
-    window._memeWantGen = true;
-    if(status){ status.innerHTML = 'Add your free Google Gemini key first — get one at aistudio.google.com, paste it in the box above, then hit Generate.'; status.className = 'vl-status warn'; }
-    try{ memeShowKeyForm(); }catch(_){}
-    return;
-  }
-  const stopW = btnWork(btn, 'meme');
-  try{
-    // Anti-repetition (key for high-volume meme generation): pass the recent memes so the model makes a
-    // DIFFERENT joke/angle each time instead of reworking the same one.
-    // BRAND PIN. The write below is lsSet('meme_recent', …); lsSet resolves its namespace at
-    // WRITE time, so a switch during generation pushed one brand's meme line onto the other
-    // brand's anti-repetition list (and read that other list to build it).
-    const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
-    let _memeRecent = [];
-    try { _memeRecent = JSON.parse(lsGet('meme_recent') || '[]'); } catch(e){}
-    const { ok, data, status: _memeHttp } = await memeApi({ action:'generate', topic, brandContext: getBrandContext(), recentMemes: _memeRecent });
-    // v692 r3: carry the server's code and HTTP status to the catch — see memeErrIsKeyProblem.
-    if(!ok || !data.imageBase64){ const _me = new Error((data && data.error) || 'failed'); _me.code = (data && data.code) || ''; _me.httpStatus = _memeHttp || 0; throw _me; }
-    // Remember this meme's line so the next one won't repeat it (rolling, per-brand, capped).
-    // Skipped outright if the brand changed mid-generation — the meme itself is still shown, it
-    // just does not join another brand's recent list. Nothing is lost that this brand owns.
-    if(!_sameBrand || _sameBrand()){
-    try { let _mr=[]; try{ _mr=JSON.parse(lsGet('meme_recent')||'[]'); }catch(e){} if(data.headline){ _mr.push(String(data.headline).trim()); lsSet('meme_recent', JSON.stringify(_mr.slice(-12))); } } catch(e){}
-    }
-    const img = new Image();
-    img.onload = () => {
-      window._memeData = { headline: data.headline || '', caption: data.caption || '', img };
-      const stage = document.getElementById('memeStage'); if(stage) stage.style.display = 'block';
-      const h = document.getElementById('memeHeadline'); if(h) h.value = window._memeData.headline;
-      if(status) status.textContent = '';
-      memeDraw();
-    };
-    img.onerror = () => { if(status){ status.textContent = 'Image could not load — try again.'; status.className='vl-status warn'; } };
-    img.src = 'data:' + (data.mime || 'image/png') + ';base64,' + data.imageBase64;
-  }catch(e){ if(status && e.message!=='limit_reached'){ memeShowError(status, e); } }
-  finally{ stopThinking('memeStatus'); stopW(); }
-}
-function memeSetStyle(s){ _memeStyle = s; document.querySelectorAll('.meme-style-btn').forEach(b=>b.classList.toggle('on', b.getAttribute('data-s')===s)); memeDraw(); }
-function _memeWrap(ctx, text, maxW){
-  const words = String(text||'').split(/\s+/); const lines = []; let line = '';
-  for(const w of words){ const t = line ? line+' '+w : w; if(ctx.measureText(t).width > maxW && line){ lines.push(line); line = w; } else line = t; }
-  if(line) lines.push(line); return lines;
-}
-function memeDraw(){
-  const d = window._memeData; if(!d || !d.img) return;
-  const cv = document.getElementById('memeCanvas'); if(!cv) return;
-  const S = 1080; cv.width = S; cv.height = S; const ctx = cv.getContext('2d');
-  const headline = ((document.getElementById('memeHeadline') || {}).value || d.headline || '').toString();
-  // cover-draw the image
-  const img = d.img; const ar = img.width/img.height; let dw=S, dh=S, dx=0, dy=0;
-  if(ar > 1){ dh = S; dw = S*ar; dx = (S-dw)/2; } else { dw = S; dh = S/ar; dy = (S-dh)/2; }
-  ctx.fillStyle = '#000'; ctx.fillRect(0,0,S,S); ctx.drawImage(img, dx, dy, dw, dh);
-
-  if(_memeStyle === 'impact'){
-    // Classic: white uppercase with black stroke, bottom.
-    let fs = 92; ctx.textAlign='center';
-    const fit = () => { ctx.font = `800 ${fs}px Archivo, Impact, system-ui, sans-serif`; return _memeWrap(ctx, headline.toUpperCase(), S*0.92); };
-    let lines = fit(); while(lines.length*fs > S*0.42 && fs > 40){ fs -= 6; lines = fit(); }
-    const lh = fs*1.08; let y = S - 48 - (lines.length-1)*lh;
-    ctx.lineJoin='round'; ctx.lineWidth = Math.max(6, fs*0.12); ctx.strokeStyle='#000'; ctx.fillStyle='#fff';
-    lines.forEach(ln=>{ ctx.strokeText(ln, S/2, y); ctx.fillText(ln, S/2, y); y += lh; });
-  } else {
-    // Clean band: solid band at bottom with the caption.
-    let fs = 64; ctx.textAlign='center';
-    const fit = () => { ctx.font = `800 ${fs}px Archivo, system-ui, sans-serif`; return _memeWrap(ctx, headline, S*0.84); };
-    let lines = fit(); while(lines.length*fs > S*0.34 && fs > 30){ fs -= 4; lines = fit(); }
-    const lh = fs*1.18; const pad = 56; const bandH = lines.length*lh + pad*1.4;
-    ctx.fillStyle = 'rgba(22,19,15,0.92)'; ctx.fillRect(0, S-bandH, S, bandH);
-    ctx.fillStyle = '#fff'; let y = S - bandH + pad + fs*0.5;
-    lines.forEach(ln=>{ ctx.fillText(ln, S/2, y); y += lh; });
-  }
-}
-function memeDownload(){
-  // say/save are declared before any try so the failure paths (incl. catch blocks)
-  // can call them — a const declared inside a try is block-scoped and would blow up
-  // the handler that is supposed to tell the user something went wrong.
-  const say = function(m, ms){ if(typeof showToast==='function') showToast(m, ms || 5000); };
-  const cv = document.getElementById('memeCanvas');
-  if(!cv){ say('Make a meme first — then you can download it.'); return; }
-  const save = function(blob, fname){
-    try{
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = fname;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(_){ } }, 2000);
-      say('Saved to your phone — check Downloads', 6000);
-    }catch(e){ say("Couldn't save the image — try again."); }
-  };
-  try{
-    cv.toBlob(function(blob){
-      // toBlob hands back null when the browser can't encode the canvas (low memory
-      // on a phone is the common case). Before this it just returned and the button
-      // looked broken.
-      if(!blob){ say("Couldn't build the image file — try again."); return; }
-      const fname = 'meme-' + Date.now() + '.png';
-      const file = (window.File) ? new File([blob], fname, { type:'image/png' }) : null;
-      if(file && navigator.share && navigator.canShare && navigator.canShare({ files:[file] })){
-        navigator.share({ files:[file], title:'Meme' }).catch(function(err){
-          // Dismissing the share sheet is a choice, not a failure — stay quiet on
-          // AbortError. Anything else (incl. NotAllowedError when the browser
-          // refuses the share) falls back to a plain download instead of vanishing.
-          if(err && err.name === 'AbortError') return;
-          save(blob, fname);
-        });
-        return;
-      }
-      save(blob, fname);
-    }, 'image/png');
-  }catch(e){ say("Couldn't build the image file — try again."); }
-}
-function memeCopyCaption(btn){
-  const cap = (window._memeData && window._memeData.caption) || '';
-  if(!cap){ if(typeof showToast==='function') showToast('No caption'); return; }
-  if(typeof copyText==='function') copyText(cap, btn); else navigator.clipboard.writeText(cap);
-}
 
 
 function expandAll() { getVisibleIdeas().forEach(i=>expandedIds.add(i.id)); renderIdeas(); }
@@ -20516,7 +19863,6 @@ function setRemixMode(btn, mode) {
 }
 
 function setRemixSource(type) {
-  try { renderRemixHookRead(''); } catch(e) {}
   document.querySelectorAll('.source-tab').forEach(b => b.classList.remove('active'));
   document.querySelector(`.source-tab[data-source="${type}"]`).classList.add('active');
   document.querySelectorAll('.source-panel').forEach(p => p.classList.remove('active'));
@@ -20553,8 +19899,6 @@ async function transcribeFromYoutube(ev) {
     const wordCount = data.text.split(/\s+/).length;
     status.textContent = `Done! ${wordCount} words added.`;
 
-    // Hook-frame vision (best-effort, fire-and-forget)
-    try { fetchHookFrame(url).then(function(_hr){ if(!_hr) return; renderRemixHookRead(_hr); try{ status.textContent = status.textContent.replace(/ \u00b7 Hook frame read.*$/,'') + ' \u00b7 Hook frame read \u2713 (shown below)'; }catch(e){} }); } catch(e) {}
     status.style.color = 'var(--green)';
   } catch (err) {
     status.textContent = (err && err.message && err.message.length < 80) ? err.message : 'Could not fetch the transcript — check the link and try again.';
@@ -20643,8 +19987,6 @@ async function transcribeFromUrl() {
     status.textContent = `Transcribed! ${wordCount} words added.`;
     status.style.color = 'var(--green)';
 
-    // Hook-frame vision (best-effort, fire-and-forget): append what the cover frame shows
-    try { fetchHookFrame(url).then(function(_hr){ if(!_hr) return; renderRemixHookRead(_hr); try{ status.textContent = status.textContent.replace(/ \u00b7 Hook frame read.*$/,'') + ' \u00b7 Hook frame read \u2713 (shown below)'; }catch(e){} }); } catch(e) {}
 
   } catch (err) {
     status.textContent = `${err.message}`;
@@ -20745,7 +20087,7 @@ async function remixContent(opts) {
   const postUrl = document.getElementById('remixPostUrl').value.trim()
     || document.getElementById('youtubeUrl').value.trim()
     || document.getElementById('articleUrl').value.trim();
-  const postDescription = (document.getElementById('remixDescription').value.trim() + ((window._remixHookRead||'').trim() ? '\n\nHOOK-FRAME READ (auto \u2014 what the video\u2019s cover frame shows): ' + window._remixHookRead.trim() : '')).trim();
+  const postDescription = document.getElementById('remixDescription').value.trim();
 
   if (!postDescription && !postUrl) {
     alert('Describe the original content or paste a URL.');
@@ -20805,7 +20147,6 @@ async function remixContent(opts) {
     document.getElementById('youtubeUrl').value = '';
     document.getElementById('articleUrl').value = '';
     document.getElementById('remixDescription').value = '';
-    try { renderRemixHookRead(''); } catch(e) {}
   } catch (err) {
     alert('Remix failed: ' + err.message);
   } finally {
@@ -21013,8 +20354,7 @@ function rv2Body(s, extra) {
 function rv2Source() {
   const g = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
   const url = g('remixPostUrl') || g('youtubeUrl') || g('articleUrl');
-  const hookRead = String((window && window._remixHookRead) || '').trim();
-  const text = (g('remixDescription') + (hookRead ? '\n\nHOOK-FRAME READ (auto — what the video’s cover frame shows): ' + hookRead : '')).trim();
+  const text = g('remixDescription');
   if (!text) return null;
   // v693 — a "Worth making yours" top post (remixTopPost) is a trend, not someone's video to remix
   const trendText = String((window && window._rv2TrendText) || '').trim();
@@ -21397,7 +20737,6 @@ async function rv2Save() {
     rv2SetRun(s.host, null); rv2ClearDraft(s.host, s.brandId); rv2Render();
     if (s.host === 'rv2Panel') {
       ['remixPostUrl', 'youtubeUrl', 'articleUrl', 'remixDescription'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-      try { renderRemixHookRead(''); } catch (e) {}
       try { window._rv2TrendText = ''; } catch (e) {}
     }
   }
@@ -22234,7 +21573,7 @@ async function tryAllModes() {
   const postUrl = document.getElementById('remixPostUrl').value.trim()
     || document.getElementById('youtubeUrl').value.trim()
     || document.getElementById('articleUrl').value.trim();
-  const postDescription = (document.getElementById('remixDescription').value.trim() + ((window._remixHookRead||'').trim() ? '\n\nHOOK-FRAME READ (auto \u2014 what the video\u2019s cover frame shows): ' + window._remixHookRead.trim() : '')).trim();
+  const postDescription = document.getElementById('remixDescription').value.trim();
 
   if (!postDescription && !postUrl) {
     alert('Describe the original content or paste a URL.');
@@ -22425,7 +21764,6 @@ function renderRemixBorrowStrip(){
     el.innerHTML = _saved
       ? '<div class="borrow-empty">★ <b>Borrow from</b> — you have '+_saved+' saved creator'+(_saved!==1?'s':'')+', but none has a profile link yet, so there is nothing to open or pull. <a onclick="toggleBookmarkBar()">Add their link</a> — open Bookmarks, tap a name, and paste their profile URL.</div>'
       : '<div class="borrow-empty">★ <b>Borrow from</b> — save the creators you riff on and they show up here to open in one tap. <a onclick="toggleBookmarkBar()">Add one</a></div>';
-    renderCreatorPosts(); // clears the posts box too, or a previous brand's would linger
     return;
   }
   var PL={tt:'TT',yt:'YT',ig:'IG',x:'X',li:'in',web:'web'};
@@ -22436,104 +21774,6 @@ function renderRemixBorrowStrip(){
     return '<button class="borrow-chip" onclick="openBorrow('+i+')" title="Open '+escapeHtml(c.name)+'">'+escapeHtml(c.name)+(plats?'<span class="borrow-plats">'+plats+'</span>':'')+'</button>';
   }).join('');
   el.innerHTML='<div class="borrow-head"><span>★ Borrow from</span><a class="borrow-manage" onclick="toggleBookmarkBar()">Manage</a></div><div class="borrow-row">'+chips+'</div>';
-  renderCreatorPosts();
-}
-// ── v647 "What they just posted" — recent posts from the creators bookmarked above.
-// MANUAL ONLY. Each refresh is a paid Apify run (bookmarks skew TikTok, the priciest lane), and
-// unlike the Trends strip it cannot ride an existing pull, so nothing here happens on a timer.
-// Cached per brand in localStorage via lsGet/lsSet — deliberately NOT in brands.auto_trends,
-// because pull-trends-cron REPLACES that payload wholesale and would wipe it every night.
-function getCreatorPosts(){
-  try{
-    const c = lsGet('creator_posts');
-    if(!c) return null;
-    const o = (typeof c === 'string') ? JSON.parse(c) : c;
-    if(!o || !Array.isArray(o.posts)) return null;
-    return o;
-  }catch(e){ return null; }
-}
-function renderCreatorPosts(){
-  const el = document.getElementById('remixCpBox'); if(!el) return;
-  // Nothing bookmarked yet -> nothing to pull. The borrow strip above already explains bookmarks,
-  // so a second empty box here would just be noise.
-  if(!(_borrowCreators||[]).length){ el.innerHTML=''; return; }
-  const c = getCreatorPosts();
-  const posts = (c && c.posts) || [];
-  let age = '';
-  if(c && c.at){
-    const h = Math.max(0, Math.floor((Date.now()-c.at)/3600000)), d = Math.floor(h/24);
-    age = h < 1 ? 'refreshed just now' : h < 24 ? ('refreshed '+h+'h ago') : ('refreshed '+d+' day'+(d!==1?'s':'')+' ago');
-    if(h > 168) age += ' · getting old';
-  }
-  const btn = '<button class="cp-refresh" id="cpRefreshBtn" onclick="refreshCreatorPosts(this)">'+(posts.length?'↻ Refresh':'↻ Show their latest')+'</button>';
-  const head = '<div class="cp-head"><span>'+ICO.film+' What they just posted'+(age?' <span class="vl-trend-sub">— '+age+'</span>':'')+'</span>'+btn+'</div>';
-  if(!posts.length){
-    el.innerHTML = head + '<div class="cp-empty">Pull the latest posts from the creators you saved above, then turn one into yours. Nothing runs automatically — this only fetches when you tap.'+
-      ((c && c.reason)?' <b>'+escapeHtml(c.reason)+'</b>':'')+'</div>';
-    return;
-  }
-  const PL={tt:'TikTok',ig:'Instagram',x:'X'};
-  el.innerHTML = head + '<div class="cp-list">' + posts.map(function(p,i){
-    const txt = String(p.text||'').trim();
-    return '<div class="cp-post"><div class="cp-meta"><span class="cp-plat">'+(PL[p.plat]||p.plat)+'</span>'+
-      (p.handle?'<span class="cp-handle">@'+escapeHtml(p.handle)+'</span>':'')+'</div>'+
-      (txt?'<div class="cp-text">'+escapeHtml(txt.slice(0,200))+(txt.length>200?'…':'')+'</div>':'<div class="cp-text cp-notext">No caption — open it to see the video.</div>')+
-      '<div class="cp-actions"><button class="vl-top-use" onclick="remixCreatorPost('+i+')">Make it mine →</button>'+
-      (safeUrl(p.link)?'<a class="vl-cm-src" href="'+escapeHtml(safeUrl(p.link))+'" target="_blank" rel="noopener">see the post ↗</a>':'')+'</div></div>';
-  }).join('') + '</div>';
-}
-async function refreshCreatorPosts(btn){
-  const creators = (_borrowCreators||[]).slice(0,6).map(function(c){ return { name:c.name, plat:c.best.plat, url:c.best.url }; });
-  if(!creators.length){ showToast('Save a creator first — tap Manage above'); return; }
-  const stop = (typeof btnWork==='function') ? btnWork(btn,'social') : function(){};
-  // BRAND PIN. lsSet resolves its namespace at WRITE time, so a switch during this pull filed
-  // one brand's saved-creator posts into the other brand's creator_posts cache.
-  const _sameBrand = (typeof brandGate==='function') ? brandGate() : null;
-  const _cpBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
-  try{
-    const r = await fetch('/api/creator-posts', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ brandId: (currentBrand&&currentBrand.id)||null, creators }) });
-    const data = await r.json().catch(function(){ return {}; });
-    if(!r.ok) throw new Error(data.error || 'Could not reach their posts');
-    // Refuse to cache one brand's creators under another's key.
-    if(_sameBrand && !_sameBrand()){
-      showToast('You switched brand — those posts were pulled for ' + _cpBrandName + ", so they weren't saved here. Refresh again for this brand.", 8000);
-      return;
-    }
-    // Cached even when empty, so the "reason" line can explain why and we do not re-run a pull
-    // that just came back with nothing every time the screen renders.
-    lsSet('creator_posts', JSON.stringify({ at: Date.now(), posts: data.posts||[], reason: data.reason||'' }));
-    renderCreatorPosts();
-    showToast((data.posts&&data.posts.length) ? ('Pulled '+data.posts.length+' recent post'+(data.posts.length!==1?'s':'')+' ✓') : (data.reason || 'Nothing new came back — try again in a minute'));
-  }catch(e){
-    showToast('Could not pull their posts — check your connection and try again');
-  }finally{ try{ stop(); }catch(e){} }
-}
-// Same "never make the user copy a URL across two screens" handoff as remixTopPost (v644), but
-// routed by platform: a TikTok is worth transcribing, an X post is already the text.
-function remixCreatorPost(i){
-  try{
-    const c = getCreatorPosts(); const p = c && c.posts && c.posts[i];
-    if(!p){ showToast('Could not find that post'); return; }
-    const link = safeUrl(p.link) || '';
-    if(p.plat === 'tt' && link){
-      if(typeof setRemixSource==='function') setRemixSource('tiktok');
-      const u = document.getElementById('remixPostUrl');
-      if(u){ u.value = link; u.dispatchEvent(new Event('input',{bubbles:true})); }
-      showToast('Pulling the transcript…');
-      if(typeof transcribeFromUrl==='function') transcribeFromUrl();
-      return;
-    }
-    if(typeof setRemixSource==='function') setRemixSource('paste');
-    const ta = document.getElementById('pasteSourceText');
-    if(ta && p.text){ ta.value = p.text; ta.dispatchEvent(new Event('input',{bubbles:true})); }
-    const u2 = document.getElementById('remixPostUrl'); if(u2 && link) u2.value = link;
-    if(p.text && typeof useSourcePaste==='function') useSourcePaste();
-    const d = document.getElementById('remixDescription');
-    if(d && p.text && !String(d.value||'').trim()){ d.value = p.text; d.dispatchEvent(new Event('input',{bubbles:true})); }
-    if(typeof remixCheckStage2==='function') remixCheckStage2();
-    showToast(p.text ? 'Dropped into Remix — hit Remix it to make it yours' : 'Opened Remix — add what the video says');
-  }catch(e){ showToast('Opened Remix'); }
 }
 
 function saveBookmarks() {
@@ -24247,7 +23487,7 @@ function renderSettingsPanel() {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--surface3);margin-bottom:16px;gap:10px;">
         <div style="flex:1;min-width:0;">
           <div style="font-size:14px;font-weight:700;color:var(--text);">Reset this brand's cache</div>
-          <div style="font-size:12px;color:var(--text3);">Seeing another brand's blog posts or "People search" questions here? Clear this brand's cached blog &amp; questions. Local only — your ideas, pipeline and brand voice are untouched.</div>
+          <div style="font-size:12px;color:var(--text3);">Seeing another brand's "People search" questions or trends here? Clear this brand's cached questions &amp; trends. Local only — your ideas, pipeline and brand voice are untouched.</div>
         </div>
         <button type="button" class="nb-act" style="flex:0 0 auto;white-space:nowrap;" onclick="clearBrandLocalCache()">Clear cache</button>
       </div>
@@ -25067,12 +24307,11 @@ document.addEventListener('click', e => {
   }
 });
 
-// Escape always closes any open feedback / dismiss / approve / blog sheet — never get trapped
+// Escape always closes any open feedback / dismiss / approve sheet — never get trapped
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' || e.key === 'Esc') {
     try { closeDismissSheet(); } catch(_){}
     try { if(typeof closeApproveSheet==='function') closeApproveSheet(); } catch(_){}
-    try { if(typeof closeBlogSheet==='function') closeBlogSheet(); } catch(_){}
     openDismissPopup = null; openApprovePopup = null;
   }
 });
@@ -25578,7 +24817,7 @@ function obNext(fromStep) {
   if (fromStep === 2) {
     obClearErr('obStep2Err');
     // The wizard used to require ONLY a brand name, while isBrandMinimumMet()
-    // (which gates the Shazam circle, the Pipeline/Remix/Blog tabs and the
+    // (which gates the Shazam circle, the Pipeline/Remix tabs and the
     // Generate button) also demands 2 tones, 2 topics and an audience. So a
     // hand-setup user was told "Your brand brain is ready", then landed on a
     // LOCKED circle reading "Set up your brand first" seconds later. Collect
@@ -25926,7 +25165,6 @@ function renderNavWithLocks() {
     {id:"ideas",label:"Ideas",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',count:null, locked:false},
     {id:"pipeline",label:"Pipeline",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',count:inProd||null, locked:!unlocked},
     {id:"create",label:"Remix",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',count:remixCount||null, locked:!unlocked},
-    {id:"blog",label:"Blog",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',count:(typeof blogPosts!=='undefined'?blogPosts.filter(p=>p.status==='pending').length:0)||null, locked:!unlocked},
     {id:"notebook",label:"Notebook",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',count:(typeof notebookNotes!=='undefined'?notebookNotes.length:0)||null, locked:false},
   ];
   const coachTab = {id:"coach",label:"Assistant",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>'};
@@ -25941,7 +25179,7 @@ function renderNavWithLocks() {
     </button>`;
   }).join('') + `<button class="nav-tab coach-tab" data-tab="coach" onclick="bvTabClick()" onpointerdown="bvTabDown()" onpointerup="bvTabUp()" onpointercancel="bvTabUp()" onpointerleave="bvTabUp()">
     <span class="tab-icon">${coachTab.icon}</span>${coachTab.label}
-  </button><button class="nav-tab more-tab ${(activeView==='blog'||activeView==='notebook'||activeView==='viral'||activeView==='meme')?'active':''}" data-tab="more" onclick="toggleMoreSheet()">
+  </button><button class="nav-tab more-tab ${(activeView==='notebook'||activeView==='viral')?'active':''}" data-tab="more" onclick="toggleMoreSheet()">
     <span class="tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span>More
   </button>`;
   document.querySelectorAll('.nav-tab.active svg').forEach(s => s.style.stroke = window.innerWidth<=600?'var(--gold)':'#fff');
@@ -26215,12 +25453,6 @@ const TOUR_STEPS = [
     target: '.nav-tab:nth-child(4)',
     title: 'Remix',
     text: 'Paste any creator\'s post, article, or video — it gets rewritten in your brand voice with your product facts baked in.',
-    position: 'auto'
-  },
-  {
-    target: '.nav-tab:nth-child(5)',
-    title: 'Blog',
-    text: 'AEO Q&A posts for your website — approve, copy, publish on your domain.',
     position: 'auto'
   },
   {
@@ -28116,462 +27348,6 @@ function bvStopMic() {
 }
 
 // TTS via OpenAI — no browser voice pre-loading needed
-
-// ── AEO BLOG POSTS ──────────────────────────────────────────────
-
-function loadBlogPosts() {
-  // Strictly per-brand: with no real brand (e.g. mid new-brand onboarding) start EMPTY
-  // rather than reading the shared "::_none" bucket, which would bleed a previous
-  // onboarding's blog posts into the new brand.
-  if (!currentBrand || !currentBrand.id) { blogPosts = []; return; }
-  // v643 — reset BEFORE the read. The no-brand guard above was right, but the has-a-brand,
-  // no-cached-value path was not: `if (raw)` meant a brand with no cached posts simply KEPT the
-  // previous brand's array in memory, and any later save wrote them under the new brand's key.
-  // `loadPAAState` already resets its three values first; this was the one loader that did not.
-  // Latent while blog is shelved, a real cross-brand write the day it is unshelved.
-  blogPosts = [];
-  try {
-    const raw = lsGet(BLOG_KEY);
-    if (raw) blogPosts = JSON.parse(raw);
-  } catch(e) { debugLog('loadBlogPosts parse error: ' + e.message); }
-}
-
-function saveBlogPosts() {
-  // Never write to the shared no-brand bucket (would leak into the next brand).
-  if (!currentBrand || !currentBrand.id) return;
-  try { lsSet(BLOG_KEY,JSON.stringify(blogPosts)); } catch(e) {}
-}
-
-function renderBlog() {
-  const list = document.getElementById('blogList');
-  if (!list) return;
-
-  renderBlogFilters();
-
-  // Auto-fill queue — only after the user has deliberately started Blog.
-  // First visit shows an explainer + "Write my first post" instead of silently
-  // generating (and spending credits). Per-brand flag; brands that already have
-  // posts count as started so existing users keep the auto-refill behavior.
-  const blogStarted = (lsGet('blog_started') === '1') || blogPosts.length > 0;
-  if (blogStarted && lsGet('blog_started') !== '1') { try { lsSet('blog_started','1'); } catch(e){} }
-  const pending = blogPosts.filter(p => p.status === 'pending');
-  if (blogStarted && pending.length < 3 && !blogGenerating && !blogGenError) {
-    generateBlogPosts();
-  }
-
-  // Filter
-  let filtered = blogPosts;
-  if (blogFilter === 'pending') filtered = blogPosts.filter(p => p.status === 'pending');
-  else if (blogFilter === 'approved') filtered = blogPosts.filter(p => p.status === 'approved');
-  else if (blogFilter === 'rejected') filtered = blogPosts.filter(p => p.status === 'rejected');
-
-  if (!filtered.length) {
-    if (blogGenError && !blogGenerating) {
-      list.innerHTML = '<div class="blog-empty"><p style="margin-bottom:12px;opacity:.7">Generation hit a snag — nothing was lost.</p><button class="tp-generate-btn" style="max-width:240px;margin:0 auto" onclick="generateBlogPosts()">Try Again</button></div>';
-    } else if (blogGenerating) {
-      list.innerHTML = '<div class="blog-empty"><div class="skeleton-line" style="width:80%;height:24px;margin:0 auto 12px"></div><div class="skeleton-line" style="width:60%;height:16px;margin:0 auto 12px"></div><div class="skeleton-line" style="width:70%;height:16px;margin:0 auto"></div><p style="margin-top:16px;opacity:.6">Writing your next post — about a minute each…</p></div>';
-    } else if (!blogStarted) {
-      list.innerHTML = `<div class="blog-empty" style="text-align:left">
-        <div style="font-size:17px;font-weight:800;margin-bottom:8px;">Blog &amp; AI-search</div>
-        <p style="font-size:13.5px;line-height:1.55;color:var(--text2);margin-bottom:16px;">Full articles in your voice — each built with the schema + FAQ structure that gets brands cited by ChatGPT, Claude and Google AI. Approve one and copy it straight onto your site.</p>
-        <button class="tp-generate-btn" style="max-width:280px;" onclick="blogStart()">Write my first post</button>
-      </div>`;
-    } else {
-      list.innerHTML = renderEmptyState('', 'No posts yet', 'They generate automatically from your brand brain — each with schema + FAQ built to get cited by AI search.');
-    }
-    return;
-  }
-
-  // Sort: pending first, then approved, then rejected. Newest first within each group.
-  const order = { pending: 0, approved: 1, rejected: 2 };
-  const sorted = [...filtered].sort((a, b) => {
-    if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
-    return (b.createdAt || 0) - (a.createdAt || 0);
-  });
-
-  list.innerHTML = sorted.map(p => {
-    const expanded = p._expanded ? '' : ' collapsed';
-    const statusBadge = p.status !== 'pending' ? `<span class="blog-status-badge ${p.status}">${p.status}</span>` : '';
-
-    let actions = '';
-    if (p._rewriting) {
-      actions = `<button class="blog-reject-btn" disabled>${ICO.write} Rewriting…</button>`;
-    } else if (p.status === 'pending') {
-      actions = `
-        <button class="blog-approve-btn" onclick="blogApprove('${p.id}')">${ICO.check} Approve</button>
-        <button class="blog-reject-btn" onclick="sharpenBlog('${p.id}',this)">${ICO.sharpen} Sharpen</button>
-        <button class="blog-reject-btn" onclick="blogImprove('${p.id}')">${ICO.spark} Improve</button>
-        <button class="blog-reject-btn" onclick="blogEdit('${p.id}')">${ICO.write} Edit</button>
-        <button class="blog-reject-btn" onclick="copyBlogText('${p.id}')">${ICO.copy} Copy</button>
-        <button class="blog-reject-btn blog-x-btn" style="opacity:.55" onclick="rejectBlogPost('${p.id}')" title="Reject">✕</button>`;
-    } else if (p.status === 'approved') {
-      actions = `<button class="blog-approve-btn" onclick="copyBlogText('${p.id}')">${ICO.copy} Copy text</button>
-        <button class="blog-reject-btn" onclick="copyBlogHTML('${p.id}')">⟨/⟩ Copy HTML</button>
-        <button class="blog-reject-btn" onclick="blogEdit('${p.id}')">${ICO.write} Edit</button>`;
-    }
-
-    return `<div class="blog-card ${p.status}">
-      <div class="blog-card-question">${escapeHTML(p.question)} ${statusBadge}</div>
-      <div class="blog-card-answer${expanded}" onclick="toggleBlogExpand('${p.id}')">${blogBodyHtml(p.answer)}</div>
-      <div class="blog-card-meta">${escapeHTML(String(p.category || 'General'))} · ${escapeHTML(String(p.wordCount || '~300'))} words</div>
-      <div class="blog-card-actions">${actions}</div>
-    </div>`;
-  }).join('') + `<div style="text-align:center;margin-top:14px;">
-      <button class="blog-generate-btn${blogGenerating?' btn-working':''}" ${blogGenerating?'disabled':''} onclick="generateBlogPosts()">${blogGenerating?'<span class="bw"><span class="bw-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="bw-label">Writing…</span></span>':ICO.write+' Generate a new post'}</button>
-    </div>`;
-}
-
-function renderBlogFilters() {
-  const row = document.getElementById('blogFilterRow');
-  if (!row) return;
-  const counts = {
-    all: blogPosts.length,
-    pending: blogPosts.filter(p => p.status === 'pending').length,
-    approved: blogPosts.filter(p => p.status === 'approved').length,
-    rejected: blogPosts.filter(p => p.status === 'rejected').length
-  };
-  const filters = ['all','pending','approved','rejected'];
-  row.innerHTML = filters.map(f =>
-    `<button class="blog-filter-btn${blogFilter === f ? ' active' : ''}" onclick="setBlogFilter('${f}')">${f.charAt(0).toUpperCase()+f.slice(1)} (${counts[f]})</button>`
-  ).join('');
-}
-
-function setBlogFilter(f) {
-  blogFilter = f;
-  renderBlog();
-}
-
-let blogGenError = false;
-// First-visit CTA: mark Blog as deliberately started, then generate.
-function blogStart(){ try { lsSet('blog_started','1'); } catch(e){} generateBlogPosts(); }
-async function generateBlogPosts() {
-  if (blogGenerating) return;
-  try { lsSet('blog_started','1'); } catch(e){} // any manual generate counts as starting Blog
-  if (blogPosts.filter(p => p.status === 'pending').length >= 3) {
-    if (typeof showToast === 'function') showToast('You have 3 draft posts waiting — approve or reject one first.');
-    return;
-  }
-
-  blogGenerating = true;
-  blogGenError = false;
-  if (activeView === 'blog') renderBlog();
-  renderNav();
-
-  // BRAND PIN. Up to three AI generations run back to back here, and each one ends in
-  // blogPosts.push(...) + saveBlogPosts() -> lsSet(BLOG_KEY). switchBrand replaces `blogPosts`
-  // wholesale via loadBlogPosts(), so a switch mid-run appended brand A's posts to brand B's
-  // array and then wrote the merged list into B's namespace.
-  const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
-  const _blogBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
-
-  // One post per request, sequentially, so each lands fast and partial progress shows
-  while (blogPosts.filter(p => p.status === 'pending').length < 3) {
-    try {
-      const resp = await fetch('/api/generate-blog', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          existingQuestions: blogPosts.map(p => p.question),
-          brandContext: getBrandContext()
-        })
-      });
-      if (!resp.ok) throw new Error('API ' + resp.status);
-      const data = await resp.json();
-      if (!data.posts || !data.posts.length) throw new Error('Empty response');
-      // Refuse to append another brand's post to the array now in `blogPosts`. Stop the run — the
-      // remaining iterations would write into this brand too.
-      if (_sameBrand && !_sameBrand()) {
-        debugLog('generateBlogPosts: brand switched mid-run — discarded post for ' + _blogBrandName);
-        if (typeof showToast === 'function') showToast('You switched brand — that post was written for ' + _blogBrandName + ', so it was not saved. Generate again for this brand.', 8000);
-        break;
-      }
-      data.posts.forEach(p => {
-        blogPosts.push({
-          id: 'blog_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-          question: p.question,
-          answer: p.answer,
-          htmlContent: p.htmlContent || '',
-          category: p.category || 'General',
-          wordCount: p.wordCount || 300,
-          status: 'pending',
-          createdAt: Date.now(),
-          _expanded: false
-        });
-      });
-      saveBlogPosts();
-      if (activeView === 'blog') renderBlog(); // show each post as it arrives
-      renderNav();
-    } catch(e) {
-      debugLog('generateBlogPosts error: ' + e.message);
-      blogGenError = true;
-      if (typeof showToast === 'function') showToast('Blog writing hit a snag — nothing lost. Tap Try Again when ready.');
-      break; // stop the loop — error state renders Try Again; auto-fill pauses until retry (no silent hammering)
-    }
-  }
-
-  blogGenerating = false;
-  if (activeView === 'blog') renderBlog();
-  renderNav();
-}
-
-function approveBlogPost(id) {
-  const post = blogPosts.find(p => p.id === id);
-  if (!post) return;
-  post.status = 'approved';
-  saveBlogPosts();
-  renderBlog();
-  renderNav();
-
-  // Auto-generate replacement
-  const pending = blogPosts.filter(p => p.status === 'pending').length;
-  if (pending < 3) generateBlogPosts();
-}
-
-function rejectBlogPost(id) {
-  const post = blogPosts.find(p => p.id === id);
-  if (!post) return;
-  post.status = 'rejected';
-  saveBlogPosts();
-  renderBlog();
-  renderNav();
-
-  // Auto-generate replacement
-  const pending = blogPosts.filter(p => p.status === 'pending').length;
-  if (pending < 3) generateBlogPosts();
-}
-
-function toggleBlogExpand(id) {
-  const post = blogPosts.find(p => p.id === id);
-  if (!post) return;
-  post._expanded = !post._expanded;
-  renderBlog();
-}
-
-// ===== Blog feedback loop (mirrors the rest of the app: reasons + voice + brand brain) =====
-let _blogSel = new Set();
-function blogToggleReason(el, r) { if (_blogSel.has(r)) { _blogSel.delete(r); el.classList.remove('sel'); } else { _blogSel.add(r); el.classList.add('sel'); } }
-function closeBlogSheet() { const w = document.getElementById('blogSheet'); if (w) w.remove(); }
-function blogSheet(o) {
-  closeBlogSheet(); _blogSel = new Set();
-  const wrap = document.createElement('div'); wrap.className = 'dp-backdrop'; wrap.id = 'blogSheet';
-  wrap.onclick = e => { if (e.target === wrap) closeBlogSheet(); };
-  const mic = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>';
-  wrap.innerHTML = `<div class="dismiss-popup ${o.accent || ''} open" style="position:relative" onclick="event.stopPropagation()">
-    <button class="dp-x" onclick="closeBlogSheet()" aria-label="Close" style="position:absolute;top:6px;right:10px;background:none;border:none;font-size:26px;line-height:1;color:var(--text3);cursor:pointer;padding:6px;z-index:3;min-width:40px;min-height:40px">&times;</button>
-    <div class="dp-title">${o.title}</div>
-    ${o.sub ? `<div class="dp-sub">${o.sub}</div>` : ''}
-    <div class="dp-grid">${o.reasons.map(r => `<div class="dp-option" onclick="blogToggleReason(this,'${r}')">${r}</div>`).join('')}</div>
-    <div class="dp-custom-label">Or add your own</div>
-    <div class="dp-custom-row">
-      <textarea class="dp-custom-input" id="dpCustomBLOG" rows="2" placeholder="Type, or tap the mic and just say it"></textarea>
-      <button class="dp-mic-btn" id="dpMicBLOG" onclick="dpToggleMic('BLOG')" title="Speak">${mic}</button>
-    </div>
-    <div class="dp-hint">The more honest you are, the sharper your brand brain gets — it learns from every answer.</div>
-    <div class="dp-actions-row">
-      <button class="dp-cancel" onclick="closeBlogSheet()">${o.skipLabel || 'Skip'}</button>
-      <button class="dp-custom-send ${o.accent || ''}" id="blogSaveBtn">${o.saveLabel}</button>
-    </div>
-  </div>`;
-  document.body.appendChild(wrap);
-  document.getElementById('blogSaveBtn').onclick = () => {
-    const t = (document.getElementById('dpCustomBLOG').value || '').trim();
-    const arr = [..._blogSel]; if (t) arr.push(t);
-    closeBlogSheet(); o.onSave(arr);
-  };
-}
-
-function blogApprove(id) {
-  const post = blogPosts.find(p => p.id === id); if (!post) return;
-  post.status = 'approved'; saveBlogPosts(); renderBlog(); renderNav();
-  if (blogPosts.filter(p => p.status === 'pending').length < 3) generateBlogPosts();
-  blogSheet({ title: 'What made this one land?', sub: 'Teaches your brand brain what to make more of.', accent: 'ap',
-    reasons: APPROVE_REASONS, saveLabel: 'Save',
-    onSave: arr => { if (arr.length) { post.approveReason = arr.join(', '); saveBlogPosts(); showToast('Got it — more like this'); } } });
-}
-
-const BLOG_FIX = ['Too generic','Wrong angle','Too long','Too short','Off brand','Not accurate','Weak intro','Boring','Add examples','More concrete'];
-function blogImprove(id) {
-  const post = blogPosts.find(p => p.id === id); if (!post) return;
-  blogSheet({ title: "What's off — I'll rewrite it", sub: "Pick what to fix; I'll regenerate this post from your feedback.",
-    reasons: BLOG_FIX, saveLabel: 'Rewrite',
-    onSave: async arr => {
-      const feedback = arr.join(', ') || 'Make it sharper and better structured.';
-      // BRAND PIN + membership check. This callback awaits a full AI rewrite and then mutates the
-      // `post` OBJECT it captured. switchBrand rebuilds `blogPosts` via loadBlogPosts(), so after a
-      // switch `post` is an orphan from the other brand's array: the mutation lands on nothing and
-      // saveBlogPosts() persists the NEW brand's untouched list. The rewrite the user asked for was
-      // discarded with no error and no toast. Now it is either applied to the real post, or said.
-      const _sameBrand = (typeof brandGate === 'function') ? brandGate() : null;
-      const _biBrandName = (settings && settings.brandName) ? String(settings.brandName) : 'the previous brand';
-      post._rewriting = true; renderBlog();
-      try {
-        const resp = await fetch('/api/generate-blog', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ brandContext: getBrandContext(), rewrite: { question: post.question, answer: post.answer, category: post.category, feedback } }) });
-        const data = await resp.json();
-        // The post this rewrite belongs to must still be in the list we are about to save. A brand
-        // switch is the reachable way it leaves (same cause blogEditSave already reports).
-        if ((_sameBrand && !_sameBrand()) || !Array.isArray(blogPosts) || blogPosts.indexOf(post) === -1) {
-          post._rewriting = false;
-          if (typeof showToast === 'function') showToast('You switched brand — that rewrite was written for ' + _biBrandName + ", so it couldn't be saved onto this brand's posts. Switch back and tap Improve again.", 9000);
-          renderBlog();
-          return;
-        }
-        if (data.posts && data.posts[0]) {
-          const np = data.posts[0];
-          post.question = np.question || post.question; post.answer = np.answer || post.answer;
-          post.htmlContent = np.htmlContent || ''; post.wordCount = np.wordCount || post.wordCount;
-          post.improveReason = feedback; post._expanded = true;
-        } else { showToast('Rewrite failed — nothing lost'); }
-      } catch (e) { showToast('Rewrite failed — nothing lost'); }
-      post._rewriting = false; saveBlogPosts(); renderBlog();
-    } });
-}
-
-function blogEdit(id) {
-  const post = blogPosts.find(p => p.id === id); if (!post) return;
-  closeBlogSheet();
-  const wrap = document.createElement('div'); wrap.className = 'dp-backdrop'; wrap.id = 'blogSheet';
-  wrap.onclick = e => { if (e.target === wrap) closeBlogSheet(); };
-  const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-  wrap.innerHTML = `<div class="dismiss-popup open" onclick="event.stopPropagation()" style="max-width:540px;">
-    <div class="dp-title">Edit post</div>
-    <input id="blogEditQ" class="dp-custom-input" style="width:100%;margin-bottom:8px;font-weight:700;" value="${esc(post.question)}">
-    <textarea id="blogEditA" class="dp-custom-input" rows="12" style="width:100%;font-family:inherit;line-height:1.5;">${esc(post.answer)}</textarea>
-    <div class="dp-hint">Use blank lines between paragraphs, and "## Heading" / "- bullet" for structure.</div>
-    <div class="dp-actions-row">
-      <button class="dp-cancel" onclick="closeBlogSheet()">Cancel</button>
-      <button class="dp-custom-send ap" onclick="blogEditSave('${id}')">Save</button>
-    </div>
-  </div>`;
-  document.body.appendChild(wrap);
-}
-function blogEditSave(id) {
-  const say = function (m) { if (typeof showToast === 'function') showToast(m, 6000); };
-  const post = (blogPosts || []).find(p => p && p.id === id);
-  const qEl = document.getElementById('blogEditQ');
-  const aEl = document.getElementById('blogEditA');
-  // Both of these used to be silent: `if (!post) return;` and an unguarded
-  // getElementById(...).value that throws. Either one left Save doing nothing at
-  // all while the sheet stayed open with the user's typed text in it. The missing
-  // post is reachable — switching brand empties blogPosts while this sheet is open.
-  if (!post) {
-    say("That post isn't in this brand's list any more — your edit wasn't saved.");
-    closeBlogSheet();
-    return;
-  }
-  if (!qEl || !aEl) { say("Couldn't read the editor — close this and tap Edit again."); return; }
-  const q = (qEl.value || '').trim();
-  const a = aEl.value || '';
-  try {
-    if (q) post.question = q;
-    post.answer = a; post.htmlContent = ''; post._expanded = true;
-    closeBlogSheet(); saveBlogPosts(); renderBlog();
-    showToast('Saved your edits — brand brain just got sharper');
-  } catch (e) {
-    say("Couldn't save that edit — try again.");
-  }
-}
-
-async function copyBlogText(id) {
-  const post = blogPosts.find(p => p.id === id);
-  if (!post) return;
-  const text = (post.question || '').trim() + '\n\n' + (post.answer || '').trim();
-  try {
-    await navigator.clipboard.writeText(text);
-    showToast('Copied — paste anywhere');
-  } catch (e) {
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta);
-    showToast('Copied — paste anywhere');
-  }
-}
-
-async function copyBlogHTML(id) {
-  const post = blogPosts.find(p => p.id === id);
-  if (!post) return;
-
-  // Build clean HTML for pasting into user's CMS
-  const html = buildBlogHTML(post);  // always regenerate so Article+FAQ+speakable schema is present
-
-  try {
-    await navigator.clipboard.writeText(html);
-    showToast('HTML copied — paste into your website');
-  } catch(e) {
-    // Fallback
-    const ta = document.createElement('textarea');
-    ta.value = html;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast('HTML copied — paste into your website');
-  }
-}
-
-function buildBlogHTML(post) {
-  const q = escapeHTML(post.question);
-  const bodyHtml = blogBodyHtml(post.answer);
-  const date = new Date().toISOString().split('T')[0];
-  const answerText = (post.answer || '').replace(/\s+/g, ' ').trim();
-  const ld = JSON.stringify({
-    "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "Article",
-        "headline": post.question,
-        "datePublished": date,
-        "speakable": { "@type": "SpeakableSpecification", "cssSelector": ["h1", "[itemprop='articleBody']"] },
-        "articleBody": answerText
-      },
-      {
-        "@type": "FAQPage",
-        "mainEntity": [{
-          "@type": "Question",
-          "name": post.question,
-          "acceptedAnswer": { "@type": "Answer", "text": answerText.substring(0, 500) }
-        }]
-      }
-    ]
-  }, null, 2);
-
-  return `<article itemscope itemtype="https://schema.org/Article">
-  <h1 itemprop="headline">${q}</h1>
-  <meta itemprop="datePublished" content="${date}">
-  <div itemprop="articleBody">
-${bodyHtml}
-  </div>
-</article>
-
-<!-- Article + FAQ + Speakable schema (AEO / voice assistants) -->
-<script type="application/ld+json">
-${ld}
-<\/script>`;
-}
-
-// PARKED: builds an llms.txt index for the site. No standalone button (users do not know where to put the file).
-async function copyBlogLlmsTxt() {
-  const posts = (blogPosts || []).filter(p => p && p.status !== 'rejected' && p.question);
-  if (!posts.length) { showToast('Generate a few posts first'); return; }
-  const brand = ((typeof settings !== 'undefined' && settings.brandName) || 'My Brand').trim();
-  const tagline = ((typeof settings !== 'undefined' && (settings.tagline || settings.brandTagline)) || '').trim();
-  const slug = q => q.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'post';
-  const clean = t => (t || '').replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim();
-  const desc = a => { const t = clean(a); return t.length > 150 ? t.slice(0, 147) + '…' : t; };
-  const items = posts.map(p => `- [${clean(p.question)}](https://YOURSITE.com/${slug(p.question)}): ${desc(p.answer)}`).join('\n');
-  const summary = tagline || (brand + ' — straight answers to the real questions people ask.');
-  const txt = `# ${brand}\n\n> ${summary}\n\n## Articles\n\n${items}\n\n---\nSave this file as llms.txt at the root of your website (yoursite.com/llms.txt). Replace YOURSITE.com with your domain and each slug with the real URL where you published that post. It gives ChatGPT, Perplexity, Google AI and other AI crawlers a clean map of your content so they can find and cite it.\nGenerated by Content Shrimp.\n`;
-  try {
-    await navigator.clipboard.writeText(txt);
-    showToast('llms.txt copied — save it as /llms.txt on your site');
-  } catch (e) {
-    const ta = document.createElement('textarea');
-    ta.value = txt; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta);
-    showToast('llms.txt copied — save it as /llms.txt on your site');
-  }
-}
-
 
 function escapeHTML(str) {
   if (!str) return '';
