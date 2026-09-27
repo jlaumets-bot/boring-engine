@@ -197,6 +197,21 @@
     },
     "api/creator-posts.js": {
       "maxDuration": 90
+    },
+    "api/angles.js": {
+      "maxDuration": 120
+    },
+    "api/write.js": {
+      "maxDuration": 300
+    },
+    "api/brand-memory.js": {
+      "maxDuration": 60
+    },
+    "api/blind-test.js": {
+      "maxDuration": 300
+    },
+    "api/content-metrics.js": {
+      "maxDuration": 60
     }
   },
   "crons": [

@@ -153,6 +153,9 @@ check(aiUnavailable(null) === null && aiUnavailable(new Error('x')) === null, 'a
     ['crawl-social', { url: 'https://www.instagram.com/acmecoffee' }],
     ['crawl-brand', { url: 'https://acme.example' }],
     ['reviews', { brandName: 'Acme Coffee', website: 'acme.example' }],
+    // v693 — the content-v2 lane: a refusal on the first call (angles, or write's draft) is the answer.
+    ['angles', { source: { kind: 'note', text: 'people brew coffee too hot' }, brandContext: bc }],
+    ['write', { source: { kind: 'note', text: 'people brew coffee too hot' }, angle: { belief: 'Boiling water ruins good beans', why: 'everyone thinks hotter is stronger' }, brandContext: bc }],
   ];
   const run = async (name, body) => {
     const h = require_(path.join(API, name + '.js'));

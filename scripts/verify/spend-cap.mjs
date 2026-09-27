@@ -199,6 +199,13 @@ if (!/gate && _cbGuard\.gate\.used\) > 0|used\) > 0/.test(cbSrc)) {
   const ALLOWLIST = {
     'health.js':             { why: 'liveness/config probe — no LLM, no third-party spend',
                                check: (s) => !/_llm|openai|anthropic|x\.ai/i.test(s) || /CRON_SECRET/.test(s) },
+    // v693 — content-v2: three endpoints that never call a model or a paid API.
+    'brand-memory.js':       { why: "the user's own stories/beliefs/speech behind _requireUser + userCanAccessBrand — no model call",
+                               check: (s) => /require\(['"]\.\/_requireUser['"]\)/.test(s) && /userCanAccessBrand\(/.test(s) && !/_llm|callLLM|x\.ai|anthropic/i.test(s) },
+    'content-metrics.js':    { why: 'read-only filmed-rate counts behind _requireUser + userCanAccessBrand — no model call',
+                               check: (s) => /require\(['"]\.\/_requireUser['"]\)/.test(s) && /userCanAccessBrand/.test(s) && !/_llm|callLLM/.test(s) },
+    'blind-test.js':         { why: 'owner-only Content Lab behind _requireUser + CONTENT_LAB_USER_IDS; spends model calls by design but only for listed owners, no credits',
+                               check: (s) => /require\(['"]\.\/_requireUser['"]\)/.test(s) && /CONTENT_LAB_USER_IDS/.test(s) },
     'push-key.js':           { why: 'returns the public VAPID key only — public by design',
                                check: (s) => /VAPID_PUBLIC_KEY/.test(s) && s.length < 2000 },
     'generate-blog.js':      { why: 'RETIRED stub — answers 410 and does nothing else',

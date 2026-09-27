@@ -1,7 +1,12 @@
 // Viral Twist — take an existing idea and return punchier, scroll-stopping angles.
 // Uses TIMELESS virality mechanics (no live-trend data). Stays brand-true and on-voice.
-const { callLLM, aiUnavailable } = require('./_llm');
-const { fullBrandBlock, writingCraft, rulePrecedence, extractJson, coerceShape, VIRAL_TWIST_SHAPE } = require('./_brain');
+const { aiUnavailable } = require('./_llm');
+const { writerCallResilient, writerProvider, writerEffort, startBrandAttribution } = require('./_write');   // v693 r3 — provider switch + thinking depth with headroom (see api/_write.js)
+const { fullBrandBlock, rulePrecedence, extractJson, coerceShape, VIRAL_TWIST_SHAPE } = require('./_brain');
+// v693 — content-v2 writing rules (.unlazy/content-v2/PLAN.md change 3): the short style guide
+// (whose one hard rule is NO_INVENTION_RULE) replaces writingCraft's rulebook and the "max 8 words
+// per hook, fragments beat full sentences" rule; the brand renders through fullBrandBlock(bc,{v2:true}).
+const { styleGuide } = require('./_write');
 
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
@@ -44,20 +49,18 @@ module.exports = async function handler(req, res) {
       bc = Object.assign({}, _hyd.bc, bc);
     }
 
-    const brandInfo = fullBrandBlock(bc);
+    const brandInfo = fullBrandBlock(bc, { v2: true });   // v693 — v2: tones <= 3, USPs as background facts, held beliefs
 
     const system = `You are a world-class viral content strategist. You take an existing content idea and give it a VIRAL TWIST — maximizing stop-scroll power and punch WITHOUT changing the brand's product truth or its voice. Punchier, sharper, higher-tension. Never flat or watered-down. A dry brand stays dry — but dry AND gripping, not boring.
 
-You rely on TIMELESS virality mechanics: pattern interrupts, curiosity gaps, open loops, contrarian/controversial angles, sharp specificity, tribal identity, stakes, before/after, and emotional triggers. If the brand context below lists CURRENT TRENDS the user flagged as working right now, weight those too — translate their MECHANIC into a brand-true twist, never copy the original topic.
+You rely on TIMELESS virality mechanics: pattern interrupts, curiosity gaps, open loops, contrarian/controversial angles, sharp specificity (only specifics the brand context or the post actually contains), tribal identity, stakes, before/after, and emotional triggers. If the brand context below lists CURRENT TRENDS the user flagged as working right now, weight those too — translate their MECHANIC into a brand-true twist, never copy the original topic.
 
-HOOK RULES:
-- Max 8 words per hook. Fragments beat full sentences. The first word must create tension or curiosity.
-- Each hook must work as on-screen text and pass the "thumb-stop test" — punchy and impossible to scroll past, in the brand's voice.
-- Stay literally true to the brand's product facts above. NEVER invent claims, prices, or ingredients.
+HOOKS:
+- Each hook is the first line a person would actually say: plain, specific, and it creates tension or curiosity. It must work as on-screen text and pass the "thumb-stop test", in the brand's voice.
+- A hook has no room for a [your story: ...] slot, so a hook never carries a number, name or result the brand context does not give you: cut the claim instead.
 - Match the brand voice/tones. NEVER use any of the avoid-words.
-- NEVER use AI-tell openers: "Did you know", "In this video", "Here's the thing", "Quick question", "Most people don't realize", "Let me tell you", "Have you ever".
 
-${writingCraft({ spoken: false, precedence: false })}`;
+${styleGuide()}`;
 
     const user = `EXISTING POST:
 Title: ${idea.title || ''}
@@ -73,7 +76,7 @@ TASK: Give this post a viral twist. Produce 3 DISTINCT viral angles (different t
 Respond with EXACTLY this JSON shape and nothing else:
 {
   "angles": [
-    {"angle": "tactic name (e.g. Contrarian, Specificity, Open loop)", "hook": "new hook, max 8 words", "why": "one line: why it stops the scroll"}
+    {"angle": "tactic name (e.g. Contrarian, Specificity, Open loop)", "hook": "new hook: the first line, as a person would say it", "why": "one line: why it stops the scroll"}
   ],
   "spicy": {"hook": "the boldest hook", "why": "why it's riskier but higher-reward"},
   "tip": "one practical line on how to deliver/film it for max retention"
@@ -82,12 +85,15 @@ Exactly 3 items in "angles".
 
 ${rulePrecedence()}`;
 
-    const content = await callLLM({ deadlineMs: 280000,
+    // v693 r3 — START the brand-attribution check now and await it after the AI work, so it never
+    // adds Supabase time after the model answers (a killed function delivers nothing).
+    const _brandAttr = startBrandAttribution(_g.user.id, bc.brandId || bc.brand_id || null);
+    const content = await writerCallResilient({ deadlineMs: 280000, provider: writerProvider(), effort: writerEffort('edit'),
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       model: 'grok',
-      max_tokens: 1200,
+      max_tokens: 2500,
       engine: (bc.engine || 'grok'),
-    });
+    }, { providerFromEnv: true, label: 'viral-twist' });
     if (!content) return res.status(502).json({ error: 'No response from the AI — try again' });
 
     const _raw = extractJson(content);
@@ -100,15 +106,8 @@ ${rulePrecedence()}`;
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /
     // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
-    let logBrandId = null;
-    const _bid = bc.brandId || bc.brand_id || null;
-    if (_bid) {
-      try {
-        const store = require('./_publish/store');
-        if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
-      } catch (e) {}
-    }
-    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: bc.engine || 'grok' });
+    const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: require('./_write').usageModel(bc) });
     return res.status(200).json({ twist });
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"

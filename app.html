@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v692';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v693';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -705,7 +705,7 @@ input:focus, textarea:focus, select:focus {
 /* v472: the sticky header used to swallow the first lines of anything we
    scrollIntoView (QA: remix + Trends results "top lines cut off"). One rule,
    every auto-scrolled result target. */
-#remixResults, #vlResults, #tvResult, #icResult, #memeStage, .list-card, .pipeline-card { scroll-margin-top: 84px; }
+#remixResults, #rv2Panel, #vlResults, #tvResult, #icResult, #memeStage, .list-card, .pipeline-card { scroll-margin-top: 84px; }
 /* v593: the sticky brand header was still clipping these when scrolled to — QA saw it on Pipeline
    (expanded post card), Settings (Content Mix accordion title) and Questions (first question card). */
 .pipeline-card-detail, .list-card-detail, .sp-section, .sp-field, .paa-section, .paa-card, .paa-question { scroll-margin-top: 84px; }
@@ -3970,6 +3970,54 @@ input:focus, textarea:focus, select:focus {
 }
 .remix-platform-select:focus { outline: none; border-color: var(--gold); }
 
+/* v693 — Remix v2 (opinion → spoken script → story slots), brand memory, Content Lab */
+#rv2Panel:empty { display: none; }
+.rv2-card { margin: 14px 0 0; background: var(--surface,#fff); border: 1.5px solid #16130F; border-radius: 16px; padding: 16px; }
+.rv2-step { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text3); margin-bottom: 4px; }
+.rv2-h { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.3; margin-bottom: 4px; color: var(--text); }
+.rv2-sub { font-size: 12.5px; color: var(--text3); line-height: 1.5; margin: 4px 0 10px; }
+.rv2-err { font-size: 13px; line-height: 1.5; color: var(--red,#B04A4A); background: var(--surface2); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.rv2-note { font-size: 12.5px; line-height: 1.5; color: var(--text2); margin: 8px 0; }
+.rv2-angles { display: flex; flex-direction: column; gap: 8px; }
+.rv2-angle { display: flex; flex-direction: column; gap: 4px; text-align: left; width: 100%; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--border2); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.rv2-angle.on, .rv2-angle:hover { border-color: #16130F; background: var(--lav,#E7DAF9); }
+.rv2-angle:disabled { opacity: .6; cursor: default; }
+.rv2-belief { font-size: 15px; font-weight: 700; line-height: 1.35; }
+.rv2-why { font-size: 12px; color: var(--text3); line-height: 1.45; }
+.rv2-belief-top { font-size: 15px; font-weight: 800; line-height: 1.35; margin: 2px 0 10px; }
+.rv2-lbl { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text3); margin: 10px 0 4px; }
+.rv2-hook { font-size: 15px; font-weight: 700; line-height: 1.4; color: var(--text); }
+.rv2-script { font-size: 15px; line-height: 1.65; color: var(--text); overflow-wrap: anywhere; }
+.rv2-slot { display: inline; font: inherit; font-size: 14px; line-height: 1.5; padding: 1px 8px; margin: 0 2px; border-radius: 8px; border: 1.5px dashed #16130F; background: var(--lav,#E7DAF9); color: #16130F; cursor: pointer; text-align: left; }
+.rv2-slot-k { font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.rv2-slotbox { margin: 12px 0 0; padding: 12px; border-radius: 12px; background: var(--surface2); border: 1px solid var(--border2); }
+.rv2-ask { font-size: 14px; font-weight: 600; line-height: 1.45; margin-bottom: 8px; }
+.rv2-mic { width: 100%; justify-content: center; min-height: 48px; }
+.rv2-edit { min-height: 220px; font-size: 15px; line-height: 1.6; }
+.rv2-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.rv2-actions button { flex: 1 1 auto; min-height: 44px; padding: 8px 12px; border-radius: 999px; border: 1.5px solid #16130F; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.rv2-actions button.primary { background: #16130F; color: #F9F6EA; }
+.rv2-foot { margin-top: 10px; text-align: center; }
+.rv2-link { background: none; border: none; color: var(--text3); font: inherit; font-size: 12.5px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 6px; }
+.rv2-tone-nudge { color: var(--text); background: var(--lav,#E7DAF9); border-radius: 10px; padding: 8px 10px; }
+.rv2-metrics { font-size: 13px; color: var(--text2); padding: 10px 0 14px; border-bottom: 1px solid var(--surface3); margin-bottom: 14px; }
+/* the recording pill must sit above the full-screen sheet, or a story being told there can't be stopped */
+body:has(.rv2-lab) #voicePill { z-index: 9500; }
+.rv2-idea-belief { font-size: 12px; line-height: 1.45; color: var(--text3); margin: 4px 0 2px; font-style: italic; }
+.rv2-rw:empty { display: none; }
+.rv2-lab-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 0 16px; border-bottom: 1px solid var(--surface3); margin-bottom: 16px; }
+.rv2-lab { position: fixed; inset: 0; z-index: 9000; background: var(--bg,#F9F6EA); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.rv2-lab-in { max-width: 720px; margin: 0 auto; padding: 12px 16px 60px; box-sizing: border-box; }
+.rv2-lab-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.rv2-lab-top h2 { margin: 0; font-size: 20px; }
+.rv2-lab-input { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.rv2-lab-input select { align-self: flex-start; min-height: 36px; border-radius: 8px; border: 1.5px solid var(--border2); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; padding: 4px 8px; }
+.rv2-lab-group { margin: 16px 0; padding-top: 12px; border-top: 1px solid var(--border2); }
+.rv2-lab-out { border: 1.5px solid var(--border2); border-radius: 12px; padding: 12px; margin: 8px 0; background: var(--surface); }
+.rv2-lab-out.on { border-color: #16130F; background: var(--lav,#E7DAF9); }
+.rv2-lab-label { font-size: 13px; font-weight: 800; margin-bottom: 6px; }
+.rv2-bar { height: 8px; border-radius: 999px; background: var(--surface2); overflow: hidden; margin: 8px 0; }
+.rv2-bar i { display: block; height: 100%; background: #16130F; }
 .remix-result {
   margin-top: 20px;
   border: 1px solid var(--border);
@@ -6578,6 +6626,7 @@ if (!window.supabase) {
         </div>
       </div>
 
+      <div id="rv2Panel"></div>
       <div id="remixResults"></div>
     </div>
 
@@ -7985,11 +8034,22 @@ function _buildIdeaRows(brandId) {
       ? tpCleanEmphasis(idea.emphasis, { script: asText(idea.script), boldText: asText(idea.boldText),
                                          caption: asText(idea.caption), hook: asText(idea.hook) })
       : [],
+    // v693 — which writer made it ('v2' = opinion-first flow), for /api/content-metrics. Only named
+    // when set, so a database without the column (sql/ideas-gen-flow.sql) is never asked for it by
+    // an old idea; a v2 idea on such a database is saved without it (see insertIdeas).
+    ...(idea.genFlow ? { gen_flow: String(idea.genFlow).slice(0, 20) } : {}),
   }));
   // Store paaSource mapping in localStorage (no DB column yet)
   const paaMap = {};
   (Array.isArray(state) ? state : []).forEach(idea => { if (idea.paaSource) paaMap[idea.title] = idea.paaSource; });
   try { lsSet('paa_source_map', JSON.stringify(paaMap)); } catch(e) {}
+  // v693 — the belief an idea was written from (shown on its card, used by "Rewrite as spoken script").
+  // No DB column for it: kept on this device by title, like paaSource.
+  try {
+    const bMap = {};
+    (Array.isArray(state) ? state : []).forEach(idea => { if (idea && idea.belief && idea.title) bMap[idea.title] = String(idea.belief).slice(0, 140); });
+    lsSet('belief_map', JSON.stringify(bMap));
+  } catch(e) {}
   return rows;
 }
 async function _saveIdeasToDBNow(brandId, rows) {
@@ -8081,23 +8141,40 @@ async function _saveIdeasToDBNow(brandId, rows) {
   // that error the same rows are written again WITHOUT the marks, and later saves this session skip
   // the column straight away. Only the marks are lost, never the idea. Any other error is untouched.
   // (Kept inside this function: scripts/verify/data-integrity.mjs lifts it and runs it standalone.)
-  const missingEmphasisCol = (err) => {
+  const missingCol = (err, col) => {
     if (!err) return false;
     const msg = String((err.message || '') + ' ' + (err.details || '') + ' ' + (err.hint || ''));
-    if (!/emphasis/i.test(msg)) return false;
+    if (msg.toLowerCase().indexOf(col) < 0) return false;
     return err.code === 'PGRST204' || err.code === '42703' || /schema cache|does not exist|could not find/i.test(msg);
   };
-  const withoutEmphasis = (payload) => {
-    const strip = r => { if (!r || typeof r !== 'object') return r; const o = Object.assign({}, r); delete o.emphasis; return o; };
+  // v693 — the same rule for ideas.gen_flow (sql/ideas-gen-flow.sql): on exactly that error the rows
+  // are written again without it and later saves skip it. Only the flow tag is lost, never the idea.
+  const withoutMissing = (payload) => {
+    const strip = r => {
+      if (!r || typeof r !== 'object') return r;
+      const o = Object.assign({}, r);
+      if (globalThis._ideasNoEmphasisCol) delete o.emphasis;
+      if (globalThis._ideasNoGenFlowCol) delete o.gen_flow;
+      return o;
+    };
     return Array.isArray(payload) ? payload.map(strip) : strip(payload);
   };
   const insertIdeas = async (payload) => {
-    if (globalThis._ideasNoEmphasisCol) return await sb.from('ideas').insert(withoutEmphasis(payload));
-    const res = await sb.from('ideas').insert(payload);
-    if (res && res.error && missingEmphasisCol(res.error)) {
-      globalThis._ideasNoEmphasisCol = true;
-      try { console.warn('ideas.emphasis column is missing (run sql/ideas-emphasis.sql) — saving without stress marks.'); } catch (e) {}
-      return await sb.from('ideas').insert(withoutEmphasis(payload));
+    let res = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      res = await sb.from('ideas').insert(withoutMissing(payload));
+      const err = res && res.error;
+      if (err && !globalThis._ideasNoEmphasisCol && missingCol(err, 'emphasis')) {
+        globalThis._ideasNoEmphasisCol = true;
+        try { console.warn('ideas.emphasis column is missing (run sql/ideas-emphasis.sql) — saving without stress marks.'); } catch (e) {}
+        continue;
+      }
+      if (err && !globalThis._ideasNoGenFlowCol && missingCol(err, 'gen_flow')) {
+        globalThis._ideasNoGenFlowCol = true;
+        try { console.warn('ideas.gen_flow column is missing (run sql/ideas-gen-flow.sql) — saving without the flow tag.'); } catch (e) {}
+        continue;
+      }
+      return res;
     }
     return res;
   };
@@ -8251,6 +8328,8 @@ async function loadIdeasFromDB() {
     // and on every other device. A row with no emphasis (column not added yet, or an old row) is
     // simply "no marks": tpCleanEmphasis returns [] and the heuristic takes over, as before.
     emphasis: tpCleanEmphasis(row.emphasis, { script: row.script, boldText: row.bold_text, caption: row.caption, hook: row.hook }),
+    // v693 — read back, or the next save (which rewrites every row) would drop it
+    ...(row.gen_flow ? { genFlow: String(row.gen_flow) } : {}),
     // `doneAt` lives ONLY in this device's localStorage snapshot — the ideas table has no
     // done_at column, so on a SECOND device every finished post had no timestamp and the
     // 30-day Done archive (`!i.doneAt || i.doneAt > cutoff`) never pruned anything.
@@ -8266,6 +8345,10 @@ async function loadIdeasFromDB() {
   try {
     const paaMap = JSON.parse(lsGet('paa_source_map') || '{}');
     result.forEach(idea => { if (paaMap[idea.title]) idea.paaSource = paaMap[idea.title]; });
+  } catch(e) {}
+  try {   // v693 — see _buildIdeaRows
+    const bMap = JSON.parse(lsGet('belief_map') || '{}');
+    result.forEach(idea => { if (bMap && typeof bMap[idea.title] === 'string' && bMap[idea.title]) idea.belief = bMap[idea.title]; });
   } catch(e) {}
   return result;
 }
@@ -8675,6 +8758,8 @@ function startAuthListener() {
   debugLog('startAuthListener: setting up');
   sb.auth.onAuthStateChange(function(event, session) {
     debugLog('authStateChange: event=' + event + ' user=' + (session?.user?.id || 'null'));
+    // v693 r4 — scripts held in memory belong to the account that wrote them (their drafts stay keyed by brand)
+    try { if (typeof rv2ResetAll === 'function' && (!session || !session.user || (currentUser && currentUser.id && currentUser.id !== session.user.id))) rv2ResetAll(); } catch(e) {}
     if (session?.user) {
       currentUser = session.user;
       try { document.getElementById('authScreen').style.display = 'none'; } catch(e) { debugLog('hide auth error: ' + e.message); }
@@ -13386,6 +13471,7 @@ async function autoRefillCheck(day, format) {
     let data = null;
     try { data = JSON.parse(await resp.text()); } catch (e) { console.warn('Auto-refill: unreadable response'); return; }
     if (!data || !data.ideas?.length) return;
+    if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
     // The user may have switched brand while this was in flight. Dropping the refill is
     // correct: pushing it would file one brand's ideas into another brand's library.
     if (!_stillSameBrand()) { console.warn('Auto-refill discarded: brand changed while generating'); return; }
@@ -13540,9 +13626,13 @@ function voiceLogAdd(text, src, gate){
     const t = String(text || '').replace(/\s+/g, ' ').trim();
     if (t.split(' ').filter(Boolean).length < VOICE_LOG_MIN_WORDS) return false;
     const log = Array.isArray(settings.voiceLog) ? settings.voiceLog.slice() : [];
-    log.push({ ts: Date.now(), src: String(src || '').slice(0, 20), text: t.slice(0, VOICE_LOG_TEXT_CAP) });
+    const entry = { ts: Date.now(), src: String(src || '').slice(0, 20), text: t.slice(0, VOICE_LOG_TEXT_CAP) };
+    log.push(entry);
     settings.voiceLog = log.slice(-VOICE_LOG_MAX);
     if (typeof saveSettings === 'function') saveSettings();
+    // v693 — every note kept here is the person's own words: also a speech sample for the spoken pass.
+    // r3: the saved copy's id lands on this entry, so "Forget this one" deletes it on the server too.
+    try { if (typeof rv2SendSpeech === 'function') rv2SendSpeech(t, gate, entry); } catch (e) {}
     return true;
   }catch(e){ return false; }
 }
@@ -13550,6 +13640,15 @@ function voiceLogRemove(i){
   try{
     const log = Array.isArray(settings.voiceLog) ? settings.voiceLog.slice() : [];
     if (i < 0 || i >= log.length) return;
+    const gone = log[i];
+    if (gone && !gone.memId) gone.forgotten = true;   // v693 r4: its server copy (if still on its way) is deleted when it arrives
+    // v693 r3 — forgetting a note forgets the copy the writer learns from, not only this list's line
+    if (gone && gone.memId && typeof rv2MemDelete === 'function' && typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) {
+      rv2MemDelete(currentBrand.id, 'speech', gone.memId).then(function (r) {
+        if (r && !r.ok && r.code !== 'not_found') { try { showToast("Removed here, but the saved copy couldn't be deleted — delete it under Your speech samples in Voice & Tone.", 7000); } catch (e) {} }
+        try { bmInvalidate(); } catch (e) {}
+      });
+    }
     log.splice(i, 1); settings.voiceLog = log;
     if (typeof saveSettings === 'function') saveSettings();
     if (typeof renderSettingsPanel === 'function') renderSettingsPanel();
@@ -14078,6 +14177,7 @@ async function generateNewIdeas() {
       debugLog('generateNewIdeas: No ideas in response');
       throw new Error('No ideas returned');
     }
+    if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
     debugLog('generateNewIdeas: got ' + data.ideas.length + ' ideas from API');
 
     // Keep each idea's own topic (lead-theme + variety); fall back to the day's theme only if missing
@@ -14248,7 +14348,7 @@ function renderTodayView() {
         <div class="tp-shz-day">${today} · ${escHtml(community)}</div>
         <div class="tp-shz-stage${_ok ? '' : ' locked'}">
           <span class="tp-shz-ring r1"></span><span class="tp-shz-ring r2"></span>
-          <button class="tp-shz-btn" id="tvGenerateBtn" aria-label="Generate today's post" onclick="${_ok ? 'generateTodayTabPost()' : 'showLockedToast()'}">
+          <button class="tp-shz-btn" id="tvGenerateBtn" aria-label="Generate today's post" onclick="${_ok ? 'tvGenerateV2()' : 'showLockedToast()'}">
             <img src="/shrimp-mascot.png?v=162" alt="">
           </button>
         </div>
@@ -14280,7 +14380,7 @@ document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && docu
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.querySelector('.bv-overlay') && typeof closeBrandVoice === 'function') closeBrandVoice(); });
 function angleSetFormat(f){ window._tvSelectedFormat = f; renderAngleSheet(); }
 function setTvDeliverySheet(d){ window._tvDelivery = (d==='faceless'?'faceless':'faceon'); try{ lsSet('tv_delivery', window._tvDelivery); }catch(e){} renderAngleSheet(); }
-function angleGenerate(){ closeAngleSheet(); generateTodayTabPost(); }
+function angleGenerate(){ closeAngleSheet(); tvGenerateV2(); }   // v693: opinion-first
 function renderAngleSheet(){
   const el = document.getElementById('angleSheetBody'); if (!el) return;
   const formatKeys = FORMATS.filter(f => f !== 'bonus');
@@ -14686,6 +14786,7 @@ async function generateTodayTabPost() {
     const data = await readJsonOrThrow(resp, 'Writing your post');
     try { window._tvPhase.bodyMs = Date.now() - _phT0 - (window._tvPhase.headersMs || 0); } catch(e) {}
     if (!data.ideas || !data.ideas.length) throw new Error('No content returned');
+    if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
     // Brand switched while this was generating: everything below writes into the CURRENT brand —
     // the taste signal, the anti-repeat list, the coach's "last post", and (one tap later) tvApprove
     // filing this post into the wrong brand's pipeline. Drop it rather than misfile it.
@@ -15554,9 +15655,9 @@ function renderPAASection() {
       </div>
       <div class="paa-format-picker" id="paaFormats${idx}" style="display:none;flex-wrap:wrap;gap:6px;align-self:flex-end;">
         <span style="font-size:11px;color:var(--text3);width:100%;">Answer it as:</span>
-        ${Object.entries(FORMAT_LABELS).map(([k,v]) => `<button class="paa-fmt-chip fmt-${k}" onclick="usePAAQuestion(${idx},'${k}')">${v}</button>`).join('')}
+        ${Object.entries(FORMAT_LABELS).map(([k,v]) => `<button class="paa-fmt-chip fmt-${k}" onclick="paaAnswerV2(${idx},'${k}')">${v}</button>`).join('')}
       </div>
-      <button class="paa-use-btn" id="paaBtn${idx}" onclick="usePAAQuestion(${idx})" ${isUsed ? 'disabled' : ''}>
+      <button class="paa-use-btn" id="paaBtn${idx}" onclick="paaAnswerV2(${idx})" ${isUsed ? 'disabled' : ''}>
         ${isUsed
           ? '&#10003; Idea Created'
           : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Answer this'}
@@ -15656,6 +15757,7 @@ async function usePAAQuestion(idx, chosenFormat) {
     const data = await resp.json();
     console.log('PAA API response:', JSON.stringify(data).slice(0, 500));
     if (resp.ok && data.ideas?.length) {
+      if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
       const raw = data.ideas[0];
       console.log('PAA raw idea:', raw.title, 'format:', raw.format);
       const newIdea = {
@@ -15838,6 +15940,7 @@ function renderIdeas() {
             <div style="flex:1">
               <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${idea.paaSource ? '<span class="paa-badge-idea">People ask</span>' : ''}${idea.sparkSource ? '<span class="spark-badge-idea">Your idea</span>' : ''}${isFreshIdea(idea) ? '<span class="new-badge-idea">New</span>' : ''}${idea.format==='carousel'?`<button class="cm-card-btn" onclick="event.stopPropagation();openCarouselMaker(${idea.id})" title="Make Slides"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg> Slides</button>`:''}${['video','micro','qna'].includes(idea.format)?`<button class="cm-card-btn" onclick="event.stopPropagation();openBroll(${idea.id})" title="B-roll preview"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 7h5M17 17h5"/></svg> B-roll</button>`:''}
               <div class="list-card-title">${exp?'\u25BC':'\u25B6'} ${escHtml(idea.title)}</div>
+              ${(typeof rv2BeliefLine === 'function') ? rv2BeliefLine(idea) : ''}
               ${idea.hook && asText(idea.hook).trim().toLowerCase() !== asText(idea.title).trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="list-card-hook">${escHtml(idea.hook)}</div>` : ''}
               ${idea.status!=='pending' ? `<span class="list-card-status s-${escAttr(idea.status)}">${escHtml(STAGE_LABELS[idea.status]||idea.status)}${idea.dismissReason?' \u2022 '+escHtml(idea.dismissReason):''}</span>` : ''}
             </div>
@@ -15953,7 +16056,10 @@ function renderDetailContent(idea) {
     _btns += `<button class="detail-btn" onclick="event.stopPropagation();ideaRedoOpen(${idea.id})">${ICO.redo} Redo with notes</button>`;
     _btns += `<button class="detail-btn generate-btn" onclick="event.stopPropagation();generateMore(${idea.id},this)">${ICO.spark} Generate More</button>`;
   }
+  // v693 (wave 2): an idea with a belief (or at least a hook) can be rewritten as a spoken script
+  if (typeof rv2CanRewrite === 'function' && rv2CanRewrite(idea)) _btns += `<button class="detail-btn" onclick="event.stopPropagation();rv2RewriteIdea(${idea.id},this)">Rewrite as spoken script</button>`;
   if (_btns) html += `<div class="detail-btn-row">${_btns}</div>`;
+  html += `<div class="rv2-rw" id="rv2Rw-${idea.id}">${(typeof rv2RwHtml === 'function') ? rv2RwHtml(idea.id) : ''}</div>`;
   html += `<div class="viral-twist-result" id="viralTwist-${idea.id}"></div>`;
   html += `<div class="idea-redo-box" id="ideaRedo-${idea.id}"></div>`;
   return html;
@@ -17072,7 +17178,7 @@ function renderNotebook() {
     <div class="nb-note-foot">
       <span class="nb-note-time">${nbTimeAgo(n.createdAt)}</span>
       <div class="nb-note-actions">
-        <button class="nb-act develop" onclick="nbDevelop('${n.id}', this)">Develop into post</button>
+        <button class="nb-act develop" onclick="nbDevelopV2('${n.id}', this)">Develop into post</button>
         <button class="nb-act rule" onclick="nbSaveAsRule('${n.id}', this)">Save as voice rule</button>
         <button class="nb-act del" onclick="nbDelete('${n.id}')" title="Delete" aria-label="Delete note">${ICO.x}</button>
       </div>
@@ -17105,6 +17211,7 @@ async function nbDevelop(id, btn) {
       () => getBrandContext());
     const data = await resp.json();
     if (!data.ideas || !data.ideas.length) throw new Error('no result');
+    if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
     const idea = data.ideas[0];
     if (!_sameBrand()) { if (typeof showToast === 'function') showToast('You switched brand while that was generating, so it was not added.', 6000); return; }
     const idx = state.length;
@@ -17165,6 +17272,7 @@ async function sparkDevelop() {
       () => getBrandContext());
     const data = await resp.json();
     if (!data.ideas || !data.ideas.length) throw new Error('no result');
+    if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
     const idea = data.ideas[0];
     if (!_sameBrand()) { if (typeof showToast === 'function') showToast('You switched brand while that was generating, so it was not added.', 6000); return; }
     const idx = IDEAS.length;
@@ -18630,10 +18738,22 @@ async function vlMicToggle(){
 
 // Reusable voice dictation into ANY textarea — same infra as vlMicToggle, but target-agnostic.
 let _dictRec = null;
+let _dictStarting = false;
+let _dictStartTok = 0;        // v693 r4: which start is current — a mic that answers after the start timed out is closed again   // v693 r3: set while the mic is being opened — a second tap then must not start a second recorder
 async function dictateInto(taId, btn, label){
+  // v693 — an optional 4th argument {onText, maxMs}: onText(text) hands the words to a caller instead
+  // of a textarea (Remix story slots); maxMs shortens the 60s cap. (Read from `arguments` so the
+  // signature other gates anchor on stays the same.)
+  const _o = arguments[3] || {};
+  const _end = () => { if(typeof _o.onEnd==='function'){ try{ _o.onEnd(); }catch(_){} } };   // v693 r3: always told when it is over
   const _vg = (typeof brandGate==='function') ? brandGate() : null; // v650: brand at record-start
+  if(_dictStarting) return;
   if(_dictRec){ try{ _dictRec.stop(); }catch(e){} return; }
-  const ta = document.getElementById(taId);
+  const ta = taId ? document.getElementById(taId) : null;
+  _dictStarting = true;
+  const _tok = ++_dictStartTok;
+  // v693 r4 — a permission prompt nobody answers must not leave every mic dead: give the start 15 s
+  setTimeout(()=>{ if(_dictStarting && _dictStartTok===_tok){ _dictStarting = false; _dictStartTok++; if(typeof showToast==='function') showToast("The microphone didn't start \u2014 check the permission and tap again.", 6000); _end(); } }, 15000);
   try{
     /* v682 — THE STREAM WAS DECLARED INSIDE THE try, SO THE catch COULD NOT REACH IT.
        Anything that throws AFTER the microphone opens — an unsupported mimeType in the
@@ -18642,6 +18762,7 @@ async function dictateInto(taId, btn, label){
        indicator then stays lit for the rest of the session with nothing recording, right
        after a message saying the mic could not be reached. Hold it where the catch can see it. */
     const stream = await getMicStream();
+    if(_dictStartTok!==_tok){ try{ stream.getTracks().forEach(t => t.stop()); }catch(_){} return; }   // v693 r4: this start already timed out
     _micHold = stream;
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
       : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
@@ -18653,22 +18774,28 @@ async function dictateInto(taId, btn, label){
       stream.getTracks().forEach(t => t.stop());
       _dictRec = null; if(btn) btn.classList.remove('recording'); if(typeof hideVoicePill==='function') hideVoicePill();
       const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
-      if(blob.size < 1000){ if(typeof showToast==='function') showToast('Too short — try again'); return; }
+      if(blob.size < 1000){ if(typeof showToast==='function') showToast('Too short — try again'); _end(); return; }
       const prev = ta ? ta.value : ''; if(ta) ta.placeholder = 'Hearing you…';
       try{
         const b64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onloadend=()=>res(r.result.split(',')[1]); r.onerror=rej; r.readAsDataURL(blob); });
         const resp = await fetch('/api/transcribe-voice', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ audio:b64, format: mimeType.includes('mp4')?'mp4':'webm' })});
         const data = await resp.json();
-        if(data.text && data.text.trim()){ if(ta){ ta.value = prev ? (prev.trim() + ' ' + data.text.trim()) : data.text.trim(); try{ ta.dispatchEvent(new Event('input')); }catch(_){} } try{ if(taId==='remixDescription') voiceLogAdd(data.text, 'remix', _vg); }catch(_){} }
-        else if(typeof showToast==='function'){ showToast('Could not hear that — try again'); }
+        if(data.text && data.text.trim()){
+          if(typeof _o.onText==='function'){ try{ _o.onText(data.text.trim()); }catch(_){} }
+          else { if(ta){ ta.value = prev ? (prev.trim() + ' ' + data.text.trim()) : data.text.trim(); try{ ta.dispatchEvent(new Event('input')); }catch(_){} } try{ if(taId==='remixDescription') voiceLogAdd(data.text, 'remix', _vg); }catch(_){} }
+          // v693 — the "How you actually talk" recording IS the person's speech: a sample for the spoken pass
+          try{ if(taId==='spVoiceSample' && typeof rv2SendSpeech==='function' && !(typeof settings==='object' && settings && settings.voiceLearn===false)) rv2SendSpeech(data.text, _vg); }catch(_){}   // v693 r4: not with voice learning off
+        }
+        else if(typeof showToast==='function'){ showToast((!resp.ok && data && data.error && typeof humanErr==='function') ? humanErr(data.error, 'Could not hear that — try again') : 'Could not hear that — try again'); }   // v693: the server's reason, not a guess
       }catch(e){ if(typeof showToast==='function') showToast('Transcription failed — try typing it'); }
       if(ta) ta.placeholder = origPh;
+      _end();
     };
-    rec.start(); _dictRec = rec; if(btn) btn.classList.add('recording');
+    rec.start(); _dictRec = rec; _dictStarting = false; if(btn) btn.classList.add('recording');
     _micReleaseHandled();   // v682: the recorder owns the stream now — its onstop stops the tracks
     if(typeof showVoicePill==='function') showVoicePill(()=>{ try{ rec.stop(); }catch(e){} }, label||'Listening');
-    setTimeout(()=>{ if(_dictRec===rec){ try{ rec.stop(); }catch(e){} } }, 60000);
-  }catch(e){ if(typeof showToast==='function') showToast(typeof micErrMsg==='function'?micErrMsg(e):'Microphone not available', 6000); }
+    setTimeout(()=>{ if(_dictRec===rec){ try{ rec.stop(); }catch(e){} } }, _o.maxMs || 60000);
+  }catch(e){ if(_dictStartTok!==_tok) return; _dictStarting = false; if(typeof showToast==='function') showToast(typeof micErrMsg==='function'?micErrMsg(e):'Microphone not available', 6000); _end(); }
     _micRelease();   // v682: the mic is still open — see the note above
 }
 function teachBrandTrend(btn){
@@ -19378,7 +19505,7 @@ function renderIdeaCatcher(){
     <button class="gen-btn" onclick="document.getElementById('icShotInput').click()" style="width:100%;background:transparent;color:var(--text3);border:1.5px dashed var(--border2);box-shadow:none;font-weight:600;"><svg class="btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> Add screenshot</button>
     <div id="icShotPreview" style="display:none;align-items:center;gap:10px;margin-top:8px;"></div>
     </div>
-    <button class="gen-btn" id="icBtn" onclick="ideaDevelop()" style="width:100%;margin-top:14px;">Develop into a brief</button>
+    <button class="gen-btn" id="icBtn" onclick="icDevelopV2()" style="width:100%;margin-top:14px;">Develop into a brief</button>
     <div id="icStatus" class="vl-status"></div>
     <div id="icResult"></div>`;
   // Put the draft back. The screenshot goes through refShotSet so its preview chip returns with
@@ -19460,6 +19587,7 @@ async function ideaDevelop(){
     if (!resp.ok) throw new Error((data && data.error) ? data.error : ('Generator error (' + resp.status + ') — try again.'));
     if (!data || !data.ideas || !data.ideas.length) throw new Error('The generator came back empty — try rephrasing your idea, or drop the video link and try again.');
 
+    if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
     const out = data.ideas[0];
     if (!_sameBrand()) { if (typeof showToast === 'function') showToast('You switched brand while that was generating, so it was not added.', 6000); return; }
     /* v680 — THIS ID INDEXED THE WRONG ARRAY. `id` is a position in `state`, not in IDEAS
@@ -20608,7 +20736,10 @@ async function handleTranscribeUpload(event) {
   event.target.value = '';
 }
 
-async function remixContent() {
+async function remixContent(opts) {
+  // v693 — mode "Remix" (the default, and the one-box "Remix it" lane) runs the new opinion-first
+  // flow (rv2Start). The other modes, Try all modes and the panel's "classic remix" link stay here.
+  if (currentRemixMode === 'remix' && !(opts && opts.classic) && typeof rv2Start === 'function') return rv2Start(document.getElementById('remixBtn'));
   const creatorName = document.getElementById('remixCreatorName').value.replace(/^@/, '').trim();
   const platform = document.getElementById('remixPlatform').value;
   const postUrl = document.getElementById('remixPostUrl').value.trim()
@@ -20691,6 +20822,7 @@ function remixHasContent(r) {
   return !!(r && (t(r.remixScript) || t(r.remixHook) || t(r.remixTitle) || (Array.isArray(parts) ? parts.length : 0)));
 }
 function renderRemixResults() {
+  try { if (typeof rv2Restore === 'function') { rv2Restore(); rv2Render(); } } catch (e) {}   // v693 — see rv2Start
   const el = document.getElementById('remixResults');
   if (!el) return;
   // Drop any blank remixes (old saves or failed generations) so they can never clutter the list.
@@ -20781,6 +20913,1255 @@ function renderRemixResults() {
 function escapeHtml(str) {
   if (str == null || str === '') return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* v693 — REMIX, REBUILT: OPINION FIRST, WORDS FIRST, STORIES BY VOICE (content-v2 PLAN.md, C-UI).
+   The old remix wrote a whole post in one low-effort pass from the source, squeezed into boxes, and
+   filled every gap in the person's life with invented numbers. The new flow asks the person to take
+   a side before anything is written:
+     source → /api/angles (5–8 beliefs, each with why most people disagree) → the person taps ONE
+     (it is also kept as a 'belief' in /api/brand-memory — a failure there never blocks) →
+     /api/write writes only that one, as a spoken script where every fact only they can supply is a
+     "[your story: …]" slot → each slot is a tappable chip: tell it in 20 seconds (the existing mic +
+     /api/transcribe-voice) or type it; the words replace exactly that slot and are kept as a 'story'
+     → "Save idea" files it like every other generated idea, with gen_flow 'v2' so the filmed rate of
+     the two flows can be compared (/api/content-metrics).
+   ESCAPE HATCH (decided): Remix mode "Remix" — the default, and the one-box "Remix it" lane — runs
+   this flow. Simplify / Flip / Format swap / Series / Roast and "Try all modes" stay on the classic
+   /api/remix for this release: they are different jobs (a series is 3–5 posts) the new writer does
+   not do yet. The panel also keeps a "Use the classic remix instead" link for one release, so an
+   outage of the two new endpoints can never leave Remix unusable; it goes when the filmed rate says so.
+   Saved ideas land in Ideas as 'pending', not straight in Film & Post as the classic remix does:
+   "filmed" is what the metric counts, and an idea that skipped the approve step would count as
+   filmed the moment it was saved. */
+// v693 r3 — TWO RUNS, NOT ONE. The Remix panel and the full-screen sheet (every other flow) each
+// hold their own run, so starting a sheet mid-Remix no longer throws the Remix script away. `_rv2`
+// is the ACTIVE run — the sheet's if one is open, else the panel's — and every button acts on it.
+let _rv2 = null;
+const _rv2Runs = { rv2Panel: null, rv2Sheet: null };
+let _rv2Seq = 0;
+function rv2SetRun(host, s) {
+  _rv2Runs[host === 'rv2Sheet' ? 'rv2Sheet' : 'rv2Panel'] = s || null;
+  rv2Active();
+}
+// v693 r4 — the active run is one whose brand is OPEN: a sheet left over from another brand (or
+// another account) never takes the buttons away from the panel that is actually on screen.
+function rv2Active() {
+  const bid = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || null;
+  const ss = _rv2Runs.rv2Sheet, ps = _rv2Runs.rv2Panel;
+  _rv2 = (ss && ss.brandId === bid) ? ss : ((ps && ps.brandId === bid) ? ps : null);
+  return _rv2;
+}
+// Signing out or switching account: runs held in memory belong to nobody on screen any more.
+function rv2ResetAll() { _rv2Runs.rv2Panel = null; _rv2Runs.rv2Sheet = null; _rv2 = null; try { rv2Render(); } catch (e) {} }
+// is this run still the one on screen for its host (an answer for an older run must not land in a newer one)
+function rv2Live(s) { return !!s && _rv2Runs[s.host] === s; }
+// v693 r3 — THE BRAND CHECK IS "IS THIS RUN'S BRAND OPEN RIGHT NOW", not a gate captured at start.
+// brandGate() also fails once the switch counter moved, so A→B→A left a script that could never be
+// saved. A run belongs to its brand for good; saving needs that brand open and its ideas loaded.
+function rv2SameBrand(s) {
+  return !!(s && typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id === s.brandId
+    && !(typeof window !== 'undefined' && window && window._ideasSwitching));
+}
+function rv2Slots(script) {
+  const src = String(script == null ? '' : script);
+  const rx = /\[your story:\s*([^\]]*)\]/gi;
+  const out = []; let m;
+  while ((m = rx.exec(src))) out.push({ start: m.index, end: m.index + m[0].length, ask: String(m[1] || '').trim() });
+  return out;
+}
+// Words the person said or typed can never become a new slot, whatever they contain.
+function rv2Neutral(t) {
+  return String(t == null ? '' : t).replace(/\[\s*your\s+story\s*:\s*([^\]]*)\]/gi, '$1').replace(/\[\s*your\s+story\s*:/gi, '');
+}
+function rv2ScriptHtml(script) {
+  const src = String(script == null ? '' : script);
+  const esc = t => escapeHtml(t).replace(/\n/g, '<br>');
+  let out = '', last = 0;
+  rv2Slots(src).forEach((s, k) => {
+    out += esc(src.slice(last, s.start));
+    out += '<button type="button" class="rv2-slot" onclick="rv2OpenSlot(' + k + ')" title="Tell this part yourself">'
+      + '<span class="rv2-slot-k">your story</span> ' + escapeHtml(s.ask || 'tell it in your words') + '</button>';
+    last = s.end;
+  });
+  return out + esc(src.slice(last));
+}
+function rv2Paragraphs(t) { return String(t == null ? '' : t).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean); }
+async function rv2Post(url, body) {
+  const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  let data = null;
+  try { data = JSON.parse(await resp.text()); } catch (e) { data = null; }
+  return { ok: !!resp.ok, status: resp.status, data: (data && typeof data === 'object') ? data : {} };
+}
+// The server's own words for a paused AI account (see csNoteAiUnavailable); a person-readable line
+// for every other code — never a raw machine code on screen (humanErr).
+function rv2ErrText(r, fallback) {
+  const d = (r && r.data) || {};
+  const st = r ? r.status : 0;
+  if (d.code === 'AI_UNAVAILABLE') return String(d.error || '').trim() || csAiPausedText(fallback);
+  if (st === 424 || d.error === 'brand_context_unavailable') return humanErr('brand_context_unavailable', fallback);
+  if (st === 402) return humanErr(d.error || 'limit_reached', fallback);
+  if (st === 429) return humanErr('rate_limited', fallback);
+  if (st === 401) return humanErr('unauthorized', fallback);
+  return humanErr(d.error, fallback);
+}
+function rv2Body(s, extra) {
+  let bcFields = 0; try { bcFields = _tvBcFieldCount(getBrandContext()); } catch (e) {}
+  let het = []; try { het = (typeof _humanEditedTitles === 'function') ? _humanEditedTitles() : []; } catch (e) {}
+  return Object.assign({ brandId: s.brandId, bcFields: bcFields, humanEditedTitles: het }, extra || {});
+}
+function rv2Source() {
+  const g = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  const url = g('remixPostUrl') || g('youtubeUrl') || g('articleUrl');
+  const hookRead = String((window && window._remixHookRead) || '').trim();
+  const text = (g('remixDescription') + (hookRead ? '\n\nHOOK-FRAME READ (auto — what the video’s cover frame shows): ' + hookRead : '')).trim();
+  if (!text) return null;
+  // v693 — a "Worth making yours" top post (remixTopPost) is a trend, not someone's video to remix
+  const trendText = String((window && window._rv2TrendText) || '').trim();
+  const isTrend = !!trendText && text.indexOf(trendText.slice(0, 80)) >= 0;
+  const src = { kind: isTrend ? 'trend' : 'remix', text: text.slice(0, 12000) };
+  if (url) src.url = url.slice(0, 2000);
+  const creator = g('remixCreatorName').replace(/^@/, '').trim();
+  if (creator) src.creator = creator.slice(0, 80);
+  const platform = g('remixPlatform');
+  if (platform) src.platform = platform.slice(0, 20);
+  return src;
+}
+// Writes to the brand's memory. Never throws, never blocks the person. Returns the saved item.
+async function rv2MemAdd(brandId, kind, text, tags) {
+  try {
+    const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+    if (!brandId || !t) return { ok: false, status: 0 };
+    // the server's caps (api/brand-memory.js CAPS): over them a belief/story is refused outright, so
+    // cut at a word boundary here — the full words stay in the script either way
+    const cap = kind === 'belief' ? 140 : kind === 'speech' ? 800 : 600;
+    let clip = t;
+    if (clip.length > cap) { clip = clip.slice(0, cap); const sp = clip.lastIndexOf(' '); if (sp > cap * 0.6) clip = clip.slice(0, sp); }
+    const r = await rv2Post('/api/brand-memory', { brandId: brandId, action: 'add', kind: kind,
+      text: clip.trim(),
+      tags: (Array.isArray(tags) ? tags : []).map(x => String(x == null ? '' : x).trim().slice(0, 60)).filter(Boolean).slice(0, 5) });
+    return { ok: r.ok, status: r.status, code: r.data.code || r.data.error || '', item: r.data.item || null };
+  } catch (e) { return { ok: false, status: 0 }; }
+}
+async function rv2MemDelete(brandId, kind, id) {
+  try {
+    if (!brandId || !id) return { ok: false, status: 0 };
+    const r = await rv2Post('/api/brand-memory', { brandId: brandId, action: 'delete', kind: kind, id: String(id) });
+    return { ok: r.ok, status: r.status, code: r.data.code || '' };
+  } catch (e) { return { ok: false, status: 0 }; }
+}
+// v693 — the spoken second pass imitates the person's OWN transcribed speech (PLAN change 6).
+// Only real speech reaches here: the voice notes voiceLogAdd keeps (notebook, Idea Catcher, the
+// coach, Remix / Trends descriptions, a story told into a slot) and the "How you actually talk"
+// recording. Never the teleprompter — that is someone reading a script (and no take is transcribed).
+// v693 r3: `entry` is the voice-log entry this came from; the saved copy's id is stored on it, so
+// "Forget this one" can delete the server copy too.
+function rv2SendSpeech(text, gate, entry) {
+  try {
+    if (typeof gate === 'function' && !gate()) return false;
+    const brandId = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || null;
+    const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+    if (!brandId || t.split(' ').filter(Boolean).length < 12) return false;
+    rv2MemAdd(brandId, 'speech', t.slice(0, 800), []).then(res => {
+      if (entry && entry.forgotten && res && res.ok && res.item && res.item.id) { rv2MemDelete(brandId, 'speech', res.item.id); return; }   // forgotten before it arrived
+      if (entry && res && res.ok && res.item && res.item.id) {
+        entry.memId = String(res.item.id);
+        try { if (typeof saveSettings === 'function') saveSettings(); } catch (e) {}
+      }
+      try { bmInvalidate(); } catch (e) {}
+    });
+    return true;
+  } catch (e) { return false; }
+}
+// v693 r3 — each flow's origin, rebuilt from plain data (so a sheet run survives a reload too).
+function rv2OriginFor(name, meta) {
+  const m = (meta && typeof meta === 'object') ? meta : {};
+  const base = { name: name || 'remix', meta: m };
+  if (name === 'note') return Object.assign(base, { title: 'Develop your note', extra: { sparkSource: true },
+    classic: () => nbDevelop(m.id, { disabled: false, textContent: '' }), classicLabel: 'Use the classic develop instead' });
+  if (name === 'catcher') return Object.assign(base, { title: 'Develop your idea', extra: { sparkSource: true, paaSource: false },
+    classic: () => ideaDevelop(), classicLabel: 'Use the classic develop instead',
+    onSaved: () => {
+      ['icIdea', 'icUrl', 'icNotes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      try { refShotClear('ic'); } catch (e) {}
+      try { icDraftClear(); } catch (e) {}
+      const box = document.getElementById('icResult');
+      if (box) box.innerHTML = '<div class="ic-result-card"><div class="ic-result-tag">✓ Saved to your Ideas</div><button class="gen-btn" style="width:100%;margin-top:12px;" onclick="switchView(\'ideas\')">Open in Ideas →</button></div>';
+    } });
+  if (name === 'paa') {
+    const q = String(m.question || '');
+    return Object.assign(base, { title: 'Answer a real question', extra: { paaSource: q },
+      classic: () => {
+        const i = (Array.isArray(paaQuestions) ? paaQuestions : []).findIndex(x => x && x.question === q);
+        if (i < 0) { try { showToast('That question is no longer in the list.'); } catch (e) {} return; }
+        return usePAAQuestion(i, m.fmt || undefined);
+      }, classicLabel: 'Use the classic answer instead',
+      onSaved: () => { try { paaUsed.add(q.toLowerCase().trim()); savePAAState(); } catch (e) {} try { renderPAASection(); } catch (e) {} } });
+  }
+  if (name === 'quickpost') return Object.assign(base, { title: "Today's post",
+    extra: Object.assign({ community: m.community || 'All', day: m.day || undefined }, m.delivery ? { delivery: m.delivery } : {}),
+    classic: () => generateTodayTabPost(), classicLabel: 'Use the classic Quick Post instead' });
+  return { name: 'remix', meta: {} };
+}
+const RV2_DRAFT_KEY = { rv2Panel: 'rv2_draft', rv2Sheet: 'rv2_draft_sheet' };
+// v693 r4 — DRAFTS ARE KEYED BY THE RUN'S BRAND, never the brand that happens to be open when a
+// late answer lands (lsSet writes under the OPEN brand, which let a brand-A run overwrite brand B's
+// paid script). The key is the one lsGet reads for that brand: '<base>::<brandId>'.
+function rv2DraftKey(host, brandId, recovered) { return RV2_DRAFT_KEY[host === 'rv2Sheet' ? 'rv2Sheet' : 'rv2Panel'] + (recovered ? '_recovered' : '') + '::' + brandId; }
+function rv2LsWrite(k, v) { try { if (typeof _lsWriteGuarded === 'function') return _lsWriteGuarded(k, v); localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+function rv2LsRead(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function rv2LsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+function rv2ReadDraft(k) { try { const d = JSON.parse(rv2LsRead(k) || 'null'); return (d && typeof d === 'object') ? d : null; } catch (e) { return null; } }
+function rv2DraftJson(s) {
+  return JSON.stringify({ brandId: s.brandId, host: s.host, origin: { name: s.origin.name, meta: s.origin.meta || {} },
+    format: s.format, appFormat: s.appFormat || '', source: s.source, stage: s.stage, angles: s.angles,
+    picked: s.picked, idea: s.idea, script: s.script, at: Date.now() });
+}
+function rv2SaveDraft(run) {
+  try {
+    const s = run || _rv2;
+    if (!s || !s.brandId || !rv2Live(s) || (s.stage !== 'angles' && s.stage !== 'script')) return;
+    rv2LsWrite(rv2DraftKey(s.host, s.brandId), rv2DraftJson(s));
+  } catch (e) {}
+}
+function rv2ClearDraft(host, brandId) { if (brandId) rv2LsDel(rv2DraftKey(host, brandId)); }
+// A reload (or a brand switch and back) must not throw away a script that was paid for — in the
+// Remix panel or in the sheet. Drafts older than a week are dropped.
+function rv2Restore() {
+  const id = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || null;
+  if (!id) return;
+  ['rv2Panel', 'rv2Sheet'].forEach(host => {
+    try {
+      const cur = _rv2Runs[host];
+      if (cur && cur.brandId === id) return;
+      // a script whose save failed after its run was replaced waits in a "recovered" slot until the host is free
+      let key = rv2DraftKey(host, id), d = rv2ReadDraft(key);
+      if (!d) { key = rv2DraftKey(host, id, true); d = rv2ReadDraft(key); if (d) rv2LsDel(key); }
+      if (!d || d.brandId !== id || !d.source || (Date.now() - (d.at || 0)) > 7 * 86400000) return;
+      const stage = (d.stage === 'script' && String(d.script || '').trim()) ? 'script' : ((Array.isArray(d.angles) && d.angles.length) ? 'angles' : null);
+      if (!stage) return;
+      const o = d.origin || {};
+      rv2SetRun(host, { seq: ++_rv2Seq, brandId: id, host: host, origin: rv2OriginFor(host === 'rv2Panel' ? 'remix' : o.name, o.meta),
+        format: d.format || 'talking', appFormat: d.appFormat || '', source: d.source, stage: stage,
+        angles: Array.isArray(d.angles) ? d.angles : [], picked: d.picked || null, idea: d.idea || null,
+        script: String(d.script || ''), err: '', errCode: '', openAsk: null, slotDraft: '', editing: false, busy: false, note: '' });
+      if (key.indexOf('_recovered') >= 0) rv2SaveDraft(_rv2Runs[host]);
+    } catch (e) {}
+  });
+}
+// v693 (wave 2) — any ONE seed → ONE idea flow runs through here. opts: host 'rv2Panel' (inline, in
+// Remix) or 'rv2Sheet' (a full-screen sheet over whatever screen started it); origin {name, meta}
+// (see rv2OriginFor); format: the /api/write format; appFormat: the app format to save it as.
+async function rv2Start(btn, srcOverride, opts) {
+  const o = opts || {};
+  const src = srcOverride || rv2Source();
+  const brandId = (currentBrand && currentBrand.id) || null;
+  if (!src) { try { showToast('Paste the original text, or transcribe the video first — the writer needs the words.', 6000); } catch (e) {} return; }
+  if (!brandId) { try { showToast('Open a brand first.'); } catch (e) {} return; }
+  const host = o.host === 'rv2Sheet' ? 'rv2Sheet' : 'rv2Panel';
+  // v693 r4 — never replace a run while its idea is being saved: the save's ending (clear the
+  // run, its draft, the Remix inputs) belongs to THAT run, and a failed save must find it still there
+  if (_rv2Runs[host] && _rv2Runs[host].saving) { try { showToast('Saving your script \u2014 one moment.'); } catch (e) {} return; }
+  const s = { seq: ++_rv2Seq, brandId: brandId, host: host,
+    origin: rv2OriginFor(host === 'rv2Panel' ? 'remix' : (o.origin && o.origin.name), o.origin && o.origin.meta),
+    format: o.format || 'talking', appFormat: o.appFormat || '', source: src, stage: 'loading', angles: [], picked: null,
+    idea: null, script: '', err: '', errCode: '', openAsk: null, slotDraft: '', editing: false, busy: true, note: '' };
+  rv2SetRun(host, s);
+  rv2ClearDraft(host, brandId);   // a new run replaces that host's previous draft (for this brand)
+  rv2Render();
+  if (host === 'rv2Panel') { try { const p = document.getElementById('rv2Panel'); if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }
+  const stopW = btnWork(btn === undefined ? document.getElementById('remixBtn') : btn, 'remix');
+  try {
+    try { await flushBrandSave(); } catch (e) {}
+    const r = await rv2Post('/api/angles', rv2Body(s, { source: src, count: 6 }));
+    if (!rv2Live(s)) return;
+    if (!r.ok) { s.stage = 'error'; s.errCode = r.data.code || r.data.error || ''; s.err = rv2ErrText(r, "Couldn't find opinions in that — try again."); return; }
+    const angles = (Array.isArray(r.data.angles) ? r.data.angles : [])
+      .filter(a => a && String(a.belief == null ? '' : a.belief).trim()).slice(0, 8)
+      .map((a, i) => ({ id: String(a.id == null ? i : a.id).slice(0, 60), belief: String(a.belief).trim().slice(0, 200),
+        why: String(a.why == null ? '' : a.why).trim().slice(0, 240) }));
+    if (!angles.length) { s.stage = 'error'; s.err = 'That came back without any opinions to pick from — try again, or paste more of the original.'; return; }
+    s.angles = angles; s.stage = 'angles';
+  } catch (e) {
+    if (rv2Live(s)) { s.stage = 'error'; s.err = _leanErrMsg(e, "Couldn't reach the writer — try again."); }
+  } finally {
+    stopW();
+    if (rv2Live(s)) { s.busy = false; rv2Render(); rv2SaveDraft(s); }
+  }
+}
+function rv2Retry() {
+  const s = rv2Active(); if (!s || s.busy || s.saving) return;
+  rv2Start(document.getElementById('rv2RetryBtn'), s.source, { host: s.host, origin: { name: s.origin.name, meta: s.origin.meta }, format: s.format, appFormat: s.appFormat });
+}
+// Picking only WRITES. The belief is kept in brand memory when the idea is SAVED — an opinion the
+// person tried and walked away from must not become one of the brand's beliefs.
+async function rv2Pick(i) {
+  const s = rv2Active();
+  if (!s || s.busy || s.stage !== 'angles') return;
+  const a = s.angles[i]; if (!a) return;
+  if (!rv2SameBrand(s)) { try { showToast('Switch back to the brand this was written for to carry on.'); } catch (e) {} return; }
+  s.picked = a; s.stage = 'writing'; s.err = ''; s.errCode = ''; s.busy = true; s.invented = 0; rv2Render();
+  try {
+    const r = await rv2Post('/api/write', rv2Body(s, { source: s.source, angle: { belief: a.belief, why: a.why }, format: s.format || 'talking' }));
+    if (!rv2Live(s)) return;
+    const idea = r.ok ? r.data.idea : null;
+    if (!idea || !String(idea.script == null ? '' : idea.script).trim()) {
+      s.stage = 'angles'; s.picked = null; s.errCode = r.data.code || r.data.error || '';
+      s.err = r.ok ? 'The script came back empty — tap the opinion again.' : rv2ErrText(r, "Couldn't write that one — tap it again.");
+      return;
+    }
+    const inv = r.data.passes && Array.isArray(r.data.passes.inventedRemoved) ? r.data.passes.inventedRemoved.length : 0;
+    s.idea = idea; s.script = String(idea.script); s.stage = 'script'; s.invented = inv;
+  } catch (e) {
+    if (rv2Live(s)) { s.stage = 'angles'; s.picked = null; s.err = _leanErrMsg(e, "Couldn't reach the writer — tap it again."); }
+  } finally {
+    if (rv2Live(s)) { s.busy = false; rv2Render(); rv2SaveDraft(s); }
+  }
+}
+function rv2BackToAngles() {
+  const s = rv2Active(); if (!s || s.busy || s.saving || !s.angles.length) return;   // never while a save is in flight
+  s.stage = 'angles'; s.picked = null; s.idea = null; s.script = ''; s.openAsk = null; s.slotDraft = ''; s.editing = false; s.note = ''; s.err = ''; s.savedIdea = null;
+  rv2Render(); rv2SaveDraft(s);
+}
+// The open slot is remembered by WHAT IT ASKS, not by its position: a story filled elsewhere in
+// the meantime shifts the positions, never the question.
+function rv2OpenSlot(k) {
+  const s = rv2Active(); if (!s || s.stage !== 'script' || s.saving) return;
+  const slot = rv2Slots(s.script)[k]; if (!slot) return;
+  if (s.openAsk === slot.ask) { s.openAsk = null; } else { s.openAsk = slot.ask; s.slotDraft = ''; }
+  rv2Render();
+}
+function rv2SlotDraft(v) { const s = rv2Active(); if (s) s.slotDraft = String(v == null ? '' : v); }
+function rv2SlotMic(k, btn) {
+  const s = rv2Active(); if (!s || s.stage !== 'script' || s.recording || s.saving) return;   // a second tap never starts a second recorder
+  const slot = rv2Slots(s.script)[k]; if (!slot) return;
+  // another dictation already owns the mic: tapping here would stop IT and start nothing
+  if ((typeof _dictRec !== 'undefined' && _dictRec) || (typeof _dictStarting !== 'undefined' && _dictStarting)) { try { showToast('Finish the other recording first.'); } catch (e) {} return; }
+  const ask = slot.ask;
+  s.recording = ask; rv2Render();
+  dictateInto(null, btn, 'Tell it in 20 seconds', { maxMs: 30000,
+    onText: t => rv2FillSlot(k, t, true, ask, s),
+    onEnd: () => { s.recording = null; if (rv2Live(s)) rv2Render(); } });
+}
+function rv2SlotTyped() {
+  const s = rv2Active(); if (!s || s.openAsk == null) return;
+  const el = document.getElementById('rv2SlotText');
+  const text = (el && String(el.value || '').trim()) ? el.value : s.slotDraft;
+  const k = rv2Slots(s.script).findIndex(x => x.ask === s.openAsk);
+  rv2FillSlot(k, text, false, s.openAsk, s);
+}
+// Replaces EXACTLY the slot that asked `ask` (the k-th only when no ask is given) with the person's
+// words, then keeps the words as a story. The script is kept whatever the memory write says.
+// Replaces EXACTLY the slot that asked `ask` (the k-th only when no ask is given) with the person's
+// words. Pure: returns the slot it filled, or null.
+function rv2ApplyFill(s, k, t, ask) {
+  const slots = rv2Slots(s.script);
+  let idx = k;
+  if (ask !== undefined && ask !== null && (!slots[idx] || slots[idx].ask !== ask)) idx = slots.findIndex(x => x.ask === ask);
+  const slot = slots[idx];
+  if (!slot) return null;
+  s.script = s.script.slice(0, slot.start) + t + s.script.slice(slot.end);
+  if (s.openAsk === slot.ask) { s.openAsk = null; s.slotDraft = ''; }
+  return slot;
+}
+async function rv2KeepStory(s, t, slot, fromVoice) {
+  if (fromVoice) { try { voiceLogAdd(t, 'story', () => rv2SameBrand(s)); } catch (e) {} }
+  const res = await rv2MemAdd(s.brandId, 'story', t, [slot.ask]);
+  if (rv2Live(s)) {
+    s.note = res.ok ? 'Kept in your story bank — the writer can reuse it later.'
+      : (res.code === 'memory_not_ready' ? "It's in the script. Your story bank isn't ready yet, so it wasn't kept for later."
+        : res.code === 'memory_full' ? "It's in the script, but your story bank is full — delete one in Settings to keep new ones."
+        : res.code === 'memory_write_unknown' ? "It's in the script. We couldn't confirm it was kept in your story bank — check the list in Settings."
+        : "It's in the script, but it couldn't be kept in your story bank just now.");
+    rv2Render();
+  }
+  try { bmInvalidate(); } catch (e) {}
+}
+// v693 r4 — a story that arrives WHILE the idea is being saved waits for the save to settle, then
+// goes into the script (and into the saved idea, which is saved again) — see rv2Save.
+async function rv2FillSlot(k, text, fromVoice, ask, run) {
+  const s = run || rv2Active();
+  if (!s || !rv2Live(s) || s.stage !== 'script') return false;
+  const t = rv2Neutral(text).trim();
+  if (!t) { try { showToast('Say or type the story first.'); } catch (e) {} return false; }
+  if (s.saving) {
+    (s.pendingFills = s.pendingFills || []).push({ k: k, t: t, fromVoice: !!fromVoice, ask: ask });
+    s.note = 'Got it — your story goes in as soon as the save finishes.'; rv2Render();
+    return true;
+  }
+  const slot = rv2ApplyFill(s, k, t, ask);
+  if (!slot) { try { showToast('That story slot was already filled — nothing was replaced.'); } catch (e) {} return false; }
+  s.note = 'Saving your story…';
+  rv2Render(); rv2SaveDraft(s);
+  await rv2KeepStory(s, t, slot, fromVoice);
+  return true;
+}
+function rv2FlushFills(s) {
+  const q = s.pendingFills || []; s.pendingFills = [];
+  let n = 0;
+  q.forEach(f => { const slot = rv2ApplyFill(s, f.k, f.t, f.ask); if (slot) { n++; rv2KeepStory(s, f.t, slot, f.fromVoice); } });
+  return n;
+}
+function rv2ToggleEdit() {
+  const s = rv2Active(); if (!s || s.stage !== 'script' || s.saving) return;
+  if (s.editing) { const el = document.getElementById('rv2ScriptEdit'); if (el) s.script = String(el.value || ''); }
+  s.editing = !s.editing; s.openAsk = null;
+  rv2Render(); rv2SaveDraft(s);
+}
+function rv2EditInput(v) { const s = rv2Active(); if (s && s.stage === 'script' && !s.saving) { s.script = String(v == null ? '' : v); rv2SaveDraft(s); } }
+// The idea row, mapped onto the fields every other idea uses. Everything shown on screen is built
+// from the FINAL script (stories filled, hand edits kept) — never from the server's pre-fill copy.
+// → { idea } or { error } (a statement / carousel still showing a story slot would put the gap on screen).
+function rv2BuildIdea(s) {
+  const w = s.idea || {};
+  const FMT = { talking: 'video', statement: 'statement', micro: 'micro', carousel: 'carousel' };
+  const format = s.appFormat || FMT[w.format] || 'video';
+  const txt = v => Array.isArray(v) ? v.map(x => String(x == null ? '' : x).trim()).filter(Boolean).join('\n') : (v == null ? '' : String(v));
+  const script = String(s.script || '').trim();
+  const shown = format === 'statement' || format === 'carousel';
+  const open = rv2Slots(script);
+  if (shown && open.length) return { error: 'Tell “' + (open[0].ask || 'your story') + '” first — on a ' + format + ' it would show on screen as a gap.' };
+  const paras = rv2Paragraphs(script);
+  const boldText = format === 'statement' ? script
+    : format === 'carousel' ? (paras.length >= 2 ? paras.map((p, i) => 'Slide ' + (i + 1) + ': ' + p.replace(/\s*\n\s*/g, ' ')).join('\n') : script) : '';
+  // the server's on-screen lines were cut from the draft: a line that still holds a slot marker is dropped
+  const screen = shown ? '' : (Array.isArray(w.onScreen) ? w.onScreen : String(w.onScreen == null ? '' : w.onScreen).split('\n'))
+    .map(x => String(x == null ? '' : x).trim()).filter(x => x && !/\[\s*your\s+story/i.test(x)).join('\n');
+  let title = (txt(w.title).trim() || String((s.picked && s.picked.belief) || '').trim() || 'Untitled').slice(0, 140);
+  // the ideas save replaces rows BY TITLE — a second idea with an existing title would overwrite it
+  const taken = new Set((Array.isArray(state) ? state : []).map(i => String((i && i.title) || '').toLowerCase()));
+  if (taken.has(title.toLowerCase())) { let n = 2; while (taken.has((title + ' (' + n + ')').toLowerCase())) n++; title = title + ' (' + n + ')'; }
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const isRemix = !s.origin || s.origin.name === 'remix';
+  return { idea: Object.assign({
+    id: (Array.isArray(state) ? state.length : 0), title: title, hook: txt(w.hook).trim(), script: script,
+    screen: screen, boldText: boldText,
+    caption: txt(w.caption).trim(), shots: txt(w.shots).trim(), tags: '', reelTitle: '',
+    emphasis: Array.isArray(w.emphasis) ? w.emphasis.slice(0, 12) : [],
+    day: days[new Date().getDay()], format: format, community: 'All', tone: '', status: 'pending',
+    dismissReason: null, assignee: '', isGenerated: true, isRemix: isRemix,
+    originalCreator: isRemix ? ((s.source && s.source.creator) || '') : '', genFlow: 'v2',
+    belief: String((s.picked && s.picked.belief) || '').slice(0, 140), createdAt: Date.now(), freshAt: Date.now()
+  }, (s.origin && s.origin.extra) || {}) };
+}
+// v693 r3 — SAVED MEANS SAVED. The run and its draft are cleared, and "Saved" is said, only once the
+// database confirms. On a failed save the idea is taken back out of the list and the script stays
+// right here (and in its draft) to be saved again.
+async function rv2Save() {
+  const s = rv2Active();
+  if (!s || s.stage !== 'script' || s.busy || s.saving) return false;
+  if (s.editing) { const el = document.getElementById('rv2ScriptEdit'); if (el) s.script = String(el.value || ''); s.editing = false; }
+  if (!String(s.script || '').trim()) { try { showToast('The script is empty — nothing to save.'); } catch (e) {} return false; }
+  if (!rv2SameBrand(s)) { try { showToast('Switch back to the brand this was written for to save it.', 6000); } catch (e) {} return false; }
+  const built = rv2BuildIdea(s);
+  if (built.error) { s.err = built.error; rv2Render(); return false; }
+  // an idea this run already saved (a story arrived during that save) is UPDATED, never saved twice
+  const existing = (s.savedIdea && Array.isArray(state) && state.indexOf(s.savedIdea) >= 0) ? s.savedIdea : null;
+  let idea = built.idea;
+  const inIdeas = (typeof IDEAS !== 'undefined' && Array.isArray(IDEAS) && IDEAS !== state);
+  if (existing) { ['script', 'boldText', 'screen', 'emphasis'].forEach(f => { existing[f] = built.idea[f]; }); idea = existing; }
+  const left = rv2Slots(idea.script).length;
+  s.saving = true; s.err = ''; rv2Render();
+  if (!existing) { state.push(idea); if (inIdeas) IDEAS.push(idea); }
+  try { saveState(); } catch (e) {}
+  let res = null;
+  const _sameBrand = brandGate();   // the save below is awaited: anything written after it checks the brand is still this one
+  try { res = await Promise.resolve(saveGeneratedIdeas()); } catch (e) { res = { ok: false }; }
+  s.saving = false;
+  const live = rv2Live(s);
+  if (!res || res.ok === false) {
+    if (!existing && _sameBrand()) {
+      const i = state.indexOf(idea); if (i >= 0) state.splice(i, 1);
+      if (inIdeas) { const j = IDEAS.indexOf(idea); if (j >= 0) IDEAS.splice(j, 1); }
+      try { saveState(); } catch (e) {}
+    }
+    rv2FlushFills(s);
+    s.err = existing ? "Saved — but the story you told while it saved didn't reach your account. Tap Save again."
+      : "Couldn't save it to your account — your script is kept here. Check your connection and tap Save again.";
+    if (live) { rv2Render(); rv2SaveDraft(s); }
+    else {
+      // the run is no longer on screen (sign-out / account switch): never lose the script silently
+      const other = _rv2Runs[s.host] && _rv2Runs[s.host].brandId === s.brandId;
+      rv2LsWrite(rv2DraftKey(s.host, s.brandId, !!other), rv2DraftJson(s));
+      try { showToast("Couldn't save your script — it is kept and comes back when you reopen " + (s.host === 'rv2Panel' ? 'Remix' : 'this screen') + '.', 7000); } catch (e) {}
+    }
+    return false;
+  }
+  if (live && s.pendingFills && s.pendingFills.length) {   // stories told while it saved: put them in and save again
+    s.savedIdea = idea;
+    rv2FlushFills(s);
+    return rv2Save();
+  }
+  try { renderNav(); } catch (e) {}
+  if (live) {
+    rv2SetRun(s.host, null); rv2ClearDraft(s.host, s.brandId); rv2Render();
+    if (s.host === 'rv2Panel') {
+      ['remixPostUrl', 'youtubeUrl', 'articleUrl', 'remixDescription'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      try { renderRemixHookRead(''); } catch (e) {}
+      try { window._rv2TrendText = ''; } catch (e) {}
+    }
+  }
+  if (s.origin && typeof s.origin.onSaved === 'function' && _sameBrand()) { try { s.origin.onSaved(idea); } catch (e) {} }
+  try {
+    showToast('Saved to Ideas' + (left ? ' — ' + left + ' story slot' + (left === 1 ? '' : 's') + ' still open, fill ' + (left === 1 ? 'it' : 'them') + ' when you film' : '') + '. Tap to open.',
+      5000, function () { try { switchView('ideas'); } catch (e) {} });
+  } catch (e) {}
+  try { if (typeof mascotReact === 'function') mascotReact('spin', '✨'); } catch (e) {}
+  // the opinion becomes one of the brand's beliefs now that it was kept (once per run)
+  if (idea.belief && !s.beliefKept) {
+    s.beliefKept = true;
+    rv2MemAdd(s.brandId, 'belief', idea.belief, []).then(r => {
+      if (r && r.code === 'memory_full') { try { showToast("Saved — but your opinions list is full, so this one wasn't kept as a brand belief. Delete one in Settings to keep new ones.", 7000); } catch (e) {} }
+      else if (r && r.code === 'memory_write_unknown') { try { showToast("Saved — but we couldn't confirm the opinion was kept. Check your opinions list in Settings.", 7000); } catch (e) {} }
+      try { bmInvalidate(); } catch (e) {}
+    });
+  }
+  return idea;
+}
+function rv2Classic() {
+  const s = rv2Active();
+  if (!s || s.saving) return;
+  rv2SetRun(s.host, null); rv2ClearDraft(s.host, s.brandId); rv2Render();
+  if (s.origin && typeof s.origin.classic === 'function') return s.origin.classic();
+  const d = document.getElementById('remixDescription');
+  if (d && !String(d.value || '').trim()) d.value = s.source.text || '';
+  return remixContent({ classic: true });
+}
+// Paints both hosts: the inline Remix panel and, over it, the full-screen sheet the other flows use.
+function rv2Render() {
+  rv2Active();
+  const bid = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) || null;
+  const ps = _rv2Runs.rv2Panel, ss = _rv2Runs.rv2Sheet;
+  const panel = document.getElementById('rv2Panel');
+  if (panel) panel.innerHTML = (ps && bid && ps.brandId === bid) ? rv2CardHtml(ps) : '';
+  let sheet = document.getElementById('rv2Sheet');
+  if (!(ss && bid && ss.brandId === bid)) { if (sheet) { try { sheet.remove(); } catch (e) { sheet.innerHTML = ''; } } return; }
+  if (!sheet) { sheet = document.createElement('div'); sheet.id = 'rv2Sheet'; sheet.className = 'rv2-lab'; document.body.appendChild(sheet); }
+  const asking = ss.confirmKey && ss.confirmKey === rv2StateKey(ss);
+  sheet.innerHTML = '<div class="rv2-lab-in"><div class="rv2-lab-top"><button type="button" class="sp-back" onclick="rv2CloseSheet()">'
+    + (asking ? 'Tap again to throw this away' : '← Close') + '</button><h2>' + escapeHtml((ss.origin && ss.origin.title) || 'Make it yours') + '</h2></div>' + rv2CardHtml(ss) + '</div>';
+}
+// What the sheet shows right now; a confirm to close only counts for the state it was asked about.
+function rv2StateKey(s) { return [s.stage, s.busy ? 1 : 0, String(s.script || '').length, s.openAsk || '', s.picked ? s.picked.id : ''].join('|'); }
+// Closing the sheet while it writes or holds a written script asks once more — that work was paid for.
+function rv2CloseSheet() {
+  const s = _rv2Runs.rv2Sheet; if (!s || s.saving) return;
+  const paid = s.stage === 'script' || s.stage === 'writing' || s.stage === 'loading';
+  if (paid && s.confirmKey !== rv2StateKey(s)) { s.confirmKey = rv2StateKey(s); rv2Render(); return; }
+  rv2SetRun('rv2Sheet', null); rv2ClearDraft('rv2Sheet', s.brandId); rv2Render();
+  try { if (typeof renderRemixResults === 'function') renderRemixResults(); } catch (e) {}   // brings back a Remix draft, if any
+}
+function rv2CardHtml(s) {
+  const classic = '<button type="button" class="rv2-link" onclick="rv2Classic()">' + escapeHtml((s.origin && s.origin.classicLabel) || 'Use the classic remix instead') + '</button>';
+  const errLine = s.err ? '<div class="rv2-err" role="alert">' + escapeHtml(s.err) + '</div>' : '';
+  let h = '<div class="rv2-card">';
+  if (s.stage === 'loading') {
+    h += '<div class="rv2-step">Step 1 of 3</div><div class="rv2-h">Finding the opinions hiding in it…</div>'
+      + '<div class="rv2-sub">You will pick the one you actually believe. Only that one gets written.</div>';
+  } else if (s.stage === 'error') {
+    h += '<div class="rv2-h">That didn’t work</div>' + errLine
+      + (s.errCode === 'AI_UNAVAILABLE' ? '' : '<button type="button" class="gen-btn" id="rv2RetryBtn" onclick="rv2Retry()" style="width:100%;margin-top:10px;">Try again</button>')
+      + '<div class="rv2-foot">' + classic + '</div>';
+  } else if (s.stage === 'angles' || s.stage === 'writing') {
+    h += '<div class="rv2-step">Step 1 of 3</div><div class="rv2-h">Which of these do you actually believe?</div>'
+      + '<div class="rv2-sub">Pick one. The best posts say something most people would argue with.</div>' + errLine
+      + '<div class="rv2-angles">' + s.angles.map((a, i) => {
+        const on = s.picked && s.picked.id === a.id;
+        return '<button type="button" class="rv2-angle' + (on ? ' on' : '') + '" onclick="rv2Pick(' + i + ')"' + (s.busy ? ' disabled' : '') + '>'
+          + '<span class="rv2-belief">' + escapeHtml(a.belief) + '</span>'
+          + (a.why ? '<span class="rv2-why">Why most disagree: ' + escapeHtml(a.why) + '</span>' : '')
+          + (on && s.stage === 'writing' ? '<span class="rv2-why"><strong>Writing it as you’d say it…</strong></span>' : '')
+          + '</button>';
+      }).join('') + '</div><div class="rv2-foot">' + classic + '</div>';
+  } else if (s.stage === 'script') {
+    const slots = rv2Slots(s.script);
+    const w = s.idea || {};
+    h += '<div class="rv2-step">Step 2 of 3 · your take</div><div class="rv2-belief-top">' + escapeHtml((s.picked && s.picked.belief) || '') + '</div>';
+    if (w.hook) h += '<div class="rv2-lbl">Say this first</div><div class="rv2-hook">' + escapeHtml(w.hook) + '</div>';
+    h += '<div class="rv2-lbl">Your script, to say out loud</div>';
+    if (s.editing) {
+      h += '<textarea class="gen-textarea rv2-edit" id="rv2ScriptEdit" oninput="rv2EditInput(this.value)">' + escapeHtml(s.script) + '</textarea>';
+    } else {
+      h += '<div class="rv2-script">' + rv2ScriptHtml(s.script) + '</div>';
+    }
+    if (slots.length && !s.editing) {
+      h += '<div class="rv2-sub">' + slots.length + ' part' + (slots.length === 1 ? ' only you can' : 's only you can') + ' tell. Tap one — 20 seconds each, in your own words. Nothing gets made up for you.</div>';
+    }
+    if (s.invented > 0) h += '<div class="rv2-note">The writer wanted to make up ' + s.invented + ' detail' + (s.invented === 1 ? '' : 's') + ' (numbers, names, cases). ' + (s.invented === 1 ? 'It became a story slot' : 'They became story slots') + ' for you to tell instead.</div>';
+    const oi = (s.openAsk != null && !s.editing) ? slots.findIndex(x => x.ask === s.openAsk) : -1;
+    if (oi >= 0) {
+      const sl = slots[oi];
+      const rec = !!s.recording;
+      h += '<div class="rv2-slotbox"><div class="rv2-lbl">Tell it in 20 seconds</div><div class="rv2-ask">' + escapeHtml(sl.ask || 'Tell this part in your own words') + '</div>'
+        + '<button type="button" class="vl-mic rv2-mic" onclick="rv2SlotMic(' + oi + ', this)"' + (rec ? ' disabled' : '') + '>' + (rec ? 'Listening… tap the pill to stop' : 'Tell it in 20 seconds') + '</button>'
+        + '<textarea class="gen-textarea" id="rv2SlotText" oninput="rv2SlotDraft(this.value)" placeholder="…or type it" style="min-height:56px;margin-top:8px;">' + escapeHtml(s.slotDraft || '') + '</textarea>'
+        + '<button type="button" class="gen-btn" onclick="rv2SlotTyped()" style="width:100%;margin-top:8px;">Use these words</button></div>';
+    }
+    if (s.note) h += '<div class="rv2-note">' + escapeHtml(s.note) + '</div>';
+    h += errLine + '<div class="rv2-actions">'
+      + '<button type="button" onclick="rv2ToggleEdit()">' + (s.editing ? 'Done editing' : 'Edit script') + '</button>'
+      + '<button type="button" onclick="rv2BackToAngles()">Pick another opinion</button>'
+      + '<button type="button" class="primary" onclick="rv2Save()"' + (s.saving ? ' disabled' : '') + '>' + (s.saving ? 'Saving…' : 'Save idea') + '</button></div>'
+      + '<div class="rv2-foot">' + classic + '</div>';
+  }
+  return h + '</div>';
+}
+
+/* v693 (wave 2) — THE OTHER ONE-SEED → ONE-IDEA FLOWS GO OPINION-FIRST TOO. Each keeps its old path
+   one release behind the sheet's "classic" link (the old functions are untouched, so everything that
+   exercises them still does). Not moved, on purpose: the 5-idea batch (generateNewIdeas) and the
+   auto-refill (autoRefillCheck) — they stay on /api/generate-ideas, now belief-first server-side;
+   "Redo with notes" (ideaRedoRun) — it corrects an existing idea, not a seed; scenes
+   (generateAndCacheScenes) — not writing; sparkDevelop — its input no longer exists in the page;
+   Quick Post's own follow-ups (Try another, Redo as, redo with notes, dismiss → next, the first post
+   after onboarding) — they act on a classic Quick Post result. */
+const RV2_FORMATS = { video: 'talking', qna: 'talking', micro: 'micro', statement: 'statement', carousel: 'carousel' };
+// Notebook "Develop into post"
+function nbDevelopV2(id, btn) {
+  const note = (Array.isArray(notebookNotes) ? notebookNotes : []).find(n => n.id === id);
+  if (!note || !String(note.text || '').trim()) return;
+  return rv2Start(btn || null, { kind: 'note', text: String(note.text).trim().slice(0, 12000) }, { host: 'rv2Sheet', origin: { name: 'note', meta: { id: id } } });
+}
+// Idea Catcher "Develop into a brief": the typed idea + notes + (if a link was given) what the video says.
+async function icReadVideo(url) {
+  try {
+    const isYT = /youtu\.?be|youtube\.com/i.test(url);
+    const r = await fetch(isYT ? '/api/transcribe' : '/api/transcribe-url', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(isYT ? { url: url, mode: 'youtube' } : { url: url }) });
+    let d = {}; try { d = JSON.parse(await r.text()) || {}; } catch (e) { d = {}; }
+    if (!r.ok) return { text: '', err: d.error || ('error ' + r.status) };
+    return { text: String((isYT ? d.text : d.transcript) || '').trim(), err: '' };
+  } catch (e) { return { text: '', err: 'network problem' }; }
+}
+async function icDevelopV2() {
+  const g = id => String((document.getElementById(id) || {}).value || '').trim();
+  const idea = g('icIdea'), url = g('icUrl'), notes = g('icNotes');
+  const status = document.getElementById('icStatus');
+  const btn = document.getElementById('icBtn');
+  if (!idea) { if (status) { status.textContent = 'Type or say your idea first.'; status.className = 'vl-status warn'; } return; }
+  let transcript = '';
+  if (url) {
+    if (status) { status.textContent = 'Reading the reference video…'; status.className = 'vl-status'; }
+    const stopT = btnWork(btn || null, 'ideas');   // no second tap while the video is read
+    const v = await icReadVideo(url);
+    stopT();
+    transcript = v.text;
+    // same rule as the classic path: never write blind from a video we could not read
+    if (!transcript && notes.length < 20) {
+      const box = document.getElementById('icResult');
+      if (box) box.innerHTML = '<div class="ic-result-card err">Couldn\'t read that video automatically' + (v.err ? ' (' + escHtml(v.err) + ')' : '')
+        + '.<br><br>Paste the video\'s spoken words — or a short description of what happens in it — into the <b>Notes</b> box above, then tap Develop again.</div>';
+      if (status) { status.textContent = ''; status.className = 'vl-status'; }
+      return;
+    }
+  }
+  if (status) { status.textContent = ''; status.className = 'vl-status'; }
+  const text = ('MY IDEA: ' + idea + (notes ? '\n\nMY NOTES: ' + notes : '') + (transcript ? '\n\nWHAT THE REFERENCE VIDEO SAYS: ' + transcript : '')).slice(0, 12000);
+  return rv2Start(btn || null, url ? { kind: 'idea', text: text, url: url.slice(0, 2000) } : { kind: 'idea', text: text }, { host: 'rv2Sheet', origin: { name: 'catcher', meta: {} } });
+}
+// People-also-ask "Answer this" (and its format chips). Formats the new writer does not do go classic.
+function paaAnswerV2(idx, chosenFormat) {
+  const q = (Array.isArray(paaQuestions) ? paaQuestions : [])[idx];
+  if (!q) return;
+  const key = String(q.question || '').toLowerCase().trim();
+  if (paaUsed.has(key)) return;
+  const fmt = chosenFormat ? RV2_FORMATS[chosenFormat] : 'talking';
+  if (!fmt) return usePAAQuestion(idx, chosenFormat);
+  const text = String(q.question) + (q.keyword ? '\n(people searched this from "' + String(q.keyword) + '")' : '');
+  return rv2Start(document.getElementById('paaBtn' + idx) || null, { kind: 'question', text: text.slice(0, 12000) }, { host: 'rv2Sheet', format: fmt,
+    appFormat: chosenFormat || '', origin: { name: 'paa', meta: { question: String(q.question), fmt: chosenFormat || '' } } });
+}
+// Quick Post (Today tab). There is no seed here, so the seed is today's theme for this brand.
+function tvGenerateV2() {
+  if (typeof firstRunBrandGuard === 'function' && firstRunBrandGuard(tvGenerateV2)) return;
+  const picked = window._tvSelectedFormat || 'video';
+  const fmt = RV2_FORMATS[picked];
+  if (!fmt) return generateTodayTabPost();          // Image / Bonus: the new writer does not do them
+  const today = getTodayName();
+  const community = (getDayCommunities() || {})[today] || 'General';
+  // v693 r3: saved in the format picked (Q&A stays Q&A) and with the Face-on / Faceless choice
+  const delivery = DELIVERY_FORMATS.has(picked) ? (window._tvDelivery || 'faceon') : '';
+  return rv2Start(null, { kind: 'idea', text: "Today's content theme for this brand: " + community + '.' }, { host: 'rv2Sheet', format: fmt, appFormat: picked,
+    origin: { name: 'quickpost', meta: { community: community, day: today, delivery: delivery } } });
+}
+
+/* v693 (wave 2) — gen_flow stays honest across the deploy: an idea from /api/generate-ideas counts as
+   belief-first ONLY when the server sent the belief it was written from. Without one it is left
+   untagged (reads as 'v1'), whatever else the reply says. v693 r3: those are 'v2-batch', kept apart
+   from 'v2' (the opinion-first panel, where the person picked the opinion) in the filmed-rate card. */
+function rv2TagFlow(idea) {
+  if (!idea || typeof idea !== 'object') return idea;
+  const o = Object.assign({}, idea);
+  const b = typeof o.belief === 'string' ? o.belief.replace(/\s+/g, ' ').trim().slice(0, 140) : '';
+  if (b) { o.belief = b; o.genFlow = 'v2-batch'; }
+  else { delete o.belief; delete o.genFlow; }
+  return o;
+}
+
+/* v693 (wave 2) — IDEAS CARDS: the take an idea was written from, and "Rewrite as spoken script".
+   The rewrite goes through /api/write with that belief (or the hook) and the idea's own text as the
+   source; the new script waits next to the old one until the person chooses. Nothing is replaced
+   without a tap. */
+const _rv2Rw = {};
+function rv2BeliefLine(idea) {
+  const b = idea && typeof idea.belief === 'string' ? idea.belief.trim() : '';
+  return b ? '<div class="rv2-idea-belief">Your take: ' + escHtml(b) + '</div>' : '';
+}
+function rv2CanRewrite(idea) {
+  if (!idea || !(idea.format === 'video' || idea.format === 'micro' || idea.format === 'qna')) return false;
+  return !!(String(idea.belief || '').trim() || String(idea.hook || '').trim());
+}
+function rv2RwHtml(id) {
+  const r = _rv2Rw[id];
+  if (!r) return '';
+  if (r.stage === 'loading') return '<div class="rv2-slotbox"><div class="rv2-sub">Rewriting it as you’d say it…</div></div>';
+  if (r.stage === 'error') return '<div class="rv2-slotbox"><div class="rv2-err" role="alert">' + escHtml(r.err) + '</div>'
+    + '<div class="rv2-actions"><button type="button" onclick="event.stopPropagation();rv2RwKeep(' + id + ')">OK</button></div></div>';
+  return '<div class="rv2-slotbox"><div class="rv2-lbl">New spoken script — yours is kept until you choose</div><div class="rv2-script">' + rv2ScriptHtmlPlain(r.script) + '</div>'
+    + '<div class="rv2-actions"><button type="button" onclick="event.stopPropagation();rv2RwKeep(' + id + ')">Keep mine</button>'
+    + '<button type="button" class="primary" onclick="event.stopPropagation();rv2RwUse(' + id + ')">Use the new script</button></div></div>';
+}
+function rv2ScriptHtmlPlain(t) { return escHtml(String(t == null ? '' : t)).replace(/\n/g, '<br>'); }
+function rv2RwPaint(id) { const el = document.getElementById('rv2Rw-' + id); if (el) el.innerHTML = rv2RwHtml(id); }
+async function rv2RewriteIdea(id, btn) {
+  const idea = (Array.isArray(state) ? state : [])[id];
+  if (!rv2CanRewrite(idea) || (_rv2Rw[id] && _rv2Rw[id].stage === 'loading')) return;
+  const brandId = (currentBrand && currentBrand.id) || null;
+  if (!brandId) return;
+  const gate = brandGate();
+  const belief = String(idea.belief || '').trim() || String(idea.hook || '').trim();
+  const text = [idea.title, idea.hook, idea.script || idea.boldText].map(v => asText(v).trim()).filter(Boolean).join('\n\n').slice(0, 12000);
+  _rv2Rw[id] = { stage: 'loading', title: idea.title };
+  rv2RwPaint(id);
+  const stopW = btnWork(btn || null, 'redo');
+  try {
+    const r = await rv2Post('/api/write', rv2Body({ brandId: brandId }, { source: { kind: 'idea', text: text },
+      angle: { belief: belief.slice(0, 140), why: '' }, format: RV2_FORMATS[idea.format] || 'talking' }));
+    const w = r.ok ? r.data.idea : null;
+    if (!gate()) { delete _rv2Rw[id]; return; }
+    if (!w || !String(w.script == null ? '' : w.script).trim()) { _rv2Rw[id] = { stage: 'error', title: idea.title, err: r.ok ? 'The rewrite came back empty — your script is unchanged.' : rv2ErrText(r, "Couldn't rewrite it — your script is unchanged.") }; return; }
+    _rv2Rw[id] = { stage: 'ready', title: idea.title, script: String(w.script), emphasis: Array.isArray(w.emphasis) ? w.emphasis.slice(0, 12) : [] };
+  } catch (e) {
+    _rv2Rw[id] = { stage: 'error', title: idea.title, err: _leanErrMsg(e, "Couldn't rewrite it — your script is unchanged.") };
+  } finally { stopW(); rv2RwPaint(id); }
+}
+function rv2RwKeep(id) { delete _rv2Rw[id]; rv2RwPaint(id); }
+function rv2RwUse(id) {
+  const r = _rv2Rw[id];
+  if (!r || r.stage !== 'ready') return false;
+  let idea = state[id];
+  if (!idea || idea.title !== r.title) idea = state.find(i => i && i.title === r.title);   // the list moved under us
+  if (!idea) { delete _rv2Rw[id]; rv2RwPaint(id); try { showToast('That idea is no longer in the list — nothing was changed.'); } catch (e) {} return false; }
+  idea.script = r.script;
+  idea.emphasis = r.emphasis;
+  delete _rv2Rw[id];
+  try { saveState(); } catch (e) {}
+  try { saveIdeasToDB(); } catch (e) {}
+  try { refreshCurrentView(); } catch (e) { rv2RwPaint(id); }
+  try { showToast('Script replaced with the spoken version.'); } catch (e) {}
+  return true;
+}
+
+/* v693 — BRAND MEMORY IN SETTINGS: the opinions the person kept, the stories they told and (r3) the
+   speech samples the spoken pass imitates — all read from /api/brand-memory, each deletable.
+   Loaded once per brand; a failed load says so. A row leaves the list only once the server has
+   actually deleted it. */
+let _bm = { brandId: null, loading: false, beliefs: null, stories: null, speech: null, err: '' };
+function bmInvalidate() { _bm = { brandId: null, loading: false, beliefs: null, stories: null, speech: null, err: '' }; }
+async function bmLoad() {
+  const brandId = (currentBrand && currentBrand.id) || null;
+  if (!brandId || _bm.brandId === brandId) return;
+  const mine = { brandId: brandId, loading: true, beliefs: null, stories: null, speech: null, err: '' };
+  _bm = mine;
+  try {
+    const items = r => (Array.isArray(r.data.items) ? r.data.items : []).filter(x => x && x.id != null && String(x.text == null ? '' : x.text).trim());
+    const [b, st, sp] = await Promise.all(['belief', 'story', 'speech'].map(kind => rv2Post('/api/brand-memory', { brandId: brandId, action: 'list', kind: kind })));
+    if (_bm !== mine) return;
+    if (!b.ok || !st.ok || !sp.ok) mine.err = [b, st, sp].some(r => r.data.code === 'memory_not_ready') ? "Your opinions and stories aren't available yet." : "Couldn't load your opinions and stories just now.";
+    else { mine.beliefs = items(b); mine.stories = items(st); mine.speech = items(sp); }
+  } catch (e) { if (_bm === mine) mine.err = "Couldn't load your opinions and stories just now."; }
+  finally { if (_bm === mine) { mine.loading = false; bmPaint(); } }
+}
+function bmListsInner() {
+  if (_bm.loading || (!_bm.err && !_bm.beliefs)) return '<div class="sp-tip">Loading your opinions and stories…</div>';
+  if (_bm.err) return '<div class="sp-tip">' + escHtml(_bm.err) + '</div>';
+  const row = (x, kind) => '<div class="sp-voice-note"><span>' + escHtml(String(x.text).slice(0, 400)) + '</span>'
+    + ((kind === 'story' && Array.isArray(x.tags) && x.tags.length) ? ' <span class="sp-voice-src">' + escHtml(String(x.tags[0]).slice(0, 40)) + '</span>' : '')
+    + ' <button class="sp-voice-x" data-kind="' + kind + '" data-id="' + escHtml(String(x.id)) + '" onclick="bmDelete(this)" title="Forget this one">×</button></div>';
+  const speech = Array.isArray(_bm.speech) ? _bm.speech : [];
+  const learnOff = settings && settings.voiceLearn === false;
+  return '<label class="sp-label">Your opinions</label>'
+    + (_bm.beliefs.length ? _bm.beliefs.map(x => row(x, 'belief')).join('') : '<div class="sp-tip">None yet — an opinion is kept when you save an idea written from it.</div>')
+    + '<label class="sp-label" style="margin-top:14px;">Your story bank</label>'
+    + (_bm.stories.length ? _bm.stories.map(x => row(x, 'story')).join('') : '<div class="sp-tip">None yet — every story you tell into a script is kept here for later.</div>')
+    + '<label class="sp-label" style="margin-top:14px;">Your speech samples</label>'
+    + '<div class="sp-tip">What the writer listens to so scripts sound like you talking.</div>'
+    + (speech.length ? speech.map(x => row(x, 'speech')).join('') : '<div class="sp-tip">None kept.</div>')
+    + ((learnOff && speech.length) ? '<button type="button" class="gen-btn" onclick="bmDeleteAllSpeech(this)" style="width:100%;margin-top:8px;">Voice learning is off — delete the ' + speech.length + ' saved sample' + (speech.length === 1 ? '' : 's') + '</button>' : '');
+}
+function bmSectionHtml() {
+  try { bmLoad(); } catch (e) {}
+  return '<div class="sp-field" id="bmLists">' + bmListsInner() + '</div>';
+}
+function bmPaint() { const el = document.getElementById('bmLists'); if (el) el.innerHTML = bmListsInner(); }
+const BM_KEY = { belief: 'beliefs', story: 'stories', speech: 'speech' };
+function bmDropLocal(kind, id) {
+  const key = BM_KEY[kind];
+  if (Array.isArray(_bm[key])) _bm[key] = _bm[key].filter(x => String(x.id) !== String(id));
+}
+async function bmDelete(btn) {
+  const kind = btn && btn.getAttribute ? btn.getAttribute('data-kind') : '';
+  const id = btn && btn.getAttribute ? btn.getAttribute('data-id') : '';
+  const brandId = _bm.brandId;
+  if (!id || !brandId || !BM_KEY[kind]) return;
+  try { btn.disabled = true; } catch (e) {}
+  const r = await rv2MemDelete(brandId, kind, id);
+  if (r.code === 'memory_write_unknown') {   // the server cannot tell whether it went: look again rather than guess
+    try { showToast("Couldn't confirm it was deleted — check the list.", 6000); } catch (e) {}
+    if (_bm.brandId === brandId) { bmInvalidate(); bmLoad(); }
+    return;
+  }
+  if (!r.ok && r.code !== 'not_found') {   // not_found: already gone, so the list is right to drop it
+    try { btn.disabled = false; } catch (e) {}
+    try { showToast(r.code === 'owner_only' ? 'Only the brand owner can delete this one.' : "Couldn't delete that — try again."); } catch (e) {}
+    return;
+  }
+  if (_bm.brandId !== brandId) return;
+  bmDropLocal(kind, id);
+  bmPaint();
+}
+async function bmDeleteAllSpeech(btn) {
+  const brandId = _bm.brandId;
+  const list = Array.isArray(_bm.speech) ? _bm.speech.slice() : [];
+  if (!brandId || !list.length) return;
+  try { btn.disabled = true; } catch (e) {}
+  let failed = 0;
+  for (const x of list) {
+    const r = await rv2MemDelete(brandId, 'speech', x.id);
+    if (r.ok || r.code === 'not_found') bmDropLocal('speech', x.id); else failed++;
+  }
+  if (_bm.brandId === brandId) bmPaint();
+  try { showToast(failed ? failed + ' sample' + (failed === 1 ? '' : 's') + " couldn't be deleted — try again." : 'Saved speech samples deleted.'); } catch (e) {}
+}
+// v693 — tones: at most 3 (PLAN change 5). More than 3 blurs the voice into "generic brand".
+const TONE_MAX = 3;
+function toneNudgeHtml() {
+  const n = (settings && Array.isArray(settings.tones)) ? settings.tones.length : 0;
+  if (n <= TONE_MAX) return '<div class="sp-tip">' + n + ' of ' + TONE_MAX + ' picked.</div>';
+  return '<div class="sp-tip rv2-tone-nudge" role="alert"><strong>Pick up to 3 — more makes the voice vague.</strong> You have ' + n
+    + '. New scripts ignore your tones until you untick ' + (n - TONE_MAX) + '.</div>';
+}
+
+/* v693 — FILMED RATE (PLAN change 8): of the ideas each flow generated, how many the person
+   actually approved to film. 'v2' = the opinion-first panel (the person picked the opinion),
+   'v2-batch' = belief-first batch / auto-refill ideas, 'v1' = everything older. Hidden on any error. */
+let _rv2Metrics = { brandId: null, at: 0, html: '' };
+function rv2MetricsText(data) {
+  const flows = (data && Array.isArray(data.flows)) ? data.flows : [];
+  const f = name => flows.find(x => x && x.flow === name);
+  const part = (label, x) => {
+    if (!x) return label + ' — none yet';
+    const g = Math.max(0, Number(x.generated) || 0), fl = Math.max(0, Number(x.filmed) || 0);
+    return label + ' ' + fl + ' of ' + g + (g ? ' (' + Math.round(fl / g * 100) + '%)' : '');
+  };
+  if (!f('v2') && !f('v1') && !f('v2-batch')) return '';
+  return 'Filmed: ' + part('new flow', f('v2')) + (f('v2-batch') ? ' · ' + part('batch with beliefs', f('v2-batch')) : '') + ' · ' + part('old flow', f('v1'));
+}
+async function rv2MetricsLoad() {
+  const brandId = (currentBrand && currentBrand.id) || null;
+  if (!brandId || (_rv2Metrics.brandId === brandId && Date.now() - _rv2Metrics.at < 300000)) return;
+  const mine = { brandId: brandId, at: Date.now(), html: '' };
+  _rv2Metrics = mine;
+  try {
+    const r = await rv2Post('/api/content-metrics', { brandId: brandId });
+    if (_rv2Metrics !== mine) return;
+    const t = r.ok ? rv2MetricsText(r.data) : '';
+    mine.html = t ? '<div class="rv2-metrics">' + escHtml(t) + '</div>' : '';
+  } catch (e) { mine.html = ''; }
+  const el = document.getElementById('rv2Metrics');
+  if (el && _rv2Metrics === mine) el.innerHTML = mine.html;
+}
+function rv2MetricsHtml() {
+  try { rv2MetricsLoad(); } catch (e) {}
+  const same = currentBrand && _rv2Metrics.brandId === currentBrand.id;
+  return '<div id="rv2Metrics">' + (same ? _rv2Metrics.html : '') + '</div>';
+}
+
+/* v693 — CONTENT LAB (PLAN change 7): the same inputs through the old flow, the new flow on Grok
+   (effort high) and the new flow on Claude, judged BLIND. Allowed only for the user ids in the
+   server's CONTENT_LAB_USER_IDS: the list call is probed once, and a 403 hides the Lab entirely.
+   v693 r3 — matched to api/blind-test.js as it is now: runCell only ever says "finished" (never
+   which writer, never whether it worked); `get` shows an input's outputs only when all of its cells
+   finished (`progress[i].ready`), errors as 'not_available', slots as "[story]"; a finished cell is
+   re-run only with force; picks are final once every input has one (`reset` clears them). */
+let _cl = { probed: false, allowed: false, stage: 'inputs', test: null, cells: [], view: null, picks: {}, reveal: null, paused: null, running: false, final: false, err: '', armOut: '', typed: [] };
+const CL_ARM_NAMES = { baseline: 'Old flow', 'grok-high': 'New flow · Grok', claude: 'New flow · Claude' };
+async function clProbe() {
+  if (_cl.probed) return;
+  _cl.probed = true;
+  try {
+    const r = await rv2Post('/api/blind-test', { action: 'list' });
+    _cl.allowed = !!r.ok;              // 403 not_allowed (or any failure) → the Lab does not exist
+  } catch (e) { _cl.allowed = false; }
+  const el = document.getElementById('clEntry');
+  if (el) el.innerHTML = clEntryInner();
+}
+function clEntryInner() {
+  if (!_cl.allowed) return '';
+  return '<div class="rv2-lab-entry"><div><div style="font-size:14px;font-weight:700;color:var(--text);">Content Lab</div>'
+    + '<div style="font-size:12px;color:var(--text3);">Blind-test the old and new writers on the same ideas.</div></div>'
+    + '<button type="button" class="gen-btn" onclick="clOpen()" style="margin:0;">Open</button></div>';
+}
+function clEntryHtml() {
+  try { clProbe(); } catch (e) {}
+  return '<div id="clEntry">' + clEntryInner() + '</div>';
+}
+function clOpen() {
+  if (!_cl.allowed) return;
+  let ov = document.getElementById('clOverlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'clOverlay'; ov.className = 'rv2-lab'; document.body.appendChild(ov); }
+  clRender();
+}
+function clClose() { const ov = document.getElementById('clOverlay'); if (ov) { try { ov.remove(); } catch (e) { ov.innerHTML = ''; } } }
+function clInputIndex(c, per) { return (c && c.inputIndex != null) ? Number(c.inputIndex) : Math.floor(Number(c.index) / Math.max(1, per)); }
+function clOut(c) {
+  if (c && typeof c.text === 'string' && c.text.trim()) return { hook: '', script: c.text.trim(), caption: '' };   // api/blind-test.js publicCell
+  let o = (c && c.output) || {};
+  if (o && o.idea) o = o.idea;
+  const t = v => String(v == null ? '' : (Array.isArray(v) ? v.join('\n') : v)).trim();
+  return { hook: t(o.hook || o.remixHook), script: t(o.script || o.remixScript), caption: t(o.caption || o.remixCaption) };
+}
+function clReady(ii) {
+  const pr = _cl.view && Array.isArray(_cl.view.progress) ? _cl.view.progress.find(p => p && Number(p.inputIndex) === ii) : null;
+  return pr ? { ready: !!pr.ready, finished: Number(pr.finished) || 0, total: Number(pr.total) || 0, stale: !!pr.stale } : { ready: false, finished: 0, total: 0, stale: false };
+}
+function clRender() {
+  const ov = document.getElementById('clOverlay'); if (!ov) return;
+  let h = '<div class="rv2-lab-in"><div class="rv2-lab-top"><button type="button" class="sp-back" onclick="clClose()">← Back</button><h2>Content Lab</h2></div>';
+  if (_cl.err) h += '<div class="rv2-err" role="alert">' + escHtml(_cl.err) + '</div>';
+  if (_cl.final) h += '<button type="button" class="gen-btn" onclick="clResetPicks(this)" style="width:100%;margin:0 0 10px;"' + (_cl.running ? ' disabled' : '') + '>Reset the picks</button>';
+  if (_cl.stage === 'inputs') {
+    const kinds = ['idea', 'question', 'trend', 'note', 'remix'];
+    h += '<div class="rv2-sub">Up to 5 things you would normally turn into a post. Each goes through three writers; you judge without knowing which is which.</div>';
+    const typed = Array.isArray(_cl.typed) ? _cl.typed : [];   // v693 r4: a failed start never wipes what was typed
+    for (let i = 0; i < 5; i++) {
+      const t = typed[i] || {};
+      h += '<div class="rv2-lab-input"><select id="clKind' + i + '">' + kinds.map(k => '<option value="' + k + '"' + (t.kind === k ? ' selected' : '') + '>' + k + '</option>').join('') + '</select>'
+        + '<textarea class="gen-textarea" id="clText' + i + '" placeholder="Input ' + (i + 1) + (i ? ' (optional)' : '') + '" style="min-height:52px;">' + escHtml(t.text || '') + '</textarea></div>';
+    }
+    if (_cl.armOut) h += '<button type="button" class="gen-btn" data-arm="' + escHtml(_cl.armOut) + '" onclick="clCreateWithout(this)" style="width:100%;margin-bottom:8px;">' + (_cl.armOut === 'claude' ? 'Run without the Claude writer' : 'Run without them') + '</button>';
+    h += '<button type="button" class="gen-btn hero" id="clCreateBtn" onclick="clCreate()" style="width:100%;">Start the blind test</button>';
+  } else if (_cl.stage === 'running') {
+    const done = _cl.cells.filter(c => c.status !== 'pending' && c.status !== 'failed').length;
+    h += '<div class="rv2-h">Writing — ' + done + ' of ' + _cl.cells.length + ' finished</div>'
+      + '<div class="rv2-bar"><i style="width:' + Math.round(done / Math.max(1, _cl.cells.length) * 100) + '%"></i></div>'
+      + '<div class="rv2-sub">One at a time, so a slow writer can’t time out the rest.</div>';
+    const el = _cl.cells.filter(c => c.status === 'elsewhere').length;
+    if (el) h += '<div class="rv2-note">' + el + ' output' + (el === 1 ? ' is' : 's are') + ' already being written (another tab?) — they appear once finished.</div>';
+    if (_cl.paused) {
+      h += '<div class="rv2-err" role="alert">One output failed: ' + escHtml(_cl.paused.msg) + '</div>'
+        + '<div class="rv2-actions"><button type="button" onclick="clSkip()">Skip it</button><button type="button" class="primary" onclick="clRetry()">Retry</button></div>';
+    } else if (!_cl.running && _cl.cells.length && _cl.cells.every(c => c.status !== 'pending' && c.status !== 'failed')) {
+      // every cell ran but loading the outputs failed: let the person ask again, never a dead end
+      h += '<button type="button" class="gen-btn" onclick="clShowResults()" style="width:100%;margin-top:10px;">Load the results</button>';
+    }
+  } else if (_cl.stage === 'judge' || _cl.stage === 'revealed') {
+    const v = _cl.view || {};
+    const cells = Array.isArray(v.cells) ? v.cells : [];
+    const inputs = Array.isArray(v.inputs) ? v.inputs : ((_cl.test && _cl.test.inputs) || []);
+    const per = inputs.length ? Math.max(1, Math.round(cells.length / inputs.length)) : 1;
+    const revealArm = (ii, label) => {
+      const rc = (_cl.reveal && Array.isArray(_cl.reveal.cells)) ? _cl.reveal.cells : [];
+      const hit = rc.find(c => clInputIndex(c, per) === ii && String(c.label) === String(label));
+      return hit ? (CL_ARM_NAMES[hit.arm] || String(hit.arm || '?')) : '?';
+    };
+    const judging = _cl.stage === 'judge' && !_cl.final;
+    let anyWaiting = false;
+    inputs.forEach((inp, ii) => {
+      const mine = cells.filter(c => clInputIndex(c, per) === ii).sort((a, b) => String(a.label).localeCompare(String(b.label)));
+      const rd = clReady(ii);
+      h += '<div class="rv2-lab-group"><div class="rv2-lbl">Input ' + (ii + 1) + '</div><div class="rv2-sub">' + escHtml(String((inp && inp.text) || '').slice(0, 300)) + '</div>';
+      if (_cl.stage === 'judge' && !rd.ready) {
+        anyWaiting = true;
+        h += '<div class="rv2-note">Still writing — ' + rd.finished + ' of ' + rd.total + ' finished. Outputs show once all of them are done, so the order they finish in can’t give a writer away.</div>';
+        // v693 r4: a writer that died mid-run (progress.stale) is offered again
+        if (rd.stale) h += '<button type="button" class="rv2-link" data-ii="' + ii + '" onclick="clRerunInput(this)">One writer got stuck — run it again</button>';
+        // v693 r7: nothing is running for it, so it will not finish by itself — offer the way out
+        if (!_cl.running && !_cl.paused) h += '<div class="rv2-actions"><button type="button" data-ii="' + ii + '" onclick="clRunMissing(this)">Run the missing writers</button>'
+          + '<button type="button" data-ii="' + ii + '" onclick="clSkipMissing(this)">Skip the missing ones</button></div>';
+        h += '</div>';
+        return;
+      }
+      mine.forEach(c => {
+        const o = clOut(c); const picked = _cl.picks[ii] === String(c.label);
+        h += '<div class="rv2-lab-out' + (picked ? ' on' : '') + '"><div class="rv2-lab-label">' + escHtml(String(c.label))
+          + (_cl.stage === 'revealed' ? ' · ' + escHtml(revealArm(ii, c.label)) : '') + '</div>';
+        if (c.error || c.status === 'error') {
+          h += '<div class="rv2-sub">Not available for this one.</div>';
+          if (judging) h += '<button type="button" class="rv2-link" data-index="' + escHtml(String(c.index)) + '" onclick="clRerun(this)">Re-run it</button>';
+        }
+        else if (!o.hook && !o.script && !o.caption) h += '<div class="rv2-sub">Not written (skipped).</div>';
+        else {
+          if (o.hook) h += '<div class="rv2-hook">' + escHtml(o.hook) + '</div>';
+          if (o.script) h += '<div class="rv2-script">' + escHtml(o.script).replace(/\n/g, '<br>') + '</div>';
+          if (o.caption) h += '<div class="rv2-sub">' + escHtml(o.caption) + '</div>';
+          if (judging) h += '<button type="button" class="gen-btn" data-ii="' + ii + '" data-label="' + escHtml(String(c.label)) + '" onclick="clPick(this)" style="margin-top:8px;">' + (picked ? 'Picked ✓' : 'Pick ' + escHtml(String(c.label))) + '</button>';
+        }
+        h += '</div>';
+      });
+      if (judging) h += '<button type="button" class="rv2-link" data-ii="' + ii + '" data-label="none" onclick="clPick(this)">' + (_cl.picks[ii] === 'none' ? 'None of these ✓' : 'None of these are good') + '</button>';
+      if (_cl.stage === 'revealed') h += '<div class="rv2-note">' + (_cl.picks[ii] === 'none' ? 'You picked none of them.' : 'You picked ' + escHtml(_cl.picks[ii] || '—') + (_cl.picks[ii] ? ' — ' + escHtml(revealArm(ii, _cl.picks[ii])) : '')) + '</div>';
+      h += '</div>';
+    });
+    if (_cl.stage === 'judge') {
+      if (anyWaiting) h += '<button type="button" class="gen-btn" onclick="clShowResults()" style="width:100%;margin-bottom:8px;">Check again</button>';
+      const all = inputs.length && inputs.every((x, ii) => _cl.picks[ii]);
+      h += '<button type="button" class="gen-btn hero" onclick="clReveal(this)" style="width:100%;"' + (all ? '' : ' disabled') + '>' + (all ? 'Reveal the writers' : 'Pick one for every input to reveal') + '</button>';
+    } else {
+      const tally = {};
+      inputs.forEach((x, ii) => { if (_cl.picks[ii]) { const a = _cl.picks[ii] === 'none' ? 'None of them' : revealArm(ii, _cl.picks[ii]); tally[a] = (tally[a] || 0) + 1; } });
+      h += '<div class="rv2-h">Tally</div>' + Object.keys(tally).map(a => '<div class="rv2-note">' + escHtml(a) + ': ' + tally[a] + ' of ' + inputs.length + '</div>').join('');
+      h += '<button type="button" class="gen-btn" onclick="clNew()" style="width:100%;margin-top:10px;">New test</button>';
+    }
+  }
+  ov.innerHTML = h + '</div>';
+}
+function clNew() { _cl = Object.assign(_cl, { stage: 'inputs', test: null, cells: [], view: null, picks: {}, reveal: null, paused: null, running: false, final: false, err: '', armOut: '', typed: [] }); clRender(); }
+async function clCreate(withoutArms) {
+  const brandId = (currentBrand && currentBrand.id) || null;
+  const inputs = [], typed = [];
+  for (let i = 0; i < 5; i++) {
+    const t = document.getElementById('clText' + i), k = document.getElementById('clKind' + i);
+    const text = t ? String(t.value || '').trim() : '';
+    typed.push({ kind: (k && k.value) || 'idea', text: t ? String(t.value || '') : '' });
+    if (text) inputs.push({ kind: (k && k.value) || 'idea', text: text.slice(0, 12000) });
+  }
+  _cl.typed = typed;
+  if (!inputs.length) { _cl.err = 'Type at least one input.'; clRender(); return; }
+  if (!brandId) { _cl.err = 'Open a brand first.'; clRender(); return; }
+  _cl.err = ''; _cl.armOut = '';
+  const out = Array.isArray(withoutArms) ? withoutArms : (withoutArms ? [withoutArms] : []);
+  const body = { action: 'create', brandId: brandId, inputs: inputs };
+  if (out.length) body.arms = ['baseline', 'grok-high', 'claude'].filter(a => out.indexOf(a) < 0);
+  const stopW = btnWork(document.getElementById('clCreateBtn'), 'generic');
+  try {
+    const r = await rv2Post('/api/blind-test', body);
+    // v693 r5: the server refuses a writer that cannot run (no Anthropic key) — say so, offer the test without it
+    if (r.status === 400 && r.data.code === 'arm_unavailable') {
+      const arms = (Array.isArray(r.data.arms) && r.data.arms.length ? r.data.arms : [r.data.arm]).filter(Boolean).map(String);
+      _cl.armOut = arms.join(',');
+      _cl.err = arms.indexOf('claude') >= 0 && arms.length === 1
+        ? 'Claude isn’t set up yet — add the Anthropic key, or run without the Claude writer.'
+        : 'These writers can’t run right now: ' + arms.map(a => CL_ARM_NAMES[a] || a).join(', ') + '. Run without them, or set them up first.';
+      return;
+    }
+    if (!r.ok || !r.data.id || !Array.isArray(r.data.cells) || !r.data.cells.length) { _cl.err = rv2ErrText(r, "Couldn't start the test — try again."); return; }
+    _cl.test = { id: r.data.id, inputs: inputs };
+    _cl.generation = Number.isInteger(r.data.generation) ? r.data.generation : 0;
+    _cl.cells = r.data.cells.map(c => ({ index: Number(c.index), label: c.label, status: 'pending' }));
+    _cl.picks = {}; _cl.reveal = null; _cl.view = null; _cl.paused = null; _cl.final = false; _cl.stage = 'running'; _cl.typed = []; _cl.staleTried = {};
+  } catch (e) { _cl.err = _leanErrMsg(e, "Couldn't start the test — try again."); }
+  finally { stopW(); clRender(); }
+  if (_cl.stage === 'running') await clRunAll();
+}
+function clCreateWithout(btn) { const arms = btn && btn.getAttribute ? String(btn.getAttribute('data-arm') || '').split(',').filter(Boolean) : []; if (arms.length) return clCreate(arms); }
+// A writer stuck mid-run on one input: run that input's cells again (finished ones answer 409 and are left alone).
+async function clRerunInput(btn) {
+  const ii = Number(btn && btn.getAttribute ? btn.getAttribute('data-ii') : NaN);
+  const test = _cl.test;
+  if (!test || !(ii >= 0) || _cl.running || !_cl.view) return;
+  _cl.running = true;
+  try { btn.disabled = true; btn.textContent = 'Writing\u2026'; } catch (e) {}
+  const idx = (_cl.view.cells || []).filter(c => Number(c.inputIndex) === ii).map(c => Number(c.index));
+  let failed = '';
+  for (const index of idx) {
+    let r = null;
+    try { r = await rv2Post('/api/blind-test', { action: 'runCell', id: test.id, index: index }); } catch (e) { r = null; }
+    if (_cl.test !== test) { _cl.running = false; return; }
+    if (!r) { failed = "Couldn't reach the Lab \u2014 check your connection."; break; }
+    if (!r.ok && !(r.status === 409 && (r.data.code === 'already_done' || r.data.code === 'already_running'))) { failed = rv2ErrText(r, "Couldn't run it again \u2014 try again."); break; }
+  }
+  _cl.running = false;
+  await clLoad();
+  if (failed) _cl.err = failed;
+  clRender();
+}
+// v693 r6 — the ORDER and the PACE must not identify a writer: the cells run in a fresh random order
+// each time (never stored), and the screen counts finished outputs only — never which letter is
+// being written or how long each one took.
+function clShuffled(list) {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+async function clRunAll() {
+  if (_cl.running || !_cl.test) return;
+  _cl.running = true;
+  const test = _cl.test;
+  try {
+    for (const c of clShuffled(_cl.cells.filter(x => x.status === 'pending'))) {
+      if (_cl.test !== test) return;
+      if (c.status !== 'pending') continue;
+      clRender();
+      let r = null, netErr = null;
+      try { r = await rv2Post('/api/blind-test', { action: 'runCell', id: test.id, index: c.index }); } catch (e) { netErr = e; }
+      if (_cl.test !== test) return;
+      const d = (r && r.data) || {};
+      // before the reveal the server says only "finished" — never which writer, never how it went
+      if (r && r.ok) { c.status = 'done'; continue; }
+      if (r && r.status === 409 && d.code === 'already_done') { c.status = 'done'; continue; }
+      if (r && r.status === 409 && d.code === 'already_running') { c.status = 'elsewhere'; continue; }
+      c.status = 'failed';
+      _cl.paused = { index: c.index, msg: netErr ? _leanErrMsg(netErr, 'the connection dropped') : rv2ErrText(r, 'the writer failed') };
+      return;                                        // stop here: the person decides retry or skip
+    }
+    _cl.paused = null;
+    await clLoad();
+  } finally { if (_cl.test === test) { _cl.running = false; clRender(); } }
+  if (_cl.test === test) await clAutoStale();
+}
+function clRetry() { const p = _cl.paused; if (!p) return; const c = _cl.cells.find(x => x.index === p.index); if (c) c.status = 'pending'; _cl.paused = null; clRunAll(); }
+// v693 r7 — "Skip it" tells the server (action 'skip': finished as an error, no AI call, no charge).
+// Only marking it here left the cell pending on the server forever: its input could never be picked.
+async function clSkip() {
+  const p = _cl.paused; const test = _cl.test;
+  if (!p || !test || _cl.running) return;
+  _cl.running = true; clRender();
+  let r = null;
+  try { r = await rv2Post('/api/blind-test', { action: 'skip', id: test.id, index: p.index, generation: Number(_cl.generation) || 0 }); } catch (e) { r = null; }
+  _cl.running = false;
+  if (_cl.test !== test) return;
+  const ok = r && (r.ok || (r.status === 409 && (r.data.code === 'already_done' || r.data.code === 'already_running')));
+  if (!ok) {   // the choice stays on screen
+    _cl.err = r ? rv2ErrText(r, "Couldn't skip it — try again.") : "Couldn't skip it — check your connection.";
+    clRender(); return;
+  }
+  const c = _cl.cells.find(x => x.index === p.index); if (c) c.status = 'skipped';
+  _cl.paused = null; _cl.err = '';
+  return clRunAll();
+}
+// v693 r7 — an input that is not ready while nothing runs (a failed start, a skipped retry, a tab
+// closed mid-run) always has a way out: run its missing writers again, or skip them.
+async function clInputAction(btn, action) {
+  const ii = Number(btn && btn.getAttribute ? btn.getAttribute('data-ii') : NaN);
+  const test = _cl.test;
+  if (!test || !(ii >= 0) || _cl.running || !_cl.view) return;
+  _cl.running = true;
+  try { btn.disabled = true; } catch (e) {}
+  clRender();
+  const idx = (_cl.view.cells || []).filter(c => Number(c.inputIndex) === ii).map(c => Number(c.index));
+  let failed = '';
+  for (const index of clShuffled(idx)) {
+    let r = null;
+    const body = action === 'skip' ? { action: 'skip', id: test.id, index: index, generation: Number(_cl.generation) || 0 } : { action: 'runCell', id: test.id, index: index };
+    try { r = await rv2Post('/api/blind-test', body); } catch (e) { r = null; }
+    if (_cl.test !== test) { _cl.running = false; return; }
+    if (!r) { failed = "Couldn't reach the Lab — check your connection."; break; }
+    if (!r.ok && !(r.status === 409 && (r.data.code === 'already_done' || r.data.code === 'already_running'))) { failed = rv2ErrText(r, action === 'skip' ? "Couldn't skip them — try again." : "Couldn't run them again — try again."); break; }
+  }
+  _cl.running = false;
+  await clLoad();
+  if (failed) _cl.err = failed;
+  clRender();
+}
+function clRunMissing(btn) { return clInputAction(btn, 'run'); }
+function clSkipMissing(btn) { return clInputAction(btn, 'skip'); }
+async function clLoad() {
+  const test = _cl.test; if (!test) return;
+  try {
+    const r = await rv2Post('/api/blind-test', { action: 'get', id: test.id });
+    if (_cl.test !== test) return;
+    if (!r.ok) { _cl.err = rv2ErrText(r, "Couldn't load the outputs — reopen the Lab and try again."); return; }
+    const raw = Array.isArray(r.data.cells) ? r.data.cells : [];
+    // Defensive: whatever the server sends, nothing on this screen names an arm before reveal.
+    const cells = raw.map(c => ({ index: c.index, inputIndex: c.inputIndex, label: c.label, status: c.status, text: c.text, output: c.output, error: c.error }));
+    _cl.view = { cells: cells, inputs: Array.isArray(r.data.inputs) ? r.data.inputs : test.inputs, progress: Array.isArray(r.data.progress) ? r.data.progress : [] };
+    if (Number.isInteger(r.data.generation)) _cl.generation = r.data.generation;
+    const pk = (r.data.picks && typeof r.data.picks === 'object') ? r.data.picks : {};
+    _cl.picks = {}; Object.keys(pk).forEach(k => { if (pk[k]) _cl.picks[Number(k)] = String(pk[k]); });
+    // v693 r5: only the explicit reveal (the server's `revealed`) shows the writers — `complete` unlocks nothing
+    if (r.data.revealed === true) { _cl.reveal = { cells: raw.map(c => ({ index: c.index, inputIndex: c.inputIndex, label: c.label, arm: c.arm })) }; _cl.stage = 'revealed'; }
+    else { _cl.reveal = null; _cl.stage = 'judge'; }
+    _cl.err = '';
+  } catch (e) { _cl.err = _leanErrMsg(e, "Couldn't load the outputs — try again."); }
+}
+// v693 r5 — an input whose writer died mid-run (progress.stale) is run again by itself, once per load;
+// the finished cells of that input answer 409 and are left alone.
+function clAutoStale() {
+  if (_cl.running || !_cl.test || !_cl.view || !Array.isArray(_cl.view.progress)) return;
+  _cl.staleTried = _cl.staleTried || {};
+  const p = _cl.view.progress.find(x => x && x.stale && !_cl.staleTried[_cl.test.id + ':' + x.inputIndex]);
+  if (!p) return;
+  _cl.staleTried[_cl.test.id + ':' + p.inputIndex] = true;
+  return clRerunInput({ getAttribute: () => String(p.inputIndex), disabled: false, textContent: '' });
+}
+async function clShowResults() { if (!_cl.test || _cl.running) return; await clLoad(); clRender(); await clAutoStale(); }
+// A writer that failed on one input can be run again (force: a finished cell is otherwise never re-run).
+async function clRerun(btn) {
+  const index = Number(btn && btn.getAttribute ? btn.getAttribute('data-index') : NaN);
+  const test = _cl.test;
+  if (!test || !(index >= 0) || _cl.running) return;
+  _cl.running = true;
+  try { btn.disabled = true; btn.textContent = 'Writing…'; } catch (e) {}
+  let r = null;
+  try { r = await rv2Post('/api/blind-test', { action: 'runCell', id: test.id, index: index, force: true }); } catch (e) { r = null; }
+  _cl.running = false;
+  if (_cl.test !== test) return;
+  if (!r || !(r.ok || (r.status === 409 && r.data.code === 'already_running'))) _cl.err = r ? rv2ErrText(r, "Couldn't re-run it — try again.") : "Couldn't re-run it — check your connection.";
+  await clLoad(); clRender();
+}
+async function clPick(btn) {
+  const ii = Number(btn && btn.getAttribute ? btn.getAttribute('data-ii') : NaN);
+  const label = btn && btn.getAttribute ? String(btn.getAttribute('data-label') || '') : '';
+  if (!_cl.test || _cl.stage !== 'judge' || _cl.final || !(ii >= 0) || !label || !clReady(ii).ready) return;
+  let r = null;
+  // v693 r6: the letters belong to one generation of the test — the pick says which one it saw
+  try { r = await rv2Post('/api/blind-test', { action: 'pick', id: _cl.test.id, inputIndex: ii, label: label, generation: Number(_cl.generation) || 0 }); } catch (e) { r = null; }
+  if (r && r.status === 409 && r.data.code === 'picks_final') {
+    _cl.final = true;
+    await clLoad();
+    _cl.err = 'Every input already has a pick, so the picks are final \u2014 reset them to choose again.';
+    clRender(); return;
+  }
+  if (r && r.status === 409 && (r.data.code === 'labels_changed' || r.data.code === 'input_not_ready')) {
+    await clLoad();
+    _cl.err = r.data.code === 'labels_changed'
+      ? 'The letters were reshuffled (the picks were reset) \u2014 look again and pick for every input.'
+      : 'That input is still being written \u2014 pick once all its outputs are in.';
+    clRender(); return;
+  }
+  if (!r || !r.ok) { try { showToast("Couldn't save that pick \u2014 try again."); } catch (e) {} return; }
+  _cl.picks[ii] = label; clRender();
+}
+async function clResetPicks(btn) {
+  if (!_cl.test || _cl.running) return;   // v693 r6: never while any cell is being run (the server refuses too: cells_running)
+  const test = _cl.test;
+  const stopW = btnWork(btn, 'generic');
+  let r = null;
+  try { r = await rv2Post('/api/blind-test', { action: 'reset', id: test.id }); } catch (e) { r = null; }
+  stopW();
+  if (_cl.test !== test) return;
+  if (r && r.status === 409 && (r.data.code === 'cells_running' || r.data.code === 'test_changed')) { _cl.err = r.data.code === 'cells_running' ? 'A writer is still working on this test — reset once it has finished.' : 'The test changed while resetting — try again.'; clRender(); return; }
+  if (!r || !r.ok) { _cl.err = r ? rv2ErrText(r, "Couldn't reset the picks — try again.") : "Couldn't reset the picks — check your connection."; clRender(); return; }
+  // v693 r5: the reset RESHUFFLES the labels and renumbers the cells — drop every cached index→label
+  const cells = (Array.isArray(r.data.cells) ? r.data.cells : []).map(c => ({ index: c.index, inputIndex: c.inputIndex, label: c.label, status: c.status, text: c.text, error: c.error }));
+  _cl.cells = cells.map(c => ({ index: Number(c.index), label: c.label, status: 'done' }));
+  _cl.view = Object.assign({}, _cl.view || {}, { cells: cells });
+  if (Number.isInteger(r.data.generation)) _cl.generation = r.data.generation;
+  _cl.final = false; _cl.picks = {}; _cl.reveal = null; _cl.stage = 'judge'; _cl.err = '';
+  await clLoad(); clRender();
+}
+async function clReveal(btn) {
+  if (!_cl.test || _cl.stage !== 'judge' || _cl.running) return;
+  const stopW = btnWork(btn, 'generic');
+  let reload = false;
+  try {
+    const r = await rv2Post('/api/blind-test', { action: 'reveal', id: _cl.test.id, generation: Number(_cl.generation) || 0 });
+    if (r.status === 409) { reload = true; _cl.err = r.data.code === 'picks_incomplete' ? 'Not every input has a pick yet \u2014 pick one for each, then reveal.' : 'The test changed (the picks were reset) \u2014 look again and pick for every input.'; return; }
+    if (!r.ok) { _cl.err = rv2ErrText(r, "Couldn't reveal yet \u2014 try again."); return; }
+    _cl.reveal = r.data; _cl.stage = 'revealed'; _cl.final = false; _cl.err = '';
+  } catch (e) { _cl.err = _leanErrMsg(e, "Couldn't reveal yet \u2014 try again."); }
+  finally { stopW(); if (reload) { const m = _cl.err; await clLoad(); _cl.err = m; } clRender(); }
 }
 
 function removeRemix(idx) {
@@ -22177,7 +23558,7 @@ async function spDraftFromCrawl(btnEl) {
     // v634: tones are a CLOSED set. An off-list tone renders as nothing selected in the tone
     // grid and cannot be un-picked there, while fullBrandBlock hands it to the model as a
     // voice law. Onboarding already filtered against OB_TONE_OPTIONS; the scan now does too.
-    const _tones = bvValidTones(crawlListOk(info.tones, 4)).slice(0, 4);
+    const _tones = bvValidTones(crawlListOk(info.tones, 4)).slice(0, 3);   // v693: max 3 tones
     if (_tones.length && (!settings.tones || !settings.tones.length)) fills.push({ key: 'tones', value: _tones });
     const _comms = crawlListOk(info.communities || info.suggestedCommunities, 10);
     if (_comms.length && (!settings.communities || !settings.communities.length)) fills.push({ key: 'communities', value: _comms });
@@ -22481,7 +23862,7 @@ async function spDraftFromSocial(silent) {
     // makes ("you review everything before it saves to your brand brain") was false for this
     // button. The candidates are now collected and shown in the SAME sheet the website scan uses.
     const _fills = [];
-    const _stones = bvValidTones(crawlListOk(v.tones, 4)).slice(0, 4);   // v634: closed set — see bvValidTones
+    const _stones = bvValidTones(crawlListOk(v.tones, 4)).slice(0, 3);   // v634: closed set — see bvValidTones
     if (_stones.length && (!settings.tones || !settings.tones.length)) _fills.push({ key: 'tones', value: _stones });
     ['brandVocab', 'ctaStyle', 'exampleContent'].forEach(k => {
       const cur = settings[k];
@@ -22558,7 +23939,9 @@ function spAskAssistant(key) {
 
 function toggleTone(toneId) {
   const idx=settings.tones.indexOf(toneId);
-  if(idx>-1){if(settings.tones.length>1)settings.tones.splice(idx,1);} else settings.tones.push(toneId);
+  if(idx>-1){if(settings.tones.length>1)settings.tones.splice(idx,1);}
+  else if(settings.tones.length >= TONE_MAX){ if(typeof showToast==='function') showToast('Pick up to 3 \u2014 more makes the voice vague. Untick one first.', 4000); return; }   // v693
+  else settings.tones.push(toneId);
   saveSettings(); renderSettingsPanel();
 }
 function updatePlatform(p,v) { settings.platforms[p]=Math.max(0,Math.min(10,parseInt(v)||0)); saveSettings(); renderSettingsPanel(); if(typeof showToast==='function') showToast('Target saved ✓'); }   /* v594: saving was silent — QA + Jörgen: no confirmation. v634: "Posting schedule saved" implied the app posts on it; it does not. */
@@ -22737,7 +24120,7 @@ function renderSettingsPanel() {
                   <label class="toggle-switch"><input type="checkbox" ${on?'checked':''} onchange="updateSetting('voiceLearn', this.checked); renderSettingsPanel();"><span class="toggle-track"></span></label>
                 </div>
                 ${on && n ? `<details class="sp-voice-log"><summary>See what it kept <span class="fold-caret" aria-hidden="true">&#9662;</span></summary>${log.slice().reverse().map((e,ri)=>{ const i=log.length-1-ri; return `<div class="sp-voice-note"><span class="sp-voice-src">${escHtml(e.src||'')}</span> ${escHtml(String(e.text||'').slice(0,220))}${String(e.text||'').length>220?'…':''} <button class="sp-voice-x" onclick="voiceLogRemove(${i})" title="Forget this one">×</button></div>`; }).join('')}</details>` : ''}
-                <div class="sp-tip" style="margin-top:6px;">Only things you say in your own words — notebook, Idea Catcher, the coach, Remix and Trends descriptions. 30+ words. Never the teleprompter: that is you reading a script, not you talking.</div>
+                <div class="sp-tip" style="margin-top:6px;">Only things you say in your own words — notebook, Idea Catcher, the coach, Remix and Trends descriptions, and the stories you tell into a Remix script. 30+ words. Never the teleprompter: that is you reading a script, not you talking.</div>
               </div>`;
             })()}
           </div>
@@ -22837,14 +24220,17 @@ function renderSettingsPanel() {
               }).join('')}
             </div>
           </div>
+          ${toneNudgeHtml()}
           <div class="sp-tip">Matching ideas: <strong>${getVisibleIdeas().length} of ${IDEAS.length}</strong></div>
           <div class="sp-tip" style="margin-top:8px;">Your selected tones also affect the <strong>Carousel Maker</strong> — bold/provocative tones use ALL CAPS, warm/friendly tones use sentence case.</div>
+          ${sec.tone ? bmSectionHtml() : ''}
         </div>
       </div>
         </div>
       </div>
       </div>
       <div style="display:${spActiveTab==='workspace'?'block':'none'}">
+      ${spActiveTab==='workspace' ? rv2MetricsHtml() + clEntryHtml() : ''}
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--surface3);margin-bottom:16px;gap:10px;">
         <div>
           <div style="font-size:14px;font-weight:700;color:var(--text);">AI Engine</div>
@@ -23336,6 +24722,7 @@ function remixTopPost(i){
   try{
     const p = getTopPosts()[i];
     if(!p){ if(typeof showToast==='function') showToast('Could not find that post'); return; }
+    try { window._rv2TrendText = String(p.text || ''); } catch(e) {}   // v693: rv2Source sends it as kind 'trend'
     switchView('create');
     setTimeout(function(){
       try{
@@ -24068,7 +25455,7 @@ function obPrefillFromCrawl(data, url) {
   }
   // Tones
   if(data.tones && Array.isArray(data.tones)) {
-    obSelectedTones = data.tones.filter(t => OB_TONE_OPTIONS.some(o => o.id === t)).slice(0, 4);
+    obSelectedTones = data.tones.filter(t => OB_TONE_OPTIONS.some(o => o.id === t)).slice(0, 3);   // v693: max 3
     obRenderToneCards();
   }
   // Audience
@@ -24271,13 +25658,13 @@ function obRenderToneCards() {
 }
 function obToggleTone(tone) {
   if(obSelectedTones.includes(tone)) obSelectedTones = obSelectedTones.filter(t=>t!==tone);
-  else if(obSelectedTones.length < 4) obSelectedTones.push(tone);
+  else if(obSelectedTones.length < 3) obSelectedTones.push(tone);   // v693: max 3 tones
   obRenderToneCards();
   obClearErr('obStep2Err');
 }
 function obUpdateToneCount() {
   const el = document.getElementById('obToneCount');
-  if(el) el.textContent = obSelectedTones.length + ' of 2–4 selected';
+  if(el) el.textContent = obSelectedTones.length + ' of 2–3 selected';
 }
 
 // Community / theme tags
@@ -26314,7 +27701,7 @@ function bvAcceptSuggestion(msgIdx) {
       bvSaveMessages();
       return;
     }
-    settings.tones = _t;
+    settings.tones = _t.slice(0, 3);   // v693: max 3 tones
   } else if (s.field === 'communities') {
     settings.communities = String(s.value == null ? '' : s.value).split(',').map(t => t.trim()).filter(Boolean);
   } else if (s.field === 'coachNotes') {

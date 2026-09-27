@@ -214,10 +214,15 @@ function contextFromBrandRow(b) {
 // How many brand fields actually carry content. The client sends the same count for its
 // LOCAL settings (`bcFields`); a gross mismatch means the DB row is stale or wrong, and the
 // caller re-sends the full context rather than quietly writing against a half-empty brain.
+// v693 — the brand-memory keys are NOT brand fields. The client's `bcFields` counts its local
+// settings and knows nothing about memory, so counting stories/beliefs here would let a brand with
+// a thin (stale) row but a full story bank look healthy and skip the 424 re-send it needs.
+const MEMORY_KEYS = new Set(['beliefs', 'stories', 'speechSamples', 'memoryUnavailable']);
+
 function populatedFieldCount(bc) {
   let n = 0;
   for (const k of Object.keys(bc || {})) {
-    if (k === 'engine' || k === 'dayRotation') continue;
+    if (k === 'engine' || k === 'dayRotation' || MEMORY_KEYS.has(k)) continue;
     const val = bc[k];
     if (Array.isArray(val)) { if (val.length) n++; }
     else if (val && String(val).trim()) n++;
@@ -234,6 +239,98 @@ function rowToIdea(r) {
 
 function ideasPath(brandId, q) {
   return '/ideas?brand_id=eq.' + encodeURIComponent(brandId) + '&' + q;
+}
+
+// ── v693 — BRAND MEMORY (content-v2, contract C-BC) ──────────────────────────────────────────────
+// The founder's own stories, the beliefs they picked, and samples of how they actually talk
+// (sql/brand-memory.sql, written by api/brand-memory.js). Every writer that hydrates here gets:
+//   bc.beliefs        string[]                 newest first, ≤20, de-duplicated
+//   bc.stories        [{id, text, tags[]}]     newest first, ≤30, text ≤600
+//   bc.speechSamples  string[]                 newest first, ≤10, each ≤800
+//   bc.memoryUnavailable  true when the read failed, timed out, or the table does not exist yet
+//
+// MEMORY IS OPTIONAL; THE BRAND IS NOT. A failed memory read must never fail the load, never
+// turn into 'db_error', and never pretend to be an empty memory: the arrays come back empty AND
+// memoryUnavailable says why, so a writer can tell "no stories yet" from "could not read them".
+// THREE small queries, one per kind, in parallel with the other reads, all bounded together by
+// MEMORY_READ_MS on top of store.js's own inactivity timeout — a stalled memory table costs a few
+// seconds at most, not the request. Per kind, because one shared "newest N rows" window lets a
+// burst of new beliefs push every story out of it. All-or-nothing: if any of the three cannot be
+// read, memory is reported unavailable rather than half-present.
+const MEMORY_CAPS = { beliefs: 20, stories: 30, speechSamples: 10 };
+const MEMORY_TEXT = { belief: 140, story: 600, speech: 800 };
+const MEMORY_READ_MS = 3000;
+// Rows fetched per kind: beliefs with slack for de-duplication, the others exactly their cap.
+const MEMORY_QUERY = { belief: 40, story: 30, speech: 10 };
+
+// ownerId (optional): the brand owner's speech samples come first, then everyone else's — each
+// group newest first — so a member's takes can never crowd the owner's voice out of the 10.
+function memoryFromRows(rows, ownerId) {
+  const beliefs = [], stories = [], speechSamples = [];
+  const seenBelief = new Set(), seenSpeech = new Set();
+  let list = (Array.isArray(rows) ? rows : []).filter(r => r && typeof r.text === 'string' && MEMORY_TEXT[r.kind]);
+  // Newest first, whatever order the rows arrived in (the query asks for it; this makes it true).
+  if (list.every(r => r.created_at)) list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  if (ownerId) {
+    const ownerSpeech = r => r.kind === 'speech' && r.created_by === ownerId;
+    list = list.filter(ownerSpeech).concat(list.filter(r => !ownerSpeech(r)));
+  }
+  for (const r of list) {
+    if (r.kind === 'belief') {
+      const t = r.text.replace(/\s+/g, ' ').trim().slice(0, MEMORY_TEXT.belief);
+      const k = t.toLowerCase();
+      if (!t || seenBelief.has(k) || beliefs.length >= MEMORY_CAPS.beliefs) continue;
+      seenBelief.add(k); beliefs.push(t);
+    } else if (r.kind === 'story') {
+      const t = r.text.trim().slice(0, MEMORY_TEXT.story);
+      if (!t || stories.length >= MEMORY_CAPS.stories) continue;
+      const tags = (Array.isArray(r.tags) ? r.tags : []).filter(x => typeof x === 'string' && x.trim()).slice(0, 5);
+      stories.push({ id: r.id, text: t, tags });
+    } else {
+      const t = r.text.trim().slice(0, MEMORY_TEXT.speech);
+      // The owner's query and the everyone query overlap; one sample is one sample.
+      if (!t || speechSamples.length >= MEMORY_CAPS.speechSamples || (r.id && seenSpeech.has(r.id))) continue;
+      if (r.id) seenSpeech.add(r.id);
+      speechSamples.push(t);
+    }
+  }
+  return { beliefs, stories, speechSamples };
+}
+
+// Never rejects. Resolves to the three arrays plus memoryUnavailable.
+// `owner` (optional): the owner's user id, or a promise of it (the brands read already in flight).
+// The owner's newest speech is then fetched by a fourth small query, so the owner's samples are
+// present even when members have added many newer ones.
+async function loadMemory(brandId, owner) {
+  const unavailable = () => ({ beliefs: [], stories: [], speechSamples: [], memoryUnavailable: true });
+  let timer = null;
+  try {
+    const one = (kind, extra) => Promise.resolve().then(() => store.rest('GET', '/brand_memory?brand_id=eq.' +
+      encodeURIComponent(brandId) + '&kind=eq.' + kind + (extra || '') +
+      '&select=id,kind,text,tags,created_at,created_by&order=created_at.desc&limit=' + MEMORY_QUERY[kind]));
+    let ownerId = null;
+    const ownerSpeech = Promise.resolve(owner).then(o => {
+      ownerId = o ? String(o) : null;
+      return ownerId ? one('speech', '&created_by=eq.' + encodeURIComponent(ownerId)) : { status: 200, data: [] };
+    }, () => ({ status: 200, data: [] }));   // no owner known: plain newest-first, as before
+    // store.rest RESOLVES on every status; a PostgREST error (PGRST205 missing table, 500, …) is a
+    // plain object in `data`. Only a 2xx ARRAY is an answer — and all three must be answers.
+    const good = r => !!r && r.status >= 200 && r.status < 300 && Array.isArray(r.data);
+    const read = Promise.all(Object.keys(MEMORY_QUERY).map(k => one(k)).concat([ownerSpeech]))
+      .then(rs => (rs.every(good) ? { status: 200, data: [].concat(...rs.map(r => r.data)) } : null));
+    read.catch(() => {});   // a rejection after the timer won is already answered below
+    const timedOut = new Promise(resolve => {
+      timer = setTimeout(() => resolve(null), MEMORY_READ_MS);
+      if (timer && timer.unref) timer.unref();
+    });
+    const r = await Promise.race([read, timedOut]);
+    if (!r || !(r.status >= 200 && r.status < 300) || !Array.isArray(r.data)) return unavailable();
+    return Object.assign(memoryFromRows(r.data, ownerId), { memoryUnavailable: false });
+  } catch (e) {
+    return unavailable();
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function getRows(path) {
@@ -356,16 +453,21 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
         '&order=created_at.desc&limit=8')
     : null;
 
-  let brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows;
+  let brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory;
+  // v693 — user_id rides along so memory can put the OWNER's speech samples first; it is not a
+  // brand field and contextFromBrandRow never reads it.
+  const brandP = store.rest('GET', '/brands?id=eq.' + encodeURIComponent(brandId) + '&select=' + BRAND_ROW_COLUMNS + ',user_id');
+  brandP.catch(() => {});   // answered by the Promise.all below
   try {
-    [brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows] = await Promise.all([
-      store.rest('GET', '/brands?id=eq.' + encodeURIComponent(brandId) + '&select=' + BRAND_ROW_COLUMNS),
+    [brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory] = await Promise.all([
+      brandP,
       getRows(sameQ),
       otherQ ? getRows(otherQ) : Promise.resolve([]),
       editedQ ? getRows(editedQ) : Promise.resolve([]),
       getRows(ideasPath(brandId, APPROVED + '&select=title&order=created_at.desc&limit=8')),
       getRows(ideasPath(brandId, 'status=eq.dismissed&select=title&order=created_at.desc&limit=6')),
       getRows(ideasPath(brandId, 'select=title&order=created_at.desc&limit=40')),
+      loadMemory(brandId, brandP.then(b => (b && Array.isArray(b.data) && b.data[0] && b.data[0].user_id) || null)),   // v693 — never rejects
     ]);
   } catch (e) {
     return { ok: false, reason: 'db_error' };
@@ -417,6 +519,13 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
   // its localStorage-only `tv_recent`; these are the ~40 titles it used to re-upload.
   const avoidTitles = (avoidRows || []).slice().reverse().map(r => String(r.title || '').trim()).filter(Boolean);
 
+  // v693 — brand memory (see loadMemory). Assigned last so it can never shadow a brand field.
+  const mem = memory || { beliefs: [], stories: [], speechSamples: [], memoryUnavailable: true };
+  bc.beliefs = mem.beliefs;
+  bc.stories = mem.stories;
+  bc.speechSamples = mem.speechSamples;
+  bc.memoryUnavailable = mem.memoryUnavailable;
+
   return { ok: true, bc, avoidTitles, fields: populatedFieldCount(bc) };
 }
 
@@ -429,5 +538,10 @@ module.exports = {
   exampleFromIdea,
   populatedFieldCount,
   dayCommunitiesFrom,
+  memoryFromRows,
+  loadMemory,
+  MEMORY_CAPS,
+  MEMORY_READ_MS,
+  MEMORY_QUERY,
   BRAND_ROW_COLUMNS,
 };

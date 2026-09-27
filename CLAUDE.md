@@ -2,6 +2,54 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-27 — v693. CONTENT-V2: THE APP NOW WRITES LIKE A GOOD CLAUDE CHAT (8 owner-approved changes + "remove the restraints").
+
+WHY: the owner got better content from one plain Claude chat than the app ever made. Diagnosis (DB + code):
+topics were search questions, every field was 3 clipped sentences, clipping rules + "a number beats an
+adjective" made the model INVENT figures ("$200", "$15,000"), Mila had 9 tones and ad-copy USPs, and Grok ran
+at effort low with 5 ideas per call. Ledgers + manifests: `.unlazy/content-v2/` (git-ignored). Mutations killed:
+W 215 · U 169 · T 89 · M 75 · G 35 · driver 1. Two independent attackers + a re-attack; all findings fixed.
+
+**THE NEW FLOW (api/_write.js, api/angles.js 0.5 credit, api/write.js 1 credit).** Opinion first: source →
+5–8 beliefs (runAngles) → the user picks one → draft in plain words → spoken pass (imitates the brand's own
+speech samples) → shape into the idea fields. Style guide (`styleGuide()`) + NO_INVENTION_RULE: any fact not in
+user-written material becomes a slot `[your story: <what to tell>]`, filled by a 20-second voice note that also
+lands in the story bank. Fact guard `inventedFacts()` — allowed facts only from what a person wrote or edited
+(`userFacts(bc)`; unedited AI posts, learnedSignals, hookSeed and every AI-filled field excluded — webMentions,
+categoryGripes, competitorMoves, reviewInsights, recentTrends, and socialProof/painPoints because crawl-brand
+appends AI text to them unmarked, so a real proof number typed there becomes a slot until that is marked). It also
+slots medical/authority/retail claims about US (clinically proven, doctor-recommended, #1 brand, stocked at Costco)
+unless the material says so; ordinary advice ("Doctors recommend less salt", "rule number one") passes. The guard
+is a phrase backstop behind the prompt rule, not a proof. A v2 Remix = 1.5 credits.
+**BRAND MEMORY (sql/brand-memory.sql, api/brand-memory.js).** Beliefs (≤50), stories (≤200), speech samples
+(20 per person, owner's preferred in the prompt). SERVICE ROLE ONLY: no client RLS policies; length CHECK; a
+BEFORE INSERT trigger `brand_memory_enforce_cap` (advisory lock per brand+kind, then count) → 409 memory_full.
+Gateway/no-reply on a write → 503 memory_write_unknown (never a false "not saved"). 50 s request deadline
+(maxDuration 60). Delete: owner or creator only. Tones capped at 3 in the v2 brand block; USPs
+are background facts, not lines to say.
+**RESTRAINTS REMOVED.** Effort: angles/draft/spoken default medium (env WRITER_EFFORT_ANGLES/_DRAFT/_SPOKEN/
+_BATCH/_EDIT), with `withThinkingHeadroom` and one retry a level lower when ≥40 s remain. Bigger max_tokens;
+lengths are guidance, not clips; "Max ~8 words" gone. Budgets: generate-ideas + sharpen FN_BUDGET_MS 280000,
+write 270000 (vercel 300), angles 90000 (vercel 120). WRITER_PROVIDER=grok|claude — Claude failures (except a
+content refusal) fall back once to Grok (`WRITER FALLBACK claude→grok`); an empty Claude 200 is not retried
+(it is billed). Cost fuse is provider-aware: ceilings COMPUTED from `CLAUDE_CALL_PLAN` (every worst-case call incl.
+retries, Opus 5.5 $4/$20 per MTok) — angles €0.46, write €1.10, ideas €1.36, sharpen €0.48; v2 Remix ≈ €1.56
+worst case on Claude (typical is far lower) vs about €0.02 on Grok.
+**IDEAS (generate-ideas, viral-*, sharpen).** Belief-first; returns `belief` + `{ideas, warnings}`.
+**CONTENT LAB (api/blind-test.js, api/content-metrics.js, sql/blind-tests.sql, sql/ideas-gen-flow.sql).**
+Owner-only (env CONTENT_LAB_USER_IDS, set 2026-09-27 to the owner's uid). Same inputs → old remix vs v2 on
+Grok-high vs v2 on Claude, random labels, blind until an explicit Reveal (`revealed_at`). `generation` column:
+reset (one SQL step `blind_test_reset`, compare-and-swap on cells, refuses while a cell runs), pick
+(`blind_test_set_pick`, generation-guarded) and reveal (`blind_test_reveal`) can't cross each other. Picks only
+once every cell of that input finished; `skip` action finishes a stuck cell as error; the app runs cells in random
+order and shows only "N of M finished". Create refuses the Claude arm with 400 arm_unavailable when no key. Metrics: `ideas.gen_flow` + `content_metrics()` → filmed rate per flow.
+**SQL applied live 2026-09-27 (final versions, hash-checked):** brand-memory.sql, blind-tests.sql,
+ideas-gen-flow.sql, v658 lockdown (now also blind_test_reset/_reveal, brand_memory_enforce_cap). Verified: all six
+functions service_role-only, 0 brand_memory policies, trigger present, length constraint validated.
+**LEFT (owner):** x.ai credits were empty since 2026-09-25 — nothing on Grok generates until topped up.
+WRITER_PROVIDER is unset = Grok; set it to `claude` to write with Claude (ANTHROPIC_API_KEY is present).
+Manual check still owed: run a real v2 Remix + one Content Lab test on the live app and judge the writing.
+
 ## ▶▶ 2026-09-26 — v692. THE FIVE OWNER ITEMS FROM THE v690 REVIEW, FIXED (3 fix agents + 2 attackers, up to 5 rounds).
 
 Ledgers + mutation manifests: `.unlazy/owner-fixes-v692/` (git-ignored). 68 (money) + 27 (meme) + 59 (app)

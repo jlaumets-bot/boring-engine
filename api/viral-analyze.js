@@ -1,8 +1,12 @@
 // Viral Analyze — reverse-engineer WHY a currently-viral video works, then adapt it
 // to the brand. The human supplies the live trend (transcript/description); the AI
 // extracts the durable mechanics and produces brand-true ideas + a trend takeaway.
-const { callLLM, aiUnavailable } = require('./_llm');
-const { fullBrandBlock, extractJson, coerceShape, VIRAL_ANALYZE_SHAPE } = require('./_brain');
+const { aiUnavailable } = require('./_llm');
+const { writerCallResilient, writerProvider, writerEffort, startBrandAttribution } = require('./_write');   // v693 r3 — provider switch + thinking depth with headroom (see api/_write.js)
+const { fullBrandBlock, extractJson, coerceShape, VIRAL_ANALYZE_SHAPE, NO_INVENTION_RULE } = require('./_brain');
+// v693 — content-v2 rules (.unlazy/content-v2/PLAN.md changes 1, 3, 5): the brand renders through
+// fullBrandBlock(bc,{v2:true}); the adapted ideas carry the no-invention slot rule, argue a BELIEF
+// (in the existing `angle` field, so the output shape is unchanged) and lose the "max 8 words" hook.
 
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
@@ -50,11 +54,13 @@ module.exports = async function handler(req, res) {
       bc = Object.assign({}, _hyd.bc, bc);
     }
 
-    const brandInfo = fullBrandBlock(bc);
+    const brandInfo = fullBrandBlock(bc, { v2: true });
 
     const system = `You are a world-class short-form video strategist who reverse-engineers why a video worked. Any branded ideas you suggest must be punchy and gripping AND land in the brand's own voice (a dry brand stays dry, but dry and compelling — never flat). You do NOT have the video file — you are given (a) the spoken transcript and (b) human-written notes on the VISUALS and SOUND (on-screen text, how it's shot, editing/pacing, music). Use BOTH signals together. (Some visual notes may be an AUTO HOOK-FRAME READ — an automated vision read of the video's actual cover frame; treat it as ground truth for what the hook frame shows.) Virality is the combination of words + visuals + sound, so weight the visual/sound notes heavily when present.
 
-Be concrete and honest. Identify the real reason it spread across all available signals: the hook (verbal AND visual), the structure/pacing, the pattern interrupt, the on-screen text, the sound/music role, the emotional or social trigger, the retention device. If a signal is missing (e.g. no visual notes given), say what you'd need to be sure rather than guessing. Do NOT invent metrics. Adapt to the brand WITHOUT copying the original's topic — translate the MECHANIC to the brand's world. Never invent brand product facts, prices, or ingredients. Never use the brand's avoid-words. Stay in the brand voice.`;
+Be concrete and honest. Identify the real reason it spread across all available signals: the hook (verbal AND visual), the structure/pacing, the pattern interrupt, the on-screen text, the sound/music role, the emotional or social trigger, the retention device. If a signal is missing (e.g. no visual notes given), say what you'd need to be sure rather than guessing. Do NOT invent metrics. Adapt to the brand WITHOUT copying the original's topic — translate the MECHANIC to the brand's world. Never use the brand's avoid-words. Stay in the brand voice.
+
+${NO_INVENTION_RULE} The viral video's own numbers, names and results belong to its creator: never present them as the brand's.`;
 
     const user = `VIRAL VIDEO (${platform || 'unknown platform'}${sourceUrl ? ', ' + sourceUrl : ''}):
 
@@ -73,8 +79,8 @@ ${brandInfo || '(no extra brand context — do NOT invent product specifics; kee
 
 TASK:
 1) Explain why this video works (the transferable mechanics).
-2) Adapt those mechanics into 3 brand-true content ideas (translate the mechanic, NOT the topic).
-3) Give ONE short "trend takeaway" — a single transferable rule the brand should remember and reuse (max 18 words).
+2) Adapt those mechanics into 3 brand-true content ideas (translate the mechanic, NOT the topic). Each idea argues a belief the brand's audience does not share yet, about the viewer's problem rather than the brand's features; its "angle" states that belief in one plain sentence.
+3) Give ONE short "trend takeaway" — a single transferable rule the brand should remember and reuse (one plain sentence).
 
 Respond with EXACTLY this JSON and nothing else:
 {
@@ -83,18 +89,21 @@ Respond with EXACTLY this JSON and nothing else:
   "structure": "the structure/pacing in one line",
   "trigger": "the core emotional/social trigger in one line",
   "ideas": [
-    {"format": "video|statement|carousel|micro|static", "title": "short title", "hook": "hook, max 8 words", "angle": "one line on the angle", "script": "2-4 line starter script or slide list"}
+    {"format": "video|statement|carousel|micro|static", "title": "short title", "hook": "the first line, as a person would say it", "angle": "the belief this idea argues, one plain sentence", "script": "2-4 line starter script or slide list, in natural sentences; a [your story: <what to tell>] slot where proof belongs"}
   ],
-  "takeaway": "one transferable rule, max 18 words"
+  "takeaway": "one transferable rule, one plain sentence"
 }
 Exactly 3 items in "ideas".`;
 
-    const result = await callLLM({ deadlineMs: 280000,
+    // v693 r3 — START the brand-attribution check now and await it after the AI work, so it never
+    // adds Supabase time after the model answers (a killed function delivers nothing).
+    const _brandAttr = startBrandAttribution(_g.user.id, bc.brandId || bc.brand_id || null);
+    const result = await writerCallResilient({ deadlineMs: 280000, provider: writerProvider(), effort: writerEffort('edit'),
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       model: 'grok',
-      max_tokens: 2200,
+      max_tokens: 4000,
       engine: (bc.engine || 'grok'),
-    });
+    }, { providerFromEnv: true, label: 'viral-analyze' });
     if (!result) return res.status(502).json({ error: 'No response from the AI — try again' });
 
     const _raw = extractJson(result);
@@ -107,15 +116,8 @@ Exactly 3 items in "ideas".`;
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /
     // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
-    let logBrandId = null;
-    const _bid = bc.brandId || bc.brand_id || null;
-    if (_bid) {
-      try {
-        const store = require('./_publish/store');
-        if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
-      } catch (e) {}
-    }
-    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: bc.engine || 'grok' });
+    const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: require('./_write').usageModel(bc) });
     return res.status(200).json({ analysis });
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"

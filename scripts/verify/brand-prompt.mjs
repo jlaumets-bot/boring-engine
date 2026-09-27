@@ -296,17 +296,26 @@ const main = async () => {
   hasNot(P, 'Mix tones across posts', 'FIX2 "mix tones across posts" instruction removed');
   hasNot(P, 'Pick a different tone for each idea', 'FIX2 per-idea tone rotation removed');
 
-  // FIX 3 — approved winners sit AFTER the generic writing rules, near the output instruction
+  // FIX 3 — approved winners sit AFTER the generic writing rules, near the output instruction.
+  // v693 — content-v2 replaced generate-ideas' rulebook (HOOK RULES, CLARITY & FLOW, RHYTHM & DRAMA
+  // TELLS) with the short style guide + the short spoken rule, so THOSE are the general writing rules
+  // the winners must follow. The landmarks are derived from the functions that produce them, so the
+  // copy can change freely; the old rulebooks must be gone (the v2 rebuild's whole point).
   const iWinners = P.indexOf('ZKEY_WINNER_ONE');
-  const iClarity = P.indexOf('CLARITY & FLOW');
-  const iRhythm = P.indexOf('RHYTHM & DRAMA TELLS');
-  const iHooks = P.indexOf('HOOK RULES');
+  const _sg = require(join(API, '_write.js')).styleGuide();
+  const _sp = require(join(API, '_brain.js')).spokenV2();
+  const iStyle = P.indexOf(_sg);
+  const iSpoken = P.indexOf(_sp);
+  const iFormats = P.indexOf('CONTENT FORMATS');
   const iOutput = P.lastIndexOf('Return ONLY the JSON array');
-  ok(iClarity > -1 && iRhythm > -1 && iHooks > -1 && iOutput > -1, 'FIX3 prompt landmarks found',
-    `clarity=${iClarity} rhythm=${iRhythm} hooks=${iHooks} output=${iOutput}`);
-  ok(iWinners > iClarity, 'FIX3 winners appear AFTER the clarity rules', `winners=${iWinners} clarity=${iClarity}`);
-  ok(iWinners > iRhythm, 'FIX3 winners appear AFTER the anti-slop rhythm rules', `winners=${iWinners} rhythm=${iRhythm}`);
-  ok(iWinners > iHooks, 'FIX3 winners appear AFTER the hook rules', `winners=${iWinners} hooks=${iHooks}`);
+  ok(iStyle > -1 && iSpoken > -1 && iFormats > -1 && iOutput > -1, 'FIX3 prompt landmarks found',
+    `style=${iStyle} spoken=${iSpoken} formats=${iFormats} output=${iOutput}`);
+  ok(iWinners > iStyle, 'FIX3 winners appear AFTER the style guide', `winners=${iWinners} style=${iStyle}`);
+  ok(iWinners > iSpoken, 'FIX3 winners appear AFTER the spoken-script rule', `winners=${iWinners} spoken=${iSpoken}`);
+  ok(iWinners > iFormats, 'FIX3 winners appear AFTER the format rules', `winners=${iWinners} formats=${iFormats}`);
+  for (const gone of ['HOOK RULES', 'CLARITY & FLOW', 'RHYTHM & DRAMA TELLS', 'Max 8 words', 'a number beats an adjective']) {
+    hasNot(P, gone, 'FIX3 v693 the old rulebook is gone from generate-ideas: ' + gone);
+  }
   ok(iWinners < iOutput, 'FIX3 winners appear BEFORE the final output instruction', `winners=${iWinners} output=${iOutput}`);
   ok(iOutput - iWinners < 4000, 'FIX3 winners sit close to the output instruction',
     `${iOutput - iWinners} chars away (recency window)`);

@@ -4,11 +4,22 @@
 // Pass 2: rewrite the draft fixing every point — SAME format, structure, and core idea, just tighter.
 // Generic: takes a `content` object of {field: text}, returns the SAME keys sharpened, so it works for
 // posts (hook/script/caption/...), blog (answer), and memes (statement) without per-format branching.
-const { callLLM, aiUnavailable } = require('./_llm');
-const { fullBrandBlock, clarityFlow, antiSlopRhythm, rulePrecedence, spokenShape } = require('./_brain');
+const { aiUnavailable } = require('./_llm');
+const { fullBrandBlock, rulePrecedence, spokenV2 } = require('./_brain');
+// v693 — content-v2 writing rules (.unlazy/content-v2/PLAN.md change 3): the short style guide
+// (whose one hard rule is NO_INVENTION_RULE) replaces clarityFlow's compression rules, the
+// spokenShape override that existed only to counter them, and the rhythm list; the brand renders
+// through fullBrandBlock(bc,{v2:true}). A draft's [your story: ...] slots survive the edit untouched.
+const { styleGuide, writerCallResilient, writerProvider, writerEffort, startBrandAttribution } = require('./_write');   // v693 r3 — provider switch + depth with headroom
 
 // Formats whose `script` is read aloud to camera. Same set as _brain.SPOKEN_EX_FORMATS.
 const SPOKEN_FORMATS = ['video', 'micro', 'qna'];
+// v693 r4 — ONE BUDGET from handler start. The critique thinks at 'medium' (WRITER_EFFORT_EDIT) and,
+// if it fails or times out, is retried once a level lower — but only with the rewrite's own share
+// (REWRITE_RESERVE_MS) still untouched. The rewrite takes what is left, capped at 140 s. With the
+// usage write (2 x 8 s) this fits the 300 s maxDuration.
+const FN_BUDGET_MS = 280000;
+const REWRITE_RESERVE_MS = 140000;
 
 // Tolerant JSON extraction (same idea as _brain.extractJson but object-only for our keyed output).
 function parseObj(text) {
@@ -21,6 +32,8 @@ function parseObj(text) {
 }
 
 module.exports = async function handler(req, res) {
+  const _shT0 = Date.now();
+  const _shLeft = () => FN_BUDGET_MS - (Date.now() - _shT0);
   const allowed = ['https://contentshrimp.com', 'https://bettercontent.app', 'https://boring-engine.vercel.app'];
   const origin = req.headers.origin || '';
   res.setHeader('Access-Control-Allow-Origin', allowed.includes(origin) ? origin : allowed[0]);
@@ -71,7 +84,7 @@ module.exports = async function handler(req, res) {
 
     const kindLabel = (kind || 'post').toString();
     const fmt = (format || '').toString();
-    const brandInfo = fullBrandBlock(bc);
+    const brandInfo = fullBrandBlock(bc, { v2: true });   // v693 — v2: tones <= 3, USPs as background facts, held beliefs
     const serialized = keys.map(k => `${k}: ${String(content[k]).slice(0, 2000)}`).join('\n');
 
     // Sharpen must NOT shorten. Especially for spoken/video scripts, the natural talk-track and story
@@ -109,6 +122,9 @@ module.exports = async function handler(req, res) {
     // 240s default — passing this file for the wrong reason. Keep them inline.
 
     // ── PASS 1 · critique ─────────────────────────────────────────────
+    // v693 r3 — START the brand-attribution check now and await it after the AI work, so it never
+    // adds Supabase time after the model answers (a killed function delivers nothing).
+    const _brandAttr = startBrandAttribution(_g.user.id, bc.brandId || bc.brand_id || null);
     let critique = '';
     try {
       const cSys = `You are the brand's sharpest, most honest line editor. You DIAGNOSE, you do not rewrite. Judge only what makes content STOP the scroll and land: the hook, the voice, and how vividly it conveys a real, relatable SITUATION the reader feels. A great post usually sells nothing — so NEVER treat "doesn't mention the product / what the brand does / its features" as a weakness; pushing the writer to add that makes it WORSE. Be specific, no praise, no filler.`;
@@ -118,11 +134,11 @@ ${brandInfo || '(limited brand context — judge for a strong, non-generic, on-v
 THE DRAFT (${kindLabel}${fmt ? ', format: ' + fmt : ''}) — ${styleNote}
 ${serialized}
 
-List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voice drift from the approved winners, generic/interchangeable lines, a fuzzy or buried situation. Quote the exact weak phrase. Do NOT suggest: adding product features / USPs / sales angles / "what we do" lines; opening on the product or "someone using our X" (the hook must open on the reader's own situation); or shortening/cutting length — a spoken script SHOULD breathe and tell a story, so its length and natural build-up are FEATURES, not filler. If the draft already lands a relatable situation in the brand's voice, reply with exactly: STRONG`;
-      critique = await callLLM({ deadlineMs: 140000, timeoutMs: 60000,
+List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voice drift from the approved winners, generic/interchangeable lines, a fuzzy or buried situation. Quote the exact weak phrase. Do NOT suggest: adding product features / USPs / sales angles / "what we do" lines; adding numbers, names, customer cases or results the brand context does not contain; filling a [your story: ...] slot; opening on the product or "someone using our X" (the hook must open on the reader's own situation); or shortening/cutting length — a spoken script SHOULD breathe and tell a story, so its length and natural build-up are FEATURES, not filler. If the draft already lands a relatable situation in the brand's voice, reply with exactly: STRONG`;
+      critique = await writerCallResilient({ deadlineMs: Math.max(1000, Math.min(100000, _shLeft() - REWRITE_RESERVE_MS)), timeoutMs: 60000, provider: writerProvider(), effort: writerEffort('edit'),
         messages: [{ role: 'system', content: cSys }, { role: 'user', content: cUser }],
-        model: 'grok', max_tokens: 700, engine: (bc.engine || 'grok'),
-      }) || '';
+        model: 'grok', max_tokens: 1500, engine: (bc.engine || 'grok'),
+      }, { providerFromEnv: true, label: 'sharpen-critique', effortRetry: true, room: () => _shLeft() - REWRITE_RESERVE_MS }) || '';
     } catch (e) {
       if (aiUnavailable(e)) throw e;   // v690 — a refused account is not a critique failure: stop here, do not spend a second refused call
       // Degrading to a single-pass rewrite is the CORRECT fallback — but it used to happen in
@@ -137,42 +153,30 @@ List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voi
       // Only attribute the usage row to a brand the caller actually owns — this id comes from the
       // client and went into usage_events unverified. Same pattern as pull-trends.js /
       // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
-      let logBrandId = null;
-      const _bid = bc.brandId || bc.brand_id || null;
-      if (_bid) {
-        try {
-          const store = require('./_publish/store');
-          if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
-        } catch (e) {}
-      }
-      await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: bc.engine || 'grok' });
+      const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
+      await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: require('./_write').usageModel(bc) });
       return res.status(200).json({ sharpened: content, unchanged: true });
     }
 
-    // ── THE COMPRESSION COUNTERWEIGHT (v640's bug, one file over) ─────
-    // rSys below includes clarityFlow(), which carries the compression rules ("One idea per
-    // sentence", "Cut every word that isn't working"). spokenShape() exists specifically as their
-    // counterweight and says so in its own text — and it was not here. So Sharpen, which edits the
-    // video/micro/qna scripts people read to camera, received the cutting half of the pair without
-    // the override half, exactly the coverage hole that produced verbless fragment scripts in
-    // generate-ideas. The same-length rule below bounds word COUNT, not sentence COMPLETENESS: a
-    // draft can hold its length and still come back as noun phrases with full stops.
+    // ── THE SPOKEN RULE (v640's bug, one file over) ──────────────────
+    // v693 — clarityFlow's compression rules are gone from this prompt (the short style guide
+    // replaced them), so the spokenShape override that existed only to counter them went too. What
+    // a spoken draft still needs is the SHAPE of speech: complete sentences, joining words, the point
+    // said twice. The same-length rule below bounds word COUNT, not sentence COMPLETENESS: a draft
+    // can hold its length and still come back as noun phrases with full stops.
     //
-    // It is applied ONLY to a spoken script, and scoped so it cannot fight the two deliberate rules
-    // this handler already has: the hard same-length cap, and the ban on adding product facts.
-    // spokenShape's "restore the sentences and connectors you compressed out" is about SHAPE, so it
-    // is explicitly told here that it does not license lengthening.
+    // Applied ONLY to a spoken script, and scoped so it cannot fight the two deliberate rules this
+    // handler already has: the hard same-length cap, and the ban on adding product facts.
     const isSpokenDraft = kind !== 'blog' && SPOKEN_FORMATS.indexOf(fmt) >= 0;
     const spokenCounterweight = isSpokenDraft
-      ? `\nTHE DRAFT IS A SPOKEN SCRIPT — the compression rules directly above must NOT be applied to it. This governs the SHAPE of the sentences only: it does not license making the script longer or shorter, and it never means adding facts, product lines or new material. The same-length rule still holds.\n\n${spokenShape()}\n`
+      ? `\nTHE DRAFT IS A SPOKEN SCRIPT. The rule below governs the SHAPE of its sentences only: it does not license making the script longer or shorter, and it never means adding facts, product lines or new material. The same-length rule still holds.\n\n${spokenV2()}\n`
       : '';
 
     // ── PASS 2 · rewrite against the critique ─────────────────────────
-    const rSys = `You are the brand's line EDITOR. You make the SMALLEST changes that fix the critique — polishing, NOT re-pitching and NOT rewriting from scratch. PRESERVE the original's angle, situation, context, relatability AND LENGTH — keep the wording that already works, only fix the weak parts. CRITICAL: Sharpen does NOT mean shorten — the result must be the SAME length as the original (within ~10%); if you cut it to half or a third you have FAILED. For spoken/video scripts keep the natural, conversational, story-like talk-track and every beat; do NOT compress it into terse statements. The hook/opening must open on the READER's situation, feeling or a moment of tension — it must NOT reference the brand, its product, or "someone using our X". NEVER make it salesy, NEVER add product features / USPs / "what our brand does" lines that were not already there, NEVER turn a relatable moment into a product pitch. Same format and structure. No invented facts, no avoid-words, no AI-tell openers. Never introduce AI-tell words (delve, leverage, enhance, foster, showcase, elevate, seamless, robust, synergy, vibrant, tapestry, testament), em dashes, or rule-of-three lists.
+    const rSys = `You are the brand's line EDITOR. You make the SMALLEST changes that fix the critique — polishing, NOT re-pitching and NOT rewriting from scratch. PRESERVE the original's angle, situation, context, relatability AND LENGTH — keep the wording that already works, only fix the weak parts. CRITICAL: Sharpen does NOT mean shorten — the result must be the SAME length as the original (within ~10%); if you cut it to half or a third you have FAILED. For spoken/video scripts keep the natural, conversational, story-like talk-track and every beat; do NOT compress it into terse statements. The hook/opening must open on the READER's situation, feeling or a moment of tension — it must NOT reference the brand, its product, or "someone using our X". NEVER make it salesy, NEVER add product features / USPs / "what our brand does" lines that were not already there, NEVER turn a relatable moment into a product pitch. Same format and structure. No avoid-words, no AI-tell openers. Keep every [your story: ...] slot exactly as written: never fill one with a story you made up, never remove one. Never introduce AI-tell words (delve, leverage, enhance, foster, showcase, elevate, seamless, robust, synergy, vibrant, tapestry, testament) or em dashes.
 
-${clarityFlow()}
-${spokenCounterweight}
-${antiSlopRhythm()}`;
+${styleGuide()}
+${spokenCounterweight}`;
     const rUser = `VOICE & ACCURACY REFERENCE — use ONLY to match the voice and to avoid false claims. This is background; do NOT pull these facts in to sell or explain the product:
 ${brandInfo || '(limited context — keep it on-voice, invent nothing)'}
 
@@ -186,10 +190,10 @@ Rewrite with the LIGHTEST touch that fixes those points, keeping the original's 
 
 ${rulePrecedence()}`;
 
-    const out = await callLLM({ deadlineMs: 140000, timeoutMs: 120000,
+    const out = await writerCallResilient({ deadlineMs: Math.max(1000, Math.min(140000, _shLeft())), timeoutMs: 120000, provider: writerProvider(), effort: writerEffort('edit'),
       messages: [{ role: 'system', content: rSys }, { role: 'user', content: rUser }],
-      model: 'grok', max_tokens: 2500, engine: (bc.engine || 'grok'),
-    });
+      model: 'grok', max_tokens: 4000, engine: (bc.engine || 'grok'),
+    }, { providerFromEnv: true, label: 'sharpen-rewrite' });
     if (!out) return res.status(502).json({ error: 'No response from the AI — try again' });
     const parsed = parseObj(out);
     if (!parsed || typeof parsed !== 'object') return res.status(502).json({ error: 'Could not parse the rewrite — try again' });
@@ -215,30 +219,16 @@ ${rulePrecedence()}`;
     // presented as work done. The flag is the difference between a light-touch editor that is
     // honest about doing nothing and one that pretends.
     if (!moved) {
-      let logBrandId0 = null;
-      const _bid0 = bc.brandId || bc.brand_id || null;
-      if (_bid0) {
-        try {
-          const store = require('./_publish/store');
-          if (await store.userCanAccessBrand(_g.user.id, _bid0)) logBrandId0 = _bid0;
-        } catch (e) {}
-      }
-      await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId0, action: 'sharpen', model: bc.engine || 'grok' });
+      const logBrandId0 = await _brandAttr;   // v693 r3 — the access check was started before the AI work
+      await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId0, action: 'sharpen', model: require('./_write').usageModel(bc) });
       return res.status(200).json({ sharpened, unchanged: true });
     }
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /
     // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
-    let logBrandId = null;
-    const _bid = bc.brandId || bc.brand_id || null;
-    if (_bid) {
-      try {
-        const store = require('./_publish/store');
-        if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
-      } catch (e) {}
-    }
-    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: bc.engine || 'grok' });
+    const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: require('./_write').usageModel(bc) });
     return res.status(200).json({ sharpened });
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"

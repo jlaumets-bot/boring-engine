@@ -112,7 +112,16 @@ begin
       -- scripts/verify/invite-link-owner-delete.mjs fails until every function in sql/** is named
       -- in this file. RE-RUN THIS FILE after running sql/v659-brand-limit.sql.
       ('brand_limit_for',       array[]::text[]),
-      ('brands_enforce_limit',  array[]::text[])
+      ('brands_enforce_limit',  array[]::text[]),
+      -- v693: added by sql/blind-tests.sql and sql/ideas-gen-flow.sql — service-role-only helpers
+      -- (the owner's Content Lab and the filmed-rate count). RE-RUN THIS FILE after those two.
+      ('blind_test_set_cell',   array[]::text[]),
+      ('blind_test_set_pick',   array[]::text[]),
+      ('blind_test_reset',      array[]::text[]),
+      ('blind_test_reveal',     array[]::text[]),
+      ('content_metrics',       array[]::text[]),
+      -- v693: sql/brand-memory.sql — the cap trigger function (fires as a trigger only).
+      ('brand_memory_enforce_cap', array[]::text[])
     ) as t(fn, keep)
   loop
     -- Overloads are handled by looping over pg_proc rather than typing a signature:
@@ -183,7 +192,13 @@ with expected(fn, allowed) as (
          ('pin_brand_id',         array['service_role']),
          ('brands_pin_ownership', array['service_role']),
          ('brand_limit_for',      array['service_role']),
-         ('brands_enforce_limit', array['service_role'])
+         ('brands_enforce_limit', array['service_role']),
+         ('blind_test_set_cell',  array['service_role']),
+         ('blind_test_set_pick',  array['service_role']),
+         ('blind_test_reset',     array['service_role']),
+         ('blind_test_reveal',    array['service_role']),
+         ('content_metrics',      array['service_role']),
+         ('brand_memory_enforce_cap', array['service_role'])
 ),
 fns as (
   select p.oid, p.proname, p.proowner,
@@ -218,6 +233,6 @@ join fns f on f.proname = e.fn
 where not has_function_privilege(r.oid, f.oid, 'EXECUTE')
   -- pin_brand_id / brands_pin_ownership fire as triggers, not as calls; service_role is
   -- granted them for symmetry only, so do not fail if that grant is absent.
-  and not (e.fn in ('pin_brand_id','brands_pin_ownership','brand_limit_for','brands_enforce_limit'))
+  and not (e.fn in ('pin_brand_id','brands_pin_ownership','brand_limit_for','brands_enforce_limit','brand_memory_enforce_cap'))
 
 order by 1, 2;

@@ -1,4 +1,5 @@
-const { callLLM, aiUnavailable } = require('./_llm');
+const { aiUnavailable } = require('./_llm');
+const { writerCallResilient, writerProvider, startBrandAttribution } = require('./_write');   // v693 r3 — the WRITER_PROVIDER switch
 const { fullBrandBlock, extractJson } = require('./_brain');
 
 // Generates brand-specific "example chip" suggestions for the Settings fields,
@@ -70,14 +71,17 @@ JSON only.`;
     // meant nothing until the deadline started capping attempts; now it would cut every call at
     // 10s. 20s + the brand check and the usage write after it (8s Supabase each) fit maxDuration 45
     // (v690 r2: it was 30, which only fit if both Supabase calls were instant).
-    const raw = await callLLM({ deadlineMs: 20000, timeoutMs: 20000,
+    // v693 r3 — START the brand-attribution check now and await it after the AI work, so it never
+    // adds Supabase time after the model answers (a killed function delivers nothing).
+    const _brandAttr = startBrandAttribution(_g.user.id, bc.brandId || bc.brand_id || null);
+    const raw = await writerCallResilient({ deadlineMs: 20000, timeoutMs: 20000, provider: writerProvider(),
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.8,
       max_tokens: 900
-    });
+    }, { providerFromEnv: true, label: 'settings-examples' });
 
     const parsed = extractJson(raw) || {};
     // Keep only known keys, arrays of clean short strings, capped at 6.
@@ -101,15 +105,8 @@ JSON only.`;
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /
     // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
-    let logBrandId = null;
-    const _bid = bc.brandId || bc.brand_id || null;
-    if (_bid) {
-      try {
-        const store = require('./_publish/store');
-        if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
-      } catch (e) {}
-    }
-    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'settingsexamples', model: 'grok' });
+    const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'settingsexamples', model: require('./_write').usageModel(bc) });
     return res.status(200).json({ examples });
 
   } catch (err) {

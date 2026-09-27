@@ -1,5 +1,6 @@
 const https = require('https');
-const { callLLM, aiUnavailable } = require('./_llm');
+const { aiUnavailable } = require('./_llm');
+const { writerCallResilient, writerProvider, startBrandAttribution } = require('./_write');   // v693 r3 — the WRITER_PROVIDER switch
 const { fullBrandBlock } = require('./_brain');
 
 // v681: how much of a field the model is shown. Anything past this is not read, and the
@@ -45,7 +46,7 @@ module.exports = async function handler(req, res) {
       exampleContent: 'Describe what makes each example work — tone, structure, hook style, CTA approach. This helps the AI understand the pattern, not just the example.',
       ctaStyle: 'Expand with 3-5 variations of CTAs that match this brand\'s voice. Include soft CTAs, hard CTAs, and story-based CTAs.',
       originStory: 'Flesh out the narrative arc: the problem noticed, the moment of decision, early struggles, and the mission now. Keep it authentic, not polished.',
-      socialProof: 'Add specific numbers, timeframes, and sources where possible. Turn vague claims into verifiable stats. Format for easy copy-paste into content.',
+      socialProof: 'Organise the proof the user already gave: keep every real number, timeframe and source exactly as written, and NEVER invent a number, name, result or source. Where a vague claim needs a real figure, mark it as [add the real number] so the user can fill it in. Format for easy copy-paste into content.',
       visualStyle: 'Get specific: color hex codes or names, lighting style, camera angles, backgrounds, props, mood references. Think "brief for a photographer."',
       tones: 'Sharpen each tone word into something a writer can act on. Stay strictly inside the existing tones — never add tones that contradict them, never soften them. If the brand is dry, the description must be dry. Fewer, sharper words beat more words.',
       coachNotes: 'Tighten each rule to its shortest actionable form, one per line. Remove duplicates. Never add new rules the user did not state.'
@@ -84,7 +85,10 @@ Return ONLY the improved content for this field.`;
        back as ordinary text, because finish_reason was only read on the empty-200 path. A
        field cut off mid-sentence then overwrote the user's own writing, with no diff and no
        undo. Refuse a truncated rewrite, and say when the field was too long to read whole. */
-    const _res = await callLLM({ deadlineMs: 280000,
+    // v693 r3 — START the brand-attribution check now and await it after the AI work, so it never
+    // adds Supabase time after the model answers (a killed function delivers nothing).
+    const _brandAttr = startBrandAttribution(_g.user.id, bc.brandId || bc.brand_id || null);
+    const _res = await writerCallResilient({ deadlineMs: 280000, provider: writerProvider(),
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -93,7 +97,7 @@ Return ONLY the improved content for this field.`;
       temperature: 0.7,
       max_tokens: 1600,
       wantMeta: true,
-    });
+    }, { providerFromEnv: true, label: 'expand-field' });
     if (_res && _res.truncated) {
       console.error('expand-field: the rewrite hit the token ceiling and is cut off — refusing to ' +
         'replace the field. field=' + fieldName + ' inputChars=' + currentValue.trim().length);
@@ -108,15 +112,8 @@ Return ONLY the improved content for this field.`;
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /
     // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
-    let logBrandId = null;
-    const _bid = bc.brandId || bc.brand_id || null;
-    if (_bid) {
-      try {
-        const store = require('./_publish/store');
-        if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
-      } catch (e) {}
-    }
-    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'expand', model: bc.engine || 'grok' });
+    const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'expand', model: require('./_write').usageModel(bc) });
     // v681: tell the client when part of the field was never read, so it can warn rather than
     // silently replacing text the model never saw.
     return res.status(200).json({ expanded, clipped: _wasClipped, readChars: FIELD_IN_CAP });

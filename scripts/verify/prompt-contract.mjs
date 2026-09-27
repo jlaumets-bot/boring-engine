@@ -307,13 +307,18 @@ check(!/Weekly content calendar/i.test(noCalendar.prompt),
   'a bare label teaches the model the brand has nothing to say there');
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 5 · EVERY SPOKEN-SCRIPT SURFACE CARRIES THE COMPRESSION COUNTERWEIGHT
-//     The rule pair is clarityFlow (compress) + spokenShape (override for speech). Receiving one
-//     without the other is what produced verbless fragment scripts. The expected text is derived
-//     from the functions themselves, so both may be rewritten freely.
+// 5 · EVERY SPOKEN-SCRIPT SURFACE GETS THE SPOKEN RULE, AND NO COMPRESSION RULE WITHOUT ITS OVERRIDE
+//     Pre-v693 the pair was clarityFlow (compress) + spokenShape (override for speech); receiving one
+//     without the other produced verbless fragment scripts. v693 (content-v2) moved these three
+//     surfaces onto the short style guide + the short spoken rule (spokenV2) and dropped clarityFlow,
+//     so the INTENT is unchanged — a spoken script is told how speech is shaped, and is never handed
+//     compression pressure without the override — but the texts are the v2 ones. Every expected text
+//     is derived from the function that produces it, so the copy may be rewritten freely.
 // ═════════════════════════════════════════════════════════════════════════════
 const SHAPE = brain.spokenShape();
-const compressed = s => /cut every word|one idea per sentence/i.test(s);
+const SPOKEN = brain.spokenV2();
+const STYLE = require(join(API, '_write.js')).styleGuide();
+const compressed = s => s.includes(brain.clarityFlow()) || /cut every word/i.test(s);
 
 const spokenSurfaces = [
   ['generate-ideas.js', probe.prompt],
@@ -321,18 +326,20 @@ const spokenSurfaces = [
   ['viral-rewrite.js', vr.prompt],
 ];
 for (const [label, text] of spokenSurfaces) {
-  check(compressed(text), `${label}: carries the compression rules (the half that was never missing)`,
-    'if this went red the pairing changed — re-derive what the counterweight is counterweighting');
-  check(text.includes(SHAPE),
-    `${label}: carries the spoken-script counterweight alongside them`,
+  check(text.includes(STYLE), `${label}: carries the short style guide (with its no-invention rule)`,
+    'the v2 writing rules did not reach this surface');
+  check(text.includes(SPOKEN), `${label}: carries the spoken-script rule`,
+    'a spoken script with no rule about how speech is shaped comes back as caption fragments');
+  check(!compressed(text) || text.includes(SHAPE),
+    `${label}: never carries the compression rules without their spoken override`,
     'compression pressure with no override strips every sentence to a noun phrase — unreadable into a lens');
 }
 
 // Scoped, not sprayed: a carousel is not read to camera, and sharpen has a deliberate
 // same-length rule the spoken block must not be allowed to argue with on a written format.
 const carousel = await run('sharpen.js', SHARPEN_BODY({}, 'carousel'), [CRITIQUE, SHARP_REPLY]);
-check(!carousel.prompt.includes(SHAPE),
-  'sharpen applies the spoken counterweight only to a spoken format',
+check(!carousel.prompt.includes(SPOKEN) && carousel.prompt.includes(STYLE),
+  'sharpen applies the spoken rule only to a spoken format (and the style guide to both)',
   'proves the check above discriminates rather than passing on everything');
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -346,8 +353,19 @@ check(/outrank/i.test(PRECEDENCE) && PRECEDENCE.includes(brain.BRAND_HEADING),
   'the precedence block still asserts precedence and names the brand section',
   'gutting it would make every check below pass for the wrong reason');
 
+// v693 — generate-ideas no longer carries rulePrecedence: its brand block is rendered v2, whose
+// heading states the precedence itself (the brand outranks the style guide on VOICE and never
+// permits inventing a fact). Asserted from the renderer's own output, not copied wording.
+{
+  const v2Head = brain.fullBrandBlock({ brandName: 'x' }, { v2: true }).split('\n')[0];
+  check(/outrank/i.test(v2Head) && v2Head.startsWith(brain.BRAND_HEADING) && /invent/i.test(v2Head),
+    'the v2 brand heading still asserts the brand\'s precedence on voice and forbids inventing facts');
+  check(probe.prompt.includes(v2Head), 'generate-ideas: states the brand\'s precedence through the v2 brand heading',
+    'with rulePrecedence gone, this heading is the only precedence statement generate-ideas has');
+  check(!probe.prompt.includes(PRECEDENCE), 'generate-ideas: no longer carries the legacy precedence block',
+    'two precedence statements that word the brand\'s authority differently is the contradiction this gate exists for');
+}
 const precedenceUsers = [
-  ['generate-ideas.js', IDEAS_BODY, ['[]'], CRON],
   ['sharpen.js', SHARPEN_BODY({}), [CRITIQUE, SHARP_REPLY], {}],
   ['viral-rewrite.js', { idea: { title: 't', hook: 'h', script: 's', format: 'video' }, angle: { angle: 'a', hook: 'h' }, brandContext: BC }, [REWRITE_REPLY], {}],
   ['viral-twist.js', { idea: { title: 't', hook: 'h', script: 's', format: 'video' }, brandContext: BC }, [JSON.stringify({ angles: [{ angle: 'a', hook: 'h', why: 'w' }], spicy: { hook: 'h', why: 'w' }, tip: 't' })], {}],

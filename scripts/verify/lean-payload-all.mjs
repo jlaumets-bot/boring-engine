@@ -437,6 +437,10 @@ let DB_DOWN = false;
 function dbRows(pathStr) {
   if (DB_DOWN) return { status: 500, data: null };
   if (pathStr.startsWith('/brands')) return { status: 200, data: [BRAND_ROW] };
+  // v693 — brand_memory is its own table (sql/brand-memory.sql). Without this branch it fell through
+  // to the IDEAS branch below and answered with idea rows; the loader drops rows with no memory
+  // kind, but a stub should not rely on that. Memory itself is proven by rv2-memory-1.mjs.
+  if (pathStr.startsWith('/brand_memory')) return { status: 200, data: [] };
   const q = pathStr.slice(pathStr.indexOf('?') + 1);
   const p = new URLSearchParams(q);
   // v665: edit_signals is its own table. It used to fall through to the IDEAS branch below, which

@@ -129,6 +129,19 @@ function approvedWinnersBlock(bc) {
 // knowledgeable friend", "mix tones to keep the feed dynamic") must NEVER live in this block:
 // they sit under a "BRAND VOICE" heading pretending to be the brand's own rule, and they actively
 // contradict brands whose real voice is deadpan, technical or blunt.
+// v693 — content-v2 tone cap. Nine tones is not a voice, it is every voice: the diagnosis found a
+// 9-tone profile averaging into nothing. The new pipeline uses at most MAX_V2_TONES; a profile with
+// MORE uses none (picking 3 of 9 for the user would be us inventing their voice) and says so via
+// overLimit, which /api/angles and /api/write return as warnings:['tones_over_limit'].
+const MAX_V2_TONES = 3;
+function v2Tones(bc) {
+  const raw = bc && bc.tones;
+  const list = (Array.isArray(raw) ? raw : (typeof raw === 'string' ? raw.split(',') : []))
+    .map(t => String(t == null ? '' : t).trim()).filter(Boolean);
+  if (list.length > MAX_V2_TONES) return { tones: [], overLimit: true, count: list.length };
+  return { tones: list, overLimit: false, count: list.length };
+}
+
 function fullBrandBlock(bc, opts) {
   bc = bc || {};
   opts = opts || {};
@@ -217,16 +230,32 @@ function fullBrandBlock(bc, opts) {
   add('Tagline', bc.tagline, '', 24);
   add('Website', bc.website, '', 22);
   add('Target audience', bc.targetAudience, 'Write as if speaking directly to this person — their language, their situation, their pain.', 80);
+  // v693 — opts.v2 (the content-v2 pipeline, api/_write.js) renders the SAME fields through the
+  // SAME renderer, with three differences: at most 3 tones (else none), USPs / product / proof as
+  // BACKGROUND facts instead of a pitch list, and the brand's held beliefs. Legacy callers pass no
+  // v2 flag and get byte-identical output.
+  const v2 = opts.v2 === true;
+  const BG_NOTE = 'Background only: mention at most one of these in a script, and only if it directly answers the viewer\'s problem. Never as a pitch.';
+  if (v2) {
+    const vt = v2Tones(bc);
+    add('Voice / tones', vt.tones, 'Hold this voice in HOW things are said. Never describe the brand with these words.', 99);
+    block('Background facts about the brand (true; never invent more)', bc.usps, BG_NOTE, 70);
+    block('Background facts: product details', bc.productDetails, BG_NOTE, 68);
+    const beliefs = (Array.isArray(bc.beliefs) ? bc.beliefs : []).map(b => clean(b && typeof b === 'object' ? b.text : b).slice(0, 300)).filter(Boolean).slice(0, 20);
+    if (beliefs.length) S.push({ keep: 85, text: 'Beliefs this brand already holds (stay consistent with them; do not repeat them verbatim):\n- ' + beliefs.join('\n- ') });
+  } else {
   add('Voice / tones (NEVER contradict)', bc.tones, 'Hold this voice consistently in everything you write. It is this brand\'s voice, not a style to rotate through — never soften it toward a neutral, friendly explainer.', 99);
   block('What the brand is / key facts (use ONLY these — never invent products, prices, or ingredients)', bc.usps, '', 70);
   block('Product details (name the real product, never "our product")', bc.productDetails, '', 68);
+  }
   add('Content themes / communities', bc.communities, 'Every piece of content should connect to one of these.', 55);
   block('Weekly content calendar (each day has a LEAD theme)', dayMapText(bc), 'Use the day\'s theme as the LEAD angle, but do NOT make every post that day the same topic — roughly 60% on the lead theme and 40% from other days\' themes or evergreen brand angles, so one day still feels varied.', 54);
   add('Competitors', bc.competitors, '', 44);
   block('Recent competitor moves (what rivals just did — products, pricing, campaigns, posts)', bc.competitorMoves, 'Differentiate from, counter, or ride the same wave better than them.', 46);
   add('CTA style (how this brand asks for action)', bc.ctaStyle, '', 60);
   block('Origin story', bc.originStory, '', 30);
-  block('Social proof (real numbers / press only — weave in for credibility)', bc.socialProof, '', 40);
+  if (v2) block('Background facts: real proof the brand has (never add to it)', bc.socialProof, BG_NOTE, 40);
+  else block('Social proof (real numbers / press only — weave in for credibility)', bc.socialProof, '', 40);
   add('Active channels (where the brand shows up — tailor content to these)', bc.channels, '', 28);
   add('Visual style', bc.visualStyle, '', 26);
   block('Customer pain points (great for hooks — they stop the scroll)', bc.painPoints, '', 66);
@@ -324,6 +353,8 @@ function fullBrandBlock(bc, opts) {
   // for brand voice, rigged so the less-maintained one wins. The brand brain is the only
   // source now. Do NOT reintroduce this.
   if (!body) return '';
+  // v693 — in v2 the brand still wins on VOICE, but it can never license inventing a fact.
+  if (v2) return BRAND_HEADING + ' — everything this brand has taught the app. It outranks the style guide on voice; it never permits inventing facts.\n' + body;
   return BRAND_HEADING + ' — everything this brand has taught the app. This section outranks the general writing rules.\n' + body;
 }
 
@@ -460,12 +491,56 @@ function rulePrecedence() {
   return `RULE PRECEDENCE (this outranks every writing rule in this conversation, wherever it appears — including any rule stated after it): the section headed "${BRAND_HEADING}" wins any conflict with the general writing rules, wherever that section appears (it may be in an earlier message, not above this line). Those rules exist to strip generic AI slop, NOT to overwrite a voice this brand has actually earned. Where the brand's voice memory, its approved winners, or its stated style contradict a general rule — it genuinely writes in threes, uses a dash, opens a certain way, repeats a signature phrase — follow the ${BRAND_HEADING} and ignore the rule. Apply a general rule only where the brand profile says nothing.`;
 }
 
+// v693 — THE ONE HARD RULE of the content-v2 rebuild, shared by writingCraft (legacy surfaces) and
+// api/_write.js (the new pipeline) so the two can never word it differently. The slot marker format
+// `[your story: <what to tell>]` is a contract: the app finds slots by it.
+const NO_INVENTION_RULE = 'NEVER INVENT FACTS: no made-up numbers, prices, names, customer cases, results or quotes. Use only facts the BRAND PROFILE or the material you were given actually contains. Where a line needs proof you do not have, write a slot exactly like [your story: <what to tell>] for the creator to fill in. Where there is no room for a slot (a one-line meme, a hook), cut the claim instead.';
+
+// v693 — THE SHORT SPOKEN RULE for the single-call writers moved onto content-v2 (generate-ideas,
+// viral-rewrite, sharpen). spokenShape() stays for writingCraft's legacy callers: it exists to
+// OVERRIDE clarityFlow's compression rules, and the v2 surfaces no longer carry those rules, so
+// they get the mechanics without the override. Same mechanics as api/_write.js's spoken pass:
+// complete sentences, joining words, the point said twice, varied construction, a length floor.
+function spokenV2() {
+  return `SPOKEN SCRIPTS (video, micro, Q&A: said out loud to camera):
+- Natural speech, not three clipped commands. Complete sentences with a subject and a verb; fragments belong in on-screen text, never in the script.
+- Keep the joining words people use when they talk: so, and, but, because, which means. They carry one thought into the next.
+- The listener cannot re-read, so say the point that matters twice, in different words.
+- Vary the length and the construction: a couple of longer lines, then a short one that lands. Never a column of same-shape sentences.
+- A format's word range is a floor, not a target to undercut: a script under its minimum is notes, not a script.`;
+}
+
+// v693 — the brand's story bank (bc.stories, C-BC) for writers that make ONE call and so cannot use
+// api/_write.js's draft step. fullBrandBlock(v2) deliberately does not render stories (the v2
+// pipeline renders them in its own draft prompt), so a single-call writer appends this. A story may
+// fill a proof slot; anything that does not fit stays a [your story: ...] slot. Bounded: at most
+// 10 stories, 600 chars each, `cap` chars together (default 3000).
+function storiesBlock(bc, cap) {
+  const list = Array.isArray(bc && bc.stories) ? bc.stories : [];
+  const max = Number(cap) > 0 ? Number(cap) : 3000;
+  const lines = [];
+  let used = 0;
+  for (const s of list) {
+    const t = String(s && typeof s === 'object' ? (s.text == null ? '' : s.text) : (s == null ? '' : s))
+      .replace(/\s+/g, ' ').trim().slice(0, 600);
+    if (!t) continue;
+    if (used + t.length > max) break;
+    lines.push('- ' + t); used += t.length;
+    if (lines.length >= 10) break;
+  }
+  if (!lines.length) return '';
+  return 'REAL STORIES THIS PERSON HAS TOLD (true, in their own words). Where a line needs proof, use one of these ONLY if it genuinely fits: retell it briefly, never paste it and never embellish it. Where none fits, write a [your story: <what to tell>] slot instead:\n' + lines.join('\n');
+}
+
 function writingCraft(opts) {
   opts = opts || {};
   const P = [];
+  // v693 — "Max ~8 words / fragments beat full sentences" was removed: it clipped hooks into
+  // telegraph fragments nobody says out loud. "a number beats an adjective" was removed below: it
+  // pushed the model to INVENT numbers ("$200 / $15,000"). NO_INVENTION_RULE replaces both.
   if (opts.hooks !== false) {
     P.push(`HOOK (the first line decides if anyone sees the rest — it matters MORE than the body):
-- Max ~8 words. Shorter wins. Fragments beat full sentences. The first word creates tension, curiosity, or a pattern interrupt.
+- Say it the way a person would open a conversation: short, plain and specific. The first words create tension, curiosity, or a pattern interrupt.
 - It must work as SILENT on-screen text (read before any audio).
 - Vary the pattern — never reuse one formula: contrarian ("Everything you know about X is wrong"), before/after ("I stopped X. Here's what happened"), specificity ("3 parts. One price. Zero fluff"), challenge ("Your doctor won't tell you this"), confession ("I was wrong about X for years"), problem-callout ("If your X has more Y than Z, we need to talk"), result ("30 days of X. Never going back"), tribal ("This separates serious X from the rest").
 - Test: would a real person actually STOP SCROLLING for this? If not, rewrite it.`);
@@ -479,7 +554,8 @@ function writingCraft(opts) {
 - Never use these words: delve, enhance, foster, garner, showcase, vibrant, tapestry, testament, pivotal, crucial, landscape (abstract), interplay, intricate, leverage, elevate, cornerstone, multifaceted, nuanced, paradigm, robust, seamless, synergy, holistic.
 - No "serves as" / "stands as" / "represents" — just say "is". No false ranges ("from X to Y, from A to B").
 - No "In today's..." / "In the world of..." openers. No filler ("It's important to note", "At the end of the day", "When it comes to"). No generic closers ("The future looks bright").
-- Vary sentence length (monotone rhythm is an AI tell); straight quotes not curly; a number beats an adjective.`);
+- Vary sentence length (monotone rhythm is an AI tell); straight quotes not curly.`);
+  P.push(NO_INVENTION_RULE);
   P.push(antiSlopRhythm());
   P.push(`VOICE: write like a specific person telling a friend something urgent at a bar — not a presenter opening a webinar. Concrete over abstract, short sentences, no corporate filler, no hype adjectives, no emoji unless the brand itself uses them. A dry brand stays dry — dry AND compelling.`);
   P.push(clarityFlow());
@@ -507,9 +583,9 @@ function writingCraft(opts) {
 
 // Per-format length + shape spec, so nothing over- or under-writes. Shared by every generator.
 const FORMAT_SPEC = {
-  video: 'Vertical reel/TikTok, ~30-60s. script = 90-150 SPOKEN words in full, varied-length sentences (90 is a floor). shots = 4-8 concrete phone shots. screen = 3-6 short overlays.',
-  micro: '10-15s single-fact video. script = 30-60 spoken words: one surprising fact + why it matters.',
-  qna: 'A real audience question + filmed answer under 30s. script = the answer; first sentence answers directly (no wind-up), MAX ~60 words.',
+  video: 'Vertical reel/TikTok, ~30-60s. script = usually 90-180 SPOKEN words in full, varied-length sentences (90 is a floor, not a target). shots = 4-8 concrete phone shots. screen = 3-6 short overlays.',
+  micro: '10-15s single-fact video. script = usually 30-70 spoken words: one surprising fact + why it matters.',
+  qna: 'A real audience question + filmed answer under 30s. script = the answer; first sentence answers directly (no wind-up), usually 40-80 words.',
   statement: 'Bold text graphic. boldText = the full statement (2-5 short sentences, setup + payoff, stands alone). script = 2-3 delivery-tip lines only.',
   carousel: 'Instagram carousel. boldText = numbered slide texts; slide 1 forces the swipe. caption = the post caption.',
   static: 'Single image post. caption = 1-3 sentences in brand voice — this IS the writing.',
@@ -665,4 +741,4 @@ const VIRAL_ANALYZE_SHAPE = {
   takeaway: 'str',
 };
 
-module.exports = { antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };
+module.exports = { NO_INVENTION_RULE, v2Tones, spokenV2, storiesBlock, antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };

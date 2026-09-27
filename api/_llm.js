@@ -1,5 +1,6 @@
 const https = require('https');
 const { StringDecoder } = require('string_decoder');
+const { AsyncLocalStorage } = require('async_hooks');
 
 /**
  * Shared LLM helper — PURE GROK (xAI). NO fallback of any kind. If xAI is down / out of
@@ -13,6 +14,12 @@ const { StringDecoder } = require('string_decoder');
  *
  * Env: XAI_API_KEY (required). (GROQ_API_KEY is still set, but used ONLY for Whisper
  * dictation in the transcribe endpoints — NOT here.)
+ *
+ * v693 — ONE OPT-IN EXCEPTION: `provider: 'claude'` on a single callLLM call sends THAT call to the
+ * Anthropic Messages API (env ANTHROPIC_API_KEY, optional ANTHROPIC_MODEL). Nothing defaults to it:
+ * a call without `provider` is Grok exactly as before, and there is still no fallback between the
+ * two. It exists for the owner's blind test (api/blind-test.js), which compares writers on the
+ * same inputs. `effort: 'low'|'medium'|'high'` sets the reasoning depth for one call only.
  */
 
 function httpsPost(url, headers, body, timeoutMs) {
@@ -76,7 +83,7 @@ function httpsPost(url, headers, body, timeoutMs) {
    ("Unexpected token 'A'..."). deadlineMs makes the loop ask the honest question instead: is
    there room for another attempt to FINISH? Default 0 keeps the old behaviour for callers that
    have not been given a budget. */
-async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images = null, timeoutMs = 0, deadlineMs = 0, meta = null }) {
+async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images = null, timeoutMs = 0, deadlineMs = 0, meta = null, effortOverride = null, extraTokens = 0 }) {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) { if (meta) meta.refused = 'no-key'; return null; }
 
@@ -109,8 +116,11 @@ async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images 
   // XAI_REASONING_EFFORT=low|medium|high|xhigh.
   // NOTE: reasoning cannot be disabled, and presence_penalty/frequency_penalty/stop are REJECTED
   // by reasoning models — this file sends none of them, keep it that way.
-  const effort = process.env.XAI_REASONING_EFFORT || 'low';
-  const payload = { model, messages: outMsgs, temperature, max_tokens: Math.min(max_tokens, 32000) };
+  /* v693 — a caller may ask for a different depth for ONE call (the blind test's "Grok, effort
+     high" arm, the new writer's final pass). callLLM has already validated it to low/medium/high;
+     anything else arrives here as null and the env/default level applies, as before. */
+  const effort = effortOverride || (process.env.XAI_REASONING_EFFORT || 'low');
+  const payload = { model, messages: outMsgs, temperature, max_tokens: Math.min(max_tokens, 32000) + (extraTokens > 0 ? extraTokens : 0) };
   if (effort && effort !== 'default') payload.reasoning_effort = effort;
   const url = 'https://api.x.ai/v1/chat/completions';
   const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
@@ -220,6 +230,175 @@ async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images 
   }
   // v690 r3 — every attempt-4 branch above returns (and logs its attempt number), so the old
   // "gave up after 4 attempts" line here could never run. Removed; this return is only a backstop.
+  return null;
+}
+
+// ── Claude (Anthropic Messages API) — OPT-IN PER CALL, never a fallback. ──
+/* v693 — the blind test (api/blind-test.js) runs the new writer on Claude next to Grok, so this
+   one provider is callable when — and only when — a caller passes provider:'claude'.
+   Everything below was checked against Anthropic's own docs on 2026-09-26:
+     • endpoint + headers (x-api-key, anthropic-version, content-type):
+         https://platform.claude.com/docs/en/api/messages
+     • anthropic-version 2023-06-01 is the latest version:
+         https://platform.claude.com/docs/en/api/versioning
+     • default model id claude-opus-5-5 (a current model, listed in the models table):
+         https://docs.claude.com/en/docs/about-claude/models/overview
+         (redirects to https://platform.claude.com/docs/en/models/overview)
+     • Opus 5.5 REJECTS any non-default temperature/top_p/top_k with a 400, and depth is set with
+       output_config.effort (low/medium/high/xhigh/max) — so temperature is never sent here:
+         https://platform.claude.com/docs/en/models/opus-5-5/migration-guide
+     • max_tokens is a hard limit on thinking PLUS text ("At high and above, set a large
+       max_tokens"), so the caller's text budget gets thinking headroom on top:
+         https://platform.claude.com/docs/en/build-with-claude/effort
+     • errors: 401 authentication, 402 billing, 403 permission, 400 also when a spend limit is
+       reached, 429 rate limit OR a spend cap (error.details.error_code
+       'enforced_spend_limit_reached', which never clears on retry), 500 api_error, 529 overloaded:
+         https://platform.claude.com/docs/en/api/errors
+         https://platform.claude.com/docs/en/api/rate-limits
+   The key is read from the environment and sent only in the x-api-key header. It is never
+   logged, and neither is a request body. */
+const CLAUDE_URL = 'https://api.anthropic.com/v1/messages';
+const CLAUDE_API_VERSION = '2023-06-01';
+const CLAUDE_DEFAULT_MODEL = 'claude-opus-5-5';
+const CLAUDE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+// Thinking headroom added to the caller's max_tokens, by effort. Unset effort = the model default.
+// v693 r2 — shared with Grok INSIDE the blind test only (see withThinkingHeadroom below).
+const THINKING_HEADROOM = { low: 2000, medium: 6000, high: 12000 };
+
+// Our callers speak OpenAI chat format. Anthropic takes the system prompt as its own field and
+// only user/assistant turns in `messages`; consecutive turns of one role are merged into one.
+function toClaudeMessages(messages, images) {
+  const sys = [];
+  const turns = [];
+  const textOf = (c) => {
+    if (typeof c === 'string') return c;
+    if (Array.isArray(c)) return c.map(p => (p && typeof p.text === 'string') ? p.text : '').filter(Boolean).join('\n');
+    return c == null ? '' : String(c);
+  };
+  for (const m of (Array.isArray(messages) ? messages : [])) {
+    if (!m) continue;
+    const text = textOf(m.content);
+    if (m.role === 'system') { if (text) sys.push(text); continue; }
+    const role = m.role === 'assistant' ? 'assistant' : 'user';
+    const last = turns[turns.length - 1];
+    if (last && last.role === role) last.text += '\n\n' + text;
+    else turns.push({ role, text });
+  }
+  // A call made of a system prompt only (no user turn) is valid for Grok but not here: the Messages
+  // API needs at least one turn, so the instructions become the user turn.
+  if (!turns.length) return { system: '', messages: [{ role: 'user', content: sys.join('\n\n') || '.' }] };
+  const out = turns.map(t => ({ role: t.role, content: t.text }));
+  if (Array.isArray(images) && images.length) {
+    for (let i = out.length - 1; i >= 0; i--) {
+      if (out[i].role !== 'user') continue;
+      const blocks = [];
+      for (const im of images) {
+        const mt = String((im && im.mime) || 'image/jpeg').toLowerCase();
+        if (im && im.data && CLAUDE_IMAGE_TYPES.indexOf(mt) !== -1) blocks.push({ type: 'image', source: { type: 'base64', media_type: mt, data: im.data } });
+      }
+      if (blocks.length) out[i].content = blocks.concat([{ type: 'text', text: out[i].content }]);
+      break;
+    }
+  }
+  return { system: sys.join('\n\n'), messages: out };
+}
+
+// Anthropic's error body: { type:'error', error:{ type, message, details? } }.
+function claudeRefusal(status, body) {
+  if (status === 401 || status === 402 || status === 403) return status;
+  const err = (body && body.error) || {};
+  const code = err.details && err.details.error_code;
+  if (status === 429 && code === 'enforced_spend_limit_reached') return status;   // spend cap: retrying cannot help
+  if (status === 400 && /credit balance|spend limit|billing/i.test(String(err.message || ''))) return status;
+  return null;
+}
+
+async function callClaude({ messages, max_tokens = 2000, images = null, timeoutMs = 0, deadlineMs = 0, meta = null, effort = null }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) { if (meta) meta.refused = 'no-key'; console.log('Claude not configured — no ANTHROPIC_API_KEY'); return null; }
+  const model = process.env.ANTHROPIC_MODEL || CLAUDE_DEFAULT_MODEL;
+  const mapped = toClaudeMessages(messages, images);
+  const textBudget = Math.max(1, Math.min(Number(max_tokens) || 2000, 32000));
+  const cBody = {
+    model,
+    max_tokens: Math.min(textBudget + (THINKING_HEADROOM[effort] || THINKING_HEADROOM.medium), 64000),
+    messages: mapped.messages,
+  };
+  if (mapped.system) cBody.system = mapped.system;
+  // Haiku does not take the effort parameter (docs list Opus/Sonnet/Fable/Mythos); sending it there is a 400.
+  if (effort && !/haiku/i.test(model)) cBody.output_config = { effort };
+  const headers = { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': CLAUDE_API_VERSION };
+  const bodyStr = JSON.stringify(cBody);
+
+  // Same retry contract as callXAI: up to 4 attempts, only on 429 / 5xx (incl. 529 overloaded) /
+  // a network error / an empty reply, and only while another attempt can FINISH inside deadlineMs.
+  const t0 = Date.now();
+  const backoff = a => Math.min(900 * Math.pow(2, a), 4000) + Math.floor(Math.random() * 300);
+  let lastMs = 0;
+  const room = (attempt) => {
+    const elapsed = Date.now() - t0;
+    if (deadlineMs > 0) return (elapsed + backoff(attempt) + Math.max(timeoutMs > 0 ? timeoutMs : 15000, lastMs)) < deadlineMs;
+    return elapsed < 150000;
+  };
+  const attemptMs = () => {
+    if (!(deadlineMs > 0)) return timeoutMs;
+    const left = deadlineMs - (Date.now() - t0);
+    return Math.max(1, Math.min(timeoutMs > 0 ? timeoutMs : 240000, left));
+  };
+  const sleep = (a) => new Promise(r => setTimeout(r, backoff(a)));
+  for (let attempt = 0; attempt < 4; attempt++) {
+    let resp;
+    const a0 = Date.now();
+    try { resp = await httpsPost(CLAUDE_URL, headers, bodyStr, attemptMs()); lastMs = Date.now() - a0; }
+    catch (e) {
+      lastMs = Date.now() - a0;
+      const isTimeout = /timed out/i.test(String(e && e.message));
+      if (!isTimeout && attempt < 3 && room(attempt)) { await sleep(attempt); continue; }
+      console.log('Claude FAILED after ' + (Date.now() - t0) + 'ms on attempt ' + (attempt + 1) + ' — ' +
+        (isTimeout ? 'TIMEOUT' : 'network: ' + String(e && e.message).slice(0, 90)) + ' | model=' + model);
+      return null;
+    }
+    const b = resp.body || {};
+    if (resp.status === 200) {
+      const txt = (Array.isArray(b.content) ? b.content : [])
+        .filter(c => c && c.type === 'text' && typeof c.text === 'string').map(c => c.text).join('');
+      const stop = b.stop_reason;
+      /* v693 r2 — A SAFETY REFUSAL IS NOT A REPLY. stop_reason 'refusal' can arrive with the first few
+         words already written ("Here is the scr") and was returned as a finished answer. It is the
+         model declining THIS request, not our account being refused, so it is neither retried nor
+         AI_UNAVAILABLE: callLLM throws its own MODEL_REFUSAL error. */
+      if (stop === 'refusal') {
+        console.log('Claude REFUSED this request (stop_reason=refusal, ' + txt.length + ' chars of partial text dropped) after ' + (Date.now() - t0) + 'ms; model=' + model);
+        if (meta) meta.modelRefusal = true;
+        return null;
+      }
+      if (txt.trim()) {
+        try {
+          const u = b.usage || {};
+          console.log('Claude OK ' + (Date.now() - t0) + 'ms · effort=' + (effort || 'default') +
+            ' · output_tokens=' + (u.output_tokens ?? '?') + ' · model=' + model + (attempt ? ' · attempt=' + (attempt + 1) : ''));
+        } catch (_) {}
+        const truncated = stop === 'max_tokens';
+        if (truncated) console.log('Claude reply hit max_tokens (' + cBody.max_tokens + ') — it is CUT OFF; model=' + model);
+        if (meta) meta.truncated = truncated;
+        return txt;
+      }
+      console.log('Claude EMPTY 200 after ' + (Date.now() - t0) + 'ms, attempt ' + (attempt + 1) + ' — stop_reason=' + stop + ' model=' + model);
+      /* v693 r6 (leaf-W, for the cost fuse) — an EMPTY 200 is NOT retried on Claude. Unlike a 429/5xx it
+         has already billed its thinking tokens, and the same prompt at the same budget tends to come back
+         empty again; up to 4 billed attempts made every planned Claude call cost up to 4x its price.
+         The production writers fall back to Grok on this error (api/_write.js writerCallResilient). */
+      return null;
+    }
+    const refused = claudeRefusal(resp.status, b);
+    const errType = (b.error && b.error.type) || '';
+    console.log('Claude ' + (refused ? 'REFUSED our account' : 'error') + ' (' + resp.status + (errType ? ' ' + errType : '') + ') attempt ' + (attempt + 1) +
+      ': ' + String((b.error && b.error.message) || '').slice(0, 160));
+    if (refused) { if (meta) meta.refused = refused; return null; }
+    const transient = resp.status === 429 || resp.status >= 500;
+    if (transient && attempt < 3 && room(attempt)) { await sleep(attempt); continue; }
+    return null;
+  }
   return null;
 }
 
@@ -409,20 +588,41 @@ function callGrokSearch(prompt, opts = {}) {
 }
 
 /**
- * Main entry point. Always Grok (primary) → Groq (fallback). No OpenAI, no Claude.
- * @param {Object} opts - { messages, temperature?, max_tokens?, images? }  (model/engine ignored)
+ * Main entry point. Grok, with no fallback. v693: `provider:'claude'` sends ONE call to Claude instead.
+ * @param {Object} opts - { messages, temperature?, max_tokens?, images?, provider?, effort? }  (model/engine ignored)
  * @returns {string} LLM response text
  */
 // v681: callXAI records finish_reason=length on every successful 200 — see the note there. Read
 // ONLY through callLLM's `wantMeta` option. v690: per call (meta.truncated), not a module variable.
 
+const LLM_EFFORTS = ['low', 'medium', 'high'];
+// v693 r2 — set only by withThinkingHeadroom(); read by callLLM for the call running inside it.
+const LAB_CONTEXT = new AsyncLocalStorage();
+function withThinkingHeadroom(fn) { return LAB_CONTEXT.run({ thinkingHeadroom: true }, fn); }
+function inThinkingHeadroom() { const s = LAB_CONTEXT.getStore(); return !!(s && s.thinkingHeadroom); }
+
 async function callLLM(opts = {}) {
   const { messages, temperature = 0.7, max_tokens = 2000, images = null, timeoutMs = 0, deadlineMs = 0, wantMeta = false } = opts;
+  // v693 — per-call provider and depth. Anything that is not exactly 'claude' is Grok, and an effort
+  // that is not low/medium/high is ignored, so a typo can never silently switch a caller's writer.
+  const provider = opts.provider === 'claude' ? 'claude' : 'grok';
+  const effort = LLM_EFFORTS.indexOf(opts.effort) !== -1 ? opts.effort : null;
 
-  // PURE GROK — no fallback (Jörgen's call: rather not generate than fall back to Llama).
-  // If xAI is down / out of credits, this throws and the caller shows a retry message.
+  // PURE GROK by default — no fallback (Jörgen's call: rather not generate than fall back to Llama).
+  // If the provider is down / out of credits, this throws and the caller shows a retry message.
   const meta = {};
-  const text = await callXAI({ messages, temperature, max_tokens, images, timeoutMs, deadlineMs, meta });
+  /* v693 r2 — EQUAL THINKING ROOM IN THE BLIND TEST. Claude's max_tokens covers thinking plus text
+     (Anthropic docs), so callClaude always adds THINKING_HEADROOM. Whether xAI counts reasoning tokens
+     against max_tokens is not stated in its docs; the 2026-08-27 production log above (reasoning 2533,
+     completion 0) is consistent with it. Inside withThinkingHeadroom() — the blind test only — Grok
+     gets the same headroom for its effort level, so neither arm is starved. Every other caller sends
+     exactly what it sent before. */
+  const lab = LAB_CONTEXT.getStore();
+  const xaiEffort = effort || process.env.XAI_REASONING_EFFORT || 'low';
+  const extraTokens = (lab && lab.thinkingHeadroom) ? (THINKING_HEADROOM[xaiEffort] || THINKING_HEADROOM.medium) : 0;
+  const text = provider === 'claude'
+    ? await callClaude({ messages, max_tokens, images, timeoutMs, deadlineMs, meta, effort })
+    : await callXAI({ messages, temperature, max_tokens, images, timeoutMs, deadlineMs, meta, effortOverride: effort, extraTokens });
   const LAST_TRUNCATED = meta.truncated === true;   // this call's own flag (v690)
   // v681: `wantMeta` is opt-in, so every existing caller still gets a plain string.
   if (text) return wantMeta ? { text: text, truncated: LAST_TRUNCATED } : text;
@@ -431,6 +631,11 @@ async function callLLM(opts = {}) {
     const e = new Error(aiUnavailableMessage(meta.refused));
     e.code = 'AI_UNAVAILABLE';
     e.refused = meta.refused;
+    throw e;
+  }
+  if (meta.modelRefusal) {
+    const e = new Error('The AI declined to write this one. Try rewording the input.');
+    e.code = 'MODEL_REFUSAL';
     throw e;
   }
   throw new Error('The AI is having a moment and could not respond. Please try again in a few seconds.');
@@ -450,4 +655,7 @@ function aiUnavailable(err) {
   return { status: 503, body: { error: aiUnavailableMessage(err.refused), code: 'AI_UNAVAILABLE' } };
 }
 
-module.exports = { callLLM, callGrokSearch, aiUnavailable, AI_UNAVAILABLE_MESSAGE, AI_NOT_CONFIGURED_MESSAGE };
+// v693 — claudeConfigured lets a caller say "this arm is unavailable" before spending anything.
+function claudeConfigured() { return !!process.env.ANTHROPIC_API_KEY; }
+
+module.exports = { callLLM, callGrokSearch, aiUnavailable, claudeConfigured, withThinkingHeadroom, inThinkingHeadroom, THINKING_HEADROOM, AI_UNAVAILABLE_MESSAGE, AI_NOT_CONFIGURED_MESSAGE, CLAUDE_DEFAULT_MODEL };

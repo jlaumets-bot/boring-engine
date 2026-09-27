@@ -91,7 +91,13 @@ const ACTION_CREDITS = {
   // under-counted it. 2 x "one ordinary LLM call" (0.5) = 1, which is what the default happened
   // to be; the point is that it is now REGISTERED, so re-weighting it is a one-line change and
   // the gate can see it.
-  sharpen: 1
+  sharpen: 1,
+  // v693 — content-v2 Remix (PLAN.md C-API-1/2), priced by this table's own rule. angles = ONE
+  // ordinary LLM call (0.5). write = a draft call + a spoken rewrite + a small JSON shape call —
+  // two full calls and a small one, the same weight as sharpen's two calls (1). A whole v2 Remix
+  // (angles once, then write one belief) is therefore 1.5 credits against the old remix's 1.
+  angles: 0.5,
+  write: 1
 };
 function creditsFor(action) {
   // A reservation row carries "hold:<action>:<token>"; it must price as the action it holds,
@@ -155,11 +161,53 @@ const ACTION_COST = {
   // Two Grok calls, the second with a 2500-token budget — ~2.5x a single `ideas` call.
   sharpen: 0.015,
   // One 5-token, temperature-0 Grok reply — the smallest real model call in the app.
-  healthping: 0.002
+  healthping: 0.002,
+  // v693 — angles is one call (same as ideas); write is three sequential calls, the third small.
+  angles: 0.006,
+  write: 0.018
 };
-function costFor(action) {
+/* v693 r4/r5 — THE FUSE KNOWS WHEN A WRITER RAN ON CLAUDE. The Grok numbers above are ~€0.01 per
+   call; with WRITER_PROVIDER=claude the same action costs far more, and a flat table would let a
+   trial account run up a Claude bill the fuse never sees.
+   PRICE SOURCE (fetched 2026-09-26): platform.claude.com/docs/en/about-claude/pricing — Claude Opus
+   5.5 (this app's CLAUDE_DEFAULT_MODEL, claude-opus-5-5) is $4 / MTok input and $20 / MTok output.
+   r5: the ceiling is COMPUTED, not typed: api/_write.js CLAUDE_CALL_PLAN lists every call an action can
+   make in the worst case (re-asks, retries, the guardrail regeneration), each with its own max_tokens;
+   each call is priced at its estimated input plus its FULL max_tokens plus the thinking headroom for
+   the effort the writer would use right now (WRITER_EFFORT_*; a lower-effort retry one level down;
+   no effort = callClaude's 'medium' headroom). USD is taken 1:1 as EUR (overstates in EUR: the safe
+   side for a fuse). */
+const CLAUDE_PRICE_PER_TOKEN = { input: 4 / 1e6, output: 20 / 1e6 };
+const CLAUDE_PRICED_MODEL = 'claude-opus-5-5';
+function claudeCeiling(action) {
+  let W;
+  try { W = require('./_write'); } catch (e) { return null; }
+  const plan = W && W.CLAUDE_CALL_PLAN && W.CLAUDE_CALL_PLAN[action];
+  if (!Array.isArray(plan) || !plan.length) return null;
+  const H = W.CLAUDE_THINKING_HEADROOM || { low: 2000, medium: 6000, high: 12000 };
+  const lower = W.LOWER_EFFORT || { high: 'medium', medium: 'low' };
+  let usd = 0;
+  for (const leg of plan) {
+    let eff = leg.kind ? W.writerEffort(leg.kind) : 'medium';
+    if (leg.lower) eff = lower[eff] || 'low';
+    usd += leg.in * CLAUDE_PRICE_PER_TOKEN.input + (leg.max + (H[eff] || H.medium)) * CLAUDE_PRICE_PER_TOKEN.output;
+  }
+  return Math.round(usd * 1000) / 1000;
+}
+// ANTHROPIC_MODEL set to any other model: its price is not verified here, so the ceiling is scaled by
+// 2.5 — the highest price in that same table ($10 / $50, Claude Fable / Mythos) over Opus 5.5's.
+function claudeCostScale() {
+  const m = String(process.env.ANTHROPIC_MODEL || '').trim();
+  return (!m || m === CLAUDE_PRICED_MODEL) ? 1 : 2.5;
+}
+// The model a writer will use right now, as the usage row records it ('claude' or a Grok engine).
+function currentWriterModel() {
+  return (String(process.env.WRITER_PROVIDER || '').trim().toLowerCase() === 'claude' && process.env.ANTHROPIC_API_KEY) ? 'claude' : 'grok';
+}
+function costFor(action, model) {
   const h = parseHoldAction(action);
   const a = h ? h.base : action;
+  if (model && /^claude/i.test(String(model))) { const c = claudeCeiling(a); if (c != null) return c * claudeCostScale(); }
   return ACTION_COST[a] != null ? ACTION_COST[a] : 0.01;
 }
 
@@ -671,7 +719,7 @@ async function usageThisPeriod(userId, periodStart, opts) {
   const startIso = periodStart || periodStartISO();
   const hold = (opts && opts.hold) || null;
   const base = `/rest/v1/usage_events?user_id=eq.${encodeURIComponent(userId)}` +
-    `&created_at=gte.${encodeURIComponent(startIso)}&select=action,created_at&order=created_at.desc`;
+    `&created_at=gte.${encodeURIComponent(startIso)}&select=action,created_at,model&order=created_at.desc`;
   let credits = 0, cost = 0, recent = 0, seen = 0, total = null, complete = false;
   const nowMs = Date.now();
   const since = nowMs - RATE_WINDOW_MS;
@@ -701,7 +749,7 @@ async function usageThisPeriod(userId, periodStart, opts) {
         holdsCounted++;
       }
       credits += creditsFor(row.action);
-      cost += costFor(row.action);
+      cost += costFor(row.action, row.model);
       // Burst counter, derived from the rows we already have — costs no extra round trip.
       // Correct at any row count now that the newest rows come back first. In-flight
       // reservations count here too, which is what makes the 60/min limiter see a burst
@@ -824,7 +872,7 @@ async function checkLimit(userId, credits, action, opts) {
       };
     }
     const need = Number(credits) || 0;
-    const addCost = action ? costFor(action) : 0;
+    const addCost = action ? costFor(action, currentWriterModel()) : 0;
     const overCredits = s.used + need > s.limit;
     // Cost fuse: armed by default (COST_CAP_EUR, €25), disabled only if the env sets it
     // to 0. It guards NON-paying accounts only — paid plans (starter/pro/agency) are
@@ -1169,7 +1217,7 @@ async function guard(req, action, res) {
 }
 
 module.exports = {
-  PLAN_LIMITS, ACTION_CREDITS, ACTION_COST, COST_CAP_EUR, RATE_LIMIT_PER_MIN, TRIAL_DAYS,
+  PLAN_LIMITS, ACTION_CREDITS, ACTION_COST, claudeCeiling, CLAUDE_PRICE_PER_TOKEN, currentWriterModel, COST_CAP_EUR, RATE_LIMIT_PER_MIN, TRIAL_DAYS,
   creditsFor, costFor, getOrInitPlan, effectivePlan, limitFor,
   usedThisPeriod, usageThisPeriod, getStatus, checkLimit, logUsage, guard, setPlan, userIdByStripe, stripeCustomerId,
   setStripeCustomerIfEmpty,

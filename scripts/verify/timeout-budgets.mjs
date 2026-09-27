@@ -9,12 +9,32 @@ const bad = []; let judged = 0;
    after its AI call, and that is a Supabase request with the shared SB_TIMEOUT_MS on it.
    brand-voice-chat's 18s search + 70s deadline "fit" 90s with 2s to spare while that 8s write
    still had to run. */
-const sbAfter = (src) => (/\blogUsage\(/.test(src) ? 1 : 0) + (/\buserCanAccessBrand\(/.test(src) ? 1 : 0);
+/* v693 r3 — EVERY ENDPOINT IS COUNTED HONESTLY. logUsage is a PATCH of the reservation row and, when
+   that fails, a fallback POST: two sequential Supabase waits. userCanAccessBrand reads the brand and
+   then the membership: two waits for a member. The old flat "one each" under-counted by 16-32 s and
+   passed endpoints that could be killed mid-write (remix, sharpen, viral-* and expand-field at 312 s vs 300).
+   A brand check STARTED BEFORE the AI work (startBrandAttribution, or a userCanAccessBrand call that
+   sits before the first AI call) runs while the model thinks and adds nothing after it. */
+const LLM_SITE = /\b(?:callLLM|writerCall|writerCallResilient)\(/g;
+const sbAfter = (src) => {
+  // remix.js reaches the model through its own legacyGenerate() wrapper (declared below the handler),
+  // so the first CALL of it is where its AI work starts.
+  const firstAI = src.search(/\b(?:callLLM|writerCall|writerCallResilient|callGrokSearch|legacyGenerate)\(|\.run(?:Angles|Write)\(/);
+  const after = (re) => [...src.matchAll(re)].some(m => firstAI < 0 || m.index > firstAI);
+  let n = /\blogUsage\(/.test(src) ? 2 : 0;
+  if (after(/\buserCanAccessBrand\(/g) || after(/\bstartBrandAttribution\(/g)) n += 2;
+  return n;
+};
 const SB_RESERVE = (() => { const m = fs.readFileSync(path.join(root, 'api', '_usage.js'), 'utf8').match(/let\s+SB_TIMEOUT_MS\s*=\s*(\d+)/); return m ? +m[1] : 8000; })();
 for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.js'))) {
   const name = f.slice(0, -3); if (name.startsWith('_')) continue;
   const s = fs.readFileSync(path.join(root, 'api', f), 'utf8');
-  const llmCalls = (s.match(/callLLM\(/g) || []).length;
+  /* v693 — api/angles.js and api/write.js reach the model only through api/_write.js
+     (runAngles / runWrite), so a callLLM( count alone never judged them. They count as LLM
+     endpoints, and they must bound the whole pipeline with a declared FN_BUDGET_MS (the helper
+     splits its deadline across up to three calls, which only a total budget can describe). */
+  const pipeCalls = (s.match(/\.run(?:Angles|Write)\(/g) || []).length;
+  const llmCalls = (s.match(LLM_SITE) || []).length + pipeCalls;
   const grok = s.includes('callGrokSearch(');
   if (!llmCalls && !grok) continue;
   /* v689 — THIS CHECK PASSED THREE ENDPOINTS THAT WERE OVER BUDGET.
@@ -43,6 +63,11 @@ for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.
   ];
   const budgetConst = s.match(/(?:FN_BUDGET_MS|TOTAL_BUDGET_MS|BUDGET_MS)\s*=\s*(\d+)/);
   let worst = 0;
+  /* v693 r4 — a writerCallResilient site with its own `room:` may retry beyond its deadlineMs
+     (the lower-effort retry), so it is only honest under a declared whole-request budget. Without
+     `room:` the retry stays inside the call's own deadline and the per-site count above holds. */
+  if (/writerCallResilient\([\s\S]{0,1500}?\broom\s*:/.test(s) && !budgetConst) bad.push(`${name}: a writerCallResilient retry with its own room needs a declared FN_BUDGET_MS`);
+  if (pipeCalls && !budgetConst) bad.push(`${name}: calls runAngles/runWrite without a declared FN_BUDGET_MS — its pipeline deadline is unbounded`);
   if (llmCalls) {
     if (budgetConst) worst = +budgetConst[1];                 // a self-imposed total bounds every leg
     else {
@@ -51,7 +76,7 @@ for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.
          than its own deadline (settings-examples: 22s attempts under a "10s" deadline). callXAI now
          cuts each attempt at the deadline, so such a pair is a contradiction: one of the two
          numbers is a lie. A site with no literal deadline costs the old retry window + its timeout. */
-      const at = [...s.matchAll(/callLLM\(/g)].map(m => m.index);
+      const at = [...s.matchAll(LLM_SITE)].map(m => m.index);
       at.forEach((i, k) => {
         const seg = s.slice(i, Math.min(i + 1200, k + 1 < at.length ? at[k + 1] : s.length));
         const d = seg.match(/deadlineMs\s*:\s*(\d+)/), t = seg.match(/timeoutMs\s*:\s*(\d+)/);
@@ -73,6 +98,12 @@ for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.
   /* v690 r2 — count EACH Supabase wait after the work, not one flat reserve: the usage write and,
      where the file attributes the row to a brand, the userCanAccessBrand read before it.
      settings-examples: 20s + 8s + 8s = 36s "fit" 30s because only one of them was counted. */
+  /* v693 r2 — HONEST POST-WORK WAITS for the content-v2 endpoints (anything that runs the
+     api/_write.js pipeline): logUsage is a PATCH of the reservation row and, when that fails, a
+     fallback POST — two sequential Supabase waits, not one; userCanAccessBrand reads the brand and
+     then the membership — two waits for a member. The flat one-per-helper count above is kept for
+     the older endpoints (under the honest count several of them do not fit; reported, not fixed
+     here), but a v2 endpoint is judged on every wait it can really make. */
   worst += SB_RESERVE * sbAfter(s);
   const budget = md[name] ?? 10, internal = Math.floor(worst / 1000);
   judged++;
@@ -83,7 +114,7 @@ for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.
 let apifyJudged = 0;
 for (const f of fs.readdirSync(path.join(root, 'api')).filter(f => f.endsWith('.js') && !f.startsWith('_'))) {
   const s = fs.readFileSync(path.join(root, 'api', f), 'utf8');
-  if (/callLLM\(|callGrokSearch\(/.test(s)) continue;
+  if (/\b(?:callLLM|writerCall|writerCallResilient|callGrokSearch)\(/.test(s)) continue;
   const run = s.match(/const\s+RUN_TIMEOUT_MS\s*=\s*(\d+)/), ds = s.match(/const\s+DATASET_TIMEOUT_MS\s*=\s*(\d+)/);
   if (!run || !ds) continue;
   apifyJudged++;

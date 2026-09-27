@@ -9,6 +9,7 @@ const { fullBrandBlock, writingCraft, rulePrecedence, extractJson } = require('.
    of our message. Both tries now share ONE budget measured from the start of the handler. */
 const REMIX_BUDGET_MS = 280000;
 const REMIX_MIN_RETRY_MS = 20000;   // a second try is only worth starting with this much left
+const LEGACY_MAX_DESC = 12000;      // v693 — _legacyRemix applies the handler's own MAX_DESC cap
 
 
 module.exports = async function handler(req, res) {
@@ -82,68 +83,11 @@ module.exports = async function handler(req, res) {
     // REMOVED v636 — the Master Prompt doc. This block made a LIVE Google Docs fetch on
     // every remix for a value nothing in this file ever read (it reached the model only via
     // fullBrandBlock, which no longer renders it). Feature retired.
-    var brandName = bc.brandName || 'the brand';
-    // Brand specifics come ONLY from this brand's own context \u2014 nothing is hardcoded,
-    // so each brand gets its own facts/voice with no cross-brand contamination.
-    var extraUsps = bc.usps || '';
-    var customTagline = bc.tagline || '';
-    var customTones = bc.tones && bc.tones.length ? bc.tones.join(', ') : '';
-    var coreVoice = customTones || 'match the brand\'s established voice and tone';
-    var brandAudience = bc.targetAudience || '';
-    var brandBanned = bc.bannedTopics || '';
-
-    var modeInstructions = {
-      'remix': 'Keep the same FORMAT and HOOK STRUCTURE but adapt the message to ' + brandName + '. The remix should feel like "what if ' + brandName + ' made this exact type of content?"',
-      'simplify': 'Strip this content down to the absolute core message. Remove all fluff, hype, and filler. Rewrite it in the ' + brandName + ' voice (' + coreVoice + '): minimal words. If the original uses 100 words, use 20.',
-      'flip': 'Take the OPPOSITE angle. If they hype, we anti-hype. If they pile on benefits, we strip to the essentials. If they use urgency, we use anti-urgency. Create a contrarian ' + brandName + ' take.',
-      'format-swap': 'Change the FORMAT entirely while keeping the core message. Choose the format that would perform best for the ' + brandName + ' brand voice.',
-      'series': 'Turn this into a 3-5 PART SERIES. Each part standalone but connected. Different angles, formats, or community focus. Include posting schedule.',
-      'roast': 'Create a ' + brandName + ' RESPONSE in its own voice (' + coreVoice + '): dry, factual commentary or fact-checking. Brand Twitter energy but smarter. NOT mean \u2014 just honest.'
-    };
-    var modeTask = modeInstructions[remixMode] || modeInstructions['remix'];
-
-    // Face-on vs faceless steering. Only meaningful when the remix lands on a filmable format
-    // (video/micro/qna/statement); for carousel/image it is naturally ignored.
-    var deliveryNote = '';
-    if (delivery === 'faceless') {
-      deliveryNote = '\n\nDELIVERY STYLE — FACELESS: if the remix format is a filmable one (video, micro-lecture, Q&A or statement), the creator is NOT on camera. Write remixScript as a VOICEOVER read over footage (it may be AI-voiced), and make every shot b-roll, stock clips, screen recordings, product or close-up shots, or text-on-screen cards — never "talk to camera" or "look into the lens". For carousel/image, ignore this.';
-    } else if (delivery === 'faceon') {
-      deliveryNote = '\n\nDELIVERY STYLE — FACE-ON: if the remix format is a filmable one, write it to be performed on camera by the creator, with the shot list assuming they are on screen.';
-    }
-
-    var jsonFormat;
-    if (remixMode === 'series') {
-      jsonFormat = '{"originalSummary":"1-2 sentences","seriesParts":[{"partNumber":1,"remixTitle":"Title","remixHook":"Hook","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","suggestedDay":"Monday"}],"remixCaption":"Caption","remixHashtags":"5 hashtags","whyItWorks":"1 sentence"}';
-    } else {
-      jsonFormat = '{"originalSummary":"1-2 sentences","remixTitle":"Title","remixHook":"Hook (first 3s)","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","remixCaption":"Caption with CTA","remixHashtags":"5 hashtags","whyItWorks":"1 sentence"}';
-    }
-
-    var brandSection = fullBrandBlock(bc);
-    if (!brandSection || !brandSection.trim()) brandSection = '(No brand profile provided — do NOT invent specifics, prices, ingredients, or claims. Keep it general and on-voice.)';
-
-    // The em-dash / AI-tell-word / rule-of-three list that used to sit here is ALREADY in
-    // writingCraft() below \u2014 it was appearing twice in every remix prompt. Only the hashtag rule
-    // (which writingCraft does not cover) is kept.
-    var humanRules = 'HASHTAG RULES: hashtags obey the same rules as the copy \u2014 never use the brand avoid-words, and never use hype tags (#viral, #gamechanger, #musthave, #fyp-bait). Plain, specific, on-topic tags only.\n';
-
-    // v655 — THE BRAND BLOCK MOVED TO THE END, the same re-order v640 applied to generate-ideas.
-    // It sat at 0.3% of the prompt: the brand's own approved winners landed at 32%, and then 9,771
-    // characters of writing rules, source content and task sat between them and the output
-    // instruction. Worse in production — `postDescription` carries up to 12,000 characters of
-    // transcript in exactly that gap, so the thing being remixed drowned the brand doing the
-    // remixing. Measured against generate-ideas (winners at 88.8%, 2,932 chars from the output)
-    // and against meme / viral-rewrite / viral-twist / sharpen, which ALREADY land their winners
-    // at 78-82% because fullBrandBlock renders the winners last inside the block — those four were
-    // measured and deliberately left alone. Now: opener -> craft rules -> SOURCE + task -> BRAND.
-    // A pure re-order of existing text, plus ONE new framing line: the brand's own best posts now
-    // sit directly above the output instruction, so the model must be told they are proof of how
-    // the brand sounds and not the thing to remix.
-    var promptBody = 'You are a content strategist for ' + brandName + '.\n\n' + humanRules + '\n' + writingCraft({ spoken: true, precedence: false })
-      + '\n\nORIGINAL CONTENT TO REMIX:\nCreator: @' + (creatorName || 'unknown') + ' on ' + (platform || 'social media') + '\n' + (postUrl ? 'Post URL: ' + postUrl + '\n' : '') + (postDescription ? 'Description/concept: ' + postDescription + '\n' : '') + '\nREMIX MODE: ' + (remixMode || 'remix').toUpperCase() + '\nTASK: ' + modeTask + deliveryNote
-      + '\n\nSELF-CHECK before finalizing (silently; output only the final JSON): make sure the remix is unmistakably in THIS brand voice, uses the brand real facts and vocabulary (never invented facts), and would make this brand audience stop. Rewrite anything generic or off-voice.'
-      + '\n\n' + brandSection
-      + '\n\nEVERYTHING ABOVE THIS LINE IS THE BRAND — its voice, its real facts, and its own approved posts. It is the last thing you read before the task because it is what matters most: the general writing rules exist to remove generic slop, not to overwrite a voice this brand has earned. Where they conflict, the brand wins. Those approved posts show how this brand SOUNDS — never remix them. The thing being remixed is the ORIGINAL CONTENT above.'
-      + '\n\nRespond in this exact JSON format:\n' + jsonFormat;
+    // v693 — the prompt text is built by buildLegacyRemixPrompt (below the handler) so
+    // _legacyRemix — the blind test's baseline arm — sends exactly what this endpoint sends.
+    var _built = buildLegacyRemixPrompt(bc, { postUrl: postUrl, postDescription: postDescription, creatorName: creatorName, platform: platform, remixMode: remixMode, delivery: delivery });
+    var brandName = _built.brandName;
+    var promptBody = _built.promptBody;
 
     // Optional reference screenshot dropped in by the user — Grok can see it.
     var refImages = [];
@@ -161,75 +105,22 @@ module.exports = async function handler(req, res) {
       ? '\n\nA REFERENCE SCREENSHOT is attached to this message — the original content or something that inspired it. Study it and use what is relevant (the hook, structure, subject, visual idea) when remixing it into ' + brandName + "'s voice. Never just describe the image; never invent brand facts from it."
       : '';
 
-    // Generate + parse with one retry. Grok occasionally emits malformed JSON (more so under the
-    // Try-All 6-parallel burst); if the first parse fails we ask once more for strictly clean JSON.
-    var content = '', remix = null;
-    for (var _try = 0; _try < 2 && !remix; _try++) {
-      var _left = REMIX_BUDGET_MS - (Date.now() - _remixT0);
-      if (_try > 0 && _left < REMIX_MIN_RETRY_MS) { console.log('remix: only ' + _left + 'ms left — skipping the clean-JSON retry'); break; }
-      content = await callLLM({ deadlineMs: Math.max(1000, _left),
-        // rulePrecedence() says "read this last", so it is appended HERE, at call time, after
-        // imgNote and the retry note. Appending it to the prompt body instead left it buried
-        // whenever a reference screenshot was attached or a retry fired — the two paths the old
-        // fixture never exercised, so the gate asserting "precedence is genuinely LAST" passed
-        // while production sent it mid-prompt.
-        messages: [{ role: 'user', content: promptBody + imgNote + (_try ? '\n\nIMPORTANT: reply with ONLY the JSON object described above. No prose, no markdown code fences.' : '') + '\n\n' + rulePrecedence() }],
-        model: 'grok',
-        max_tokens: 4000,
-        engine: (bc.engine || 'grok'),
-        images: refImages.length ? refImages : undefined
-      });
-      if (content) remix = extractJson(content);
-    }
+    // v693 r3 — START the brand-attribution check now and await it after the AI work, so it never
+    // adds Supabase time after the model answers (a killed function delivers nothing).
+    const _brandAttr = require('./_write').startBrandAttribution(_g.user.id, brandId || (brandContext && (brandContext.brandId || brandContext.brand_id)) || null);
+    var _gen = await legacyGenerate({ promptBody: promptBody, imgNote: imgNote, bc: bc, refImages: refImages, t0: _remixT0, budgetMs: REMIX_BUDGET_MS });
+    var content = _gen.content, remix = _gen.remix;
 
     if (!content) return res.status(500).json({ error: 'No content in response' });
     if (!remix) return res.status(500).json({ error: 'Failed to parse remix \u2014 try again', raw: content });
 
-    // v666 — RETURN STRINGS, NOTHING ELSE.
-    // `extractJson` only proves the reply PARSED; every field was then passed through raw. The
-    // client saves this object to localStorage AND Supabase and then renders it, so one reply with
-    // `"remixScript": 12345` or `"remixTitle": {...}` threw inside renderRemixResults BEFORE
-    // el.innerHTML was assigned — and because the bad row is persisted and re-read, the Create
-    // tab's results list stayed blank through every reload. Measured on the real client functions:
-    // 5 of 6 malformed shapes threw, each leaving the list untouched.
-    // app.html now coerces as well (escapeHtml / remixHasContent), which repairs rows already
-    // saved. This is the root: an endpoint should not hand its own client a shape it cannot render.
-    // Arrays are joined rather than dropped — a model that answers a script as a list of lines has
-    // still written the script, and losing it would be a worse bug than the crash.
-    remix = (function normalize(o, depth) {
-      const str = v => {
-        if (v == null) return '';
-        if (typeof v === 'string') return v;
-        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-        if (Array.isArray(v)) return v.map(x => str(x)).filter(Boolean).join('\n');
-        try { return Object.values(v).map(x => str(x)).filter(Boolean).join(' '); } catch (e) { return ''; }
-      };
-      const out = {};
-      for (const k of Object.keys(o || {})) {
-        const v = o[k];
-        if (k === 'seriesParts' && depth === 0) {
-          out[k] = Array.isArray(v) ? v.map(p => normalize(p && typeof p === 'object' ? p : { remixScript: p }, 1)) : [];
-        } else if (k === 'partNumber') {
-          out[k] = Number(v) || 0;                      // the one field the client renders as a number
-        } else {
-          out[k] = str(v);
-        }
-      }
-      return out;
-    })(remix, 0);
+    remix = normalizeRemix(remix);
     // `brandContext.brandId` was never a key getBrandContext() produced, so this row was
     // always attributed to a null brand. A lean request finally names the brand — use it.
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js /
     // creator-posts.js: a check that cannot run leaves the row unattributed, never unlogged.
-    let logBrandId = null;
-    const _bid = brandId || (brandContext && (brandContext.brandId || brandContext.brand_id)) || null;
-    if (_bid) {
-      try {
-        const store = require('./_publish/store');
-        if (await store.userCanAccessBrand(_g.user.id, _bid)) logBrandId = _bid;
-      } catch (e) {}
-    }
+    const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'remix', model: bc.engine || 'grok' });
     return res.status(200).json({ remix });
 
@@ -241,3 +132,176 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Remix failed — try again' });
   }
 };
+
+// v693 — FACTORED OUT OF THE HANDLER, TEXT UNCHANGED. The old remix prompt is the baseline arm of
+// the content-v2 blind test (PLAN.md C-REMIX), so it must stay callable without an HTTP request.
+// Declared below the handler on purpose: backend-hardening asserts the input caps sit above the
+// prompt text in this file.
+function buildLegacyRemixPrompt(bc, inp) {
+  bc = bc || {};
+  var postUrl = inp.postUrl, postDescription = inp.postDescription, creatorName = inp.creatorName, platform = inp.platform, remixMode = inp.remixMode, delivery = inp.delivery;
+  var brandName = bc.brandName || 'the brand';
+  // Brand specifics come ONLY from this brand's own context \u2014 nothing is hardcoded,
+  // so each brand gets its own facts/voice with no cross-brand contamination.
+  var extraUsps = bc.usps || '';
+  var customTagline = bc.tagline || '';
+  var customTones = bc.tones && bc.tones.length ? bc.tones.join(', ') : '';
+  var coreVoice = customTones || 'match the brand\'s established voice and tone';
+  var brandAudience = bc.targetAudience || '';
+  var brandBanned = bc.bannedTopics || '';
+
+  var modeInstructions = {
+    'remix': 'Keep the same FORMAT and HOOK STRUCTURE but adapt the message to ' + brandName + '. The remix should feel like "what if ' + brandName + ' made this exact type of content?"',
+    'simplify': 'Strip this content down to the absolute core message. Remove all fluff, hype, and filler. Rewrite it in the ' + brandName + ' voice (' + coreVoice + '): minimal words. If the original uses 100 words, use 20.',
+    'flip': 'Take the OPPOSITE angle. If they hype, we anti-hype. If they pile on benefits, we strip to the essentials. If they use urgency, we use anti-urgency. Create a contrarian ' + brandName + ' take.',
+    'format-swap': 'Change the FORMAT entirely while keeping the core message. Choose the format that would perform best for the ' + brandName + ' brand voice.',
+    'series': 'Turn this into a 3-5 PART SERIES. Each part standalone but connected. Different angles, formats, or community focus. Include posting schedule.',
+    'roast': 'Create a ' + brandName + ' RESPONSE in its own voice (' + coreVoice + '): dry, factual commentary or fact-checking. Brand Twitter energy but smarter. NOT mean \u2014 just honest.'
+  };
+  var modeTask = modeInstructions[remixMode] || modeInstructions['remix'];
+
+  // Face-on vs faceless steering. Only meaningful when the remix lands on a filmable format
+  // (video/micro/qna/statement); for carousel/image it is naturally ignored.
+  var deliveryNote = '';
+  if (delivery === 'faceless') {
+    deliveryNote = '\n\nDELIVERY STYLE — FACELESS: if the remix format is a filmable one (video, micro-lecture, Q&A or statement), the creator is NOT on camera. Write remixScript as a VOICEOVER read over footage (it may be AI-voiced), and make every shot b-roll, stock clips, screen recordings, product or close-up shots, or text-on-screen cards — never "talk to camera" or "look into the lens". For carousel/image, ignore this.';
+  } else if (delivery === 'faceon') {
+    deliveryNote = '\n\nDELIVERY STYLE — FACE-ON: if the remix format is a filmable one, write it to be performed on camera by the creator, with the shot list assuming they are on screen.';
+  }
+
+  var jsonFormat;
+  if (remixMode === 'series') {
+    jsonFormat = '{"originalSummary":"1-2 sentences","seriesParts":[{"partNumber":1,"remixTitle":"Title","remixHook":"Hook","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","suggestedDay":"Monday"}],"remixCaption":"Caption","remixHashtags":"5 hashtags","whyItWorks":"1 sentence"}';
+  } else {
+    jsonFormat = '{"originalSummary":"1-2 sentences","remixTitle":"Title","remixHook":"Hook (first 3s)","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","remixCaption":"Caption with CTA","remixHashtags":"5 hashtags","whyItWorks":"1 sentence"}';
+  }
+
+  var brandSection = fullBrandBlock(bc);
+  if (!brandSection || !brandSection.trim()) brandSection = '(No brand profile provided — do NOT invent specifics, prices, ingredients, or claims. Keep it general and on-voice.)';
+
+  // The em-dash / AI-tell-word / rule-of-three list that used to sit here is ALREADY in
+  // writingCraft() below \u2014 it was appearing twice in every remix prompt. Only the hashtag rule
+  // (which writingCraft does not cover) is kept.
+  var humanRules = 'HASHTAG RULES: hashtags obey the same rules as the copy \u2014 never use the brand avoid-words, and never use hype tags (#viral, #gamechanger, #musthave, #fyp-bait). Plain, specific, on-topic tags only.\n';
+
+  // v655 — THE BRAND BLOCK MOVED TO THE END, the same re-order v640 applied to generate-ideas.
+  // It sat at 0.3% of the prompt: the brand's own approved winners landed at 32%, and then 9,771
+  // characters of writing rules, source content and task sat between them and the output
+  // instruction. Worse in production — `postDescription` carries up to 12,000 characters of
+  // transcript in exactly that gap, so the thing being remixed drowned the brand doing the
+  // remixing. Measured against generate-ideas (winners at 88.8%, 2,932 chars from the output)
+  // and against meme / viral-rewrite / viral-twist / sharpen, which ALREADY land their winners
+  // at 78-82% because fullBrandBlock renders the winners last inside the block — those four were
+  // measured and deliberately left alone. Now: opener -> craft rules -> SOURCE + task -> BRAND.
+  // A pure re-order of existing text, plus ONE new framing line: the brand's own best posts now
+  // sit directly above the output instruction, so the model must be told they are proof of how
+  // the brand sounds and not the thing to remix.
+  var promptBody = 'You are a content strategist for ' + brandName + '.\n\n' + humanRules + '\n' + writingCraft({ spoken: true, precedence: false })
+    + '\n\nORIGINAL CONTENT TO REMIX:\nCreator: @' + (creatorName || 'unknown') + ' on ' + (platform || 'social media') + '\n' + (postUrl ? 'Post URL: ' + postUrl + '\n' : '') + (postDescription ? 'Description/concept: ' + postDescription + '\n' : '') + '\nREMIX MODE: ' + (remixMode || 'remix').toUpperCase() + '\nTASK: ' + modeTask + deliveryNote
+    + '\n\nSELF-CHECK before finalizing (silently; output only the final JSON): make sure the remix is unmistakably in THIS brand voice, uses the brand real facts and vocabulary (never invented facts), and would make this brand audience stop. Rewrite anything generic or off-voice.'
+    + '\n\n' + brandSection
+    + '\n\nEVERYTHING ABOVE THIS LINE IS THE BRAND — its voice, its real facts, and its own approved posts. It is the last thing you read before the task because it is what matters most: the general writing rules exist to remove generic slop, not to overwrite a voice this brand has earned. Where they conflict, the brand wins. Those approved posts show how this brand SOUNDS — never remix them. The thing being remixed is the ORIGINAL CONTENT above.'
+    + '\n\nRespond in this exact JSON format:\n' + jsonFormat;
+  return { promptBody: promptBody, brandName: brandName };
+}
+
+// v693 — the generate + clean-JSON-retry loop, shared by the handler and _legacyRemix. ONE budget
+// measured from t0 (see REMIX_BUDGET_MS). provider/effort are only set when a caller passes them,
+// so the HTTP handler's callLLM options are exactly what they were.
+async function legacyGenerate(g) {
+  var promptBody = g.promptBody, imgNote = g.imgNote || '', bc = g.bc || {}, refImages = g.refImages || [];
+  var _remixT0 = g.t0, REMIX_BUDGET = g.budgetMs;
+  // Generate + parse with one retry. Grok occasionally emits malformed JSON (more so under the
+  // Try-All 6-parallel burst); if the first parse fails we ask once more for strictly clean JSON.
+  var content = '', remix = null;
+  for (var _try = 0; _try < 2 && !remix; _try++) {
+    var _left = REMIX_BUDGET - (Date.now() - _remixT0);
+    if (_try > 0 && _left < REMIX_MIN_RETRY_MS) { console.log('remix: only ' + _left + 'ms left — skipping the clean-JSON retry'); break; }
+    var _opts = { deadlineMs: Math.max(1000, _left),
+      // rulePrecedence() says "read this last", so it is appended HERE, at call time, after
+      // imgNote and the retry note. Appending it to the prompt body instead left it buried
+      // whenever a reference screenshot was attached or a retry fired — the two paths the old
+      // fixture never exercised, so the gate asserting "precedence is genuinely LAST" passed
+      // while production sent it mid-prompt.
+      messages: [{ role: 'user', content: promptBody + imgNote + (_try ? '\n\nIMPORTANT: reply with ONLY the JSON object described above. No prose, no markdown code fences.' : '') + '\n\n' + rulePrecedence() }],
+      model: 'grok',
+      max_tokens: 4000,
+      engine: (bc.engine || 'grok'),
+      images: refImages.length ? refImages : undefined
+    };
+    if (g.provider !== undefined) _opts.provider = g.provider;
+    if (g.effort !== undefined) _opts.effort = g.effort;
+    // v693 r3 — through writerCall: a caller-chosen effort (the blind test) always travels with thinking
+    // headroom; with no effort the call is exactly the old one.
+    content = await require('./_write').writerCall(_opts);
+    if (content) remix = extractJson(content);
+  }
+  return { content: content, remix: remix };
+}
+
+function normalizeRemix(remix) {
+  // v666 — RETURN STRINGS, NOTHING ELSE.
+  // `extractJson` only proves the reply PARSED; every field was then passed through raw. The
+  // client saves this object to localStorage AND Supabase and then renders it, so one reply with
+  // `"remixScript": 12345` or `"remixTitle": {...}` threw inside renderRemixResults BEFORE
+  // el.innerHTML was assigned — and because the bad row is persisted and re-read, the Create
+  // tab's results list stayed blank through every reload. Measured on the real client functions:
+  // 5 of 6 malformed shapes threw, each leaving the list untouched.
+  // app.html now coerces as well (escapeHtml / remixHasContent), which repairs rows already
+  // saved. This is the root: an endpoint should not hand its own client a shape it cannot render.
+  // Arrays are joined rather than dropped — a model that answers a script as a list of lines has
+  // still written the script, and losing it would be a worse bug than the crash.
+  // v693 — kept as an assignment to `remix` on purpose: render-crash-proof lifts this exact
+  // statement out of the file by its text and runs it.
+  remix = (function normalize(o, depth) {
+    const str = v => {
+      if (v == null) return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      if (Array.isArray(v)) return v.map(x => str(x)).filter(Boolean).join('\n');
+      try { return Object.values(v).map(x => str(x)).filter(Boolean).join(' '); } catch (e) { return ''; }
+    };
+    const out = {};
+    for (const k of Object.keys(o || {})) {
+      const v = o[k];
+      if (k === 'seriesParts' && depth === 0) {
+        out[k] = Array.isArray(v) ? v.map(p => normalize(p && typeof p === 'object' ? p : { remixScript: p }, 1)) : [];
+      } else if (k === 'partNumber') {
+        out[k] = Number(v) || 0;                      // the one field the client renders as a number
+      } else {
+        out[k] = str(v);
+      }
+    }
+    return out;
+  })(remix, 0);
+  return remix;
+}
+
+/* v693 — THE BASELINE ARM (PLAN.md C-REMIX). Runs today's remix prompt for a content-v2 source and
+   returns the old parsed fields (originalSummary, remixTitle, remixHook, remixScript, remixFormat,
+   remixCaption, remixHashtags, whyItWorks), normalized exactly as the endpoint does. Mode is always
+   'remix' and there is no screenshot: the blind test compares flows on the same text input. Throws
+   BAD_INPUT (nothing to remix), EMPTY_RESULT (no reply) or PARSE_FAILED; an AI refusal propagates as
+   callLLM's own AI_UNAVAILABLE error. No metering: the caller decides that. */
+async function _legacyRemix(opts) {
+  var o = opts || {};
+  var t0 = Date.now();
+  var bc = (o.bc && typeof o.bc === 'object') ? o.bc : {};
+  var src = (o.source && typeof o.source === 'object') ? o.source : {};
+  var postDescription = String(src.text == null ? '' : src.text);
+  if (postDescription.length > LEGACY_MAX_DESC) postDescription = postDescription.slice(0, LEGACY_MAX_DESC) + '\n[...truncated]';
+  var postUrl = String(src.url == null ? '' : src.url).slice(0, 600);
+  if (!postDescription.trim() && !postUrl) { var eb = new Error('source.text is required'); eb.code = 'BAD_INPUT'; throw eb; }
+  var built = buildLegacyRemixPrompt(bc, {
+    postUrl: postUrl, postDescription: postDescription,
+    creatorName: String(src.creator == null ? '' : src.creator).slice(0, 120),
+    platform: String(src.platform == null ? '' : src.platform).slice(0, 60),
+    remixMode: 'remix', delivery: undefined,
+  });
+  var budget = Number(o.deadlineMs) > 0 ? Number(o.deadlineMs) : REMIX_BUDGET_MS;
+  var gen = await legacyGenerate({ promptBody: built.promptBody, imgNote: '', bc: bc, refImages: [], t0: t0, budgetMs: budget, provider: o.provider, effort: o.effort });
+  if (!gen.content) { var ee = new Error('No content in response'); ee.code = 'EMPTY_RESULT'; throw ee; }
+  if (!gen.remix) { var ep = new Error('Failed to parse remix'); ep.code = 'PARSE_FAILED'; throw ep; }
+  return normalizeRemix(gen.remix);
+}
+module.exports._legacyRemix = _legacyRemix;

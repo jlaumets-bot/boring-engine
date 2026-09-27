@@ -98,22 +98,47 @@ check(typeof spokenShape === 'function' && SHAPE.length > 400,
   'spokenShape() is exported and substantive',
   `${SHAPE.length} chars`);
 
+// v693 — content-v2 moved generate-ideas and viral-rewrite off the long rulebook onto the short
+// style guide, and with clarityFlow's compression rules gone they get the SHORT spoken rule
+// (spokenV2) instead of spokenShape's override. Same intent, same regression: the rule must reach
+// the assembled prompt of every surface that writes a script someone reads to camera. spokenShape
+// itself stays for writingCraft's legacy callers, and its mechanics are still checked below.
+const { spokenV2 } = require(join(API, '_brain.js'));
+const SPOKEN = typeof spokenV2 === 'function' ? spokenV2() : '';
 const genPrompt = await promptFor('generate-ideas.js', {
   brandContext: BC, count: 5, gaps: [{ day: 'Monday', format: 'video' }],
 });
-check(genPrompt.includes(anchor),
+check(SPOKEN.length > 200 && genPrompt.includes(SPOKEN),
   'generate-ideas prompt carries the spoken rule',
   'THE regression this gate exists for: this surface does not call writingCraft, so the rule must be appended directly');
+check(!genPrompt.includes(anchor) || genPrompt.includes('CLARITY & FLOW'),
+  'generate-ideas carries no stray compression override without the compression rules it overrides');
 
-// viral-rewrite gets it via writingCraft({spoken:true}) — proves the delegation path also works,
-// so the two callers can never drift to different rules.
+// viral-rewrite on a spoken format gets the SAME rule text, so the two can never drift apart.
 const vrPrompt = await promptFor('viral-rewrite.js', {
   brandContext: BC,
   idea: { title: 'The label test', format: 'video', hook: 'Check the sodium number', script: 'A short original script about electrolytes.' },
   angle: { angle: 'the label test', hook: 'Check the sodium number on the back' },
 });
-check(vrPrompt.includes(anchor),
-  'viral-rewrite prompt carries the same spoken rule (via writingCraft)');
+check(SPOKEN && vrPrompt.includes(SPOKEN),
+  'viral-rewrite prompt carries the same spoken rule');
+// ...and only on a spoken format: a statement is read, not said.
+const vrStatement = await promptFor('viral-rewrite.js', {
+  brandContext: BC,
+  idea: { title: 'The label test', format: 'statement', boldText: 'Check the sodium number.' },
+  angle: { angle: 'the label test', hook: 'Check the sodium number on the back' },
+});
+check(vrStatement.length > 1000 && !vrStatement.includes(SPOKEN),
+  'viral-rewrite applies the spoken rule only to a spoken format (discriminates)');
+
+// The short rule keeps the load-bearing mechanics, concept-level (reword freely).
+for (const [label, re] of [
+  ['complete sentences', /complete sentence|subject and a verb/i],
+  ['joining words', /joining words|because/i],
+  ['listener cannot re-read', /cannot re-?read|listener/i],
+  ['varied length and construction', /construction|same-shape/i],
+  ['a word floor', /floor/i],
+]) check(re.test(SPOKEN), `short spoken rule keeps its mechanic: ${label}`);
 
 // ── 2. the rule still carries its load-bearing mechanics ────────────────────
 // Concept-level, not phrasing-level: reword freely, but do not gut it back to a metaphor.

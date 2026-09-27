@@ -1,6 +1,23 @@
 const https = require('https');
-const { callLLM, aiUnavailable } = require('./_llm');
-const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, clarityFlow, spokenShape, spokenExample, antiSlopRhythm, rulePrecedence } = require('./_brain');
+const { aiUnavailable } = require('./_llm');
+const { writerCallResilient, writerProvider, writerEffort } = require('./_write');   // v693 r3 — provider switch + thinking depth with headroom (see api/_write.js)
+const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, v2Tones, spokenV2, storiesBlock } = require('./_brain');
+// v693 — content-v2 (.unlazy/content-v2/PLAN.md changes 1, 3, 5). The Ideas batch stays ONE call
+// (5 ideas, auto-refill, the daily push) but every idea is now BELIEF-FIRST: the model states the
+// belief the idea argues before it writes the idea, and returns it as `belief`. The old rulebook
+// (HOOK RULES "max 8 words / fragments beat sentences", creativeGuidelines' "use specific numbers,
+// names" + rule-of-three ban, clarityFlow's compression, spokenShape's override of it, the worked
+// example, the rhythm list and rulePrecedence) is replaced by the SAME short style guide the v2
+// pipeline uses, whose one hard rule is NO_INVENTION_RULE. The brand is rendered through
+// fullBrandBlock(bc,{v2:true}): at most 3 tones (else none + warnings:['tones_over_limit']), USPs as
+// background facts, the brand's held beliefs; the story bank follows it.
+const { styleGuide } = require('./_write');
+// v693 — a belief is one plain sentence (C-LIB: belief <= 140 chars, same cap as runAngles).
+const MAX_BELIEF = 140;
+// v693 — the optional structured PAA seed (the old app appends a "SEED QUESTION" block to
+// learningContext instead; both are recognised).
+const SEED_QUESTION_CAP = 400;
+const PAA_MARK = /SEED QUESTION/;
 
 // Quick Post's anti-repetition avoid-list used to be ~50 idea titles (~1.6KB) rendered into
 // learningContext on the CLIENT and re-uploaded on every generate — even though ~40 of them
@@ -35,6 +52,13 @@ const AVOID_MARK = '<<CS_AVOID_LIST>>';
 // the verifier reads them with /timeoutMs\s*:\s*(\d+)/, so a named constant would be invisible to
 // it and it would silently fall back to assuming the 240s default — passing this file for the
 // wrong reason, and staying green through a future regression. Keep them inline.
+
+// v693 r4 — ONE BUDGET FOR THE WHOLE REQUEST, from handler start. The batch now thinks at 'medium'
+// (WRITER_EFFORT_BATCH) and a failed/timed-out main call is retried once a level lower, so the three
+// fixed 93 s legs above are no longer the model: every leg takes what is left of FN_BUDGET_MS, the
+// guardrail regeneration is skipped when under 40 s remain, and the usage write (2 x 8 s) fits the
+// 300 s maxDuration on top.
+const FN_BUDGET_MS = 280000;
 
 // ── INPUT CAPS ───────────────────────────────────────────────────────────────
 // Client-supplied free text that lands in the prompt must be BOUNDED — every other such string
@@ -88,6 +112,8 @@ function _composeAvoidList(lc, avoidExtra, dbTitles) {
 }
 
 module.exports = async function handler(req, res) {
+  const _genT0 = Date.now();   // v693 r4 — FN_BUDGET_MS is measured from here
+  const _genLeft = () => FN_BUDGET_MS - (Date.now() - _genT0);
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
   const origin = req.headers.origin || '';
   res.setHeader('Access-Control-Allow-Origin', allowed.includes(origin) ? origin : allowed[0]);
@@ -126,7 +152,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { brandContext, gaps, count: _rawCount = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat } = req.body || {};
+    const { brandContext, gaps, count: _rawCount = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat, seedQuestion } = req.body || {};
     // v657 — CLAMP `count` AT THE SOURCE. It came straight from the body and was
     // interpolated into the prompt ("a JSON array of exactly ${count} ideas"), while metering
     // charges ONE credit per CALL. The UI offers 10 and a direct POST could ask for 50, so a
@@ -237,7 +263,10 @@ module.exports = async function handler(req, res) {
     // auto-refill, i.e. nearly everything the user sees.
     // examples:false → the approved winners are appended at the END of the prompt instead (recency
     // beats primacy in a ~20k-character prompt; up top they sat 16k characters from the task).
-    const brandProfile = fullBrandBlock(bc, { examples: false });
+    // v693 — v2 rendering: tones <= 3 (else none), USPs / product / proof as background facts, the
+    // brand's held beliefs. The story bank is appended right after it (storiesBlock).
+    const brandProfile = fullBrandBlock(bc, { examples: false, v2: true });
+    const stories = storiesBlock(bc, 3000);
     const winners = approvedWinnersBlock(bc);
 
     // ── Idea Catcher: user dropped ONE specific idea to develop ──
@@ -306,9 +335,12 @@ module.exports = async function handler(req, res) {
     // content-bearing instruction before the output line, so it won on position. Across a 5-idea
     // batch that invited idea 1 deadpan, idea 2 blunt, idea 3 technical: exactly what the brand
     // rule forbids. The heading and the schema now agree with the brand rule.
-    const brandTones = (bc.tones && bc.tones.length)
-      ? bc.tones.map(t => String(t == null ? '' : t).trim()).filter(Boolean)
-      : [];
+    // v693 — the SAME tone cap the brand block applies (v2Tones): a profile with more than 3 tones
+    // gets NONE here too, and the response says so, so the schema never labels ideas with a voice
+    // the brand block just declined to render.
+    const _vt = v2Tones(bc);
+    const brandTones = _vt.tones;
+    const warnings = _vt.overLimit ? ['tones_over_limit'] : [];
     const tones = brandTones.join(', ');
     const primaryTone = brandTones[0] || '';
     const toneBlock = tones
@@ -321,7 +353,10 @@ module.exports = async function handler(req, res) {
     // so it stays empty rather than inventing a register the brand never chose.
     const toneField = primaryTone
       ? `${primaryTone}  (the SAME value on every idea — this is the brand's voice, not a per-idea choice)`
-      : '  (this brand has not set any tones — leave this an empty string, do not invent one)';
+      : (_vt.overLimit
+        // v693 — more than 3 tones: none is rendered (v2Tones), so none may be labelled either.
+        ? '  (leave this an empty string: no single tone label fits this brand)'
+        : '  (this brand has not set any tones — leave this an empty string, do not invent one)');
     // Server-side clamp for the same reason. `tone` is READ by the app (Settings > Voice & Tone
     // shows "N ideas" per tone), so a value outside the brand's own set is a wrong number on
     // screen. Anything unrecognised falls back to the brand's PRIMARY tone — never to an invented
@@ -332,124 +367,107 @@ module.exports = async function handler(req, res) {
       return brandTones.find(t => t.toLowerCase() === s) || primaryTone;
     };
 
+    // v693 — BELIEF FIRST. Every idea starts from an opinion the audience does not hold yet, stated
+    // BEFORE the idea is written and returned as `belief` (the app shows it and can send it to
+    // /api/write for a full spoken rewrite). One call, one batch: the belief is the first key of each
+    // idea so the model commits to it before it writes the hook.
+    const beliefBlock = `BELIEF FIRST (do this for every idea, before writing a word of it):
+1. State the BELIEF the idea argues: one plain sentence, at most ${MAX_BELIEF} characters, that most of this brand's audience does NOT share yet. It is about the viewer's problem or situation, never about the brand's product or features. Contrarian but defensible: the person could argue it on camera and be right.
+2. Then write the idea FROM that belief: the hook opens the argument, the script argues it (why people believe the opposite, what goes wrong because of it, then the reframe), and every other field serves it.
+Put it in the "belief" field. Every idea in the batch argues a DIFFERENT belief, not one belief reworded.`;
+
     // For a dropped idea, DEVELOP it faithfully — don't treat it as vague taste feedback.
+    // v693 — and find the belief INSIDE it first: the user's idea is the opinion to argue.
     let learningBlock;
     if (isSeed) {
-      learningBlock = `\n═══ DEVELOP THE USER'S DROPPED IDEA — THIS IS THE WHOLE JOB ═══\nThe user dropped ONE raw, half-baked idea below. Turn it into the single ready-to-film brief you return. It is the STAR: build the brief AROUND it, keep its actual angle, sharpen it, give it a killer hook, and make it punchy and scroll-stopping in the brand's voice. Do NOT swap it for a safer or more generic idea, and do NOT water it down. Pick the ONE format that best fits THIS idea — do not default to Q&A.\n\nTHE IDEA:\n"${seedIdea_}"${seedNotes_ ? `\n\nUser's notes about a reference video:\n"${seedNotes_}"` : ''}${seedTranscript_ ? `\n\nTranscript of a reference video (inspiration only — adapt to the brand, never copy):\n"${seedTranscript_.slice(0, 4000)}"` : ''}\n`;
+      learningBlock = `\n═══ DEVELOP THE USER'S DROPPED IDEA — THIS IS THE WHOLE JOB ═══\nThe user dropped ONE raw, half-baked idea below. Turn it into the single ready-to-film brief you return. First find the belief inside it: the opinion the user would argue if they filmed it. That is the "belief" of the brief. Build the brief AROUND it and keep its actual angle: sharpen it, give it a strong opening line, in the brand's voice. Do NOT swap it for a safer or more generic idea, and do NOT water it down. Pick the ONE format that best fits THIS idea — do not default to Q&A.\n\nTHE IDEA:\n"${seedIdea_}"${seedNotes_ ? `\n\nUser's notes about a reference video:\n"${seedNotes_}"` : ''}${seedTranscript_ ? `\n\nTranscript of a reference video (inspiration only — adapt to the brand, never copy, and never borrow its numbers, names or results as the brand's own):\n"${seedTranscript_.slice(0, 4000)}"` : ''}\n`;
     } else {
       learningBlock = learningContext ? `\n${learningContext}\n\nUse this feedback to shape your ideas. Lean into angles, formats, and tones the user approved. Avoid patterns they rejected.\n` : '';
     }
 
-    const opener = isSeed
-      ? `You are an elite short-form content strategist. Develop the user's dropped idea (below) into ONE genuinely great, ready-to-film brief — punchy, specific, scroll-stopping, and unmistakably in the brand's voice. The user's idea is the star: amplify it and stay faithful to its angle, never replace it with something safer.`
-      : `You are an elite short-form content strategist who creates scroll-stopping content. Every hook must hit in the first 2 seconds — pattern interrupts, curiosity gaps, bold specific claims, contrarian angles. Punchy and sharp, never flat or generic — but always in the brand's voice (a dry brand stays dry, just dry AND punchy). Generate ${count} content ideas.`;
+    // v693 — A SEARCH QUESTION IS NOT THE IDEA. PAA-to-post seeds a real search question; answered
+    // literally it becomes the search-question topic the diagnosis found ("what is X?"). The question
+    // is turned into a belief about the asker's situation instead. The old app build appends its own
+    // "SEED QUESTION ... answer it" block to learningContext, so this block comes AFTER the learning
+    // block and says in so many words that it overrides that instruction.
+    const seedQuestion_ = (typeof seedQuestion === 'string' ? seedQuestion : '').replace(/\s+/g, ' ').trim().slice(0, SEED_QUESTION_CAP);
+    const isQuestionSeed = !isSeed && (!!seedQuestion_ || (typeof learningContext === 'string' && PAA_MARK.test(learningContext)));
+    const questionBlock = isQuestionSeed
+      ? `\nTHE SEED IS A SEARCH QUESTION${seedQuestion_ ? `: "${seedQuestion_}"` : ' (above)'}. Do NOT simply answer it, and ignore any line above that says to answer it directly or to make the hook reference it. Turn it into a belief about the viewer's situation first: why is someone asking this, and what do they assume that makes the question feel urgent? That belief is the idea and goes in "belief". The script argues the belief and answers the question on the way only where that helps. For a qna idea the title may still be the question itself.\n`
+      : '';
 
-    // v640 — THE BRAND BLOCK MOVED TO THE END. It used to sit here, at ~2% of the prompt, and
-    // from there to the winners at ~86% there was not one brand-specific character: 13,465 chars,
-    // 56% of everything the model reads, all universal writing rules. The final quarter — the
-    // recency zone a model weights hardest — was 79.5% house rules. `rulePrecedence()` is the
-    // acknowledged patch for that and it is one 667-char sentence asking the model to re-rank
-    // something it read 20,000 characters earlier; positional mass beats it.
-    // Now: opener + task params -> craft rules -> BRAND (profile, learning, winners) -> schema.
-    // The brand is the last thing read before the task, which is where it belongs.
-    // Pure re-order: not one character of content changed.
+    const opener = isSeed
+      ? `You are a short-form content strategist. Develop the user's dropped idea (below) into ONE ready-to-film brief in the brand's voice. The user's idea is the star: find the belief inside it and stay faithful to its angle, never replace it with something safer.`
+      : `You are a short-form content strategist. Generate ${count} content ideas for this brand. Each one starts from a belief its audience does not share yet, and is written in the brand's own voice (a dry brand stays dry).`;
+
+    // v640 — the brand block sits at the END, the last thing read before the task (recency).
+    // v693 — the long craft rulebook that used to fill the middle is gone: the short style guide
+    // (api/_write.js styleGuide, shared with the v2 pipeline) and the spoken rule replace it.
+    const brandTag = '#' + (String(bc.brandName || '').trim() || 'My Brand').replace(/\s+/g, '');
     const prompt = `${opener}
 ${gapInstruction}
 ${forceFormatInstruction}
 ${deliveryInstruction}
 ${qnaInstruction}
-CONTENT FORMATS:
-- video: 30-60 second vertical video (Reel/TikTok). Structure: hook in the first 2 seconds, ONE core idea developed fast, payoff in the last 5 seconds. Script is written to be spoken — full sentences of varied length joined by natural connectors, 90-150 words (that is a FLOOR, not a target to undercut), no headings. Shot list: 4-8 concrete shots a solo creator can film on a phone, no crew. On-screen text: 3-6 short overlays that punctuate key moments, never a transcript.
-- carousel: 5-8 slide Instagram carousel. Slide 1 = a hook that forces the swipe (a claim, question, or number — never a title). Slides 2-7 = ONE idea per slide, max 20 words each, building a single argument. Last slide = a takeaway worth saving or sharing. boldText = all slide texts, numbered ("1: ... 2: ..."). script = design instructions only: layout, contrast, type treatment. Every slide must earn the next swipe.
-- statement: A bold standalone claim for a text graphic, written in THIS brand's voice. NEVER a single line: minimum 2 sentences, because one line says nothing on its own. It must land for a stranger with ZERO context — the claim first, then whatever makes it hit: the reframe, the cost, the number, the uncomfortable contrast. Setup-then-payoff is one way and often a good one, but it is not the only shape; a dry technical brand may simply state the fact and then the consequence. Do NOT reach for a motivational-speaker cadence unless that is genuinely this brand's voice. Range: 2-5 short sentences, 15-40 words total. Every line must hit — no explanations, no benefits list, no lecture, no CTA. The full statement must stand alone and be understood by someone who has never heard of the brand. BANNED: building the statement around an invented nickname or cryptic metaphor ("hangover candy", "dessert in a costume") that the reader must decode. Clever phrasing is welcome ONLY after the literal claim is already on the page in plain words — concrete nouns and real mechanisms beat wordplay. If a metaphor appears, the very next line must say the same thing literally. boldText = the full statement text. script = 2-3 sentences of practical shooting tips for the "film it instead" option (delivery, tone, framing — e.g. "Deadpan, straight into camera. One take, no music. Hold the last line two beats."). NO design instructions — no background/typography/layout talk, the graphic is auto-generated.
-- micro: 10-15 second single-fact video. ONE surprising fact about how something in the WORLD works — never a walkthrough of how the brand's own product works, which is a feature tour, not a fact. The viewer learns exactly one thing they will repeat to someone else. Script 30-60 words, spoken style — still full sentences someone can say out loud, never clipped fragments. Structure: the fact stated bluntly, then one line of why it matters. No intro, no "did you know", no outro. 1-3 shots max.
+${beliefBlock}
 
-LENGTH DISCIPLINE (mandatory): match output length to format. statement/static = glance formats, seconds of attention, minimal text. micro/qna = under 30 seconds spoken. video is the ONLY format that gets a full script. Never pad a short format into a lecture.
+CONTENT FORMATS:
+- video: 30-60 second vertical video (Reel/TikTok). Structure: the first 2 seconds open the belief, the middle argues it, the last 5 seconds land the reframe. Script is written to be spoken — full sentences of varied length joined by natural connectors, usually 90-180 words (90 is a FLOOR, not a target to undercut; take the words the idea needs), no headings. Shot list: 4-8 concrete shots a solo creator can film on a phone, no crew.
+- carousel: 5-8 slide Instagram carousel. Slide 1 = the belief as a claim or a question that forces the swipe (never a title). Slides 2-7 = ONE idea per slide, building a single argument (a slide reads best short, but say what the idea needs). Last slide = a takeaway worth saving or sharing. boldText = all slide texts, numbered ("1: ... 2: ..."). script = design instructions only: layout, contrast, type treatment. Every slide must earn the next swipe.
+- statement: A bold standalone claim for a text graphic, written in THIS brand's voice. NEVER a single line: minimum 2 sentences, because one line says nothing on its own. It must land for a stranger with ZERO context — the belief first, then whatever makes it hit: the reframe, the cost, the uncomfortable contrast, or a real number from the brand profile (never an invented one). Natural sentences a person would actually say, not a run of clipped commands. A dry technical brand may simply state the fact and then the consequence. Usually 2-5 sentences, roughly 15-60 words: a guide, not a limit. No explanations, no benefits list, no lecture, no CTA. BANNED: building the statement around an invented nickname or cryptic metaphor ("hangover candy", "dessert in a costume") that the reader must decode. If a metaphor appears, the very next line must say the same thing literally. boldText = the full statement text. script = 2-3 sentences of practical shooting tips for the "film it instead" option (delivery, tone, framing — e.g. "Deadpan, straight into camera. One take, no music. Hold the last line two beats."). NO design instructions — no background/typography/layout talk, the graphic is auto-generated.
+- micro: 10-15 second single-point video. ONE belief carried by one thing about how something in the WORLD works (something the brand profile or common knowledge actually supports, never an invented statistic) — never a walkthrough of how the brand's own product works, which is a feature tour, not content. Script usually 30-70 words, spoken style — full sentences someone can say out loud, never clipped fragments. The point stated plainly, then why it matters. No intro, no "did you know", no outro. 1-3 shots max.
+
+LENGTH (v693 r3 — guidance, not caps): match the length to the format. statement/static are read at a glance; micro/qna are short spoken answers; video gets the full script. Never pad a short format into a lecture, and never cut an idea short to hit a number.
 - static: Single image post (shown to users as "Image"). The image carries the idea on its own — describe ONE concrete, photographable scene or product shot (no collages, no vague lifestyle vibes). Caption: 1-3 sentences in brand voice adding context the image cannot — this is the one format where the caption IS the writing. End with a question or quiet prompt only when natural, never a hard CTA.
-- qna: Q&A — a real audience question + short filmed answer (under 30 seconds). The creator films a quick, punchy answer on camera.
+- qna: Q&A — a real audience question + short filmed answer (under 30 seconds). The creator films a quick answer on camera.
   CRITICAL RULES FOR Q&A:
-  1. Every question MUST come from the BRAND CONTEXT above — use the customer pain points, product details, communities, target audience fears and goals. Never invent generic, off-brand questions unrelated to what this brand actually does.
+  1. Every question MUST come from the BRAND CONTEXT — the customer pain points, communities, target audience fears and goals. Never invent generic, off-brand questions unrelated to what this brand actually does.
   2. Questions should sound like REAL DMs or comments from followers — casual, specific, blunt. Use the audience's actual language from the brand profile.
-  3. Each Q&A MUST use a DIFFERENT question angle. Rotate through these and NEVER repeat:
-     * Myth-busting: "Is it true that [specific claim from the niche]?"
-     * Product/offer-specific: "What's actually [in / behind] [brand's product or service]?" / "Why does [brand] [do a specific thing in how it works]?"
-     * Versus/comparison: "[Brand product] vs [competitor category] — what's the difference?"
-     * Skeptic/objection: "[Paraphrase a real customer pain point as a doubt]"
-     * Timing/usage: "When should I actually use [product/service]?" / "Can I use [offer] for [a relevant situation from the community]?"
-     * Beginner: "I just started [a situation/activity from the brand's communities] — do I need [what the brand offers]?"
-     * Deep-cut: A nerdy specific question only someone in the target audience would ask
-     * Contrarian: Challenge a common belief in the brand's niche
-     * "Is X bad": "Is [a common practice or belief in the niche] actually a problem?"
-  4. Answers must reference SPECIFIC product or service facts, specifics, or data from the brand profile. No vague "it depends" answers.
-  5. TITLE = the raw question itself, as if someone typed it in a comment. HOOK = a DIFFERENT scroll-stopping opening line for the filmed answer (the blunt first line of your answer, or a tension-creating tease) — it must NEVER just repeat the question. Title and hook must never be identical.
-  6. ANSWER LENGTH: under 30 seconds spoken, MAX 60 words. The FIRST sentence answers the question directly — no wind-up, no "great question". Then one supporting fact or example. End, don't trail off.
+  3. Each Q&A MUST use a DIFFERENT question angle: myth-busting, versus/comparison, skeptic/objection, timing/usage, beginner, deep-cut, contrarian, "is X bad". Never repeat one.
+  4. The answer argues a belief. Use the brand profile's REAL facts only where they answer the question — no vague "it depends", and never an invented fact: where proof is missing, write a [your story: <what to tell>] slot.
+  5. TITLE = the raw question itself, as if someone typed it in a comment. HOOK = a DIFFERENT opening line for the filmed answer — it must NEVER just repeat the question. Title and hook must never be identical.
+  6. ANSWER LENGTH: usually under 30 seconds spoken (about 40-80 words). The FIRST sentence answers the question directly — no wind-up, no "great question". End, don't trail off.
 - bonus: Wildcard — content that breaks the weekly rotation on purpose. One of: a reactive take on something current in the niche, a seasonal angle, a behind-the-scenes/founder moment, or a contrarian opinion. It must still CHOOSE one production shape (video, statement, or image) and obey that format's rules. Bonus content should feel like the brand going off-script, never filler.
 
-${toneBlock}ANGLE VARIETY (mandatory): within any single day, no two ideas may share the same angle, and not all ideas should be on the same topic. Rotate angles across: myth-bust, how-to / routine, customer story, surprising stat or mechanism, hot take / contrarian, comparison vs alternative, founder / behind-the-scenes, common mistake, before/after. Two ideas may share a topic ONLY if their angle AND format differ sharply. The goal is a feed that never feels like the same post twice.
+${toneBlock}ANGLE VARIETY (mandatory): within any single day, no two ideas may share the same angle, and not all ideas should be on the same topic. Rotate angles across: myth-bust, how-to / routine, customer story (a real one from the stories below, or a slot), mechanism, hot take / contrarian, comparison vs alternative, founder / behind-the-scenes, common mistake, before/after. Two ideas may share a topic ONLY if their angle AND format differ sharply. The goal is a feed that never feels like the same post twice.
 
-Each idea MUST be a complete, ready-to-use content brief. Scripts must be FULL — no placeholders, no "[insert X]".
+Each idea MUST be a complete, ready-to-use content brief. Scripts must be FULL. The ONLY placeholder allowed is a [your story: <what to tell>] slot where real proof belongs — never "[insert X]".
 
-CLARITY RULE (all formats): never make the audience decode an in-joke. Titles, hooks and statements must carry the literal point in plain words. Invented nicknames for things ("hangover candy") are allowed only AFTER the plain-language claim has been made.
+HOOK: the first line a person would actually say, or read on screen before the audio starts. Plain and specific, and it opens the belief. Titles, hooks and statements carry the literal point in plain words: never make the audience decode an in-joke.
 
-HOOK RULES (the hook determines if anyone sees the rest — it is MORE important than the script):
-- Max 8 words. Shorter = better. Fragment sentences beat full sentences.
-- The first word must create tension, curiosity, or a pattern interrupt.
-- The hook must work as ON-SCREEN TEXT — it's what they read before audio kicks in.
-- Use DIFFERENT patterns across ideas — never repeat the same formula:
-  * Contrarian: "Everything you know about X is wrong." / "X is a scam."
-  * Before/After: "I stopped X. Here's what happened." / "What used to require X now takes Y."
-  * Specificity: "3 parts. One price. Zero fluff." / "From 6 steps to 2." (use numbers/specifics that fit THIS brand — never borrow another industry's)
-  * Challenge: "Your doctor won't tell you this." / "Stop buying X."
-  * Tribal split: "This separates serious X from everyone else."
-  * Confession: "I was wrong about X for 5 years."
-  * Prediction + stakes: "X is the 2026 Y that actually matters."
-  * Result-based: "I tried X for 30 days. Never going back."
-  * Problem callout: "If your X has more Y than Z, we need to talk."
-- BLACKLIST — NEVER use these (they are AI tells that kill credibility):
-  "Did you know", "In this video", "Hey guys", "Today we're going to",
-  "Let me tell you", "Have you ever wondered", "Welcome back",
-  "Here's the thing", "Here's the wild part", "Let's dive in",
-  "I'm excited to share", "This is a game-changer", "Revolutionary",
-  "Quick question", "Most people don't realize"
-- STRONG hooks sound like a person at a bar telling a friend something urgent — not a presenter opening a webinar.
-- Test: would someone STOP SCROLLING for this? If not, rewrite it.
+STAY IN THE AUDIENCE'S WORLD, NOT THE PRODUCT'S: the belief and the script are about something the listener is living through, not a walkthrough of how the product works. A chain of "you do this, then it does that, then you get those" is a feature tour, not content. The brand's facts are background: at most one per script, and only where it answers the viewer's problem. If a competitor could read the script with their name swapped in, it was about the product.
+THAT IS A RULE ABOUT SUBJECT, NOT ABOUT SHAPE — there are many ways in: a blunt claim, a question someone actually asked, a thing you noticed this week, a correction, a small story, the punchline first. If several ideas in this batch open the same way, rewrite them so the ways in genuinely differ.
 
-${creativeGuidelines(bc.brandName)}
+TAGS: start with the brand hashtag (${brandTag}), then 2-3 niche tags and 1 broad tag, max 5 in total. Never the brand's avoid-words, never hype tags (#viral, #gamechanger, #musthave, #fyp). Never say "viral" in the content itself.
 
-${clarityFlow()}
+${styleGuide()}
 
-${spokenShape()}
-
-${(() => { const _ex = spokenExample(bc); return _ex ? _ex + '\n\n' : ''; })()}${antiSlopRhythm()}
-
-SELF-CHECK before finalizing (do this silently, output only the final JSON): every idea must be unmistakably in THIS brand's voice, lean on the brand's REAL specifics — its pain points, USPs, facts, vocabulary — instead of generic filler, and genuinely make this brand's audience stop scrolling. Rewrite anything that reads generic, off-voice, or interchangeable with a random competitor.
-STAY IN THE AUDIENCE'S WORLD, NOT THE PRODUCT'S (this outranks the line above where they pull apart): the brand's specifics are RAW MATERIAL for talking about the reader's situation — they are not the subject. Ask of every script: is this about something the listener is living through, or is it a walkthrough of how our thing works? A chain of "you do this, then it does that, then you get those" is a feature tour, not content, no matter how well the sentences are built. Stay in their world — the annoying, expensive or confusing thing they are dealing with — and let the mechanism appear only as the resolution, in as few words as it takes. If a script could be read aloud by a competitor with their name swapped in, it was about the product.
-THAT IS A RULE ABOUT SUBJECT, NOT ABOUT SHAPE — do NOT turn it into one opening formula. Being about the audience's world says nothing about how a script must START, and there are many ways in: a blunt claim, a hard number, a belief worth correcting, a question someone actually asked, a thing you noticed this week, a comparison, a small story, the punchline first. Rotate them. If several scripts in this batch open the same way, or every script you write begins by describing the reader's frustration, you have turned a subject rule into a template and the whole feed will read as one voice — rewrite them so the ways in genuinely differ.
-
-${rulePrecedence()}
+${spokenV2()}
 
 ${brandProfile}
-${learningBlock}${winners ? winners + '\n\n' : ''}EVERYTHING ABOVE THIS LINE IS THE BRAND. It is the last thing you read before the task because it is what matters most: the general writing rules exist to remove generic slop, not to overwrite a voice this brand has earned. Where they conflict, the brand wins.
+${stories ? stories + '\n' : ''}${learningBlock}${questionBlock}${winners ? winners + '\n\n' : ''}EVERYTHING ABOVE THIS LINE IS THE BRAND. It is the last thing you read before the task because it is what matters most. Where it and the style guide disagree on voice, the brand wins. Nothing in it permits inventing a fact.
 
-HOW TO FILL "emphasis": 2-5 SHORT phrases copied VERBATIM from the script — the words the speaker should lean on when saying it out loud: the hard number, the flip word (not/never/instead), the payoff. These are stress marks for the teleprompter, so pick words that change the meaning if spoken flat. Never mark a whole sentence. Empty array for non-spoken formats.
+HOW TO FILL "emphasis": 2-5 SHORT phrases copied VERBATIM from the script — the words the speaker should lean on when saying it out loud: the flip word (not/never/instead), the payoff. These are stress marks for the teleprompter, so pick words that change the meaning if spoken flat. Never mark a whole sentence. Empty array for non-spoken formats.
 
 Respond with a JSON array of exactly ${count} ideas. Every key below is read by the app — return all of them, and add no others. Each idea:
 {
+  "belief": "the belief this idea argues: one plain sentence, max ${MAX_BELIEF} characters (write it FIRST)",
   "day": "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Bonus",
   "community": "the specific topic/theme this idea is about — usually that day's lead theme, but for the ~40% variety picks use an adjacent theme or evergreen brand angle",
   "format": "video|carousel|static|statement|micro|bonus|qna",
   "tone": "${toneField}",
   "title": "Short descriptive title",
-  "hook": "Opening hook line (first 3 seconds)",
+  "hook": "Opening line (first 3 seconds)",
   "script": "Full script or body text",
   "emphasis": ["exact phrase", "another"],
   "shots": "Shot 1: ...\\nShot 2: ...\\nShot 3: ...",
   "caption": "Post caption text — ONLY for static and carousel formats (it IS the post there). Empty string for all video formats: captions are auto-generated on-platform.",
   "reelTitle": "Short reel title",
-  "tags": "#BrandTag #niche1 #niche2 #broad1 (ALWAYS start with the brand hashtag, then 2-3 niche + 1 broad = max 5 total)",
+  "tags": "${brandTag} #niche1 #niche2 #broad1 (max 5 total)",
   "boldText": "MANDATORY for statement and carousel, never omit it. For statement: the FULL statement text (this is the content people see). For carousel: all slide texts numbered. For statements, hook must be sentence 1 of boldText, and design notes in script may only reference lines that actually appear in boldText."
 }
 
+SELF-CHECK (silently, then output only the JSON): every idea argues its stated belief, in THIS brand's voice, about the viewer's world; nothing is invented (a [your story: <what to tell>] slot instead); every spoken script reads like a person talking.
 IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanation.`;
 
     // Optional reference screenshot the user dropped in — Grok can see it.
@@ -468,13 +486,13 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       ? '\n\nA REFERENCE SCREENSHOT is attached to this message. Study it and use what is relevant — the subject, the layout, the vibe, the wording — as inspiration for the idea. Translate it into a brand-true idea in the brand voice; never just describe the image, and never invent brand facts from it.'
       : '';
 
-    const content = await callLLM({ deadlineMs: 93333, timeoutMs: 90000,
+    const content = await writerCallResilient({ deadlineMs: Math.max(1000, Math.min(93333, _genLeft())), timeoutMs: 90000, provider: writerProvider(), effort: writerEffort('batch'),
       messages: [{ role: 'user', content: prompt + imgNote }],
       model: 'grok',
       max_tokens: 16000,
       engine: (bc.engine || 'grok'),
       images: refImages.length ? refImages : undefined
-    });
+    }, { providerFromEnv: true, label: 'batch', effortRetry: true, room: () => Math.min(93333, _genLeft()) });
 
     // Robust parse — handles fences AND prose-wrapped JSON (esp. Claude).
     let ideas = extractJson(content);
@@ -528,9 +546,23 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       if (Array.isArray(v)) return v.map(txt).filter(Boolean).join('\n');
       try { return Object.values(v).map(txt).filter(Boolean).join(' '); } catch (e) { return ''; }
     };
+    // v693 — THE BELIEF. One plain line (C-LIB cap 140). An overlong one is cut on a word boundary
+    // (never mid-word, never ending on a dangling comma or dash); surrounding quotes are dropped. A
+    // missing belief is '' — never derived from the hook or the title, because a hook is not an
+    // opinion and a made-up belief would be the app inventing what the brand thinks.
+    const cleanBelief = (v) => {
+      let b = txt(v).replace(/\s+/g, ' ').trim();
+      if (/^["\u201c].*["\u201d]$/.test(b)) b = b.slice(1, -1).trim();
+      if (b.length <= MAX_BELIEF) return b;
+      b = b.slice(0, MAX_BELIEF);
+      const sp = b.lastIndexOf(' ');
+      if (sp > MAX_BELIEF * 0.6) b = b.slice(0, sp);
+      return b.replace(/[\s,;:\-\u2013\u2014]+$/, '');
+    };
     const cleanIdeas = (arr) => arr.map(raw => {
       const idea = (raw && typeof raw === 'object') ? raw : { script: txt(raw) };
       return {
+      belief: cleanBelief(idea.belief),
       day: validDays.includes(idea.day) ? idea.day : 'Bonus',
       community: txt(idea.community),
       format: validFormats.includes(idea.format) ? idea.format : 'video',
@@ -571,10 +603,10 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     // guarded, and only keeps the retry if it's actually cleaner — so it can never break or worsen the batch.
     try {
       const _viol = outputViolations(JSON.stringify(ideas), bc);
-      if (_viol.length) {
+      if (_viol.length && _genLeft() >= 40000) {
         const _bad = Array.from(new Set(_viol.map(v => v.hit))).slice(0, 12).join(', ');
         const _fix = prompt + imgNote + `\n\nCRITICAL FIX: your previous draft used these FORBIDDEN words/topics: ${_bad}. Regenerate ALL ideas with the SAME quality, formats and structure, but with NONE of those words or topics anywhere (not in titles, hooks, scripts, captions or tags). Return the same JSON array.`;
-        const _c2 = await callLLM({ deadlineMs: 93333, timeoutMs: 90000, messages: [{ role: 'user', content: _fix }], model: 'grok', max_tokens: 16000, engine: (bc.engine || 'grok'), images: refImages.length ? refImages : undefined });
+        const _c2 = await writerCallResilient({ deadlineMs: Math.min(93333, _genLeft()), timeoutMs: 90000, provider: writerProvider(), effort: writerEffort('batch'), messages: [{ role: 'user', content: _fix }], model: 'grok', max_tokens: 16000, engine: (bc.engine || 'grok'), images: refImages.length ? refImages : undefined }, { providerFromEnv: true, label: 'batch-fix' });
         let _i2 = extractJson(_c2);
         if (_i2 && !Array.isArray(_i2)) _i2 = [_i2];
         if (Array.isArray(_i2) && _i2.length) {
@@ -587,8 +619,10 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     // Metered against whoever the gate was checked against (the brand owner for a seat, the
     // cron's account for the daily push) — the two MUST match, or a ceiling would be checked
     // that nothing ever increments.
-    if (_billingUser) await _usage.logUsage({ userId: _billingUser, brandId: _meterBrand || brandId || bc.brandId || bc.brand_id || null, action: 'ideas', model: bc.engine || 'grok' });
-    return res.status(200).json({ ideas });
+    if (_billingUser) await _usage.logUsage({ userId: _billingUser, brandId: _meterBrand || brandId || bc.brandId || bc.brand_id || null, action: 'ideas', model: require('./_write').usageModel(bc) });
+    // v693 — `warnings` is always an array (same as /api/angles and /api/write): ['tones_over_limit']
+    // when the brand has more than 3 tones and none were used.
+    return res.status(200).json({ ideas, warnings });
 
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
@@ -633,12 +667,12 @@ Return ONLY valid JSON object, no other text:
 
 Include all 7 days. 3-4 scenes per day.`;
 
-  const content = await callLLM({ deadlineMs: 93333,
+  const content = await writerCallResilient({ deadlineMs: 93333, provider: writerProvider(),
     messages: [{ role: 'user', content: prompt }],
     model: 'grok',
     temperature: 0.8,
     max_tokens: 4000
-  });
+  }, { providerFromEnv: true, label: 'scenes' });
 
   if (!content) return res.status(500).json({ error: 'No content from AI' });
   const parsed = extractJson(content);
@@ -651,7 +685,7 @@ Include all 7 days. 3-4 scenes per day.`;
   // So the feature burned a generation every time and reported "Failed to generate scenes" every
   // time. Pre-existing (reproduced against the unmodified file); required locally, like the other
   // inline `require('./_usage')` call sites in this codebase.
-  if (userId) await require('./_usage').logUsage({ userId, brandId: bc.brandId || bc.brand_id || null, action: 'ideas', model: bc.engine || 'grok' });
+  if (userId) await require('./_usage').logUsage({ userId, brandId: bc.brandId || bc.brand_id || null, action: 'ideas', model: require('./_write').usageModel(bc) });
   // Support both new {day: scenes[]} and legacy scenes[] format
   if (Array.isArray(parsed)) {
     return res.status(200).json({ scenes: parsed });
@@ -659,46 +693,6 @@ Include all 7 days. 3-4 scenes per day.`;
   return res.status(200).json({ dayScenes: parsed });
 }
 
-/**
- * GENERIC craft rules only — no brand fields.
- *
- * This is what is left of the old `buildMasterPrompt`. That function rendered the brand profile AND
- * these universal rules together, which put generic voice prescriptions inside the brand section
- * (see _brain.fullBrandBlock for why that is harmful). The brand half now lives in the single
- * shared renderer; the rules half lives here, in the prompt body where it belongs.
- *
- * generate-ideas deliberately does NOT call writingCraft() — it keeps its own tuned hook rules —
- * so it needs its own copy of the anti-AI word list.
- */
-function creativeGuidelines(rawBrandName) {
-  const brandName = String(rawBrandName || '').trim() || 'My Brand';
-  const sections = [];
-
-  sections.push(`CREATIVE GUIDELINES:
-- Every hook must pass the "thumb-stop test" — would someone actually stop scrolling for this? Make it punchy, specific, and impossible to ignore, in the brand's voice.
-- Scripts should sound natural when read aloud, not written
-- Use specific numbers, names, and details — never generic claims
-- Each post should teach, challenge, or entertain — ideally two of three
-- ALWAYS include the brand hashtag (#${brandName.replace(/\s+/g, '')}) as the FIRST tag
-- Max 5 hashtags total: brand tag + 2-3 niche community tags + 1 broad reach tag. Fewer is better for the algorithm.
-- Hashtags obey the same rules as the copy: never use the brand's avoid-words, and never use hype tags like #viral, #gamechanger, #musthave, #fyp-bait. Plain, specific, on-topic tags only.
-- Captions should add value beyond the visual — not just describe it
-
-ANTI-AI WRITING RULES (mandatory):
-- NEVER use em dashes. Use commas, periods, or parentheses instead.
-- NEVER use "not just X, it's Y" or "not only X, but Y" constructions.
-- NEVER use rule-of-three lists to sound comprehensive. Two items or four, never three.
-- NEVER tack -ing phrases onto sentences for fake depth (highlighting, showcasing, ensuring, fostering, reflecting, underscoring, emphasizing).
-- NEVER use these AI-tell words: delve, enhance, foster, garner, showcase, vibrant, tapestry, testament, pivotal, crucial, landscape (abstract), interplay, intricate, leverage, elevate, cornerstone, multifaceted, nuanced, paradigm, robust, seamless, synergy, holistic.
-- NEVER use "serves as" / "stands as" / "represents". Just say "is".
-- NEVER use false ranges ("from X to Y, from A to B").
-- NEVER start with "In today's..." or "In the world of...".
-- NEVER use filler: "It's important to note", "At the end of the day", "When it comes to".
-- NEVER use generic closers: "The future looks bright", "Exciting times ahead".
-- NEVER use the word "viral", "going viral", or "viral trend" in the actual content/script — virality is a behind-the-scenes strategy, never something the brand says out loud.
-- Vary sentence length. Mix short punchy lines with longer ones.
-- Use straight quotes, not curly quotes.
-- Write like a person talking, not a press release.`);
-
-  return sections.join('\n');
-}
+// v693 — creativeGuidelines() (the old per-file rulebook: "use specific numbers, names", the
+// rule-of-three ban, its own AI-word list) was removed. Its jobs moved to the shared short style
+// guide (api/_write.js styleGuide) and the TAGS line in the prompt above.

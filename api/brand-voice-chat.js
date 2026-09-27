@@ -1,4 +1,5 @@
-const { callLLM, callGrokSearch, aiUnavailable } = require('./_llm');
+const { callGrokSearch, aiUnavailable } = require('./_llm');
+const { writerCallResilient, writerProvider } = require('./_write');   // v693 r3 — the WRITER_PROVIDER switch
 const { extractJson, fullBrandBlock } = require('./_brain');
 
 module.exports = async function handler(req, res) {
@@ -141,12 +142,13 @@ If they haven't set the basics yet (brand name, audience), start there before an
 
     // v690 — 70s here after an 18s search left 2s of the 90s maxDuration for guard, brand hydration
     // and the usage write (an 8s Supabase call on its own). 60s leaves room for them.
-    const content = await callLLM({ deadlineMs: 60000, timeoutMs: 44000,
+    // v693 r3 — 56 s (was 60): 18 s search + this + the usage write (2 x 8 s) must fit 90 s.
+    const content = await writerCallResilient({ deadlineMs: 56000, timeoutMs: 44000, provider: writerProvider(),
       messages: fullMessages,
       model: 'grok',
       temperature: 0.8,
-      max_tokens: 800
-    });
+      max_tokens: 1200
+    }, { providerFromEnv: true, label: 'brand-voice-chat' });
 
     // v668 — A BLOCK WITH NO CLOSING TAG MUST STILL BE PARSED, AND MUST STILL BE HIDDEN.
     // Both the extractor and the stripper required a closing tag. `max_tokens` is 800 here and the
@@ -216,7 +218,7 @@ If they haven't set the basics yet (brand name, audience), start there before an
     spans.sort((a, b) => b[0] - a[0]).forEach(([a, b]) => { cleanContent = cleanContent.slice(0, a) + cleanContent.slice(b); });
     cleanContent = cleanContent.trim();
 
-    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'voicechat' });
+    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'voicechat', model: require('./_write').usageModel(bc) });
     return res.status(200).json({ reply: cleanContent, suggestion, action, memory });
 
   } catch (err) {
