@@ -10,7 +10,7 @@ const { AsyncLocalStorage } = require('async_hooks');
  *
  * `model`/`engine` opts are still accepted (call sites pass model:'grok' etc.) but
  * IGNORED — the model is always Grok. Bump it with the XAI_MODEL env var
- * (default grok-4.6) — no redeploy needed.
+ * (default grok-4.7 since v694 — docs.x.ai/developers/grok-4-7, same $2/$6 per MTok as 4.6) — no redeploy needed.
  *
  * Env: XAI_API_KEY (required). (GROQ_API_KEY is still set, but used ONLY for Whisper
  * dictation in the transcribe endpoints — NOT here.)
@@ -102,7 +102,7 @@ async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images 
     }
   }
 
-  const model = process.env.XAI_MODEL || 'grok-4.6';
+  const model = process.env.XAI_MODEL || 'grok-4.7';
   // REASONING DEPTH. xAI defaults this to "high" when unset — deep multi-step reasoning, the level
   // meant for maths proofs and competition problems. We never set it, so every post this app has
   // ever written ran on "high". Measured consequence, from the production logs on 2026-08-27:
@@ -406,7 +406,7 @@ async function callClaude({ messages, max_tokens = 2000, images = null, timeoutM
 // One agentic call: Grok searches the LIVE web, browses pages, and answers WITH
 // citations. Uses XAI_API_KEY (no new provider). Returns the answer text, or null on
 // ANY failure so callers can fall back to their existing search path. Never throws.
-// Model defaults to grok-4.6 (reasoning) — override with XAI_SEARCH_MODEL.
+// Model defaults to grok-4.7 (reasoning) — override with XAI_SEARCH_MODEL.
 function extractResponsesText(b) {
   if (!b || typeof b !== 'object') return null;
   if (typeof b.output_text === 'string' && b.output_text.trim()) return b.output_text.trim();
@@ -444,7 +444,7 @@ function callGrokSearch(prompt, opts = {}) {
     // v690 r2 — same as callXAI: a missing key is recorded on opts.meta, so an endpoint can say so honestly.
     if (!apiKey) { if (opts && opts.meta && typeof opts.meta === 'object') opts.meta.refused = 'no-key'; console.error('grok-search: no XAI_API_KEY — the web-search lane is off'); return resolve(null); }
     if (!prompt) { console.error('grok-search: called with an empty prompt'); return resolve(null); }
-    const model = process.env.XAI_SEARCH_MODEL || 'grok-4.6';
+    const model = process.env.XAI_SEARCH_MODEL || 'grok-4.7';
     const tool = { type: 'web_search' };
     if (Array.isArray(opts.allowedDomains) && opts.allowedDomains.length) tool.filters = { allowed_domains: opts.allowedDomains.slice(0, 5) };
     /* v686 — STREAMED, BECAUSE THE OLD TIMEOUT WAS MEASURING THE WRONG THING.

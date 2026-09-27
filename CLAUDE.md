@@ -2,6 +2,15 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-27 — v694. THE APP RUNS ON GROK 4.7 (owner: "grok 4.7 … needs to be inside the app the main").
+
+Default xAI model `grok-4.6` → `grok-4.7` in api/_llm.js (callXAI + the web-search leg) and api/blind-test.js.
+Source: docs.x.ai/developers/grok-4-7 (fetched 2026-09-27): id "grok-4.7", $2/$6 per MTok (same as 4.6, so the
+cost fuse is unchanged), 500k context, text+image input, Chat Completions and Responses both listed, reasoning
+effort low|medium|high(default)|xhigh. The app always sends an explicit effort (XAI_REASONING_EFFORT, default
+low; writers medium), so 4.7's "high" default never applies silently. XAI_MODEL / XAI_SEARCH_MODEL (not set in
+Vercel) still override without a deploy. NOT live-tested: x.ai credits were empty (403 since 2026-09-25).
+
 ## ▶▶ 2026-09-27 — v693. CONTENT-V2: THE APP NOW WRITES LIKE A GOOD CLAUDE CHAT (8 owner-approved changes + "remove the restraints").
 
 WHY: the owner got better content from one plain Claude chat than the app ever made. Diagnosis (DB + code):

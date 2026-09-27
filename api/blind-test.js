@@ -244,7 +244,7 @@ async function rpcStep(fn, args) {
 async function runArm(arm, bc, source, deadlineMs) {
   if (arm === 'baseline') {
     const out = await require('./remix')._legacyRemix({ bc, source, deadlineMs });
-    return { text: readableText(out), model: process.env.XAI_MODEL || 'grok-4.6' };
+    return { text: readableText(out), model: process.env.XAI_MODEL || 'grok-4.7' };
   }
   const provider = arm === 'claude' ? 'claude' : 'grok';
   if (provider === 'claude' && !require('./_llm').claudeConfigured()) {
@@ -267,7 +267,7 @@ async function runArm(arm, bc, source, deadlineMs) {
     const w = await W.runWrite({ bc, source, angle, format: 'talking', provider, effort: 'high', deadlineMs: left });
     return {
       text: readableText(w),
-      model: provider === 'claude' ? (process.env.ANTHROPIC_MODEL || llm.CLAUDE_DEFAULT_MODEL) : (process.env.XAI_MODEL || 'grok-4.6'),
+      model: provider === 'claude' ? (process.env.ANTHROPIC_MODEL || llm.CLAUDE_DEFAULT_MODEL) : (process.env.XAI_MODEL || 'grok-4.7'),
     };
   });
 }
