@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v695';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v696';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6304,7 +6304,8 @@ if (!window.supabase) {
     <div class="generate-ideas-bar">
       <select class="generate-count-select" id="generateCount">
         <option value="3">3 ideas</option>
-        <option value="5" selected>5 ideas</option>
+        <option value="5">5 ideas</option>
+        <option value="7" selected>7 ideas</option>
         <option value="10">10 ideas</option>
       </select>
       <span class="generate-status" id="generateStatus"></span>
@@ -6334,7 +6335,7 @@ if (!window.supabase) {
         <button class="export-btn" onclick="exportApproved()">Copy All Approved</button>
         <button class="export-btn secondary" onclick="expandAll()">Expand All</button>
         <button class="export-btn secondary" onclick="collapseAll()">Collapse All</button>
-        <button class="export-btn secondary" onclick="resetAll()">Reset All</button>
+        <button class="export-btn secondary" onclick="resetAll()">Restore dismissed ideas</button>
       </div>
     </div>
     </div><!-- /pro-tools-section -->
@@ -7858,6 +7859,9 @@ function saveIdeasToDB() {
   const _brandId = (currentBrand && currentBrand.id) || null;
   const _rows = _buildIdeaRows(_brandId);
   const run = _ideasSaveChain.then(() => _saveIdeasToDBNow(_brandId, _rows));
+  // fix7 — how many ideas saves are on the wire (csForegroundReload waits for zero)
+  globalThis._ideasSavesInFlight = (globalThis._ideasSavesInFlight || 0) + 1;
+  run.then(() => { globalThis._ideasSavesInFlight--; }, () => { globalThis._ideasSavesInFlight--; });
   _ideasSaveChain = run.then(() => {}, () => {});   // keep the chain alive after a failure
   // Never REJECT: most call sites are fire-and-forget (a rejection would become an unhandled
   // rejection) and several wrap the call in a SYNC try/catch that can't catch it anyway.
@@ -7932,6 +7936,7 @@ async function _saveIdeasToDBNow(brandId, rows) {
   // only remove an old row once its replacement is confirmed written.
   const titles = [...new Set(rows.map(r => r.title).filter(Boolean))];
   const oldByTitle = new Map();
+  const _known = (globalThis._ideasKnownIds && globalThis._ideasKnownIds[brandId]) || null;   // fix7 (1b)
   for (let i = 0; i < titles.length; i += 50) {
     const { data, error } = await sb.from('ideas').select('id,title').eq('brand_id', brandId).in('title', titles.slice(i, i + 50));
     if (error) {
@@ -7941,6 +7946,9 @@ async function _saveIdeasToDBNow(brandId, rows) {
       continue;
     }
     (data || []).forEach(r => {
+      // fix7 (1b) — a row this device never loaded and never wrote (the morning push's post, saved
+      // overnight by the server) is not our old copy: never deleted here, whatever its title.
+      if (_known && !_known.has(r.id)) return;
       const a = oldByTitle.get(r.title) || [];
       a.push(r.id);
       oldByTitle.set(r.title, a);
@@ -7971,6 +7979,7 @@ async function _saveIdeasToDBNow(brandId, rows) {
       // A failed cleanup is NOT a failed save — it leaves a superseded duplicate, and the
       // read path (loadIdeasFromDB) sorts newest-first and dedups by title, so the fresh
       // copy wins. Log it, don't fail the save and don't retry the delete forever.
+      if (!error && _known && Array.isArray(killed)) killed.forEach(k => { if (k) _known.delete(k.id); });
       if (error) console.error('Ideas cleanup failed (old copy left in place):', error);
       else if (!killed || killed.length < slice.length) {
         console.error('Ideas cleanup removed ' + ((killed && killed.length) || 0) + ' of ' +
@@ -8028,7 +8037,9 @@ async function _saveIdeasToDBNow(brandId, rows) {
   const insertIdeas = async (payload) => {
     let res = null;
     for (let attempt = 0; attempt < 3; attempt++) {
-      res = await sb.from('ideas').insert(withoutMissing(payload));
+      // fix7 (1b) — ask for the new rows' ids back, so the next save knows they are this device's own
+      const _q = sb.from('ideas').insert(withoutMissing(payload));
+      res = await ((_q && typeof _q.select === 'function') ? _q.select('id,title') : _q);
       const err = res && res.error;
       if (err && !globalThis._ideasNoEmphasisCol && missingCol(err, 'emphasis')) {
         globalThis._ideasNoEmphasisCol = true;
@@ -8045,20 +8056,32 @@ async function _saveIdeasToDBNow(brandId, rows) {
     return res;
   };
 
+  // fix7 (1b) — this device's own new rows join the known set. If the database did not hand every id
+  // back, the device can no longer tell its own rows from anyone else's: tracking is switched off for
+  // this brand and saves fall back to the by-title rule (the behaviour before fix7) until the next load.
+  const _noteOwn = (res, n) => {
+    const k = globalThis._ideasKnownIds && globalThis._ideasKnownIds[brandId];
+    if (!k) return;
+    const d = res && res.data;
+    if (Array.isArray(d) && d.length === n && d.every(x => x && x.id != null)) d.forEach(x => k.add(x.id));
+    else { try { delete globalThis._ideasKnownIds[brandId]; } catch (e) {} }
+  };
   // Insert in batches of 50; if a batch fails, retry row-by-row so one bad row can't sink the rest
   let failed = 0, lastErr = null;
   for (let i = 0; i < rows.length; i += 50) {
     const batch = rows.slice(i, i + 50);
     const written = [];
-    const { error } = await insertIdeas(batch);
+    const _r1 = await insertIdeas(batch);
+    const error = _r1 && _r1.error;
     if (!error) {
+      _noteOwn(_r1, batch.length);
       batch.forEach(r => { if (r.title) written.push(r.title); });
     } else {
       console.error('Ideas batch save error, retrying row-by-row:', error);
       for (const row of batch) {
         const r2 = await insertIdeas(row);
         if (r2.error) { failed++; lastErr = r2.error; console.error('Idea row failed (previous copy KEPT):', row.title, r2.error); }
-        else if (row.title) written.push(row.title);
+        else { _noteOwn(r2, 1); if (row.title) written.push(row.title); }
       }
     }
     // Only the titles whose replacement is confirmed written lose their old copy.
@@ -8135,7 +8158,7 @@ function _ideaRowRecency(r) {
   const n = Number(r && r.id);
   return isNaN(n) ? 0 : n;
 }
-async function loadIdeasFromDB() {
+async function loadIdeasFromDB(opts) {
   if (!currentBrand) return [];
   /* v663: ORDER AND PAGE IT. This was one unordered, unlimited select, and PostgREST silently
      truncates every response at `db-max-rows` (1000 by default) — WITH NO ORDER IT RETURNS THE
@@ -8149,6 +8172,7 @@ async function loadIdeasFromDB() {
      This repo already diagnosed and fixed exactly this in api/_usage.js — order newest-first and
      page until a short page comes back. Same remedy, applied where the user's content lives. */
   const IDEA_PAGE = 1000;
+  const _knownBid = currentBrand.id;   // fix7 (1b) — see _ideasKnownIds below
   let data = [], error = null;
   for (let _page = 0; _page < 25; _page++) {
     const from = _page * IDEA_PAGE;
@@ -8171,6 +8195,26 @@ async function loadIdeasFromDB() {
     e.__ideasLoadFailed = true;
     throw e;
   }
+  /* fix7 (1b) — WHICH ROWS THIS DEVICE KNOWS. The ideas save replaces rows by title: it reads the ids
+     of the rows with the titles it is writing and deletes them once the new copies are in. An app left
+     open since yesterday never loaded the post the morning push saved overnight, so that row is not
+     "its old copy" — but if the device ever held an idea with the same title, the title rule alone
+     would have deleted it. The save now only deletes ids in this set: rows this device loaded here or
+     wrote itself (_saveIdeasToDBNow adds its own new ids). No set (a stub, a failed load, a database
+     that did not return ids) = the old by-title rule, unchanged. */
+  try {
+    const _ids = (data || []).map(r => r && r.id);
+    if (!globalThis._ideasKnownIds) globalThis._ideasKnownIds = {};
+    const _union = !!(opts && opts.union), _prev = globalThis._ideasKnownIds[_knownBid];
+    if (_ids.every(x => x != null)) {
+      // fix7 review — a merge-reload (csReloadIdeasMerge) only ADDS ids, never replaces the set: a save
+      // that started while it was reading has already added its own new ids here, and a snapshot read
+      // before that save would drop them (→ a leftover copy of the library until the next full load).
+      if (_union && _prev) _ids.forEach(x => _prev.add(x));
+      else globalThis._ideasKnownIds[_knownBid] = new Set(_ids);
+    }
+    else if (!_union) delete globalThis._ideasKnownIds[_knownBid];
+  } catch (e) {}
   const result = (data || []).slice().sort((a, b) => _ideaRowRecency(b) - _ideaRowRecency(a)).map(row => ({
     day: row.day,
     community: row.community,
@@ -8583,6 +8627,8 @@ async function initApp() {
       maybeShowBrandVoicePopup();
       try { maybeAskNotif(); } catch(e) {}
     }
+    // fix7 (1) — opened from the morning push (/app.html?open=ideas&b=<brandId>): straight to Ideas
+    try { window._csAppReady = true; csHandleOpenIdeas(window.location.href, true); } catch(e) {}
     debugLog('initApp complete OK');
   } catch(e) {
     debugLog('initApp FATAL: ' + e.message + '\n' + e.stack);
@@ -8601,6 +8647,120 @@ async function initApp() {
     } catch(e2) { debugLog('Recovery also failed: ' + e2.message); }
   }
 }
+
+/* fix7 (1) — THE MORNING PUSH OPENS IDEAS. api/send-daily.js tops the brand's Ideas up with a batch
+   of pending ideas and the notification opens /app.html?open=ideas&b=<brandId>. If the app is already
+   open, sw.js focuses it and posts the same URL here. We switch to that brand when this user can open
+   it (it is in allBrands), read the ideas from the database and ADD the ones this device does not have
+   (never replacing the list), then show Ideas on the Pending filter, from the top. A brand the user
+   cannot open → Ideas on the current brand. The old link (open=idea&t=<title>) is treated the same way. */
+function csReadOpen(u) {
+  try {
+    const url = new URL(String(u || ''), (typeof location !== 'undefined' && location && location.origin) || 'https://contentshrimp.com');
+    const o = url.searchParams.get('open');
+    if (o !== 'ideas' && o !== 'idea') return null;
+    return { brand: String(url.searchParams.get('b') || '').trim().slice(0, 64) };
+  } catch (e) { return null; }
+}
+function csStripOpenParams() {
+  try {
+    const url = new URL(window.location.href);
+    if (!['open', 't', 'b'].some(k => url.searchParams.has(k))) return;
+    ['open', 't', 'b'].forEach(k => url.searchParams.delete(k));
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+  } catch (e) {}
+}
+// Adds ideas that are in the database but not on this device (by title). Never replaces or drops
+// anything held here — a list that has unsaved work stays exactly as it is.
+async function csReloadIdeasMerge() {
+  if (!currentBrand || !currentBrand.id || window._ideasSwitching) return 0;
+  const gate = brandGate();
+  let rows;
+  try { rows = await loadIdeasFromDB({ union: true }); } catch (e) { return -1; }   // union: never drops a running save's ids
+  if (!gate() || !Array.isArray(rows)) return 0;
+  reindexIdeas();
+  const have = new Set(state.map(x => String((x && x.title) || '').toLowerCase().trim()));
+  let added = 0;
+  rows.forEach(r => {
+    const k = String((r && r.title) || '').toLowerCase().trim();
+    if (!k || have.has(k)) return;
+    have.add(k);
+    const idea = Object.assign({}, r, { id: state.length });
+    state.push(idea);
+    if (typeof IDEAS !== 'undefined' && Array.isArray(IDEAS) && IDEAS !== state) IDEAS.push(idea);
+    added++;
+  });
+  if (added) { try { renderNav(); } catch (e) {} }
+  return added;
+}
+async function csOpenPushIdeas(brandId) {
+  if (!currentBrand || !currentBrand.id) return false;
+  const bid = String(brandId || '').trim();
+  const canOpen = bid && (Array.isArray(allBrands) ? allBrands : []).some(x => x && x.id === bid);
+  if (canOpen && bid !== currentBrand.id) {
+    try { await switchBrand(bid); } catch (e) {}   // a failed switch says so itself and leaves us where we were
+  }
+  const gate = brandGate();
+  window._csFgReloadAt = Date.now();               // the foreground refresh need not repeat this read
+  await csReloadIdeasMerge();
+  if (!gate()) return false;
+  ideaStatusFilter = 'pending'; activeFilter = 'all'; activeFormat = 'all';
+  switchView('ideas');
+  setTimeout(() => {
+    try { window.scrollTo(0, 0); } catch (e) {}   // the page top = the top of Ideas
+  }, 150);
+  return true;
+}
+function csHandleOpenIdeas(u, fromAddress) {
+  let o = csReadOpen(u);
+  if (fromAddress) csStripOpenParams();
+  if (!o && fromAddress && window._csPendingOpen) o = window._csPendingOpen;
+  if (!o) return false;
+  if (!window._csAppReady) { window._csPendingOpen = o; return true; }   // opened again before the app finished loading
+  window._csPendingOpen = null;
+  if (!currentBrand || !currentBrand.id) return false;
+  csOpenPushIdeas(o.brand);
+  return true;
+}
+/* fix7 (1) — A PHONE LEFT OPEN OVERNIGHT sees the morning batch: back in the foreground after more than
+   30 minutes away, the ideas are read again and missing ones added (the same merge). At most once a
+   minute, only for the brand that is still open, and never while an ideas save is on the wire (it is
+   retried a few seconds later instead). */
+const CS_FG_AWAY_MS = 30 * 60 * 1000;
+function csOnVisibility() {
+  try {
+    if (document.visibilityState === 'hidden') { window._csHiddenAt = Date.now(); return; }
+    if (document.visibilityState !== 'visible' || !window._csHiddenAt) return;
+    const away = Date.now() - window._csHiddenAt; window._csHiddenAt = 0;
+    if (away >= CS_FG_AWAY_MS) csForegroundReload(0);
+  } catch (e) {}
+}
+async function csForegroundReload(tries) {
+  if (!window._csAppReady || !currentBrand || !currentBrand.id) return false;
+  if (Date.now() - (window._csFgReloadAt || 0) < 60000) return false;
+  if ((globalThis._ideasSavesInFlight || 0) > 0 || window._ideasSwitching) {
+    if ((tries || 0) < 5) setTimeout(() => { csForegroundReload((tries || 0) + 1); }, 3000);
+    return false;
+  }
+  window._csFgReloadAt = Date.now();
+  const gate = brandGate();
+  const n = await csReloadIdeasMerge();
+  if (!gate()) return false;
+  if (n > 0) {
+    try { if (activeView === 'ideas') { renderStats(); renderIdeas(); } } catch (e) {}
+    try { showToast(n + ' new idea' + (n === 1 ? '' : 's') + ' in Ideas', 5000, function () { try { switchView('ideas'); } catch (e) {} }); } catch (e) {}
+  }
+  return n;
+}
+try { if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('visibilitychange', csOnVisibility); } catch (e) {}
+try {
+  if (typeof navigator !== 'undefined' && navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      const d = e && e.data;
+      if (d && d.type === 'cs-open-url' && typeof d.url === 'string') { try { csHandleOpenIdeas(d.url, false); } catch (_) {} }
+    });
+  }
+} catch (e) {}
 
 function dismissCsSplash() {
   const el = document.getElementById('csSplash');
@@ -9835,6 +9995,7 @@ function openTeleprompter(id) {
   if (!idea) return;
   _tpIdeaId = id;
   window._tpSplitIdeaId = id;   // v478: which post's graphics to composite after filming
+  window._tpTakeIdea = idea;    // fix7: the saved idea this take belongs to (outlives closeTeleprompter) — see tpAskMarkFilmed
   tpSyncDoneBtn();
   document.getElementById('tpTitle').textContent = idea.title;
   const body = document.getElementById('tpBody');
@@ -10786,7 +10947,7 @@ function tpShareOrSave(blob, fname){
     const file = new File([blob], fname, { type: blob.type });
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file], title: 'Content Shrimp Video' })
-        .then(() => { tpReleaseTake(); showToast('Filmed ✓ — your post is ready to share', 'success'); })
+        .then(() => { tpReleaseTake(); showToast('Filmed ✓ — your post is ready to share', 'success'); tpAskMarkFilmed(); })
         .catch(err => {
           // A dismissed share sheet is not a failure: don't "save" it behind their back and don't
           // claim anything. Keep the bytes reachable and offer the share again.
@@ -11250,7 +11411,7 @@ function tpSplitResult(bd, outBlob, ext, rawBlob, rawName, warn){
         // failsafe, and any later plan-limit 402 told the user to "save this video first" about
         // a video they had already shared — with no route to the Upgrade button.
         try { if (typeof tpReleaseTake === 'function') tpReleaseTake(); } catch(e){}
-        showToast('Shared ✓', 'success'); close(); return;
+        showToast('Shared ✓', 'success'); close(); tpAskMarkFilmed(); return;
       }
     } catch(e) {
       // Cancelled → the sheet (and its blob URL) must stay exactly where it is. close() revokes
@@ -12196,6 +12357,7 @@ function tpRescueTake(blob, fname) {
       try { v.pause(); v.removeAttribute('src'); v.load(); } catch(e){}
       try { URL.revokeObjectURL(url); } catch(e){}
       try { el.remove(); } catch(e){}
+      tpAskMarkFilmed();   // fix7
     };
     el.appendChild(cb);
     document.body.appendChild(el);
@@ -12234,6 +12396,41 @@ function tpDownloadBlob(blob, fname) {
   }
   tpReleaseTake();
   showToast('Sent to your Downloads — check your Files app if you do not see it', 6000);
+  tpAskMarkFilmed();
+  return true;
+}
+/* fix7 — "MARK AS FILMED?" Sharing or saving a take never changed the post: it stayed in Film & Post,
+   and the teleprompter's Mark Done had already gone (sharing closes it). Once the take has left the
+   app — share sheet, download, split-screen share/save, or "I saved it" on the rescue sheet — a take
+   that belongs to a saved idea not yet Done asks once. Yes = exactly tpMarkDone (moveStage → done). */
+function tpAskMarkFilmed() {
+  try {
+    const idea = window._tpTakeIdea;
+    window._tpTakeIdea = null;               // one question per take
+    if (!idea || !Array.isArray(state) || state.indexOf(idea) < 0 || idea.status === 'done') return false;
+    const prev = document.getElementById('tpFilmedAsk'); if (prev) prev.remove();
+    window._tpAskIdea = idea;
+    const el = document.createElement('div');
+    el.id = 'tpFilmedAsk';
+    el.className = 'br-backdrop';
+    el.innerHTML = '<div class="br-sheet" style="max-width:330px">'
+      + '<div class="br-title" style="margin-bottom:4px">Mark as filmed?</div>'
+      + '<div class="br-sub2" style="margin-bottom:12px">' + escHtml(idea.title || '') + ' moves to Done.</div>'
+      + '<button class="gen-btn" style="width:100%;margin:0" onclick="tpFilmedAnswer(true)">Yes, mark it done</button>'
+      + '<button class="tp-shz-angle" style="display:block;margin:8px auto 0" onclick="tpFilmedAnswer(false)">Not yet</button></div>';
+    document.body.appendChild(el);
+    return true;
+  } catch (e) { return false; }
+}
+function tpFilmedAnswer(yes) {
+  const idea = window._tpAskIdea; window._tpAskIdea = null;
+  try { const el = document.getElementById('tpFilmedAsk'); if (el) el.remove(); } catch (e) {}
+  if (!yes || !idea) return false;
+  reindexIdeas();
+  const id = state.indexOf(idea);
+  if (id < 0 || idea.status === 'done') return false;
+  moveStage(id, 'done');            // same as tpMarkDone: marks done + saves + re-renders + celebrates
+  showToast('Marked done ✓', 'success');
   return true;
 }
 
@@ -13898,7 +14095,7 @@ async function generateNewIdeas() {
   if (firstRunBrandGuard(generateNewIdeas)) return;
   const btn = document.getElementById('generateIdeasBtn');
   const status = document.getElementById('generateStatus');
-  const count = parseInt(document.getElementById('generateCount').value) || 5;
+  const count = parseInt(document.getElementById('generateCount').value) || 7;   // fix7: "Plan my week" = seven days
 
   // btnWork's own safety timer (90s, opts.maxMs) used to re-enable the button with NO
   // error while the fetch ran on to ~300s. Abort the request on the same deadline and
@@ -15122,6 +15319,7 @@ function tvOpenTeleprompter() {
   try { tpSetSmartSpeed(idea.script || idea.boldText || idea.title || ''); } catch(e){}
   body.scrollTop = 0;
   _tpIdeaId = null;   // preview teleprompter is not a pipeline item — no Mark Done here
+  window._tpTakeIdea = null;   // fix7: an unsaved Quick Post take is never asked "Mark as filmed?"
   tpSyncDoneBtn();
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -15833,6 +16031,12 @@ function renderDetailContent(idea) {
     html += `<div class="detail-section"><div class="detail-label">${hasPreview?'Design Instructions':'Full Script'} ${sectionCopyBtn(idea.script, hasPreview?'design instructions':'script')}</div><div class="detail-text script">${nl2br(idea.script)}</div></div>`;
     html += `<div class="detail-section"><div class="detail-label">Shot List ${sectionCopyBtn(idea.shots, 'shot list')}</div><div class="detail-text">${nl2br(idea.shots)}</div></div>`;
   }
+  // fix7 — the caption was only ever shown for Image/Carousel (Quick Post card), so a video's written
+  // caption existed and could not be read or copied anywhere. Every format, whenever there is one.
+  const _cap = (typeof asText === 'function') ? asText(idea.caption).trim() : String(idea.caption == null ? '' : idea.caption).trim();
+  if (_cap && _cap !== 'undefined') {
+    html += `<div class="detail-section"><div class="detail-label">Caption ${sectionCopyBtn(_cap, 'caption')}</div><div class="detail-text caption">${nl2br(_cap)}</div></div>`;
+  }
   html += `<div class="detail-section"><div class="detail-label">Tags ${sectionCopyBtn(idea.tags, 'tags')}</div><div class="detail-text tags">${escHtml(idea.tags)}</div></div>`;
 
   // Approved items live in the Pipeline, where film / Slides / Mark Done already sit on the card's
@@ -15877,7 +16081,8 @@ function renderDetailContent(idea) {
     _btns += `<button class="detail-btn sharpen-btn" onclick="event.stopPropagation();sharpenIdea(${idea.id},this)">${ICO.sharpen} Sharpen</button>`;
     _btns += `<button class="detail-btn viral-btn" onclick="event.stopPropagation();viralTwist(${idea.id},this)">${ICO.zap} Viral Twist</button>`;
     _btns += `<button class="detail-btn" onclick="event.stopPropagation();ideaRedoOpen(${idea.id})">${ICO.redo} Redo with notes</button>`;
-    _btns += `<button class="detail-btn generate-btn" onclick="event.stopPropagation();generateMore(${idea.id},this)">${ICO.spark} Generate More</button>`;
+    const _gmOn = (typeof _gmIsBusy === 'function' && _gmIsBusy(idea));   // fix7 review: a re-render keeps the loading state
+    _btns += `<button class="detail-btn generate-btn" id="gmBtn-${idea.id}"${_gmOn ? ' disabled' : ''} onclick="event.stopPropagation();generateMore(${idea.id},this)">${_gmOn ? 'Writing 3 versions…' : ICO.spark + ' Generate More'}</button>`;
   }
   // v693 (wave 2): an idea with a belief (or at least a hook) can be rewritten as a spoken script
   if (typeof rv2CanRewrite === 'function' && rv2CanRewrite(idea)) _btns += `<button class="detail-btn" onclick="event.stopPropagation();rv2RewriteIdea(${idea.id},this)">Rewrite as spoken script</button>`;
@@ -18010,13 +18215,76 @@ async function cmDownloadAll() {
   }
 }
 
-function generateMore(id, btn) {
+/* fix7 — "Generate More" used to COPY a ChatGPT prompt to the clipboard and generate nothing here.
+   It now asks /api/generate-ideas (the same lean request as ideaRedoRun / autoRefillCheck) for 3
+   variations of this idea — same angle, same format — and adds them to Ideas as pending. */
+// fix7 review — one Generate More per idea at a time. The card is rebuilt on every re-render with a
+// fresh, ENABLED button, so a disabled flag on the old button did not stop a second (paid) tap.
+const _gmBusy = new Set();
+function _gmKey(i) { return ((currentBrand && currentBrand.id) || '') + '|' + String((i && i.title) || '').toLowerCase().trim(); }
+function _gmIsBusy(i) { return _gmBusy.has(_gmKey(i)); }
+async function generateMore(id, btn) {
   const i=state[id];
   if (!i) { if (typeof showToast === 'function') showToast('That post is no longer in the list — reload and try again.'); return; }
-  const p=`I loved this content idea from Content Shrimp. Generate 3 more variations with the same angle and energy.\n\nORIGINAL IDEA:\nTitle: ${i.title}\nDay/Community: ${i.day} \u2014 ${i.community}\nFormat: ${FORMAT_LABELS[i.format]}\nHook: ${i.hook}\nScript: ${i.script}\n\nRULES:\n- Same format (${FORMAT_LABELS[i.format]})\n- Same community (${i.community})\n- Brand voice: ${(Array.isArray(getBrandContext().tones)&&getBrandContext().tones.length)?getBrandContext().tones.join(', '):"the brand's established voice and tone"}\n- Brand facts (use ONLY these; never invent products, ingredients, or prices): ${getBrandContext().usps || getBrandContext().productDetails || "(none provided — keep it general, no specifics)"}\n- Stay in brand voice; never use the brand's avoid-words${getBrandContext().avoidWords?(": "+getBrandContext().avoidWords):""}\n- Each variation needs: title, hook, full script, shot list, on-screen text, tags\n- Make each variation a different angle on the same theme`;
-  navigator.clipboard.writeText(p).then(()=>{
-    btn.innerHTML="Copied \u2713"; setTimeout(()=>{btn.innerHTML=ICO.spark+' Generate More';},2000);
-  }).catch(()=>copyFallback(p));
+  const _key = _gmKey(i);
+  if (_gmBusy.has(_key) || (btn && btn.disabled)) { if (typeof showToast === 'function') showToast('Already writing new versions of this one…'); return; }
+  const _sameBrand = brandGate();   // checked after the await: never file one brand's ideas into another
+  const fmt = i.format || 'video';
+  const label = (typeof ICO !== 'undefined' && ICO && ICO.spark ? ICO.spark + ' ' : '') + 'Generate More';
+  const done = () => { if (btn) { btn.disabled = false; btn.innerHTML = label; } };
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Writing 3 versions…'; }
+  const body = String(i.boldText || i.script || '').slice(0, 1500);
+  const lc = 'WRITE 3 NEW VARIATIONS OF THIS EXACT IDEA in the brand voice. Keep the same format (' + fmt + '), the same angle and the same core topic. '
+    + 'Each variation gets its own new title and a different hook, and takes the idea somewhere fresh — never a copy of the original or of each other. '
+    + 'Never use the word "viral" or "going viral" in the actual content.\n\nORIGINAL IDEA:\nTitle: ' + (i.title || '') + '\nHook: ' + (i.hook || '') + '\nBody/script: ' + body;
+  const _ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+  // 240s: same budget and reason as autoRefillCheck (generate-ideas can run two 90s legs)
+  const _to = setTimeout(() => { try { if (_ctrl) _ctrl.abort(); } catch (_) {} }, 240000);
+  _gmBusy.add(_key);   // from here on, the finally below always releases it
+  try {
+    const resp = await leanBrandFetch('/api/generate-ideas',
+      { count: 3, gaps: [{ day: (i.day || getTodayName()), format: fmt, count: 0 }], learningContext: lc, exFormat: fmt },
+      () => getBrandContext(fmt), null, _ctrl ? { signal: _ctrl.signal } : {});
+    clearTimeout(_to);
+    const txt = await resp.text(); let data = null; try { data = JSON.parse(txt); } catch (e) { data = null; }
+    if (!resp.ok) {
+      if (data && data.code === 'AI_UNAVAILABLE') throw new Error(String(data.error || '').trim() || csAiPausedText("The AI writer is paused right now — try again later."));
+      // 402: the global fetch wrapper has already opened the upgrade sheet — say it in words too
+      throw new Error(humanErr((data && data.error) || (resp.status === 402 ? 'limit_reached' : ''), "Couldn't write new versions just now — try again."));
+    }
+    if (!data || !Array.isArray(data.ideas) || !data.ideas.length) throw new Error('The writer came back empty — try again.');
+    if (!_sameBrand()) { if (typeof showToast === 'function') showToast('You switched brand while that was writing — nothing was added.'); return; }
+    const taken = new Set((Array.isArray(state) ? state : []).map(x => String((x && x.title) || '').toLowerCase().trim()));
+    const dc = (typeof getDayCommunities === 'function' ? getDayCommunities() : null) || {};
+    const now = Date.now();
+    const fresh = [];
+    data.ideas.map(x => (typeof rv2TagFlow === 'function' ? rv2TagFlow(x) : x)).forEach(x => {
+      const k = String((x && x.title) || '').toLowerCase().trim();
+      if (!k || taken.has(k)) return;   // the save replaces rows BY TITLE: a repeat title would overwrite
+      taken.add(k);
+      const day = x.day || i.day || getTodayName();
+      fresh.push(Object.assign({}, x, { id: state.length + fresh.length, status: 'pending', assignee: '', dismissReason: null,
+        day: day, format: x.format || fmt, community: (x.community && String(x.community).trim()) || i.community || dc[day] || 'All',
+        isGenerated: true, freshAt: now }));
+    });
+    if (!fresh.length) { if (typeof showToast === 'function') showToast('Those came back the same as ideas you already have — try again.'); return; }
+    state.push(...fresh);
+    saveState();
+    try { renderNav(); } catch (e) {}
+    if (typeof activeView !== 'undefined' && activeView === 'ideas') { try { renderStats(); renderIdeas(); } catch (e) {} }
+    if (typeof showToast === 'function') showToast(fresh.length === 3 ? '3 new versions added' : (fresh.length + ' new version' + (fresh.length === 1 ? '' : 's') + ' added'));
+  } catch (e) {
+    clearTimeout(_to);
+    const msg = (e && (e.name === 'AbortError' || /abort/i.test(e.message || ''))) ? 'That took too long — try again.'
+      : ((typeof _leanErrMsg === 'function') ? _leanErrMsg(e, "Couldn't write new versions just now — try again.") : ((e && e.message) || 'Something went wrong — try again.'));
+    if (typeof showToast === 'function') showToast(msg, 6000);
+  } finally {
+    clearTimeout(_to);
+    _gmBusy.delete(_key);
+    done();
+    // the card may have been re-rendered while this ran: put ITS button back too
+    try { const live = document.getElementById('gmBtn-' + id); if (live && live !== btn) { live.disabled = false; live.innerHTML = label; } } catch (e) {}
+  }
 }
 
 async function viralTwist(id, btn){
@@ -19607,7 +19875,8 @@ async function dfySubmit(btn){
 function expandAll() { getVisibleIdeas().forEach(i=>expandedIds.add(i.id)); renderIdeas(); }
 function collapseAll() { expandedIds.clear(); renderIdeas(); }
 function exportApproved() {
-  const a=state.filter(i=>["approved","filming","editing","posted"].includes(i.status));
+  // fix7: Done posts too — the Approved count (renderStats) counts filming + done
+  const a=state.filter(i=>["approved","filming","editing","posted","done"].includes(i.status));
   if(!a.length){alert("No approved ideas.");return;}
   let t=(settings.brandName || 'BRAND').toUpperCase() + " \u2014 APPROVED CONTENT\n\n";
   a.forEach((i,n)=>{
@@ -19619,10 +19888,17 @@ function exportApproved() {
   navigator.clipboard.writeText(t).then(()=>alert(`${a.length} posts copied.`)).catch(()=>copyFallback(t));
 }
 
+/* fix7 — "Reset All" used to set EVERY idea back to pending after one confirm: Pipeline progress and
+   Done posts were undone and every dismiss reason (the learning data) was wiped. It now does the one
+   safe thing its place in the list implies: dismissed ideas come back as pending (their reason is
+   cleared). Film & Post and Done are never touched. */
 function resetAll() {
-  if(!confirm("Reset all ideas to pending?")) return;
-  state.forEach(i=>{i.status="pending";i.dismissReason=null;});
+  const n = (Array.isArray(state) ? state : []).filter(i => i && i.status === 'dismissed').length;
+  if (!n) { if (typeof showToast === 'function') showToast('No dismissed ideas to restore.'); return; }
+  if (!confirm('Put your ' + n + ' dismissed idea' + (n === 1 ? '' : 's') + ' back into Ideas as pending? Their dismiss reasons are cleared. Posts in Film & Post and Done are not touched.')) return;
+  state.forEach(i => { if (i && i.status === 'dismissed') { i.status = 'pending'; i.dismissReason = null; } });
   saveState(); renderNav(); refreshCurrentView();
+  if (typeof showToast === 'function') showToast(n + ' dismissed idea' + (n === 1 ? '' : 's') + ' restored to Ideas');
 }
 
 // ===== CREATE TAB =====
@@ -20652,6 +20928,17 @@ function rv2EditInput(v) { const s = rv2Active(); if (s && s.stage === 'script' 
 // The idea row, mapped onto the fields every other idea uses. Everything shown on screen is built
 // from the FINAL script (stories filled, hand edits kept) — never from the server's pre-fill copy.
 // → { idea } or { error } (a statement / carousel still showing a story slot would put the gap on screen).
+// fix7 — the writer's `hashtags` list (api/_write.js) in the app's tag format: '#one #two'. Nothing sent → ''.
+function rv2Tags(h) {
+  const list = Array.isArray(h) ? h : (typeof h === 'string' ? h.split(/[\s,]+/) : []);
+  const seen = new Set(), out = [];
+  list.forEach(x => {
+    const t = String(x == null ? '' : x).trim().replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '').toLowerCase();
+    if (!t || seen.has(t)) return;
+    seen.add(t); out.push('#' + t);
+  });
+  return out.slice(0, 8).join(' ');
+}
 function rv2BuildIdea(s) {
   const w = s.idea || {};
   const FMT = { talking: 'video', statement: 'statement', micro: 'micro', carousel: 'carousel' };
@@ -20676,7 +20963,7 @@ function rv2BuildIdea(s) {
   return { idea: Object.assign({
     id: (Array.isArray(state) ? state.length : 0), title: title, hook: txt(w.hook).trim(), script: script,
     screen: screen, boldText: boldText,
-    caption: txt(w.caption).trim(), shots: txt(w.shots).trim(), tags: '', reelTitle: '',
+    caption: txt(w.caption).trim(), shots: txt(w.shots).trim(), tags: rv2Tags(w.hashtags), reelTitle: '',
     emphasis: Array.isArray(w.emphasis) ? w.emphasis.slice(0, 12) : [],
     day: days[new Date().getDay()], format: format, community: 'All', tone: '', status: 'pending',
     dismissReason: null, assignee: '', isGenerated: true, isRemix: isRemix,
@@ -20746,6 +21033,9 @@ async function rv2Save() {
       5000, function () { try { switchView('ideas'); } catch (e) {} });
   } catch (e) {}
   try { if (typeof mascotReact === 'function') mascotReact('spin', '✨'); } catch (e) {}
+  // fix7 — a filmable Quick Post can be filmed straight away (see rv2ShowFilmNow)
+  if (live && s.host === 'rv2Sheet' && s.origin && s.origin.name === 'quickpost' && _sameBrand()
+      && typeof DELIVERY_FORMATS !== 'undefined' && DELIVERY_FORMATS.has(idea.format)) { try { rv2ShowFilmNow(idea, s.brandId); } catch (e) {} }
   // the opinion becomes one of the brand's beliefs now that it was kept (once per run)
   if (idea.belief && !s.beliefKept) {
     s.beliefKept = true;
@@ -20756,6 +21046,46 @@ async function rv2Save() {
     });
   }
   return idea;
+}
+/* fix7 — "FILM IT NOW" after the Quick Post sheet saves a video / micro / Q&A / statement. It used to
+   take ~7 taps (Ideas → card → approve → Pipeline → card → Teleprompter). One tap approves the post
+   (status filming, approvedAt, reason cleared, saved — what quickApprove does, minus the approve-reason
+   sheet and minus auto-refill, which would spend a paid generation nobody asked for) and opens the
+   teleprompter on it, with Mark Done. */
+function rv2ShowFilmNow(idea, brandId) {
+  rv2FilmNowClose();
+  window._rv2FilmNowIdea = { idea: idea, brandId: brandId };
+  const el = document.createElement('div');
+  el.id = 'rv2FilmNow';
+  el.className = 'br-backdrop';
+  el.innerHTML = '<div class="br-sheet" style="max-width:330px">'
+    + '<div class="br-title" style="margin-bottom:4px">Saved to Ideas ✓</div>'
+    + '<div class="br-sub2" style="margin-bottom:12px">' + escapeHtml(idea.title || '') + '</div>'
+    + '<button class="gen-btn" style="width:100%;margin:0" onclick="rv2FilmNow()">Film it now →</button>'
+    + '<button class="tp-shz-angle" style="display:block;margin:8px auto 0" onclick="rv2FilmNowClose()">Not now</button></div>';
+  document.body.appendChild(el);
+  return true;
+}
+function rv2FilmNowClose() {
+  try { const el = document.getElementById('rv2FilmNow'); if (el) el.remove(); } catch (e) {}
+}
+function rv2FilmNow() {
+  const p = window._rv2FilmNowIdea; window._rv2FilmNowIdea = null;
+  rv2FilmNowClose();
+  if (!p || !p.idea) return false;
+  if (!currentBrand || currentBrand.id !== p.brandId) { try { showToast('Switch back to the brand this was written for to film it.', 6000); } catch (e) {} return false; }
+  reindexIdeas();
+  const id = state.indexOf(p.idea);
+  if (id < 0) { try { showToast('That post is no longer in the list — open it from Ideas.'); } catch (e) {} return false; }
+  const idea = state[id];
+  if (!idea.status || idea.status === 'pending') {
+    idea.status = 'filming'; idea.approvedAt = idea.approvedAt || Date.now(); idea.dismissReason = null;
+    saveState();
+    try { renderNav(); } catch (e) {}
+    try { refreshCurrentView(); } catch (e) {}
+  }
+  openTeleprompter(id);
+  return true;
 }
 function rv2Classic() {
   const s = rv2Active();

@@ -4,7 +4,7 @@
 // changing BUILD makes this file byte-different, the browser detects a new worker, and `install`
 // pulls the fresh app.html into the SAME stable cache while the OLD copy keeps serving instantly.
 const CACHE = 'cs-shell';   // stable — never rename
-const BUILD = 'v695-79853811';       // ← bump this string on every app.html/asset change to push an update
+const BUILD = 'v696-df7d36d1';       // ← bump this string on every app.html/asset change to push an update
 
 // Only the app shell is refreshed on update. Images/icons are cached lazily on first use (never
 // eagerly precached — on a very slow connection an eager 1.8MB precache saturates the pipe and is
@@ -220,7 +220,14 @@ self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = (e.notification.data && e.notification.data.url) || '/app.html';
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    for (const c of list) { if (c.url.includes('/app.html') && 'focus' in c) return c.focus(); }
+    for (const c of list) {
+      if (c.url.includes('/app.html') && 'focus' in c) {
+        /* fix7 — an app that is already open was only FOCUSED, so it never learned which post the push
+           was about (url = /app.html?open=idea&t=<title>). Hand it the URL; the app opens that post. */
+        try { c.postMessage({ type: 'cs-open-url', url: url }); } catch (_) {}
+        return c.focus();
+      }
+    }
     return clients.openWindow(url);
   }));
 });

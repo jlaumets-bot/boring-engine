@@ -44,6 +44,10 @@
 //   gap must really fall inside the old 20h window, and the old 30s reserve must really be
 //   short of the measured worst case — so a green result cannot come from a dead test.
 //
+// fix7 r3: the budget section now proves the CONCURRENT model — units of one brand, CONCURRENCY at a
+// time, a start rule, a race per unit, a generate cap from the time left — analytically from the
+// file's own numbers AND by running the real handler on a virtual clock (_send-daily-harness.mjs).
+//
 // RUN:    node scripts/verify/daily-push-timing.mjs
 // EXPECT: prints "PASS" and exits 0.
 import fs from 'node:fs'; import vm from 'node:vm';
@@ -116,32 +120,64 @@ const at = (iso) => new Date(iso);
 // 8. a row with no endpoint is not dropped
 ok(runDue([sub({ subscription:{} })], at('2026-09-22T09:00:00Z')).length === 1, 'a row with no endpoint is still delivered');
 
-// ── the budget must now cover the real worst case ─────────────────────────────
+// ── the budget: the fix7 r3 model (units of one brand, CONCURRENCY at a time) ──
 {
   const num = (n) => { const ix = sd.indexOf('const ' + n);
     if (ix < 0) return NaN;
     return Number((sd.slice(ix, ix + 120).match(/=\s*(\d+)/) || [])[1]); };
   const RUN = num('RUN_BUDGET_MS'), MIN = num('MIN_SLICE_MS'), DB = num('DB_TIMEOUT_MS'), PUSH = num('PUSH_TIMEOUT_MS');
+  const INS = num('INSERT_TIMEOUT_MS'), GEN = num('GEN_TIMEOUT_MS'), MINGEN = num('MIN_GEN_MS'), CONC = num('CONCURRENCY');
+  ok([INS, GEN, MINGEN, CONC].every(x => Number.isFinite(x) && x > 0), 'the insert, generate, min-generate and concurrency caps are all declared');
   const budget = Number((sd.match(/setRequestBudget\((\d+)\)/) || [])[1]);
-  // worst case, every number taken from the file
-  const worst = budget*2 /* userCanAccessBrand: two sequential requests */
-              + DB /* getBrandActivity */ + DB /* loadBrandContext */
-              + 10000 /* the generate floor */ + PUSH + DB /* last_sent_at */;
-  ok(MIN >= worst, 'MIN_SLICE_MS (' + MIN + ') now covers the measured worst case (' + worst + 'ms)');
-  ok(RUN + 0 <= 300000, 'RUN_BUDGET_MS stays inside maxDuration 300000');
-  ok(30000 < worst, 'MUTATION CHECK: the old 30000ms reserve was far short of ' + worst + 'ms');
-  // guard 2 must exist and must be a race, not another reserve
-  ok(/Promise\.race\(\[\s*_subWork/.test(sd), 'guard 2 races the in-flight subscriber against the time left');
-  ok(/const _subWork = \(async \(\) => \{/.test(sd), 'the per-subscriber work is wrapped so it CAN be raced');
-  ok(/heartbeat\('send-daily'/.test(sd), 'the heartbeat is still written at the end');
-  const raceAt = sd.indexOf('Promise.race([\n        _subWork');
+  // every number taken from the file
+  const startup = 2 * DB /* subscriber read + its tz_name fallback */ + DB /* the batch-timeout memory */;
+  const pre = budget * 2 /* userCanAccessBrand: two sequential requests */ + 2 * DB /* activity + its gen_flow retry */ + DB /* loadBrandContext */;
+  const post = INS + PUSH + DB /* last_sent_at */;
+  ok(MIN >= pre + post, 'MIN_SLICE_MS (' + MIN + ') covers a unit\'s worst case outside its batch (' + (pre + post) + 'ms)');
+  ok(RUN + budget /* the heartbeat write */ <= 300000 - 5000, 'RUN_BUDGET_MS (' + RUN + ') + the heartbeat (' + budget + ') end inside maxDuration 300000 with margin');
+  ok(startup + MIN <= RUN, 'the first wave always starts (' + startup + ' + ' + MIN + ' <= ' + RUN + ')');
+  ok(30000 < pre + post, 'MUTATION CHECK: the old 30000ms reserve was far short of ' + (pre + post) + 'ms');
+  ok(/const _t0 = Date\.now\(\);[^\n]*\n/.test(sd) && sd.indexOf('const _t0 = Date.now()') < sd.indexOf("sbGet(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,\n          `/rest/v1/push_subscriptions"),
+     'the run clock starts BEFORE the subscriber read, so start-up time is counted');
+  // the start rule, the race, and the generate cap — structural anchors for what the harness runs below
+  ok(/if \(_left\(\) < MIN_SLICE_MS\) \{/.test(sd), 'a unit is only STARTED with MIN_SLICE_MS left');
+  ok(/Promise\.race\(\[\s*_unitWork\.then\(\(\) => false\)/.test(sd), 'guard 2: every unit is raced against the time left');
+  ok(/Math\.min\(GEN_TIMEOUT_MS, _left\(\) - \(INSERT_TIMEOUT_MS \+ PUSH_TIMEOUT_MS \+ DB_TIMEOUT_MS\)\)/.test(sd) && /if \(genMs < MIN_GEN_MS\) \{/.test(sd),
+     'the generate cap is what is left after reserving insert + push + stamp, and a batch is not started under MIN_GEN_MS');
+  const raceAt = sd.indexOf('Promise.race([\n          _unitWork');
   const hbAt = sd.indexOf("heartbeat('send-daily'");
   ok(raceAt > -1 && raceAt < hbAt, 'the race happens BEFORE the heartbeat, which is the whole point');
+}
+// ── and BEHAVIOURALLY, on a virtual clock (the real handler; see _send-daily-harness.mjs) ──
+{
+  const { createHarness } = await import('./_send-daily-harness.mjs');
+  const H = createHarness(ROOT);
+  const num = (n) => Number((sd.match(new RegExp('const ' + n + '\\s*=\\s*(\\d+)')) || [])[1]);
+  const GEN = num('GEN_TIMEOUT_MS'), CONC = num('CONCURRENCY');
+  // the review's case: SIX people (six brands) due in the same hour, every batch taking nearly the
+  // whole generate cap — all six must be pushed and saved (sequentially only ~1-2 were)
+  const N = 6;
+  const subs = Array.from({ length: N }, (_, k) => H.mkSub(k + 1));
+  const r = await H.run({ subs, genMs: GEN - 1000 });
+  ok(r.res.body.sent === N && r.inserts.length === N && r.res.body.skipped === 0,
+     N + ' same-hour users, batches of ' + (GEN - 1000) / 1000 + 's: all ' + r.res.body.sent + ' pushed and ' + r.inserts.length + ' batches saved (concurrency ' + CONC + ')');
+  ok(r.heartbeats.length === 1 && r.heartbeats[0].at <= 290000, '  … heartbeat at ' + r.heartbeats[0].at + 'ms (<= 290s)');
+  // nothing answers at all: no subscriber may hold the run past maxDuration
+  const hang = await H.run({ subs: Array.from({ length: N + 3 }, (_, k) => H.mkSub(k + 1)), gen: () => 'hang', access: () => new Promise(() => {}) });
+  ok(hang.res.statusCode === 200 && hang.heartbeats.length === 1 && hang.heartbeats[0].at <= 290000 && hang.endAt <= 300000,
+     'every call hangs: the run still ends at ' + hang.endAt + 'ms with its heartbeat (<= 290s)');
+  ok(hang.res.body.skipped === N + 3, '  … and all ' + (N + 3) + ' unreached subscribers are counted');
+  // batches that never answer: cut at the cap, still inside the budget
+  const cut = await H.run({ subs, gen: () => 'hang' });
+  ok(cut.res.body.sent === N && cut.heartbeats[0].at <= 290000 && cut.heartbeats[0].detail.genTimedOut === N,
+     'batches that never answer: cut at the cap, every user still pushed, heartbeat at ' + cut.heartbeats[0].at + 'ms');
 }
 
 // ── the brief must be asked for on the subscriber's local day ─────────────────
 {
-  ok(/gaps: \[\{ day: _dayName \}\]/.test(sd), 'send-daily now names the day it wants');
+  // fix7: the batch names one day per idea, starting from the subscriber's local today
+  ok(/gaps: _days\.map\(d => \(\{ day: d \}\)\)/.test(sd) && /_days\.push\(_wk\[\(_localNow\.getUTCDay\(\) \+ k\) % 7\]\)/.test(sd),
+     'send-daily now names the days it wants, starting with the local today');
   const m = sd.match(/const _localNow = ([^;]+);/);
   ok(!!m, '_localNow is gone');
   // v678: _localNow now resolves the offset through offsetFor(), so the helper must be in scope.

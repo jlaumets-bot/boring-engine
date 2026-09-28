@@ -869,6 +869,58 @@ function listOf(v, max, each) {
   return arr.map(x => clip(x, each)).filter(Boolean).slice(0, max);
 }
 
+// ── HASHTAGS (fix7, round 2) ─────────────────────────────────────────────────
+// ONLY the brand's own words. Round 1 let the model (and then the script's words) build tags, and a
+// review showed why that cannot be made safe: a tag drops the sentence around it, so a script that
+// says "magnesium won't cure your insomnia" still yields #cureinsomnia — the denial turned into the
+// claim. So no model-written hashtag is used at all. A tag is one of:
+//   * a Content Theme the brand set itself (bc.communities — "Content Themes & Keywords" in
+//     Settings — then its day rotation), lowercased with spaces and punctuation removed:
+//     "Morning routines" -> #morningroutines
+//   * the brand name, the same way: "Acme Studio" -> #acmestudio
+// Deterministic: themes are ranked by how many of their words appear in this idea, ties keep the
+// brand's own order. At most 5 themes + the brand name = 6. A brand with no themes gets [] (the app
+// shows no tags) — nothing is ever made up to reach a count.
+const HASHTAG_MAX = 6;
+const TAG_MAX_LEN = 40;
+function brandThemes(bc) {
+  const c = bc && bc.communities;
+  const list = Array.isArray(c) ? c.slice() : (typeof c === 'string' ? c.split(/[,\n;]+/) : []);
+  // the day rotation holds themes too (a brand can set those without the Content Themes list)
+  const dr = bc && bc.dayRotation;
+  if (dr && typeof dr === 'object' && !Array.isArray(dr)) for (const v of Object.values(dr)) list.push(v);
+  // a day-map string ("Monday: Morning routines") keeps only the theme
+  const out = [], seen = new Set();
+  for (const x of list) {
+    const t = toStr(x).replace(/^\s*(monday|tuesday|wednesday|thursday|friday|saturday|sunday|bonus)\s*[:=]\s*/i, '').trim();
+    if (!t || /^(general|all)$/i.test(t) || seen.has(t.toLowerCase())) continue;
+    seen.add(t.toLowerCase()); out.push(t);
+  }
+  return out;
+}
+function tagOf(text) {
+  const t = toStr(text).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  return (t && t.length <= TAG_MAX_LEN) ? '#' + t : '';
+}
+function hashtagsFor(bc, idea) {
+  const themes = brandThemes(bc);
+  if (!themes.length) return [];
+  const i = idea && typeof idea === 'object' ? idea : {};
+  const words = new Set(toStr([i.title, i.hook, i.script, i.caption, i.belief].map(toStr).join(' '))
+    .toLowerCase().normalize('NFC').split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 3));
+  const score = (theme) => theme.toLowerCase().normalize('NFC').split(/[^\p{L}\p{N}]+/u)
+    .filter(w => w.length >= 3 && words.has(w)).length;
+  const ranked = themes.map((t, ix) => ({ t, ix, sc: score(t) })).sort((a, b) => (b.sc - a.sc) || (a.ix - b.ix));
+  const out = [];
+  for (const r of ranked) {
+    const tag = tagOf(r.t);
+    if (tag && out.indexOf(tag) < 0 && out.length < HASHTAG_MAX - 1) out.push(tag);
+  }
+  const brandTag = tagOf(bc && bc.brandName);
+  if (brandTag && out.indexOf(brandTag) < 0) out.push(brandTag);
+  return out.slice(0, HASHTAG_MAX);
+}
+
 // ── THE IDEA OBJECT ──────────────────────────────────────────────────────────
 // v693 — built from an explicit WHITELIST. `script` is the argument, never a field of the shape
 // reply: the shape call can suggest a title or a hook, it cannot touch the words the person says.
@@ -903,6 +955,7 @@ function buildIdea(script, shaped, angle, format, allowedExtra) {
     onScreen: format === 'carousel' ? paragraphs(script).map(p => clip(p, 300)).slice(0, 10)
       : (onScreen.length ? onScreen : (hook ? [hook] : [])),
     caption, shots, format, emphasis,
+    hashtags: [],   // fix7 — filled by runWrite from the brand's own themes (see hashtagsFor)
     belief: angle.belief,
     genFlow: 'v2',
   };
@@ -1175,14 +1228,16 @@ async function runWrite(opts) {
   }
 
   const idea = buildIdea(script, shaped, angle, format, bc.brandName);
-  return { idea, usedStories: draft.usedStories, usedSpeechSamples, warnings: warningsFor(bc), passes };
+  idea.hashtags = hashtagsFor(bc, idea);   // fix7 — the brand's own themes + name, never the model's
+  // fix7 — also at the top level (the contract names runWrite's `hashtags: string[]`); same array.
+  return { idea, hashtags: idea.hashtags, usedStories: draft.usedStories, usedSpeechSamples, warnings: warningsFor(bc), passes };
 }
 
 module.exports = {
   styleGuide, runAngles, runWrite, FORMATS, SOURCE_KINDS,
   usageModel, writerCall, writerCallResilient, CLAUDE_CALL_PLAN, CLAUDE_THINKING_HEADROOM, LOWER_EFFORT, DRAFT_MAX_TOKENS, SPOKEN_MAX_TOKENS, ANGLES_MAX_TOKENS, SHAPE_MAX_TOKENS, writerEffort, writerProvider, WRITER_EFFORT, startBrandAttribution,
   _internals: {
-    normSource, normAngle, slotsOf, inventedFacts, numberTokens, nameTokens, claimTokens, slotifyInvented, slotNeighbourNovelty, spokenRejects, parseDraft, buildIdea, cleanScript,
+    normSource, normAngle, slotsOf, inventedFacts, hashtagsFor, numberTokens, nameTokens, claimTokens, slotifyInvented, slotNeighbourNovelty, spokenRejects, parseDraft, buildIdea, cleanScript,
     brandBlockV2, allowedMaterial, userFacts, USER_FACT_FIELDS, AI_FILLED_FIELDS, metaOf, warningsFor, speechSamplesFor, normStories, anglesFrom,
     DRAFT_SHARE, SHAPE_SHARE, MIN_SPOKEN_MS, MIN_SHAPE_MS, SHAPE_EFFORT,
   },

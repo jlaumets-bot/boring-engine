@@ -2,6 +2,24 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-28 — v696. CORE-PATH FIXES + IDEAS WAITING EVERY MORNING (owner: "i like the ideas flow most … several ideas already waiting").
+
+Source of the list: the app map (.unlazy/app-map/, doc "Content Shrimp — App Map"). Contract .unlazy/fix7/PLAN.md.
+Mutations killed: S 39/39, U 50/50. Two independent review rounds; all findings fixed.
+- MORNING PUSH = IDEAS BATCH (api/send-daily.js): tops the brand's Ideas up to 7 pending with ONE generate-ideas call
+  (same context as Plan my week), rows marked gen_flow='daily'; >=7 waiting → no generation, "You have N ideas
+  waiting"; gone quiet (daysSince ignores still-pending 'daily' rows) → motivational push, no charge. One
+  generation per BRAND per run (all devices share it); brands run 6 at a time; generate cap min(200s, left−43s);
+  a timed-out brand gets no new batch for 20h (heartbeat genTimeouts). Push URL /app.html?open=ideas&b=<brandId>.
+- APP: open=ideas switches to brand b if accessible, merge-reloads ideas from the DB (never replaces the list; only
+  unions known row ids), Pending filter. Merge-reload also when back in the foreground after 30+ min.
+- Ideas save now deletes only row ids this device loaded or wrote (a stale device can't delete server rows).
+- Plan my week default 7 · Generate More really writes 3 versions (per-idea in-flight guard) · "Mark as filmed?"
+  after sharing a take · "Film it now" after a Quick Post save · caption shown for every format · hashtags only
+  from the brand's Content Themes + name (never model-written — it turned denied claims into claim tags) ·
+  "Reset All" → "Restore dismissed ideas" (Pipeline/Done untouched) · Copy All Approved includes Done.
+NOT live-tested: x.ai credits were empty; real 7-idea batch duration unmeasured (Vercel log query timed out).
+
 ## ▶▶ 2026-09-27 — v695. FOUR FEATURES RETIRED (owner: "loose the functions that dont help").
 
 Removed: Blog (api/generate-blog.js + screen/nav/tour/FAQ), Meme & Image Maker (api/meme.js, incl. its product-image
