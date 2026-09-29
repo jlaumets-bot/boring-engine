@@ -134,7 +134,8 @@ const BC = {
 };
 const BC4 = { ...BC, tones: ['dry', 'warm', 'blunt', 'playful'] };
 const IDEA = (o) => ({ day: 'Monday', community: 'editing', format: 'video', tone: 'dry', title: 'Post less', hook: 'You are posting too much.', script: 'You post every day and it gets quieter. [your story: a week you posted less]', emphasis: ['too much'], shots: 'Shot 1: desk', caption: '', reelTitle: 'Post less', tags: '#AcmeStudio', ...o });
-const IDEA_KEYS = ['belief', 'day', 'community', 'format', 'tone', 'title', 'hook', 'script', 'emphasis', 'shots', 'caption', 'reelTitle', 'tags'];
+// types: `postType` joins every idea (tip | qna for an untyped batch; see types-server.mjs)
+const IDEA_KEYS = ['belief', 'day', 'community', 'format', 'tone', 'title', 'hook', 'script', 'emphasis', 'shots', 'caption', 'reelTitle', 'tags', 'postType'];
 const sameKeys = (o, keys) => JSON.stringify(Object.keys(o || {}).sort()) === JSON.stringify(keys.slice().sort());
 
 // ═════ 1. generate-ideas: the prompt ═════

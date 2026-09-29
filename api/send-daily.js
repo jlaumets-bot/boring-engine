@@ -1,6 +1,7 @@
 const https = require('https');
 const webpush = require('web-push');
 const store = require('./_publish/store'); // heartbeat (cron liveness) + the brand access check
+const { validTypeMix, topUpMix, DEFAULT_TYPE_MIX, POST_TYPES } = require('./_brain');   // types — pure helpers
 
 // Hourly cron: for every subscription whose chosen local hour is NOW, top the brand's Ideas list
 // up to DAILY_TARGET waiting ideas (fix7 — the same generator as the app's "Plan my week") and push
@@ -339,8 +340,15 @@ module.exports = async function handler(req, res) {
         communities: _dOrder.map(d => `${d}: ${_dr[d] || 'General'}`).join(', '),
         dayMap: _dOrder.map(d => `${d} = ${_dr[d] || 'General'}`).join(', '),
       });
+      // types — the brand's saved post-type mix (bc.typeMix; the default when none is saved), fitted to
+      // the number of ideas this top-up asks for. A full top-up (>= the mix total) is scaled (7 with the
+      // default mix is exactly the default); a smaller one takes its slots from the mix cycle at an
+      // offset that rotates with the subscriber's local day, so over a week small top-ups follow the mix
+      // too (see _brain.topUpMix). generate-ideas turns a news slot into a tip when no fresh headline exists.
+      const _dayIndex = Math.floor(_localNow.getTime() / 86400000);   // days since epoch, local: consecutive days rotate
+      const _typeMix = topUpMix(validTypeMix(bc.typeMix) || DEFAULT_TYPE_MIX, _want, _dayIndex);
       const gen = await postJson(`${host}/api/generate-ideas`,
-        { count: _want, brandContext: _bcOut, forUserId: sub.user_id, forBrandId: brandId,
+        { count: _want, typeMix: _typeMix, brandContext: _bcOut, forUserId: sub.user_id, forBrandId: brandId,
           gaps: _days.map(d => ({ day: d })), learningContext: act.learningContext || '', delivery: 'faceon' },
         { Authorization: `Bearer ${cronSecret}` }, genMs);
       if (gen && gen.timedOut) {
@@ -663,6 +671,16 @@ async function getBrandActivity(base, key, brandId) {
 // without the newer optional columns (emphasis: sql/ideas-emphasis.sql, gen_flow:
 // sql/ideas-gen-flow.sql) answers PGRST204/42703 naming the column; exactly like the app's
 // insertIdeas, the rows are written again without it.
+// types — a news idea's headline link, appended to the saved caption in the EXACT form app.html reads
+// back (typesCaptionWithSource / typesSourceFromCaption: "\n\nSource: <https url>" as the last line),
+// so the link shows on any device. There is no column for newsSource. https only, like the app.
+function _captionWithSource(caption, idea) {
+  const c = String(caption == null ? '' : caption);
+  const ns = idea && idea.postType === 'news' && idea.newsSource;
+  const u = ns && typeof ns === 'object' ? String(ns.url == null ? '' : ns.url).trim() : '';
+  if (!/^https:\/\/[^\s"'<>]+$/i.test(u) || c.indexOf(u) >= 0) return c;
+  return (c.trim() ? c.replace(/\s+$/, '') + '\n\n' : '') + 'Source: ' + u;
+}
 async function saveDailyBatch(base, key, brandId, ideas, opts) {
   const o = opts || {};
   try {
@@ -692,7 +710,7 @@ async function saveDailyBatch(base, key, brandId, ideas, opts) {
         hook, script,
         shots: asText(idea.shots),
         screen: asText(idea.screen),
-        caption,
+        caption: _captionWithSource(caption, idea),
         reel_title: asText(idea.reelTitle),
         tags: asText(idea.tags),
         bold_text: bold,
@@ -704,6 +722,8 @@ async function saveDailyBatch(base, key, brandId, ideas, opts) {
         original_creator: '',
         emphasis,
         gen_flow: DAILY_FLOW,   // the marker — see the note at DAILY_FLOW
+        // types — what the idea is about (sql/idea-post-type.sql); only a known type is ever written.
+        ...(POST_TYPES.indexOf(idea.postType) >= 0 ? { post_type: idea.postType } : {}),
       });
     }
     if (!rows.length) return { inserted: 0, first: null };
@@ -717,13 +737,14 @@ async function saveDailyBatch(base, key, brandId, ideas, opts) {
     };
     const strip = (col) => rows.forEach(r => { delete r[col]; });
     let last = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 4; attempt++) {   // types: up to 3 optional columns can be missing
       const leftMs = INSERT_TIMEOUT_MS - (Date.now() - t0);
       if (leftMs < 500) break;
       last = await sbRequest(base, key, 'POST', '/rest/v1/ideas', rows, leftMs);
       if (last && last.status >= 200 && last.status < 300) return { inserted: rows.length, first: rows[0].title };
       if ('emphasis' in rows[0] && missing(last, 'emphasis')) { strip('emphasis'); continue; }
       if ('gen_flow' in rows[0] && missing(last, 'gen_flow')) { strip('gen_flow'); continue; }
+      if (rows.some(r => 'post_type' in r) && missing(last, 'post_type')) { strip('post_type'); continue; }
       break;
     }
     console.error('send-daily: could not save the morning batch for subscription ' + (o.subId || '?') + ' (' +

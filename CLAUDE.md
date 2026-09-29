@@ -2,6 +2,24 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-09-29 — v697. POST TYPES: "WHAT IS THE POST ABOUT" IS A FIRST-CLASS CHOICE (owner: "these categories are super important").
+
+Six types, same ids everywhere: tip · about (our product/service) · news (category news) · qna · story · bts.
+Default mix per 7 ideas {tip:3, about:1, news:1, qna:1, story:1, bts:0}, saved per brand at voice_extra.typeMix.
+Contract .unlazy/types/PLAN.md. Mutations S 42/42, U 36/36; one independent review round, all 6 findings fixed.
+- Quick Post: chip row "What's today's post about?" (6 types + Surprise me = weighted by the mix; resets each open).
+  postType → /api/angles + /api/write; news with no fresh headline → 409 no_news, plain message.
+- Plan my week: −/+ per type (total 1..10 — the credit cap), saved; the morning batch (send-daily) follows the same
+  mix; small top-ups rotate through the mix by day so every type appears over a week (topUpMix).
+- Idea cards show the type; Filters → By type. Old ideas: qna format → Q&A, else Tip (typesOf).
+- about: the "never about the product" rule is lifted ONLY for about-slots; real facts only.
+- news: only from stored headlines (brands.auto_trends → bc.freshNews, ≤7 days, https links); the server attaches
+  newsSource by index; a bad index → dropped (warnings news_dropped); link saved as caption last line
+  "Source: <https url>" (app parses it back on any device).
+- FACT GUARD NOW ON EVERY BATCH IDEA (generate-ideas → guardIdeaFacts): invented facts become [your story] slots.
+- SQL applied live 2026-09-29: sql/idea-post-type.sql (ideas.post_type + CHECK), verified.
+KNOWN: /api/write still trusts a client-sent angle.belief as allowed material (pre-existing, user-only).
+
 ## ▶▶ 2026-09-28 — v696. CORE-PATH FIXES + IDEAS WAITING EVERY MORNING (owner: "i like the ideas flow most … several ideas already waiting").
 
 Source of the list: the app map (.unlazy/app-map/, doc "Content Shrimp — App Map"). Contract .unlazy/fix7/PLAN.md.

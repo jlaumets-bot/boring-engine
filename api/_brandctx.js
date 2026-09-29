@@ -33,6 +33,7 @@
 //      can rank by recency alone, which is NOT what the client did — see approvedExamplesFrom.
 
 const store = require('./_publish/store');
+const { validTypeMix, freshNewsFrom, DEFAULT_TYPE_MIX } = require('./_brain');   // types — pure helpers
 
 const clean = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
 
@@ -206,6 +207,12 @@ function contextFromBrandRow(b) {
     competitorMoves: (at.competitorMoves && (Date.now() - (+at.compAt || 0)) <= COMP_MAX_AGE_MS)
       ? at.competitorMoves : '',
     dayRotation: dayCommunitiesFrom(b.day_rotation, b.communities),
+    // types — the brand's saved post-type mix (voice_extra.typeMix, the app's settings save),
+    // validated: integers 0..10 per known type; missing or invalid -> DEFAULT_TYPE_MIX.
+    typeMix: validTypeMix(v.typeMix) || Object.assign({}, DEFAULT_TYPE_MIX),
+    // types — the stored headlines a news post may use: [{title, url, date, source?}], newest first,
+    // <= 8, <= 7 days old, each with a real link (see _brain.freshNewsFrom for what auto_trends holds).
+    freshNews: freshNewsFrom(at, Date.now()),
     // The app is Grok-only; app.html's getEngine() hard-returns this.
     engine: 'grok',
   };
@@ -218,11 +225,14 @@ function contextFromBrandRow(b) {
 // settings and knows nothing about memory, so counting stories/beliefs here would let a brand with
 // a thin (stale) row but a full story bank look healthy and skip the 424 re-send it needs.
 const MEMORY_KEYS = new Set(['beliefs', 'stories', 'speechSamples', 'memoryUnavailable']);
+// types — typeMix (always set: the default when none is saved) and freshNews (derived from the
+// nightly pull) are not fields the client counts either.
+const DERIVED_KEYS = new Set(['typeMix', 'freshNews']);
 
 function populatedFieldCount(bc) {
   let n = 0;
   for (const k of Object.keys(bc || {})) {
-    if (k === 'engine' || k === 'dayRotation' || MEMORY_KEYS.has(k)) continue;
+    if (k === 'engine' || k === 'dayRotation' || MEMORY_KEYS.has(k) || DERIVED_KEYS.has(k)) continue;
     const val = bc[k];
     if (Array.isArray(val)) { if (val.length) n++; }
     else if (val && String(val).trim()) n++;

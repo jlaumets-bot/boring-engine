@@ -142,6 +142,124 @@ function v2Tones(bc) {
   return { tones: list, overLimit: false, count: list.length };
 }
 
+// ── types (.unlazy/types/PLAN.md) — "what is the post about" as a first-class choice ──────────────
+// Six post types, the same ids in the app, the server and the ideas.post_type CHECK (sql/idea-post-type.sql).
+//   tip   Tip / opinion (the default: what every idea was before types existed)
+//   about About us: the brand's product/service, from real brand facts only
+//   news  News in the category: ONLY a real stored headline (bc.freshNews), attached by the server
+//   qna   Q&A: forces format 'qna'
+//   story Customer story: a real story from the story bank, else a [your story: ...] slot
+//   bts   Behind the scenes / founder
+// DEFAULT_TYPE_MIX is the 7-idea mix; the app defines the same constant. Pure helpers, no I/O, so
+// api/send-daily.js can use them without loading the brand hydrator.
+const POST_TYPES = ['tip', 'about', 'news', 'qna', 'story', 'bts'];
+const DEFAULT_TYPE_MIX = Object.freeze({ tip: 3, about: 1, news: 1, qna: 1, story: 1, bts: 0 });
+const TYPE_MIX_MAX = 10;   // per type
+const NEWS_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+const NEWS_MAX = 8;
+const ABOUT_BG_NOTE = 'These are the real facts an about-us post is built on. Use only these, never invent more (a missing fact becomes a [your story: <what to tell>] slot). Never a feature list, never a pitch.';
+// A mix is an object of known type ids -> integers 0..TYPE_MIX_MAX. A missing key is 0; unknown keys
+// are ignored; ANY present value that is not such an integer makes the whole mix invalid, and so does
+// a total of 0 or an object with no known key at all. Returns a fresh object with all six keys, or null.
+function validTypeMix(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const out = {}; let total = 0, seen = 0;
+  for (const k of POST_TYPES) {
+    if (!(k in v) || v[k] == null) { out[k] = 0; continue; }
+    const n = v[k];
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > TYPE_MIX_MAX) return null;
+    out[k] = n; total += n; seen++;
+  }
+  return (seen && total > 0) ? out : null;
+}
+// Scale a mix to exactly n ideas, proportionally, by largest remainders (ties go to the earlier
+// type in POST_TYPES). A mix that already sums to n comes back unchanged.
+function scaleTypeMix(mix, n) {
+  const m = validTypeMix(mix) || Object.assign({}, DEFAULT_TYPE_MIX);
+  const want = Math.max(1, Math.floor(Number(n) || 0));
+  const total = POST_TYPES.reduce((a, k) => a + m[k], 0);
+  if (total === want) return m;
+  const parts = POST_TYPES.map((k, i) => { const q = m[k] * want / total; return { k, i, fl: Math.floor(q), rem: q - Math.floor(q) }; });
+  let left = want - parts.reduce((a, p) => a + p.fl, 0);
+  const order = parts.slice().sort((a, b) => (b.rem - a.rem) || (a.i - b.i));
+  for (const p of order) { if (left <= 0) break; if (p.rem > 0) { p.fl++; left--; } }
+  const out = {};
+  for (const p of parts) out[p.k] = p.fl;
+  return out;
+}
+// The mix SPREAD OUT as a cycle (each type's copies evenly spaced; ties in POST_TYPES order):
+// the default is tip,tip,about,news,qna,story,tip. Used for small top-ups (topUpMix).
+function spreadSlots(mix) {
+  const m = validTypeMix(mix) || Object.assign({}, DEFAULT_TYPE_MIX);
+  const list = [];
+  POST_TYPES.forEach((k, ti) => { for (let j = 0; j < m[k]; j++) list.push({ k, ti, pos: (j + 0.5) / m[k] }); });
+  list.sort((a, b) => (a.pos - b.pos) || (a.ti - b.ti));
+  return list.map(x => x.k);
+}
+// A TOP-UP of n ideas that follows the mix OVER TIME. Scaling alone rounds the same way every day (a
+// 1-idea top-up would always be a tip; news/qna/story would never come). So when n is smaller than
+// the mix total, n consecutive slots are taken from the spread-out cycle starting at a rotating offset
+// (dayIndex x n, mod total): over `total` consecutive days every slot is used exactly n times, i.e.
+// every type appears in proportion to the mix. Deterministic for a given day. n >= total -> scaled.
+function topUpMix(mix, n, dayIndex) {
+  const m = validTypeMix(mix) || Object.assign({}, DEFAULT_TYPE_MIX);
+  const want = Math.max(1, Math.floor(Number(n) || 0));
+  const cycle = spreadSlots(m);
+  const total = cycle.length;
+  if (want >= total) return scaleTypeMix(m, want);
+  const d = Math.floor(Number(dayIndex) || 0);
+  const start = (((d * want) % total) + total) % total;
+  const out = {};
+  for (const k of POST_TYPES) out[k] = 0;
+  for (let i = 0; i < want; i++) out[cycle[(start + i) % total]]++;
+  return out;
+}
+// The mix as an ordered slot list: ['tip','tip','tip','about','news','qna','story'].
+function typeSlots(mix) {
+  const out = [];
+  for (const k of POST_TYPES) for (let i = 0; i < (mix && mix[k] || 0); i++) out.push(k);
+  return out;
+}
+// Fresh headlines from what api/pull-trends-cron.js (and the manual pull) store in brands.auto_trends:
+//   { at, items: [{ text, source, link, ts, hot }], topPosts, competitorMoves, compAt }
+// A headline needs a real http(s) link (it becomes newsSource.url) and is dated by its own `ts`
+// (Google News pubDate / tweet time; the Grok web-search lane stamps the PULL time) or, failing that,
+// the pull time `at` — the same fallback the app's getAutoTrends uses. X/Twitter posts are posts, not
+// news, and are left out. Newest first, at most NEWS_MAX, none older than NEWS_MAX_AGE_MS.
+// `dismissed` (optional): lower-cased texts the user dismissed on their device (localStorage only).
+function freshNewsFrom(autoTrends, now, dismissed) {
+  const at = autoTrends && typeof autoTrends === 'object' && !Array.isArray(autoTrends) ? autoTrends : {};
+  return normFreshNews((Array.isArray(at.items) ? at.items : []).map(x => x && typeof x === 'object' ? {
+    title: x.text, url: x.link, date: Number(x.ts) || Number(at.at) || 0, source: x.source,
+  } : null), now, dismissed);
+}
+// Re-validates a list of {title, url, date} (also the one send-daily hands generate-ideas).
+function normFreshNews(list, now, dismissed) {
+  const t = Number(now) || Date.now();
+  const gone = new Set((Array.isArray(dismissed) ? dismissed : []).slice(0, 200).map(d => String(d == null ? '' : d).toLowerCase().trim()).filter(Boolean));
+  const out = [], seen = new Set();
+  for (const x of (Array.isArray(list) ? list : [])) {
+    if (!x || typeof x !== 'object') continue;
+    const title = String(x.title == null ? '' : x.title).replace(/\s+/g, ' ').trim().slice(0, 200);
+    const url = String(x.url == null ? '' : x.url).trim();
+    const date = Number(x.date) || 0;
+    const source = String(x.source == null ? '' : x.source).trim().slice(0, 60);
+    if (title.length < 8 || !/^https?:\/\/[^\s<>"']+$/i.test(url) || url.length > 400) continue;
+    if (/(^|·\s*)X$/.test(source)) continue;
+    if (!(date > 0) || t - date > NEWS_MAX_AGE_MS || date - t > 24 * 3600 * 1000) continue;
+    const k = title.toLowerCase();
+    if (seen.has(k) || gone.has(k)) continue;
+    seen.add(k);
+    out.push(Object.assign({ title, url, date }, source ? { source } : {}));
+  }
+  out.sort((a, b) => b.date - a.date);
+  return out.slice(0, NEWS_MAX);
+}
+// One line per headline for a prompt: `1. "title" (source, 2026-09-28)`.
+function newsLines(list) {
+  return (list || []).map((n, i) => (i + 1) + '. "' + n.title + '" (' + (n.source ? n.source + ', ' : '') + new Date(n.date).toISOString().slice(0, 10) + ')').join('\n');
+}
+
 function fullBrandBlock(bc, opts) {
   bc = bc || {};
   opts = opts || {};
@@ -235,7 +353,11 @@ function fullBrandBlock(bc, opts) {
   // BACKGROUND facts instead of a pitch list, and the brand's held beliefs. Legacy callers pass no
   // v2 flag and get byte-identical output.
   const v2 = opts.v2 === true;
-  const BG_NOTE = 'Background only: mention at most one of these in a script, and only if it directly answers the viewer\'s problem. Never as a pitch.';
+  // types — an "about us" post (opts.about, only when EVERY idea in the call is an about post) is ABOUT
+  // these facts, so the background-only note is swapped for the about rule. Every other call is unchanged.
+  const BG_NOTE = opts.about === true
+    ? ABOUT_BG_NOTE
+    : 'Background only: mention at most one of these in a script, and only if it directly answers the viewer\'s problem. Never as a pitch.';
   if (v2) {
     const vt = v2Tones(bc);
     add('Voice / tones', vt.tones, 'Hold this voice in HOW things are said. Never describe the brand with these words.', 99);
@@ -734,4 +856,4 @@ const VIRAL_ANALYZE_SHAPE = {
   takeaway: 'str',
 };
 
-module.exports = { NO_INVENTION_RULE, v2Tones, spokenV2, storiesBlock, antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };
+module.exports = { POST_TYPES, DEFAULT_TYPE_MIX, TYPE_MIX_MAX, NEWS_MAX_AGE_MS, NEWS_MAX, ABOUT_BG_NOTE, validTypeMix, scaleTypeMix, typeSlots, spreadSlots, topUpMix, freshNewsFrom, normFreshNews, newsLines, NO_INVENTION_RULE, v2Tones, spokenV2, storiesBlock, antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };

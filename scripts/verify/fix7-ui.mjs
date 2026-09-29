@@ -235,10 +235,12 @@ const baseCtx = (dom, extra) => Object.assign({
 
   // ═════════ 2 — Plan my week = 7 ═════════
   {
-    const sel = /<select class="generate-count-select" id="generateCount">([\s\S]*?)<\/select>/.exec(html);
-    const opts = sel ? [...sel[1].matchAll(/<option value="(\d+)"( selected)?>/g)].map(m => [m[1], !!m[2]]) : [];
-    ok(J(opts.map(o => o[0])) === J(['3', '5', '7', '10']) && J(opts.filter(o => o[1]).map(o => o[0])) === J(['7']), '2 the count offers 3/5/7/10 with 7 selected');
-    ok(/getElementById\('generateCount'\)\.value\) \|\| 7/.test(grab('generateNewIdeas')), '2 the generator falls back to 7 too');
+    // types (2026-09-29): the count dropdown was replaced by the per-type mix steppers — the mix TOTAL is the
+    // count, and the default mix adds up to seven (types-ui.mjs executes the steppers themselves).
+    const dm = /^const DEFAULT_TYPE_MIX = (\{[^}]*\});/m.exec(html);
+    const dmTot = dm ? Object.values(Function('return ' + dm[1])()).reduce((a, b) => a + b, 0) : -1;
+    ok(!/id="generateCount"/.test(html) && dmTot === 7, '2 the default mix (the count) adds up to 7: ' + dmTot);
+    ok(/const count = _typeMix \? typesMixTotal\(_typeMix\) : 7;/.test(grab('generateNewIdeas')), '2 the generator uses the mix total and falls back to 7 too');
     ok(/Seven days of posts/.test(html) && /a 7-day plan/.test(html), '2 the card ("Seven days") and the empty state ("7-day plan") now match what is generated');
   }
 

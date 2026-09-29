@@ -199,7 +199,8 @@ const happy = (i) => [DRAFT + '\nUSED STORIES: s2, s9, [s2]', SPOKEN, SHAPE][i];
   ok(I.title === 'Post less, grow faster' && I.hook === 'Everyone tells you to post every day.' && I.caption === 'Posting more is not the fix.' && I.onScreen.length === 2 && I.shots.length === 1, 'shape fields are used when clean');
   ok(I.genFlow === 'v2' && I.format === 'talking' && I.belief === ANGLE.belief, 'idea carries genFlow v2, format and belief');
   // fix7: `hashtags` joins the C-LIB idea keys (derived in the same shape call; see fix7-server.mjs)
-  const keys = ['title', 'hook', 'script', 'storySlots', 'onScreen', 'caption', 'shots', 'format', 'emphasis', 'hashtags', 'belief', 'genFlow'];
+  // types: `postType` joins them ('tip' when no type was asked for; see types-server.mjs)
+  const keys = ['title', 'hook', 'script', 'storySlots', 'onScreen', 'caption', 'shots', 'format', 'emphasis', 'hashtags', 'belief', 'genFlow', 'postType'];
   ok(keys.every(k => k in I) && Object.keys(I).every(k => keys.includes(k)), 'idea has exactly the C-LIB keys');
   ok(calls[0].opts.provider === 'claude' && calls[0].opts.effort === 'high' && calls[1].opts.provider === 'claude' && calls[1].opts.effort === 'high', 'draft + spoken pass get provider/effort straight through');
   ok(calls[2].opts.provider === 'claude' && calls[2].opts.effort === 'low', 'the shape call keeps the provider and is always cheap (effort low)');

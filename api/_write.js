@@ -18,7 +18,7 @@
    the endpoints (api/angles.js, api/write.js) and the blind test decide that. */
 
 const crypto = require('crypto');
-const { fullBrandBlock, v2Tones, extractJson, toStr, NO_INVENTION_RULE } = require('./_brain');
+const { fullBrandBlock, v2Tones, extractJson, toStr, NO_INVENTION_RULE, POST_TYPES, newsLines } = require('./_brain');
 
 // v693 — looked up at CALL time, not destructured at load: a harness or the blind test that swaps
 // ./_llm in the require cache after this file loaded must still be the one that gets called.
@@ -217,18 +217,35 @@ const FORMAT_RULES = {
   carousel:  { min: 70, max: 220, what: 'a swipe carousel: 5 to 8 slides, one slide per paragraph, slide 1 makes people swipe' },
 };
 
+// ── POST TYPES (.unlazy/types/PLAN.md) ──────────────────────────────────────────
+// One rule per type, shared by the angles/write pipeline and the ideas batch (api/generate-ideas.js),
+// so the two can never describe a type differently. The no-invention rule applies to every type.
+const TYPE_RULES = {
+  tip: 'TIP / OPINION: a practical tip or a sharp opinion about the viewer\'s own world.',
+  about: 'ABOUT US: the post is about what the brand\'s product or service does for the viewer. Use ONLY the real product facts in the brand profile; a fact you do not have becomes a [your story: <what to tell>] slot. Still spoken, still a belief the viewer does not hold yet, and never a feature tour or a pitch.',
+  news: 'NEWS IN THE CATEGORY: react to ONE of the real headlines listed, and only to those. Name the headline plainly. Say only what the headline itself says: never invent details, numbers, names or quotes from the story. The belief is your take on what it means for the viewer.',
+  qna: 'Q&A: a real question this audience asks, answered on camera, in the "qna" format and its rules.',
+  story: 'CUSTOMER STORY: built around ONE real story from the story bank if one fits. If none fits, the story itself is a [your story: <the customer moment to tell>] slot. Never invent a customer, a name or a result.',
+  bts: 'BEHIND THE SCENES / FOUNDER: how the work actually gets done, or a moment from the founder. Real details only from the brand profile; anything else is a [your story: <what to tell>] slot.',
+};
+const normPostType = (v) => (typeof v === 'string' && POST_TYPES.indexOf(v) >= 0 ? v : '');
+
 // ── STYLE GUIDE ──────────────────────────────────────────────────────────────
 // v693 — SHORT ON PURPOSE (< 1,200 chars). The old writingCraft is ~6,000 chars of rules; the model
 // obeyed the loudest ones (compression) and wrote telegraph fragments. This keeps the AI-tell
 // openers, the worst words, one rhythm rule and the one hard rule.
-function styleGuide() {
+// types — opts.about (only when the WHOLE call is an about-us post) swaps the one "not the brand's
+// features" line for the about rule. Every other caller passes nothing and gets the same text.
+function styleGuide(opts) {
+  const about = !!(opts && opts.about === true);
   return [
     'STYLE GUIDE (short on purpose):',
     '- Write like one person talking to one person across a table. First person, plain words, contractions.',
     '- One idea per sentence, with natural rhythm: some short lines, some longer ones joined by "and", "so", "because". Never a run of clipped fragments.',
     '- Start with the thing itself. Never open with "Did you know", "Have you ever wondered", "Here\'s the thing", "Let me tell you", "Imagine", "Most people don\'t realize", "Hey guys", "In this video".',
     '- Never use: delve, leverage, elevate, unlock, game-changer, seamless, robust, journey. No em dashes. No "not just X, it\'s Y". No lists of three for show.',
-    '- No hype, no pitch. Talk about the viewer\'s problem, not the brand\'s features.',
+    about ? '- No hype, no pitch. Say what the product does for the viewer, using only its real facts; never a feature tour.'
+      : '- No hype, no pitch. Talk about the viewer\'s problem, not the brand\'s features.',
     '- HARD RULE. ' + NO_INVENTION_RULE,
   ].join('\n');
 }
@@ -337,8 +354,8 @@ function correctionNote(previous, invented) {
     '\nPREVIOUS DRAFT:\n<<<\n' + previous + '\n>>>';
 }
 
-function brandBlockV2(bc) {
-  const b = fullBrandBlock(bc || {}, { v2: true });
+function brandBlockV2(bc, about) {
+  const b = fullBrandBlock(bc || {}, about === true ? { v2: true, about: true } : { v2: true });
   return b && b.trim() ? b : '(No brand profile yet. Keep it general and do not invent any specifics.)';
 }
 
@@ -864,6 +881,35 @@ function firstSpokenLine(script) {
   return clip(sentence || line, 200);
 }
 
+// types r2 — THE SAME FACT GUARD FOR THE ONE-CALL IDEAS BATCH (api/generate-ideas.js), which has no
+// draft step to retry. Every sentence of the visible text (script, boldText, caption) that states a
+// number, name or claim that is in none of the allowed material becomes a [your story: ...] slot,
+// exactly as runWrite slots its draft; a hook that invents (or carries a slot) falls back to the first
+// spoken line of the guarded script, like buildIdea. No AI call. Returns a new object; `invented`
+// lists what was removed (empty = nothing changed).
+function guardIdeaFacts(idea, allowed) {
+  const out = Object.assign({}, idea);
+  const invented = [];
+  const A = toStr(allowed);
+  for (const k of ['script', 'boldText', 'caption']) {
+    const v = toStr(out[k]);
+    if (!v.trim()) continue;
+    const bad = inventedFacts(v, A);
+    if (!bad.length) continue;
+    invented.push.apply(invented, bad);
+    out[k] = slotifyInvented(v, A);
+  }
+  const h = toStr(out.hook);
+  SLOT_LIKE_RE.lastIndex = 0;
+  const slotted = SLOT_LIKE_RE.test(h); SLOT_LIKE_RE.lastIndex = 0;
+  const hb = h.trim() ? inventedFacts(h, A) : [];
+  if (hb.length || slotted) {
+    invented.push.apply(invented, hb);
+    out.hook = firstSpokenLine(toStr(out.script) || toStr(out.boldText));
+  }
+  return { idea: out, invented: [...new Set(invented)] };
+}
+
 function listOf(v, max, each) {
   const arr = Array.isArray(v) ? v : (v == null || v === '' ? [] : toStr(v).split('\n'));
   return arr.map(x => clip(x, each)).filter(Boolean).slice(0, max);
@@ -962,9 +1008,11 @@ function buildIdea(script, shaped, angle, format, allowedExtra) {
 }
 
 // ── PROMPTS ──────────────────────────────────────────────────────────────────
-function anglesPrompt(bc, src, count) {
+function anglesPrompt(bc, src, count, type, news) {
   const name = toStr(bc.brandName).trim() || 'this brand';
-  return [
+  const about = type === 'about';
+  const typed = !!type;
+  const P = [
     'You help ' + name + ' decide what to SAY before anything gets written.',
     '',
     sourceBlock(src, MAX_SOURCE),
@@ -972,21 +1020,25 @@ function anglesPrompt(bc, src, count) {
     'STEP 1 (silently): find the underlying idea or principle in the source. Never reuse the creator\'s wording, examples or structure.',
     'STEP 2: write ' + count + ' beliefs ' + name + ' could hold about that idea that most of its audience does NOT share yet. Each belief:',
     '- is contrarian but defensible: the person could argue it on camera and be right;',
-    '- is about the viewer\'s problem or situation, never about the brand\'s product or features;',
+    about ? '- is about what ' + name + '\'s product or service does for the viewer, using only real product facts from the brand profile (never a feature list);'
+      : '- is about the viewer\'s problem or situation, never about the brand\'s product or features;',
     '- is one plain sentence, at most ' + MAX_BELIEF + ' characters;',
     '- has a "why": at most ' + MAX_WHY + ' characters on why most people believe the opposite;',
     '- may have a "hookSeed": a first spoken line that could open a video on it.',
     'Make them genuinely different beliefs, not one belief reworded. Stay consistent with the beliefs the brand already holds and do not repeat them.',
     NO_INVENTION_RULE,
-    '',
-    brandBlockV2(bc),
-    '',
+  ];
+  // types — only when a post type was asked for; an untyped call sends the prompt it always sent.
+  if (typed) P.push('', 'EVERY BELIEF IS FOR THIS KIND OF POST. ' + TYPE_RULES[type]);
+  if (type === 'news') P.push('', 'FRESH HEADLINES (the only news you may use):', newsLines(news),
+    'Each belief reacts to ONE of these headlines: put its number in "newsIndex".');
+  P.push('', brandBlockV2(bc, about), '',
     'Reply with ONLY this JSON, no prose, no code fences:',
-    '{"angles":[{"belief":"...","why":"...","hookSeed":"..."}]}',
-  ].join('\n');
+    type === 'news' ? '{"angles":[{"belief":"...","why":"...","hookSeed":"...","newsIndex":1}]}' : '{"angles":[{"belief":"...","why":"...","hookSeed":"..."}]}');
+  return P.join('\n');
 }
 
-function draftPrompt(bc, src, angle, format, stories) {
+function draftPrompt(bc, src, angle, format, stories, type, news) {
   const name = toStr(bc.brandName).trim() || 'the brand';
   const f = FORMAT_RULES[format];
   const said = format !== 'statement' && format !== 'carousel';
@@ -1000,6 +1052,9 @@ function draftPrompt(bc, src, angle, format, stories) {
   if (angle.why) P.push('Why most people disagree: ' + angle.why);
   if (angle.hookSeed) P.push('A possible first line (use it, improve it, or ignore it): ' + angle.hookSeed);
   if (src.text) P.push('', sourceBlock(src, 6000), 'Use the source for the idea only. Never copy its wording.');
+  // types — only when a post type was asked for; an untyped call sends the prompt it always sent.
+  if (type) P.push('', 'KIND OF POST. ' + TYPE_RULES[type]);
+  if (type === 'news' && news) P.push('', 'THE NEWS THIS POST REACTS TO (a real headline):', newsLines([news]), 'Link: ' + news.url);
   P.push('',
     'SHAPE: ' + f.what + '. Usually about ' + f.min + ' to ' + f.max + ' words: a guide, not a limit. Take the words the idea needs.',
     'Move through three beats without labelling them: why people believe the opposite, what goes wrong because of it, then the reframe.',
@@ -1011,7 +1066,7 @@ function draftPrompt(bc, src, angle, format, stories) {
       'REAL STORIES THIS PERSON HAS TOLD BEFORE. Use one ONLY if it genuinely fits this belief; never force one in. Retell it briefly in their words, do not paste it:',
       lines.join('\n'));
   }
-  P.push('', styleGuide(), '', brandBlockV2(bc), '',
+  P.push('', styleGuide(type === 'about' ? { about: true } : undefined), '', brandBlockV2(bc, type === 'about'), '',
     'Write ONLY the script, as plain text: no title, no labels, no stage directions, no hashtags, no markdown.' +
     (stories.length ? ' Then, on its own last line, write USED STORIES: followed by the ids you used, or USED STORIES: none' : ''));
   return P.join('\n');
@@ -1066,7 +1121,7 @@ function shapePrompt(script, format) {
 }
 
 // ── runAngles ────────────────────────────────────────────────────────────────
-function anglesFrom(parsed, count) {
+function anglesFrom(parsed, count, keepNews) {
   let list = [];
   if (Array.isArray(parsed)) list = parsed;
   else if (parsed && typeof parsed === 'object') {
@@ -1088,6 +1143,7 @@ function anglesFrom(parsed, count) {
     };
     const hs = clip(it.hookSeed, 200);
     if (hs) a.hookSeed = hs;
+    if (keepNews === true) a.newsIndex = it.newsIndex;   // types — resolved (or dropped) by runAngles
     out.push(a);
     if (out.length >= count) break;
   }
@@ -1097,18 +1153,24 @@ function anglesFrom(parsed, count) {
 async function runAngles(opts) {
   const o = opts || {};
   const bc = o.bc && typeof o.bc === 'object' ? o.bc : {};
-  const src = normSource(o.source);
+  const type = normPostType(o.postType);
+  // types — a news post may only use the stored headlines it is handed (never the model's own text).
+  const news = type === 'news' ? (Array.isArray(o.news) ? o.news : []) : [];
+  if (type === 'news' && !news.length) { const e = new Error('No fresh news headline'); e.code = 'NO_NEWS'; throw e; }
+  let src = normSource(o.source);
+  // A news post needs no other source: the headlines are the source.
+  if (!src.text && type === 'news') src = normSource({ kind: 'trend', text: news.map(n => n.title).join('\n') });
   if (!src.text) throw badInput('source.text is required');
   const c = Math.floor(Number(o.count));
   const count = Number.isFinite(c) ? Math.max(5, Math.min(8, c)) : 6;
   const t0 = Date.now();
   const total = posNum(o.deadlineMs) || ANGLES_DEFAULT_MS;
-  const prompt = anglesPrompt(bc, src, count);
+  const prompt = type ? anglesPrompt(bc, src, count, type, news) : anglesPrompt(bc, src, count);
   // v693 r4 — an angle is dropped ONLY when its belief invents a fact (a picked belief becomes allowed
   // material for the draft). An inventing `why` loses just the offending sentence(s) and an inventing
   // hookSeed is removed, instead of losing a good belief over its explanation. Fewer than 3 survivors
   // (or an unparseable reply) → ONE re-ask, merged in, when at least 15 s remain.
-  const allowedA = [src.text, src.creator, src.platform, userFacts(bc)].join('\n');
+  const allowedA = [src.text, src.creator, src.platform, userFacts(bc)].concat(news.map(n => n.title)).join('\n');
   let angles = [], rejected = [];
   for (let attempt = 0; attempt < 2 && angles.length < ANGLES_MIN_SURVIVORS; attempt++) {
     const left = total - (Date.now() - t0);
@@ -1122,7 +1184,15 @@ async function runAngles(opts) {
       deadlineMs: Math.max(1000, left),
       provider: pickProvider(o.provider), effort: pickEffort(o.effort, 'angles'),
     }, { providerFromEnv: providerFromEnv(o.provider), label: 'angles' });
-    for (const a of anglesFrom(extractJson(content), count)) {
+    for (const a of anglesFrom(extractJson(content), count, type === 'news')) {
+      if (type === 'news') {
+        // The headline is attached BY INDEX from the stored list; an angle without a valid one is dropped.
+        const ni = Number(a.newsIndex);
+        delete a.newsIndex;
+        if (!(Number.isInteger(ni) && ni >= 1 && ni <= news.length)) continue;
+        a.newsSource = { title: news[ni - 1].title, url: news[ni - 1].url };
+      }
+      if (type) a.postType = type;
       if (inventedFacts(a.belief, allowedA).length) { rejected.push(a.belief); continue; }
       if (a.why && inventedFacts(a.why, allowedA).length) a.why = dropInventedSentences(a.why, allowedA);
       if (a.hookSeed && inventedFacts(a.hookSeed, allowedA).length) delete a.hookSeed;
@@ -1141,6 +1211,10 @@ async function runWrite(opts) {
   const angle = normAngle(o.angle);
   if (!angle.belief) throw badInput('angle.belief is required');
   const format = FORMATS.indexOf(o.format) >= 0 ? o.format : 'talking';
+  // types — the one stored headline a news post is written about (resolved by api/write.js).
+  const type = normPostType(o.postType);
+  const news = type === 'news' && o.news && typeof o.news === 'object' ? o.news : null;
+  if (type === 'news' && !news) { const e = new Error('No fresh news headline'); e.code = 'NO_NEWS'; throw e; }
   const t0 = Date.now();
   const total = posNum(o.deadlineMs) || WRITE_DEFAULT_MS;
   const left = () => total - (Date.now() - t0);
@@ -1149,7 +1223,7 @@ async function runWrite(opts) {
 
   // 1 — the draft. Plain text only. A failure here (including an AI refusal) is the whole answer.
   // v693 r2 — wantMeta: a reply cut off at max_tokens is not a finished script.
-  const basePrompt = draftPrompt(bc, src, angle, format, stories);
+  const basePrompt = type ? draftPrompt(bc, src, angle, format, stories, type, news) : draftPrompt(bc, src, angle, format, stories);
   const draftCall = async (content, maxTokens, deadlineMs) => metaOf(await writerCallResilient({
     messages: [{ role: 'user', content }],
     model: 'grok', engine: bc.engine || 'grok', max_tokens: maxTokens, temperature: 0.8,
@@ -1173,7 +1247,7 @@ async function runWrite(opts) {
   // v693 r2 — THE DRAFT'S FACTS ARE CHECKED against the material it was allowed to use: the source,
   // the brand facts actually rendered, the story bank, the belief. Anything else is invented: one
   // retry with the exact correction, then every sentence still carrying one becomes a story slot.
-  const allowed = allowedMaterial(bc, src, angle, stories);
+  const allowed = allowedMaterial(bc, src, angle, stories) + (news ? '\n' + news.title : '');
   let invented = inventedFacts(draft.script, allowed);
   if (invented.length && !retried && retryRoom() >= MIN_SPOKEN_MS) {
     retried = true;
@@ -1229,16 +1303,18 @@ async function runWrite(opts) {
 
   const idea = buildIdea(script, shaped, angle, format, bc.brandName);
   idea.hashtags = hashtagsFor(bc, idea);   // fix7 — the brand's own themes + name, never the model's
+  idea.postType = type || 'tip';           // types — every written idea says what it is about
+  if (news) idea.newsSource = { title: news.title, url: news.url };   // from the stored headline, never the model
   // fix7 — also at the top level (the contract names runWrite's `hashtags: string[]`); same array.
   return { idea, hashtags: idea.hashtags, usedStories: draft.usedStories, usedSpeechSamples, warnings: warningsFor(bc), passes };
 }
 
 module.exports = {
-  styleGuide, runAngles, runWrite, FORMATS, SOURCE_KINDS,
+  styleGuide, runAngles, runWrite, FORMATS, SOURCE_KINDS, TYPE_RULES, normPostType, guardIdeaFacts, userFacts,
   usageModel, writerCall, writerCallResilient, CLAUDE_CALL_PLAN, CLAUDE_THINKING_HEADROOM, LOWER_EFFORT, DRAFT_MAX_TOKENS, SPOKEN_MAX_TOKENS, ANGLES_MAX_TOKENS, SHAPE_MAX_TOKENS, writerEffort, writerProvider, WRITER_EFFORT, startBrandAttribution,
   _internals: {
     normSource, normAngle, slotsOf, inventedFacts, hashtagsFor, numberTokens, nameTokens, claimTokens, slotifyInvented, slotNeighbourNovelty, spokenRejects, parseDraft, buildIdea, cleanScript,
     brandBlockV2, allowedMaterial, userFacts, USER_FACT_FIELDS, AI_FILLED_FIELDS, metaOf, warningsFor, speechSamplesFor, normStories, anglesFrom,
-    DRAFT_SHARE, SHAPE_SHARE, MIN_SPOKEN_MS, MIN_SHAPE_MS, SHAPE_EFFORT,
+    DRAFT_SHARE, SHAPE_SHARE, MIN_SPOKEN_MS, MIN_SHAPE_MS, SHAPE_EFFORT, anglesPrompt, draftPrompt,
   },
 };

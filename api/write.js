@@ -31,13 +31,16 @@ module.exports = async function handler(req, res) {
     const W = require('./_write');
     const source = W._internals.normSource(body.source);
     const angle = W._internals.normAngle(body.angle);
-    if (!source.text) return res.status(400).json({ error: 'The source is missing — go back and pick it again.', code: 'bad_input' });
+    // types — optional postType (tip|about|news|qna|story|bts): the write step follows the type.
+    const postType = body.postType == null || body.postType === '' ? '' : W.normPostType(body.postType);
+    if (body.postType != null && body.postType !== '' && !postType) return res.status(400).json({ error: 'Unknown post type.', code: 'bad_input' });
+    if (!source.text && postType !== 'news') return res.status(400).json({ error: 'The source is missing — go back and pick it again.', code: 'bad_input' });
     if (!angle.belief) return res.status(400).json({ error: 'Pick an angle first.', code: 'bad_input' });
     if (body.format != null && W.FORMATS.indexOf(body.format) < 0) return res.status(400).json({ error: 'Unknown format.', code: 'bad_input' });
     let bc = (brandContext && typeof brandContext === 'object' && !Array.isArray(brandContext)) ? brandContext : {};
     if (!brandId && !Object.keys(bc).length) return res.status(400).json({ error: 'Pick a brand first.', code: 'bad_input' });
 
-    let hydratedBrandId = null;
+    let hydratedBrandId = null, _hydNews = [];
     if (brandId) {
       const _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id, humanEdited: body.humanEditedTitles }, '');
       const _thin = _hyd.ok && Number.isFinite(bcFields) && bcFields > 2 && _hyd.fields < Math.ceil(bcFields / 2);
@@ -47,11 +50,32 @@ module.exports = async function handler(req, res) {
           reason: _hyd.ok ? 'stale_brand_row' : _hyd.reason,
         });
       }
+      _hydNews = (_hyd.bc && _hyd.bc.freshNews) || [];
       bc = Object.assign({}, _hyd.bc, bc);
       hydratedBrandId = brandId;
     }
+    // types — NEWS COMES ONLY FROM THE HEADLINES WE STORED. Taken from the hydrated row (never from a
+    // body-sent brandContext), minus the ones the user dismissed on their device (a filter only).
+    // No fresh headline -> 409 no_news before any AI work, so the app can offer another type.
+    let news = [];
+    if (postType === 'news') {
+      news = require('./_brain').normFreshNews(hydratedBrandId ? _hydNews : [], Date.now(), body.newsDismissed);
+      if (!news.length) return res.status(409).json({ code: 'no_news', error: 'No fresh news in your category today — try another type.' });
+    }
 
-    const out = await W.runWrite({ bc, source, angle, format: body.format || 'talking', deadlineMs: Math.max(1000, FN_BUDGET_MS - (Date.now() - _t0)) });
+    // A news post is written about ONE stored headline: the one the picked angle carried (matched by
+    // link, then title), else the newest. A headline the angle carried that is no longer fresh -> 409.
+    let newsOne = null;
+    if (postType === 'news') {
+      const want = (body.angle && body.angle.newsSource) || body.newsSource;
+      const wu = want && typeof want === 'object' ? String(want.url || '').trim() : '';
+      const wt = want && typeof want === 'object' ? String(want.title || '').replace(/\s+/g, ' ').trim().toLowerCase() : '';
+      if (wu || wt) {
+        newsOne = news.find(n => wu && n.url === wu) || news.find(n => wt && n.title.toLowerCase() === wt) || null;
+        if (!newsOne) return res.status(409).json({ code: 'no_news', error: 'That headline is no longer fresh — try another type.' });
+      } else newsOne = news[0];
+    }
+    const out = await W.runWrite({ bc, source, angle, format: body.format || 'talking', ...(postType ? { postType, news: newsOne } : {}), deadlineMs: Math.max(1000, FN_BUDGET_MS - (Date.now() - _t0)) });
 
     // v693 r2 — attribute the usage row ONLY to the brand loadBrandContext just authorised for this
     // user (it fails closed on userCanAccessBrand). A brand id inside a body-sent brandContext is
@@ -63,6 +87,7 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);
     if (err && err.code === 'BAD_INPUT') return res.status(400).json({ error: 'Pick an angle first.', code: 'bad_input' });
+    if (err && err.code === 'NO_NEWS') return res.status(409).json({ code: 'no_news', error: 'No fresh news in your category today — try another type.' });
     if (err && err.code === 'TRUNCATED') return res.status(502).json({ error: 'That came back cut off — try again' });
     if (err && err.code === 'EMPTY_RESULT') return res.status(502).json({ error: 'That came back empty — try again' });
     console.error('write error:', err);

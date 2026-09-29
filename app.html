@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v696';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v697';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -4724,6 +4724,27 @@ body, body * {
 @keyframes tpPulse { 0%,100%{opacity:0.6} 50%{opacity:1} }
 .tp-status { font-size: 12px; color: var(--text3); text-align: center; margin-top: 10px; min-height: 16px; }
 .tp-status:empty { margin-top: 0; min-height: 0; }
+/* types — Quick Post "what is it about" chips (one row, scrolls sideways on a phone) */
+.qp-types-wrap { width: 100%; max-width: 100%; margin: -8px 0 18px; }
+.qp-types-lbl { font-size: 12.5px; font-weight: 700; color: var(--text); text-align: center; margin-bottom: 8px; }
+.qp-types { display: flex; flex-wrap: nowrap; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 2px 2px 4px; max-width: 100%; box-sizing: border-box; }
+.qp-types::-webkit-scrollbar { display: none; }
+.qp-type { flex: 0 0 auto; white-space: nowrap; font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1; padding: 9px 13px; border-radius: 999px; cursor: pointer; background: var(--surface); color: var(--text2); border: 1.5px solid var(--border2); }
+.qp-type.active { background: var(--lav); color: #16130F; border-color: #16130F; }
+@media (min-width: 601px) { .qp-types { flex-wrap: wrap; justify-content: center; overflow-x: visible; } }
+/* types — Plan my week mix steppers */
+.mix-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 6px; }
+.mix-step { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; padding: 6px 4px; border: 1.5px solid var(--border2); border-radius: 12px; background: var(--surface2); }
+.mix-lbl { min-width: 0; max-width: 100%; font-size: 12px; font-weight: 600; line-height: 1.2; text-align: center; color: var(--text); }
+.mix-ctl { display: flex; align-items: center; gap: 4px; }
+.mix-btn { flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 1.5px solid var(--border2); background: var(--surface); color: var(--text); font-family: inherit; font-size: 16px; font-weight: 700; line-height: 1; cursor: pointer; }
+.mix-btn:disabled { opacity: 0.35; cursor: default; }
+.mix-n { flex: 0 0 auto; min-width: 16px; text-align: center; font-size: 14px; font-weight: 800; color: var(--text); }
+.mix-total { font-size: 12px; font-weight: 600; color: var(--text3); margin: 0 0 10px; }
+/* types — card label, news source, By type filter */
+.type-tag { display: inline-block; max-width: 100%; vertical-align: middle; font-size: 10px; line-height: 1.3; padding: 3px 8px; border-radius: 10px; font-weight: 700; background: var(--indigo-bg); color: var(--indigo); margin-left: 6px; letter-spacing: 0.3px; text-transform: uppercase; }
+.type-src { display: inline-block; max-width: 100%; margin: 4px 0 2px; font-size: 12px; font-weight: 600; color: var(--blue); text-decoration: underline; overflow-wrap: anywhere; }
+.type-filter-lbl { flex: 0 0 auto; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--text3); align-self: center; margin-right: 2px; }
 
 /* Filming Queue */
 .fq-section { margin: 16px 0 8px; }
@@ -6285,7 +6306,8 @@ if (!window.supabase) {
     <!-- v455: Ideas Shazam quick lane — one tap plans the week; the classic generate module folds below -->
     <div id="ideasQuick" style="background:var(--surface,#fff);border:1.5px solid var(--border2,#16130F);border-radius:16px;padding:16px;margin:0 0 14px;">
       <div style="font-size:15px;font-weight:800;margin-bottom:4px;">Plan my week</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Seven days of posts in your voice &mdash; one tap.</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Seven days of posts in your voice &mdash; one tap. What they are about:</div>
+      <div id="ideasMixSlot"></div><!-- types: −/+ per post type, saved per brand (ideasMixRender) -->
       <button class="gen-btn" style="width:100%;margin-top:0;" id="ideasQuickBtn" onclick="ideasQuickGo(this)">Plan my week &rarr;</button>
       <button class="tp-shz-angle" style="margin-top:6px;padding:6px 10px;max-width:100%;white-space:normal;line-height:1.4;" onclick="ideasToggleManual()">or tweak the plan<span class="fold-caret" aria-hidden="true">▾</span></button>
       <div id="ideasQuickStatus" style="display:none;font-size:12.5px;font-weight:600;line-height:1.5;margin-top:10px;"></div><!-- v456: quick-lane outcome line (the classic #generateStatus is folded away) -->
@@ -6301,13 +6323,7 @@ if (!window.supabase) {
         <strong>AI learns from you.</strong> Approve ideas you like, dismiss ones you don't — and say why. Each generation gets smarter.
       </div>
     </div>
-    <div class="generate-ideas-bar">
-      <select class="generate-count-select" id="generateCount">
-        <option value="3">3 ideas</option>
-        <option value="5">5 ideas</option>
-        <option value="7" selected>7 ideas</option>
-        <option value="10">10 ideas</option>
-      </select>
+    <div class="generate-ideas-bar"><!-- types: the count dropdown is gone — the mix total on the card above is the count -->
       <span class="generate-status" id="generateStatus"></span>
     </div>
     <div id="ideaDeliverySlot" style="margin-top:2px;"></div>
@@ -7564,6 +7580,8 @@ function brandToSettings(brand) {
     brandLogo: brand.voice_extra?.brandLogo || def.brandLogo,
     founderName: brand.voice_extra?.founderName || def.founderName,
     founderPhoto: brand.voice_extra?.founderPhoto || def.founderPhoto,
+    // types — the Plan-my-week mix. Absent = not chosen yet (typesMix() then uses DEFAULT_TYPE_MIX).
+    typeMix: (brand.voice_extra && brand.voice_extra.typeMix && typeof typesNormMix === 'function') ? typesNormMix(brand.voice_extra.typeMix) : null,
   };
 }
 
@@ -7613,6 +7631,8 @@ function settingsToBrand() {
       brandColorPrimary: settings.brandColorPrimary || '',
       brandColorSecondary: settings.brandColorSecondary || '',
       paaKeywords: settings.paaKeywords || '',
+      // types — voice_extra is replaced wholesale on every save, so the mix must travel with it
+      ...(settings.typeMix && typeof settings.typeMix === 'object' ? { typeMix: settings.typeMix } : {}),
       // v640: this used to write `bvState.messages || []` unconditionally, and voice_extra is
       // REPLACED WHOLESALE on every save — while brandToSettings never reads voiceCoachMessages
       // back (it is the only voice_extra key that does not round-trip; dayScenes, paaKeywords,
@@ -7887,7 +7907,8 @@ function _buildIdeaRows(brandId) {
     script: asText(idea.script),
     shots: asText(idea.shots),
     screen: asText(idea.screen),
-    caption: asText(idea.caption),
+    // types — a news idea's source travels inside its caption (no column for it); idempotent
+    caption: (typeof typesCaptionWithSource === 'function') ? typesCaptionWithSource(asText(idea.caption), idea.newsSource) : asText(idea.caption),
     reel_title: asText(idea.reelTitle),
     tags: asText(idea.tags),
     bold_text: asText(idea.boldText),
@@ -7908,6 +7929,8 @@ function _buildIdeaRows(brandId) {
     // when set, so a database without the column (sql/ideas-gen-flow.sql) is never asked for it by
     // an old idea; a v2 idea on such a database is saved without it (see insertIdeas).
     ...(idea.genFlow ? { gen_flow: String(idea.genFlow).slice(0, 20) } : {}),
+    // types — what the post is about (sql/idea-post-type.sql). Only named when set, like gen_flow.
+    ...((typeof typesValid === 'function' && typesValid(idea.postType)) ? { post_type: typesValid(idea.postType) } : {}),
   }));
   // Store paaSource mapping in localStorage (no DB column yet)
   const paaMap = {};
@@ -7919,6 +7942,13 @@ function _buildIdeaRows(brandId) {
     const bMap = {};
     (Array.isArray(state) ? state : []).forEach(idea => { if (idea && idea.belief && idea.title) bMap[idea.title] = String(idea.belief).slice(0, 140); });
     lsSet('belief_map', JSON.stringify(bMap));
+  } catch(e) {}
+  // types — a news idea's headline + link. No column: kept on this device by title (the link also
+  // rides in the caption, so another device still gets it back — see loadIdeasFromDB).
+  try {
+    const nMap = {};
+    (Array.isArray(state) ? state : []).forEach(idea => { const ns = (idea && idea.title && typeof typesNewsSource === 'function') ? typesNewsSource(idea.newsSource) : null; if (ns) nMap[idea.title] = ns; });
+    lsSet('news_source_map', JSON.stringify(nMap));
   } catch(e) {}
   return rows;
 }
@@ -8030,13 +8060,14 @@ async function _saveIdeasToDBNow(brandId, rows) {
       const o = Object.assign({}, r);
       if (globalThis._ideasNoEmphasisCol) delete o.emphasis;
       if (globalThis._ideasNoGenFlowCol) delete o.gen_flow;
+      if (globalThis._ideasNoPostTypeCol) delete o.post_type;
       return o;
     };
     return Array.isArray(payload) ? payload.map(strip) : strip(payload);
   };
   const insertIdeas = async (payload) => {
     let res = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 4; attempt++) {   // types: one more try — up to three optional columns can be missing
       // fix7 (1b) — ask for the new rows' ids back, so the next save knows they are this device's own
       const _q = sb.from('ideas').insert(withoutMissing(payload));
       res = await ((_q && typeof _q.select === 'function') ? _q.select('id,title') : _q);
@@ -8049,6 +8080,12 @@ async function _saveIdeasToDBNow(brandId, rows) {
       if (err && !globalThis._ideasNoGenFlowCol && missingCol(err, 'gen_flow')) {
         globalThis._ideasNoGenFlowCol = true;
         try { console.warn('ideas.gen_flow column is missing (run sql/ideas-gen-flow.sql) — saving without the flow tag.'); } catch (e) {}
+        continue;
+      }
+      // types — the same rule for ideas.post_type (sql/idea-post-type.sql): only the type label is lost, never the idea
+      if (err && !globalThis._ideasNoPostTypeCol && missingCol(err, 'post_type')) {
+        globalThis._ideasNoPostTypeCol = true;
+        try { console.warn('ideas.post_type column is missing (run sql/idea-post-type.sql) — saving without the post type.'); } catch (e) {}
         continue;
       }
       return res;
@@ -8240,6 +8277,8 @@ async function loadIdeasFromDB(opts) {
     emphasis: tpCleanEmphasis(row.emphasis, { script: row.script, boldText: row.bold_text, caption: row.caption, hook: row.hook }),
     // v693 — read back, or the next save (which rewrites every row) would drop it
     ...(row.gen_flow ? { genFlow: String(row.gen_flow) } : {}),
+    // types — read back, or the next save (which rewrites every row) would drop it
+    ...((typeof typesValid === 'function' && typesValid(row.post_type)) ? { postType: typesValid(row.post_type) } : {}),
     // `doneAt` lives ONLY in this device's localStorage snapshot — the ideas table has no
     // done_at column, so on a SECOND device every finished post had no timestamp and the
     // 30-day Done archive (`!i.doneAt || i.doneAt > cutoff`) never pruned anything.
@@ -8259,6 +8298,15 @@ async function loadIdeasFromDB(opts) {
   try {   // v693 — see _buildIdeaRows
     const bMap = JSON.parse(lsGet('belief_map') || '{}');
     result.forEach(idea => { if (bMap && typeof bMap[idea.title] === 'string' && bMap[idea.title]) idea.belief = bMap[idea.title]; });
+  } catch(e) {}
+  try {   // types — a news idea's source: this device's copy (headline + link), else the link kept in its caption
+    if (typeof typesNewsSource === 'function') {
+      let nMap = {}; try { nMap = JSON.parse(lsGet('news_source_map') || '{}') || {}; } catch(e) {}
+      result.forEach(idea => {
+        const ns = typesNewsSource(nMap[idea.title]) || (idea.postType === 'news' ? typesNewsSource({ url: typesSourceFromCaption(idea.caption) }) : null);
+        if (ns) idea.newsSource = ns;
+      });
+    }
   } catch(e) {}
   return result;
 }
@@ -8705,6 +8753,7 @@ async function csOpenPushIdeas(brandId) {
   await csReloadIdeasMerge();
   if (!gate()) return false;
   ideaStatusFilter = 'pending'; activeFilter = 'all'; activeFormat = 'all';
+  if (typeof activePostType !== 'undefined') activePostType = 'all';
   switchView('ideas');
   setTimeout(() => {
     try { window.scrollTo(0, 0); } catch (e) {}   // the page top = the top of Ideas
@@ -8927,6 +8976,12 @@ function getDayCommunities() {
 const DAY_COMMUNITIES = DAY_COMMUNITIES_DEFAULT;
 const FORMATS = ["video","carousel","static","statement","micro","bonus","qna"];
 const FORMAT_LABELS = {video:"Video",carousel:"Carousel",static:"Image",statement:"Statement",micro:"Micro-Lecture",bonus:"Bonus",qna:"Q&A"};
+// types — what a post is ABOUT (same ids as the server; see .unlazy/types/PLAN.md). Saved per brand at voice_extra.typeMix.
+const POST_TYPE_IDS = ["tip","about","news","qna","story","bts"];
+const POST_TYPE_LABELS = {tip:"Tip",about:"About us",news:"News",qna:"Q&A",story:"Story",bts:"Behind the scenes"};
+const DEFAULT_TYPE_MIX = {tip:3,about:1,news:1,qna:1,story:1,bts:0};
+const TYPE_MIX_MAX_TOTAL = 10, TYPE_MIX_MAX_EACH = 10;   // 10 = the server's batch cap (credit limit)
+const TYPES_NO_NEWS_MSG = "No fresh news in your category today \u2014 try another type";
 // Monochrome line-icons (replace colorful emoji in buttons — same thin-stroke style as the nav/copy icons). currentColor = follows button text.
 const _svg = p => `<svg class="btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const ICO = {
@@ -13396,7 +13451,7 @@ function renderPipeline() {
       </div>
       <div class="pipeline-card-header" onclick="toggleExpand(${idea.id})">
         <div class="pipeline-card-info">
-          <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${idea.isRemix?'<span class="remix-origin-tag">Remix</span>':''}${idea.delivery==='faceless'?'<span class="remix-origin-tag" style="background:#E7DAF9;color:#16130F;">Faceless</span>':''}
+          <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.isRemix?'<span class="remix-origin-tag">Remix</span>':''}${idea.delivery==='faceless'?'<span class="remix-origin-tag" style="background:#E7DAF9;color:#16130F;">Faceless</span>':''}
           <div class="pipeline-card-title" style="padding-right:50px">${exp?'\u25BC':'\u25B6'} ${escHtml(idea.title)}</div>
           ${idea.hook && asText(idea.hook).trim().toLowerCase() !== asText(idea.title).trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="pipeline-card-hook">${escHtml(idea.hook)}</div>` : ''}
           <div class="pipeline-card-day">${escHtml(idea.day)}${idea.originalCreator?' \u2022 via '+escHtml(idea.originalCreator):''}${idea.community?' \u2022 '+escHtml(idea.community):''}</div>
@@ -13437,11 +13492,11 @@ function moveStage(id, newStatus) {
 
   // Auto-refill: when an idea moves to filming or done, check for gaps
   if ((newStatus === 'filming' || newStatus === 'done') && prevStatus === 'pending') {
-    autoRefillCheck(idea.day, idea.format);
+    autoRefillCheck(idea.day, idea.format, (typeof typesOf === 'function') ? typesOf(idea) : idea.postType);
   }
 }
 
-async function autoRefillCheck(day, format) {
+async function autoRefillCheck(day, format, postType) {
   const pendingForSlot = state.filter(i => i.status === 'pending' && i.day === day && i.format === format);
   if (pendingForSlot.length >= 1) return; // still have pending ideas for this slot
 
@@ -13472,7 +13527,9 @@ async function autoRefillCheck(day, format) {
     // would add a prompt instruction) tells the server to format-match the approved winners the
     // way getBrandContext(format) did on the device.
     const resp = await leanBrandFetch('/api/generate-ideas',
-      { count: 2, gaps: [{ day, format, count: 0 }], learningContext, exFormat: format },
+      { count: 2, gaps: [{ day, format, count: 0 }], learningContext, exFormat: format,
+        // types — refill asks for the same kind of post the approved one was (when it had a type)
+        ...((typeof typesValid === 'function' && typesValid(postType)) ? { postType: typesValid(postType) } : {}) },
       () => ({
         ...getBrandContext(format),
         communities: DAYS.map(d => `${d}: ${dc[d]}`).join(', '),
@@ -13492,6 +13549,7 @@ async function autoRefillCheck(day, format) {
     try { data = JSON.parse(await resp.text()); } catch (e) { console.warn('Auto-refill: unreadable response'); return; }
     if (!data || !data.ideas?.length) return;
     if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
+    if (typeof typesNormIdea === 'function') data.ideas = data.ideas.map(typesNormIdea);   // types
     // The user may have switched brand while this was in flight. Dropping the refill is
     // correct: pushing it would file one brand's ideas into another brand's library.
     if (!_stillSameBrand()) { console.warn('Auto-refill discarded: brand changed while generating'); return; }
@@ -14061,8 +14119,9 @@ async function ideasQuickGo(btn){
   if (added > 0) {
     ideasQuickStatus('Added ' + added + ' idea' + (added !== 1 ? 's' : '') + ' ✓ — under “Just generated” below.', false);
     // v456: make sure the new cards are actually VISIBLE — a sticky stat-tab or day/format filter can hide them.
-    if (ideaStatusFilter !== 'pending' || activeFilter !== 'all' || activeFormat !== 'all') {
+    if (ideaStatusFilter !== 'pending' || activeFilter !== 'all' || activeFormat !== 'all' || (typeof activePostType !== 'undefined' && activePostType !== 'all')) {
       ideaStatusFilter = 'pending'; activeFilter = 'all'; activeFormat = 'all';
+      if (typeof activePostType !== 'undefined') activePostType = 'all';
       if (typeof renderStats === 'function') renderStats();
       if (typeof renderIdeaFilters === 'function') renderIdeaFilters();
       if (typeof renderIdeas === 'function') renderIdeas();
@@ -14095,7 +14154,9 @@ async function generateNewIdeas() {
   if (firstRunBrandGuard(generateNewIdeas)) return;
   const btn = document.getElementById('generateIdeasBtn');
   const status = document.getElementById('generateStatus');
-  const count = parseInt(document.getElementById('generateCount').value) || 7;   // fix7: "Plan my week" = seven days
+  // types — the batch is the brand's mix (Plan my week steppers): its total is the count (default mix = 7)
+  const _typeMix = (typeof typesMix === 'function') ? typesMix() : null;
+  const count = _typeMix ? typesMixTotal(_typeMix) : 7;   // fix7: "Plan my week" = seven days
 
   // btnWork's own safety timer (90s, opts.maxMs) used to re-enable the button with NO
   // error while the fetch ran on to ~300s. Abort the request on the same deadline and
@@ -14183,7 +14244,8 @@ async function generateNewIdeas() {
         count,
         gaps: gaps.slice(0, 21),
         learningContext,
-        delivery: window._ideaDelivery || 'faceon'
+        delivery: window._ideaDelivery || 'faceon',
+        ...((typeof typesMix === 'function') ? { typeMix: typesMix() } : {})   // types: the same mix the count came from
       },
       () => ({ ...getBrandContext(), communities, dayMap }),
       () => ({ communities, dayMap, recentTrends: getRecentTrends() }),
@@ -14202,6 +14264,7 @@ async function generateNewIdeas() {
 
     // Keep each idea's own topic (lead-theme + variety); fall back to the day's theme only if missing
     const _batchDelivery = window._ideaDelivery === 'faceless' ? 'faceless' : 'faceon';
+    if (typeof typesNormIdea === 'function') data.ideas = data.ideas.map(typesNormIdea);   // types
     const newIdeas = data.ideas.map(idea => ({
       ...idea,
       community: (idea.community && idea.community.trim()) || getDayCommunities()[idea.day] || 'All',
@@ -14357,6 +14420,8 @@ function renderTodayView() {
   try {
     const _bid = currentBrand && currentBrand.id;
     if (window._tvDelivBrand !== _bid) { window._tvDelivBrand = _bid; window._tvDelivery = (lsGet('tv_delivery') === 'faceless') ? 'faceless' : 'faceon'; }
+    // types — the "what is it about" pick is NOT remembered: every app open (and every other brand) starts on Surprise me
+    if (window._tvTypeBrand !== _bid) { window._tvTypeBrand = _bid; window._tvPostType = 'surprise'; }
   } catch(e) {}
 
   const _ok = isBrandMinimumMet();
@@ -14366,6 +14431,7 @@ function renderTodayView() {
       ${homeBrainNudgeHtml()}
       <div class="tp-shz" id="tpShz">
         <div class="tp-shz-day">${today} · ${escHtml(community)}</div>
+        ${(_ok && typeof tvTypeRowHtml === 'function') ? `<div class="qp-types-wrap" id="tvTypeRow">${tvTypeRowHtml()}</div>` : ''}
         <div class="tp-shz-stage${_ok ? '' : ' locked'}">
           <span class="tp-shz-ring r1"></span><span class="tp-shz-ring r2"></span>
           <button class="tp-shz-btn" id="tvGenerateBtn" aria-label="Generate today's post" onclick="${_ok ? 'tvGenerateV2()' : 'showLockedToast()'}">
@@ -14733,6 +14799,8 @@ async function generateTodayTabPost() {
       gaps: forcedGaps,
       forceFormat: pickedFormat,
       delivery: DELIVERY_FORMATS.has(pickedFormat) ? (window._tvDelivery||'faceon') : 'faceon',
+      // types — the chip picked (or this run's "Surprise me" draw); nothing = the server's own default
+      ...((typeof tvClassicPostType === 'function' && tvClassicPostType()) ? { postType: tvClassicPostType() } : {}),
     };
     if (lean) {
       return JSON.stringify({
@@ -14816,7 +14884,7 @@ async function generateTodayTabPost() {
       statusEl.textContent = '';
       return;
     }
-    const idea = data.ideas[0];
+    const idea = (typeof typesNormIdea === 'function') ? typesNormIdea(data.ideas[0]) : data.ideas[0];   // types
     idea.community = community;
     if (DELIVERY_FORMATS.has(idea.format)) idea.delivery = window._tvDelivery || 'faceon';
     window._tvIdea = idea;   // so Sharpen knows this post's format + has a fallback
@@ -15237,7 +15305,7 @@ function tvApprove() {
     if (r && r.ok === false) return;   // notifyIdeasSaveFailed already told them the truth
     showToast(_edits ? 'Saved your edits \u2014 brand brain just got sharper' : 'Added to Pipeline', 4500, () => switchView('pipeline'));
   });
-  if (typeof autoRefillCheck === 'function') autoRefillCheck(idea.day, idea.format);
+  if (typeof autoRefillCheck === 'function') autoRefillCheck(idea.day, idea.format, (typeof typesOf === 'function') ? typesOf(idea) : idea.postType);
   const approveBtn = document.querySelector('#tvResult .tp-action-btn.approve');
   if (approveBtn) {
     approveBtn.textContent = 'Ready to Film & Post! →';
@@ -15859,6 +15927,151 @@ async function usePAAQuestion(idx, chosenFormat) {
 // Load PAA state on init
 loadPAAState();
 
+/* types — "what is today's post about?" (.unlazy/types/PLAN.md). Six ids shared with the server:
+   tip · about · news · qna · story · bts. The Quick Post chip row picks one (or "Surprise me" = a
+   weighted pick by the brand's mix); Plan my week sends the whole mix. A news idea carries the real
+   headline it came from (newsSource {title,url}); there is no column for it, so it is kept on this
+   device by title AND its link is added to the caption ("Source: <url>") so it survives anywhere. */
+var activePostType = 'all';
+function typesValid(t) { return (typeof t === 'string' && POST_TYPE_IDS.indexOf(t) >= 0) ? t : ''; }
+// THE type of an idea as the app treats it: its own postType, else 'qna' for a Q&A-format idea, else 'tip'
+// (ideas saved before types existed; post_type NULL = tip, the server's default for old requests).
+// Used by the card label, the By type filter, "Rewrite as spoken script" and the auto-refill.
+function typesOf(idea) { return typesValid(idea && idea.postType) || ((idea && idea.format === 'qna') ? 'qna' : 'tip'); }
+function typesMixTotal(m) { return POST_TYPE_IDS.reduce((a, k) => a + ((m && m[k]) | 0), 0); }
+// integers 0..10 per known type, total 1..10 (a bigger mix is scaled down to 10, largest remainders — like the server); junk → the default mix
+function typesNormMix(m) {
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return Object.assign({}, DEFAULT_TYPE_MIX);
+  const out = {};
+  POST_TYPE_IDS.forEach(k => { const n = Math.floor(Number(m[k])); out[k] = (isFinite(n) && n > 0) ? Math.min(TYPE_MIX_MAX_EACH, n) : 0; });
+  let tot = typesMixTotal(out);
+  if (tot < 1) return Object.assign({}, DEFAULT_TYPE_MIX);
+  if (tot > TYPE_MIX_MAX_TOTAL) {
+    const exact = {}, rem = [];
+    POST_TYPE_IDS.forEach(k => { exact[k] = out[k] * TYPE_MIX_MAX_TOTAL / tot; out[k] = Math.floor(exact[k]); rem.push(k); });
+    let left = TYPE_MIX_MAX_TOTAL - typesMixTotal(out);
+    rem.sort((a, b) => (exact[b] - out[b]) - (exact[a] - out[a]) || POST_TYPE_IDS.indexOf(a) - POST_TYPE_IDS.indexOf(b));
+    for (let i = 0; left > 0 && i < rem.length; i++, left--) out[rem[i]]++;
+  }
+  return out;
+}
+function typesMix() { return typesNormMix((typeof settings !== 'undefined' && settings) ? settings.typeMix : null); }
+// one type, at random, weighted by the mix; `exclude` types are never picked
+function typesPickWeighted(mix, exclude, rnd) {
+  const m = typesNormMix(mix), ex = Array.isArray(exclude) ? exclude : [];
+  const keys = POST_TYPE_IDS.filter(k => m[k] > 0 && ex.indexOf(k) < 0);
+  if (!keys.length) return ex.indexOf('tip') < 0 ? 'tip' : (POST_TYPE_IDS.find(k => ex.indexOf(k) < 0) || 'tip');
+  const tot = keys.reduce((a, k) => a + m[k], 0);
+  let r = (typeof rnd === 'function' ? rnd() : Math.random()) * tot;
+  for (const k of keys) { r -= m[k]; if (r < 0) return k; }
+  return keys[keys.length - 1];
+}
+// a headline + link we are willing to show: https only
+function typesNewsSource(ns) {
+  if (!ns || typeof ns !== 'object') return null;
+  const u = String(ns.url == null ? '' : ns.url).trim();
+  const safe = (typeof safeUrl === 'function') ? safeUrl(u) : '';
+  if (!safe || !/^https:\/\/[^\s"'<>]+$/i.test(safe)) return null;
+  return { title: String(ns.title == null ? '' : ns.title).replace(/\s+/g, ' ').trim().slice(0, 200), url: safe.slice(0, 2000) };
+}
+function typesCaptionWithSource(caption, ns) {
+  const c = String(caption == null ? '' : caption);
+  const n = typesNewsSource(ns);
+  if (!n || c.indexOf(n.url) >= 0) return c;
+  return (c.trim() ? c.replace(/\s+$/, '') + '\n\n' : '') + 'Source: ' + n.url;
+}
+/* THE CAPTION SOURCE FORMAT (shared with api/send-daily.js — keep them identical): the caption's LAST line is
+   exactly  "Source: " + an https URL  (capital S, colon, one space, the URL, nothing after it but whitespace),
+   put on its own line after the caption text — the app writes "\n\nSource: https://…" (typesCaptionWithSource).
+   Example caption: "Salt prices just jumped.\n\nSource: https://news.example/salt". An http:// link or any
+   text after the URL is not read back. */
+function typesSourceFromCaption(caption) {
+  const m = /(?:^|\n)Source: (https:\/\/\S+)\s*$/.exec(String(caption == null ? '' : caption));
+  return m ? m[1] : '';
+}
+// an idea as it arrives from any writer: a known type or none, a safe source or none, the link in the caption
+function typesNormIdea(idea) {
+  if (!idea || typeof idea !== 'object') return idea;
+  const o = Object.assign({}, idea);
+  const t = typesValid(o.postType);
+  if (t) o.postType = t; else delete o.postType;
+  const ns = typesNewsSource(o.newsSource);
+  if (ns) { o.newsSource = ns; o.caption = typesCaptionWithSource(o.caption, ns); } else delete o.newsSource;
+  return o;
+}
+// the Quick Post run's type onto the idea it saves
+function typesApplyRun(idea, s) {
+  if (!idea || !s) return idea;
+  const w = s.idea || {};
+  const t = typesValid(w.postType) || typesValid(s.postType);
+  if (t) idea.postType = t;
+  const ns = typesNewsSource(w.newsSource) || typesNewsSource(s.picked && s.picked.newsSource);
+  if (ns) { idea.newsSource = ns; idea.caption = typesCaptionWithSource(idea.caption, ns); }
+  return idea;
+}
+function typesLabelHtml(idea) {
+  const t = idea ? typesOf(idea) : '';
+  return t ? '<span class="type-tag type-' + t + '">' + escHtml(POST_TYPE_LABELS[t]) + '</span>' : '';
+}
+function typesSourceHtml(idea) {
+  const ns = typesNewsSource(idea && idea.newsSource);
+  if (!ns) return '';
+  let label = ns.title;
+  if (!label) { try { label = new URL(ns.url).hostname.replace(/^www\./, ''); } catch (e) { label = ns.url; } }
+  return '<a class="type-src" href="' + escAttr(safeUrl(ns.url)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Source: ' + escHtml(label) + '</a>';
+}
+// ── Quick Post chip row. Opens on "Surprise me" every time the app (or another brand) opens. ──
+function tvTypeRowHtml() {
+  const sel = typesValid(window._tvPostType) || 'surprise';
+  const chip = (id, label) => '<button type="button" class="qp-type' + (sel === id ? ' active' : '') + '" aria-pressed="' + (sel === id ? 'true' : 'false') + '" onclick="tvSetPostType(\'' + id + '\')">' + escHtml(label) + '</button>';
+  return '<div class="qp-types-lbl">What’s today’s post about?</div><div class="qp-types" role="group" aria-label="What is today’s post about">'
+    + POST_TYPE_IDS.map(t => chip(t, POST_TYPE_LABELS[t])).join('') + chip('surprise', 'Surprise me') + '</div>';
+}
+function tvClassicPostType() { return typesValid(window._tvPostType) || typesValid(window._tvPostTypeRun); }
+function tvSetPostType(t) {
+  window._tvPostType = typesValid(t) || 'surprise';
+  const row = document.getElementById('tvTypeRow');
+  if (row) row.innerHTML = tvTypeRowHtml();
+  const st = document.getElementById('tvStatus');
+  if (st && st.textContent === TYPES_NO_NEWS_MSG) st.textContent = '';
+}
+// → { type, surprise }. "Surprise me" draws from the brand's mix.
+function tvResolvePostType(exclude) {
+  const sel = typesValid(window._tvPostType);
+  if (sel) return { type: sel, surprise: false };
+  return { type: typesPickWeighted(typesMix(), exclude), surprise: true };
+}
+// /api/angles or /api/write said there is no fresh headline in the category (409 no_news)
+function tvNoNews(s) {
+  if (s && s.postTypeSurprise && s.origin && s.origin.name === 'quickpost') { tvGenerateV2({ exclude: ['news'] }); return; }   // Surprise me never ends on an error
+  const st = document.getElementById('tvStatus');
+  if (st) st.textContent = TYPES_NO_NEWS_MSG;
+  try { showToast(TYPES_NO_NEWS_MSG, 6000); } catch (e) {}
+}
+// ── Plan my week: the mix, with −/+ per type ──
+function ideasMixHtml() {
+  const m = typesMix(), tot = typesMixTotal(m);
+  const row = t => '<div class="mix-step"><span class="mix-lbl">' + escHtml(POST_TYPE_LABELS[t]) + '</span><span class="mix-ctl">'
+    + '<button type="button" class="mix-btn" aria-label="One less ' + escAttr(POST_TYPE_LABELS[t]) + '" onclick="ideasMixStep(\'' + t + '\',-1)"' + ((m[t] <= 0 || tot <= 1) ? ' disabled' : '') + '>−</button>'
+    + '<span class="mix-n" id="mixN-' + t + '">' + m[t] + '</span>'
+    + '<button type="button" class="mix-btn" aria-label="One more ' + escAttr(POST_TYPE_LABELS[t]) + '" onclick="ideasMixStep(\'' + t + '\',1)"' + ((m[t] >= TYPE_MIX_MAX_EACH || tot >= TYPE_MIX_MAX_TOTAL) ? ' disabled' : '') + '>+</button></span></div>';
+  return '<div class="mix-grid">' + POST_TYPE_IDS.map(row).join('') + '</div>'
+    + '<div class="mix-total" id="mixTotal">' + tot + ' post' + (tot === 1 ? '' : 's') + ' · up to ' + TYPE_MIX_MAX_TOTAL + '</div>';
+}
+function ideasMixRender() { const el = document.getElementById('ideasMixSlot'); if (el) el.innerHTML = ideasMixHtml(); }
+function ideasMixStep(t, d) {
+  if (!typesValid(t)) return false;
+  const m = typesMix(), tot = typesMixTotal(m), n = m[t] + (d > 0 ? 1 : -1);
+  if (n < 0 || n > TYPE_MIX_MAX_EACH) return false;
+  if (tot + (d > 0 ? 1 : -1) < 1 || tot + (d > 0 ? 1 : -1) > TYPE_MIX_MAX_TOTAL) return false;
+  m[t] = n;
+  settings.typeMix = m;
+  try { saveSettings(); } catch (e) {}
+  ideasMixRender();
+  return true;
+}
+function setPostTypeFilter(t) { activePostType = (activePostType === t || !typesValid(t)) ? 'all' : t; try { _ideaSelected.clear(); } catch (e) {} renderIdeaFilters(); renderIdeas(); }
+
 // ===== IDEAS (LIST) VIEW =====
 function renderIdeaFilters() {
   let h = '<div class="filter-row">';
@@ -15867,7 +16080,15 @@ function renderIdeaFilters() {
   h += '</div><div class="filter-row">';
   FORMATS.filter(f => f !== 'bonus').forEach(f => { h += `<button class="filter-chip format-chip fmt-${f} ${activeFormat===f?'active':''}" onclick="setFormat('${f}')">${FORMAT_LABELS[f]}</button>`; });
   h += '</div>';
+  // types — "By type" (tap again to clear)
+  if (typeof POST_TYPE_IDS !== 'undefined') {
+    const _apt = (typeof activePostType !== 'undefined') ? activePostType : 'all';
+    h += '<div class="filter-row type-filter-row"><span class="type-filter-lbl">By type</span>';
+    POST_TYPE_IDS.forEach(t => { h += `<button class="filter-chip type-chip ${_apt===t?'active':''}" onclick="setPostTypeFilter('${t}')">${escHtml(POST_TYPE_LABELS[t])}</button>`; });
+    h += '</div>';
+  }
   document.getElementById("ideaFilters").innerHTML = h;
+  try { if (typeof ideasMixRender === 'function') ideasMixRender(); } catch (e) {}   // types: the Plan my week steppers follow the open brand
 }
 
 function setFilter(f) { activeFilter=f; _ideaSelected.clear(); renderIdeaFilters(); renderIdeas(); }
@@ -15876,7 +16097,7 @@ function setFormat(f) { activeFormat=(activeFormat===f?'all':f); _ideaSelected.c
 function isFreshIdea(i){ return !!(i && i.freshAt && i.status==='pending' && (Date.now() - i.freshAt < 30*60*1000)); }
 var _ideaSelectMode = false;
 var _ideaSelected = new Set();
-function visiblePendingIds(){ let f = getVisibleIdeas().filter(i=>i.status==='pending'); if(activeFilter!=='all') f=f.filter(i=>i.day===activeFilter); if(activeFormat!=='all') f=f.filter(i=>i.format===activeFormat); return f.map(i=>i.id); }
+function visiblePendingIds(){ let f = getVisibleIdeas().filter(i=>i.status==='pending'); if(activeFilter!=='all') f=f.filter(i=>i.day===activeFilter); if(activeFormat!=='all') f=f.filter(i=>i.format===activeFormat); if(typeof activePostType!=='undefined' && activePostType!=='all') f=f.filter(i=>typesOf(i)===activePostType); return f.map(i=>i.id); }
 function toggleIdeaSelectMode(){ _ideaSelectMode=!_ideaSelectMode; _ideaSelected.clear(); renderIdeas(); }
 // v600: update ONLY the tapped card + the Approve count. This used to call renderIdeas(), rebuilding
 // the whole list (100+ cards) on every tick — which shifted cards under your finger mid-tap, so you
@@ -15907,6 +16128,7 @@ function renderIdeas() {
   // 'all' → every status (matches the Total count)
   if(activeFilter!=='all') filtered=filtered.filter(i=>i.day===activeFilter);
   if(activeFormat!=='all') filtered=filtered.filter(i=>i.format===activeFormat);
+  if (typeof activePostType !== 'undefined' && activePostType !== 'all') filtered = filtered.filter(i => i && typesOf(i) === activePostType);   // types (an old idea counts as tip / qna)
 
   const grouped = {};
   filtered.forEach(i => { const key = isFreshIdea(i) ? '__fresh__' : i.day; if(!grouped[key]) grouped[key]=[]; grouped[key].push(i); });
@@ -15959,9 +16181,10 @@ function renderIdeas() {
         <div class="list-card-summary" onclick="${(_ideaSelectMode && isPending)?('toggleIdeaPick('+idea.id+')'):('toggleExpand('+idea.id+')')}">
           <div class="list-card-top">
             <div style="flex:1">
-              <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${idea.paaSource ? '<span class="paa-badge-idea">People ask</span>' : ''}${idea.sparkSource ? '<span class="spark-badge-idea">Your idea</span>' : ''}${isFreshIdea(idea) ? '<span class="new-badge-idea">New</span>' : ''}${idea.format==='carousel'?`<button class="cm-card-btn" onclick="event.stopPropagation();openCarouselMaker(${idea.id})" title="Make Slides"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg> Slides</button>`:''}${['video','micro','qna'].includes(idea.format)?`<button class="cm-card-btn" onclick="event.stopPropagation();openBroll(${idea.id})" title="B-roll preview"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 7h5M17 17h5"/></svg> B-roll</button>`:''}
+              <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.paaSource ? '<span class="paa-badge-idea">People ask</span>' : ''}${idea.sparkSource ? '<span class="spark-badge-idea">Your idea</span>' : ''}${isFreshIdea(idea) ? '<span class="new-badge-idea">New</span>' : ''}${idea.format==='carousel'?`<button class="cm-card-btn" onclick="event.stopPropagation();openCarouselMaker(${idea.id})" title="Make Slides"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg> Slides</button>`:''}${['video','micro','qna'].includes(idea.format)?`<button class="cm-card-btn" onclick="event.stopPropagation();openBroll(${idea.id})" title="B-roll preview"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 7h5M17 17h5"/></svg> B-roll</button>`:''}
               <div class="list-card-title">${exp?'\u25BC':'\u25B6'} ${escHtml(idea.title)}</div>
               ${(typeof rv2BeliefLine === 'function') ? rv2BeliefLine(idea) : ''}
+              ${(typeof typesSourceHtml === 'function') ? typesSourceHtml(idea) : ''}
               ${idea.hook && asText(idea.hook).trim().toLowerCase() !== asText(idea.title).trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="list-card-hook">${escHtml(idea.hook)}</div>` : ''}
               ${idea.status!=='pending' ? `<span class="list-card-status s-${escAttr(idea.status)}">${escHtml(STAGE_LABELS[idea.status]||idea.status)}${idea.dismissReason?' \u2022 '+escHtml(idea.dismissReason):''}</span>` : ''}
             </div>
@@ -16144,7 +16367,7 @@ function safeUrl(u, opts) {
 
 
 function toggleExpand(id) { if(openDismissPopup!==null)return; expandedIds.has(id)?expandedIds.delete(id):expandedIds.add(id); refreshCurrentView(); }
-function quickApprove(id) { reindexIdeas(); if(!state[id])return; state[id].status="filming"; state[id].approvedAt=Date.now(); state[id].dismissReason=null; saveState(); renderNav(); refreshCurrentView(); autoRefillCheck(state[id].day, state[id].format); window._apJumpId = id; showApprovePopupFn(id); }
+function quickApprove(id) { reindexIdeas(); if(!state[id])return; state[id].status="filming"; state[id].approvedAt=Date.now(); state[id].dismissReason=null; saveState(); renderNav(); refreshCurrentView(); autoRefillCheck(state[id].day, state[id].format, (typeof typesOf === 'function') ? typesOf(state[id]) : state[id].postType); window._apJumpId = id; showApprovePopupFn(id); }
 function undoStatus(id) { if(!state[id])return; state[id].status="pending"; state[id].dismissReason=null; saveState(); renderNav(); refreshCurrentView(); }
 function showDismissPopupFn(id) {
   closeDismissSheet();
@@ -20616,6 +20839,7 @@ function rv2ErrText(r, fallback) {
   const d = (r && r.data) || {};
   const st = r ? r.status : 0;
   if (d.code === 'AI_UNAVAILABLE') return String(d.error || '').trim() || csAiPausedText(fallback);
+  if (d.code === 'no_news') return (typeof TYPES_NO_NEWS_MSG !== 'undefined') ? TYPES_NO_NEWS_MSG : fallback;   // types
   if (st === 424 || d.error === 'brand_context_unavailable') return humanErr('brand_context_unavailable', fallback);
   if (st === 402) return humanErr(d.error || 'limit_reached', fallback);
   if (st === 429) return humanErr('rate_limited', fallback);
@@ -20731,7 +20955,7 @@ function rv2ReadDraft(k) { try { const d = JSON.parse(rv2LsRead(k) || 'null'); r
 function rv2DraftJson(s) {
   return JSON.stringify({ brandId: s.brandId, host: s.host, origin: { name: s.origin.name, meta: s.origin.meta || {} },
     format: s.format, appFormat: s.appFormat || '', source: s.source, stage: s.stage, angles: s.angles,
-    picked: s.picked, idea: s.idea, script: s.script, at: Date.now() });
+    picked: s.picked, idea: s.idea, script: s.script, postType: s.postType || '', postTypeSurprise: !!s.postTypeSurprise, at: Date.now() });
 }
 function rv2SaveDraft(run) {
   try {
@@ -20760,7 +20984,8 @@ function rv2Restore() {
       rv2SetRun(host, { seq: ++_rv2Seq, brandId: id, host: host, origin: rv2OriginFor(host === 'rv2Panel' ? 'remix' : o.name, o.meta),
         format: d.format || 'talking', appFormat: d.appFormat || '', source: d.source, stage: stage,
         angles: Array.isArray(d.angles) ? d.angles : [], picked: d.picked || null, idea: d.idea || null,
-        script: String(d.script || ''), err: '', errCode: '', openAsk: null, slotDraft: '', editing: false, busy: false, note: '' });
+        script: String(d.script || ''), err: '', errCode: '', openAsk: null, slotDraft: '', editing: false, busy: false, note: '',
+        postType: (typeof typesValid === 'function' ? typesValid(d.postType) : ''), postTypeSurprise: !!d.postTypeSurprise });
       if (key.indexOf('_recovered') >= 0) rv2SaveDraft(_rv2Runs[host]);
     } catch (e) {}
   });
@@ -20781,7 +21006,8 @@ async function rv2Start(btn, srcOverride, opts) {
   const s = { seq: ++_rv2Seq, brandId: brandId, host: host,
     origin: rv2OriginFor(host === 'rv2Panel' ? 'remix' : (o.origin && o.origin.name), o.origin && o.origin.meta),
     format: o.format || 'talking', appFormat: o.appFormat || '', source: src, stage: 'loading', angles: [], picked: null,
-    idea: null, script: '', err: '', errCode: '', openAsk: null, slotDraft: '', editing: false, busy: true, note: '' };
+    idea: null, script: '', err: '', errCode: '', openAsk: null, slotDraft: '', editing: false, busy: true, note: '',
+    postType: (typeof typesValid === 'function' ? typesValid(o.postType) : ''), postTypeSurprise: !!o.postTypeSurprise };
   rv2SetRun(host, s);
   rv2ClearDraft(host, brandId);   // a new run replaces that host's previous draft (for this brand)
   rv2Render();
@@ -20789,13 +21015,20 @@ async function rv2Start(btn, srcOverride, opts) {
   const stopW = btnWork(btn === undefined ? document.getElementById('remixBtn') : btn, 'remix');
   try {
     try { await flushBrandSave(); } catch (e) {}
-    const r = await rv2Post('/api/angles', rv2Body(s, { source: src, count: 6 }));
+    const r = await rv2Post('/api/angles', rv2Body(s, Object.assign({ source: src, count: 6 }, s.postType ? { postType: s.postType } : {})));
     if (!rv2Live(s)) return;
+    // types — no fresh headline for a News post: close the sheet, say so under the chips (they stay)
+    if (!r.ok && r.status === 409 && r.data && r.data.code === 'no_news') {
+      rv2SetRun(host, null); rv2ClearDraft(host, brandId); rv2Render();
+      if (typeof tvNoNews === 'function') tvNoNews(s);
+      return;
+    }
     if (!r.ok) { s.stage = 'error'; s.errCode = r.data.code || r.data.error || ''; s.err = rv2ErrText(r, "Couldn't find opinions in that — try again."); return; }
     const angles = (Array.isArray(r.data.angles) ? r.data.angles : [])
       .filter(a => a && String(a.belief == null ? '' : a.belief).trim()).slice(0, 8)
       .map((a, i) => ({ id: String(a.id == null ? i : a.id).slice(0, 60), belief: String(a.belief).trim().slice(0, 200),
-        why: String(a.why == null ? '' : a.why).trim().slice(0, 240) }));
+        why: String(a.why == null ? '' : a.why).trim().slice(0, 240),
+        ...((typeof typesNewsSource === 'function' && typesNewsSource(a.newsSource)) ? { newsSource: typesNewsSource(a.newsSource) } : {}) }));
     if (!angles.length) { s.stage = 'error'; s.err = 'That came back without any opinions to pick from — try again, or paste more of the original.'; return; }
     s.angles = angles; s.stage = 'angles';
   } catch (e) {
@@ -20807,7 +21040,8 @@ async function rv2Start(btn, srcOverride, opts) {
 }
 function rv2Retry() {
   const s = rv2Active(); if (!s || s.busy || s.saving) return;
-  rv2Start(document.getElementById('rv2RetryBtn'), s.source, { host: s.host, origin: { name: s.origin.name, meta: s.origin.meta }, format: s.format, appFormat: s.appFormat });
+  rv2Start(document.getElementById('rv2RetryBtn'), s.source, { host: s.host, origin: { name: s.origin.name, meta: s.origin.meta }, format: s.format, appFormat: s.appFormat,
+    postType: s.postType, postTypeSurprise: s.postTypeSurprise });
 }
 // Picking only WRITES. The belief is kept in brand memory when the idea is SAVED — an opinion the
 // person tried and walked away from must not become one of the brand's beliefs.
@@ -20818,7 +21052,8 @@ async function rv2Pick(i) {
   if (!rv2SameBrand(s)) { try { showToast('Switch back to the brand this was written for to carry on.'); } catch (e) {} return; }
   s.picked = a; s.stage = 'writing'; s.err = ''; s.errCode = ''; s.busy = true; s.invented = 0; rv2Render();
   try {
-    const r = await rv2Post('/api/write', rv2Body(s, { source: s.source, angle: { belief: a.belief, why: a.why }, format: s.format || 'talking' }));
+    const r = await rv2Post('/api/write', rv2Body(s, Object.assign({ source: s.source, angle: { belief: a.belief, why: a.why }, format: s.format || 'talking' },
+      s.postType ? { postType: s.postType } : {}, (a.newsSource ? { newsSource: a.newsSource } : {}))));
     if (!rv2Live(s)) return;
     const idea = r.ok ? r.data.idea : null;
     if (!idea || !String(idea.script == null ? '' : idea.script).trim()) {
@@ -20960,7 +21195,7 @@ function rv2BuildIdea(s) {
   if (taken.has(title.toLowerCase())) { let n = 2; while (taken.has((title + ' (' + n + ')').toLowerCase())) n++; title = title + ' (' + n + ')'; }
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const isRemix = !s.origin || s.origin.name === 'remix';
-  return { idea: Object.assign({
+  const _built = Object.assign({
     id: (Array.isArray(state) ? state.length : 0), title: title, hook: txt(w.hook).trim(), script: script,
     screen: screen, boldText: boldText,
     caption: txt(w.caption).trim(), shots: txt(w.shots).trim(), tags: rv2Tags(w.hashtags), reelTitle: '',
@@ -20969,7 +21204,9 @@ function rv2BuildIdea(s) {
     dismissReason: null, assignee: '', isGenerated: true, isRemix: isRemix,
     originalCreator: isRemix ? ((s.source && s.source.creator) || '') : '', genFlow: 'v2',
     belief: String((s.picked && s.picked.belief) || '').slice(0, 140), createdAt: Date.now(), freshAt: Date.now()
-  }, (s.origin && s.origin.extra) || {}) };
+  }, (s.origin && s.origin.extra) || {});
+  if (typeof typesApplyRun === 'function') typesApplyRun(_built, s);   // types: postType + news source
+  return { idea: _built };
 }
 // v693 r3 — SAVED MEANS SAVED. The run and its draft are cleared, and "Saved" is said, only once the
 // database confirms. On a failed save the idea is taken back out of the list and the script stays
@@ -21241,9 +21478,12 @@ function paaAnswerV2(idx, chosenFormat) {
     appFormat: chosenFormat || '', origin: { name: 'paa', meta: { question: String(q.question), fmt: chosenFormat || '' } } });
 }
 // Quick Post (Today tab). There is no seed here, so the seed is today's theme for this brand.
-function tvGenerateV2() {
+function tvGenerateV2(opts) {
   if (typeof firstRunBrandGuard === 'function' && firstRunBrandGuard(tvGenerateV2)) return;
-  const picked = window._tvSelectedFormat || 'video';
+  // types — what the post is about: the chip picked, or "Surprise me" drawn from the brand's mix
+  const _pt = (typeof tvResolvePostType === 'function') ? tvResolvePostType(opts && opts.exclude) : { type: '', surprise: false };
+  window._tvPostTypeRun = _pt.type;
+  const picked = _pt.type === 'qna' ? 'qna' : (window._tvSelectedFormat || 'video');   // a Q&A is a Q&A
   const fmt = RV2_FORMATS[picked];
   if (!fmt) return generateTodayTabPost();          // Image / Bonus: the new writer does not do them
   const today = getTodayName();
@@ -21251,8 +21491,10 @@ function tvGenerateV2() {
   // v693 r3: saved in the format picked (Q&A stays Q&A) and with the Face-on / Faceless choice
   const delivery = DELIVERY_FORMATS.has(picked) ? (window._tvDelivery || 'faceon') : '';
   return rv2Start(null, { kind: 'idea', text: "Today's content theme for this brand: " + community + '.' }, { host: 'rv2Sheet', format: fmt, appFormat: picked,
+    postType: _pt.type, postTypeSurprise: _pt.surprise,
     origin: { name: 'quickpost', meta: { community: community, day: today, delivery: delivery } } });
 }
+
 
 /* v693 (wave 2) — gen_flow stays honest across the deploy: an idea from /api/generate-ideas counts as
    belief-first ONLY when the server sent the belief it was written from. Without one it is left
@@ -21305,7 +21547,9 @@ async function rv2RewriteIdea(id, btn) {
   const stopW = btnWork(btn || null, 'redo');
   try {
     const r = await rv2Post('/api/write', rv2Body({ brandId: brandId }, { source: { kind: 'idea', text: text },
-      angle: { belief: belief.slice(0, 140), why: '' }, format: RV2_FORMATS[idea.format] || 'talking' }));
+      angle: { belief: belief.slice(0, 140), why: '' }, format: RV2_FORMATS[idea.format] || 'talking',
+      ...((idea.postType === 'news' && typeof typesNewsSource === 'function' && typesNewsSource(idea.newsSource)) ? { newsSource: typesNewsSource(idea.newsSource) } : {}),
+      ...((typeof typesOf === 'function') ? { postType: typesOf(idea) } : {}) }));
     const w = r.ok ? r.data.idea : null;
     if (!gate()) { delete _rv2Rw[id]; return; }
     if (!w || !String(w.script == null ? '' : w.script).trim()) { _rv2Rw[id] = { stage: 'error', title: idea.title, err: r.ok ? 'The rewrite came back empty — your script is unchanged.' : rv2ErrText(r, "Couldn't rewrite it — your script is unchanged.") }; return; }

@@ -1,7 +1,7 @@
 const https = require('https');
 const { aiUnavailable } = require('./_llm');
 const { writerCallResilient, writerProvider, writerEffort } = require('./_write');   // v693 r3 — provider switch + thinking depth with headroom (see api/_write.js)
-const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, v2Tones, spokenV2, storiesBlock } = require('./_brain');
+const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, v2Tones, spokenV2, storiesBlock, POST_TYPES, validTypeMix, scaleTypeMix, typeSlots, normFreshNews, newsLines } = require('./_brain');
 // v693 — content-v2 (.unlazy/content-v2/PLAN.md changes 1, 3, 5). The Ideas batch stays ONE call
 // (5 ideas, auto-refill, the daily push) but every idea is now BELIEF-FIRST: the model states the
 // belief the idea argues before it writes the idea, and returns it as `belief`. The old rulebook
@@ -11,7 +11,7 @@ const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, v2T
 // pipeline uses, whose one hard rule is NO_INVENTION_RULE. The brand is rendered through
 // fullBrandBlock(bc,{v2:true}): at most 3 tones (else none + warnings:['tones_over_limit']), USPs as
 // background facts, the brand's held beliefs; the story bank follows it.
-const { styleGuide } = require('./_write');
+const { styleGuide, TYPE_RULES, guardIdeaFacts, userFacts } = require('./_write');
 // v693 — a belief is one plain sentence (C-LIB: belief <= 140 chars, same cap as runAngles).
 const MAX_BELIEF = 140;
 // v693 — the optional structured PAA seed (the old app appends a "SEED QUESTION" block to
@@ -152,7 +152,21 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { brandContext, gaps, count: _rawCount = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat, seedQuestion } = req.body || {};
+    const { brandContext, gaps, count: _rawCount = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat, seedQuestion, typeMix: _rawMix, postType: _rawPostType, newsDismissed } = req.body || {};
+    // types (.unlazy/types/PLAN.md) — WHAT EACH IDEA IS ABOUT. `postType` (one type, for one-off calls
+    // such as Quick Post and auto-refill) wins over `typeMix` ({tip,about,news,qna,story,bts} -> 0..10).
+    // Neither sent -> _typeReq stays null and everything below is exactly what it was before types.
+    let _typeReq = null;
+    if (_rawPostType != null && _rawPostType !== '') {
+      if (POST_TYPES.indexOf(_rawPostType) < 0) return res.status(400).json({ error: 'Unknown post type.', code: 'bad_input' });
+      _typeReq = { [_rawPostType]: 1 };
+    } else if (_rawMix != null) {
+      _typeReq = validTypeMix(_rawMix);
+      if (!_typeReq) return res.status(400).json({ error: 'The post-type mix is not valid (whole numbers 0-10 per type, at least one idea).', code: 'bad_input' });
+    }
+    // A mix with no count asks for its own total; with a count it is scaled to the count (below).
+    const _countIn = (_typeReq && !_rawPostType && (req.body || {}).count == null)
+      ? POST_TYPES.reduce((a, k) => a + _typeReq[k], 0) : _rawCount;
     // v657 — CLAMP `count` AT THE SOURCE. It came straight from the body and was
     // interpolated into the prompt ("a JSON array of exactly ${count} ideas"), while metering
     // charges ONE credit per CALL. The UI offers 10 and a direct POST could ask for 50, so a
@@ -162,9 +176,9 @@ module.exports = async function handler(req, res) {
     // the two prompt strings and the schema line) get the bounded number automatically —
     // a separate clamped variable would have left the raw one in the prompt.
     const MAX_IDEAS = 10;
-    const count = Math.max(1, Math.min(MAX_IDEAS, Math.floor(Number(_rawCount) || 5)));
-    if (Number(_rawCount) > MAX_IDEAS) {
-      console.warn('generate-ideas: count %s clamped to %s', _rawCount, MAX_IDEAS);
+    const count = Math.max(1, Math.min(MAX_IDEAS, Math.floor(Number(_countIn) || 5)));
+    if (Number(_countIn) > MAX_IDEAS) {
+      console.warn('generate-ideas: count %s clamped to %s', _countIn, MAX_IDEAS);
     }
     let bc = brandContext || {};
     let learningContext = req.body && req.body.learningContext;
@@ -223,6 +237,11 @@ module.exports = async function handler(req, res) {
     // redo) would change what reaches the model — the one thing this whole change must not do.
     // `exFormat` is exemplar-selection ONLY and never reaches the prompt. forceFormat still wins
     // where it is set (Quick Post), so that caller is untouched.
+    // types — the headlines a news idea may use come from OUR stored row only: the hydrated brand
+    // (lean request) or the internal send-daily cron, which hydrated it itself. A body-sent
+    // brandContext from a user is never trusted for them.
+    let _storedNews = (_isInternal && bc && Array.isArray(bc.freshNews)) ? bc.freshNews : [];
+    let _hydBc = null;   // types r2 — the SERVER-loaded brand, the only source of allowed facts on a lean request
     if (brandId) {
       const _hyd = await require('./_brandctx').loadBrandContext(
         brandId,
@@ -242,6 +261,8 @@ module.exports = async function handler(req, res) {
           reason: _hyd.ok ? 'stale_brand_row' : _hyd.reason,
         });
       }
+      _storedNews = (_hyd.bc && Array.isArray(_hyd.bc.freshNews)) ? _hyd.bc.freshNews : [];
+      _hydBc = _hyd.bc || {};
       bc = Object.assign({}, _hyd.bc, bc);
       learningContext = _composeAvoidList(learningContext, avoidExtra, _hyd.avoidTitles);
     }
@@ -265,7 +286,42 @@ module.exports = async function handler(req, res) {
     // beats primacy in a ~20k-character prompt; up top they sat 16k characters from the task).
     // v693 — v2 rendering: tones <= 3 (else none), USPs / product / proof as background facts, the
     // brand's held beliefs. The story bank is appended right after it (storiesBlock).
-    const brandProfile = fullBrandBlock(bc, { examples: false, v2: true });
+    // ── types: the slot plan ──
+    // The mix scaled to `count` (largest remainders), as an ordered slot list. A news slot with no
+    // fresh stored headline becomes a tip BEFORE the model is asked (never invent news), and the
+    // response says so with warnings:['no_fresh_news'].
+    const _typeWarn = [];
+    let _slots = null, _fresh = [];
+    if (_typeReq) {
+      const _scaled = scaleTypeMix(_typeReq, count);
+      _fresh = normFreshNews(_storedNews, Date.now(), newsDismissed);
+      if (_scaled.news > 0 && !_fresh.length) { _scaled.tip += _scaled.news; _scaled.news = 0; _typeWarn.push('no_fresh_news'); }
+      _slots = typeSlots(_scaled);
+    }
+    const _allAbout = !!(_slots && _slots.length && _slots.every(t => t === 'about'));
+    const _anyAbout = !!(_slots && _slots.indexOf('about') >= 0);
+    let typeBlock = '';
+    if (_slots) {
+      const _counts = POST_TYPES.map(k => [k, _slots.filter(t => t === k).length]).filter(x => x[1] > 0);
+      typeBlock = '\nPOST TYPES FOR THIS BATCH (exact counts, not a suggestion): ' + _counts.map(x => x[0] + ' x' + x[1]).join(', ') +
+        '.\nReturn the ideas in this order and give each its "postType": ' + _slots.map((t, i) => (i + 1) + '=' + t).join(', ') + '.\nWhat each type means:\n' +
+        _counts.map(x => '- ' + x[0] + ': ' + TYPE_RULES[x[0]]).join('\n') +
+        (_slots.indexOf('qna') >= 0 ? '\nEvery qna idea uses the "qna" format.' : '') +
+        (_slots.indexOf('story') >= 0 ? '\nA story idea retells one of the REAL STORIES below when one fits; otherwise the story is a [your story: <what to tell>] slot.' : '') +
+        (_anyAbout && !_allAbout ? '\nTHE "about" IDEAS ARE THE ONE EXCEPTION to the rules below that keep ideas off the product (the belief rule, "stay in the audience\'s world", "background facts"): an about idea talks about what the product does for the viewer, using only real product facts, still spoken, still a belief, never a feature tour.' : '') +
+        (_slots.indexOf('news') >= 0 ? '\nFRESH HEADLINES (the ONLY news you may use; a news idea puts its headline\'s number in "newsIndex"):\n' + newsLines(_fresh) : '');
+    }
+    const beliefSubject = _allAbout
+      ? "It is about what the brand's product or service does for the viewer, using only real product facts: never a feature list."
+      : (_anyAbout ? "It is about the viewer's problem or situation, never about the brand's product or features (except the \"about\" ideas, see POST TYPES)."
+        : "It is about the viewer's problem or situation, never about the brand's product or features.");
+    const stayRule = _allAbout
+      ? "ABOUT US, IN THE VIEWER'S WORDS: every idea is about what the product or service does for the viewer. Use only the real product facts in the brand profile (a missing one is a [your story: <what to tell>] slot). Not a walkthrough of how it works: a chain of \"you do this, then it does that\" is a feature tour, not content."
+      : (_anyAbout ? "EVERY IDEA EXCEPT THE \"about\" ONES — " : '') + "STAY IN THE AUDIENCE'S WORLD, NOT THE PRODUCT'S: the belief and the script are about something the listener is living through, not a walkthrough of how the product works. A chain of \"you do this, then it does that, then you get those\" is a feature tour, not content. The brand's facts are background: at most one per script, and only where it answers the viewer's problem. If a competitor could read the script with their name swapped in, it was about the product.";
+    const typeSchema = _slots
+      ? '  "postType": "' + POST_TYPES.join('|') + '  (the type of this idea\'s slot)",\n' + (_slots.indexOf('news') >= 0 ? '  "newsIndex": 0,  (news ideas only: the number of the headline it reacts to; 0 for every other idea)\n' : '')
+      : '';
+    const brandProfile = fullBrandBlock(bc, _allAbout ? { examples: false, v2: true, about: true } : { examples: false, v2: true });
     const stories = storiesBlock(bc, 3000);
     const winners = approvedWinnersBlock(bc);
 
@@ -318,7 +374,7 @@ module.exports = async function handler(req, res) {
     // formats with a weight above zero), so it is the honest signal for whether Q&A is wanted —
     // and it needs no new payload field. No qna gap => no Q&A instruction at all.
     const qnaGaps = (!isSeed && Array.isArray(gaps)) ? gaps.filter(g => g && g.format === 'qna').length : 0;
-    if (qnaGaps > 0 && count >= 3) {
+    if (qnaGaps > 0 && count >= 3 && !_slots) {   // types: a type mix decides the Q&A count itself
       // Ask for at most what was actually requested, and never more than a third of the batch.
       const qnaMin = Math.max(1, Math.min(qnaGaps, Math.floor(count / 3)));
       qnaInstruction = `\nAt least ${qnaMin} of the ${count} ideas should use the "qna" format — the brand's content mix asks for it. Each Q&A must use a different question angle from the list above.`;
@@ -372,7 +428,7 @@ module.exports = async function handler(req, res) {
     // /api/write for a full spoken rewrite). One call, one batch: the belief is the first key of each
     // idea so the model commits to it before it writes the hook.
     const beliefBlock = `BELIEF FIRST (do this for every idea, before writing a word of it):
-1. State the BELIEF the idea argues: one plain sentence, at most ${MAX_BELIEF} characters, that most of this brand's audience does NOT share yet. It is about the viewer's problem or situation, never about the brand's product or features. Contrarian but defensible: the person could argue it on camera and be right.
+1. State the BELIEF the idea argues: one plain sentence, at most ${MAX_BELIEF} characters, that most of this brand's audience does NOT share yet. ${beliefSubject} Contrarian but defensible: the person could argue it on camera and be right.
 2. Then write the idea FROM that belief: the hook opens the argument, the script argues it (why people believe the opposite, what goes wrong because of it, then the reframe), and every other field serves it.
 Put it in the "belief" field. Every idea in the batch argues a DIFFERENT belief, not one belief reworded.`;
 
@@ -408,7 +464,7 @@ Put it in the "belief" field. Every idea in the batch argues a DIFFERENT belief,
 ${gapInstruction}
 ${forceFormatInstruction}
 ${deliveryInstruction}
-${qnaInstruction}
+${qnaInstruction}${typeBlock}
 ${beliefBlock}
 
 CONTENT FORMATS:
@@ -435,12 +491,12 @@ Each idea MUST be a complete, ready-to-use content brief. Scripts must be FULL. 
 
 HOOK: the first line a person would actually say, or read on screen before the audio starts. Plain and specific, and it opens the belief. Titles, hooks and statements carry the literal point in plain words: never make the audience decode an in-joke.
 
-STAY IN THE AUDIENCE'S WORLD, NOT THE PRODUCT'S: the belief and the script are about something the listener is living through, not a walkthrough of how the product works. A chain of "you do this, then it does that, then you get those" is a feature tour, not content. The brand's facts are background: at most one per script, and only where it answers the viewer's problem. If a competitor could read the script with their name swapped in, it was about the product.
+${stayRule}
 THAT IS A RULE ABOUT SUBJECT, NOT ABOUT SHAPE — there are many ways in: a blunt claim, a question someone actually asked, a thing you noticed this week, a correction, a small story, the punchline first. If several ideas in this batch open the same way, rewrite them so the ways in genuinely differ.
 
 TAGS: start with the brand hashtag (${brandTag}), then 2-3 niche tags and 1 broad tag, max 5 in total. Never the brand's avoid-words, never hype tags (#viral, #gamechanger, #musthave, #fyp). Never say "viral" in the content itself.
 
-${styleGuide()}
+${styleGuide(_allAbout ? { about: true } : undefined)}
 
 ${spokenV2()}
 
@@ -452,7 +508,7 @@ HOW TO FILL "emphasis": 2-5 SHORT phrases copied VERBATIM from the script — th
 Respond with a JSON array of exactly ${count} ideas. Every key below is read by the app — return all of them, and add no others. Each idea:
 {
   "belief": "the belief this idea argues: one plain sentence, max ${MAX_BELIEF} characters (write it FIRST)",
-  "day": "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Bonus",
+${typeSchema}  "day": "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Bonus",
   "community": "the specific topic/theme this idea is about — usually that day's lead theme, but for the ~40% variety picks use an adjacent theme or evergreen brand angle",
   "format": "video|carousel|static|statement|micro|bonus|qna",
   "tone": "${toneField}",
@@ -582,7 +638,56 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       ...(txt(idea.boldText) ? { boldText: txt(idea.boldText) } : {})
       };
     });
-    ideas = cleanIdeas(ideas);
+    // types — EVERY IDEA SAYS WHAT IT IS ABOUT. Without a type request: 'qna' for a Q&A-format idea,
+    // else 'tip' (today's default). With one: the model's own label when its slot quota still has room,
+    // else the next open slot, so the batch never holds more of a type than was asked for. A news idea
+    // gets newsSource from the STORED headline its newsIndex names (1-based); an invalid index turns
+    // it into a tip (converted, not dropped: no extra AI call). A qna idea is forced to format 'qna'.
+    // types r2 — THE FACT GUARD, on every idea of every batch (typed or not; the JSON shape is unchanged).
+    // Allowed material: the brand's user-written fields as WE loaded them (userFacts excludes every
+    // AI-filled field; on a lean request only the server-loaded brand counts, plus the two day-theme
+    // strings the device alone knows), the story bank, the user's own dropped idea / notes / search
+    // question, and — for a news idea only — the title of the stored headline it was attached to.
+    const _factBc = _hydBc
+      ? Object.assign({}, _hydBc, { communities: bc.communities, dayMap: bc.dayMap })
+      : bc;
+    const _allowedBase = [userFacts(_factBc),
+      (Array.isArray(_factBc.stories) ? _factBc.stories : []).map(x => (x && typeof x === 'object') ? String(x.text || '') : String(x || '')).join('\n'),
+      seedIdea_, seedNotes_, seedQuestion_].join('\n');
+    const assignTypes = (clean, raws) => {
+      const quota = {};
+      if (_slots) for (const t of _slots) quota[t] = (quota[t] || 0) + 1;
+      let dropped = 0;
+      const list = clean.map((idea, i) => {
+        const raw = (raws[i] && typeof raws[i] === 'object') ? raws[i] : {};
+        let pt;
+        const want = typeof raw.postType === 'string' ? raw.postType.trim().toLowerCase() : '';
+        const ni = Number(raw.newsIndex);
+        const validNi = !!_slots && _fresh.length > 0 && Number.isInteger(ni) && ni >= 1 && ni <= _fresh.length;
+        if (!_slots) pt = idea.format === 'qna' ? 'qna' : 'tip';
+        // An idea the model wrote AS news about a real stored headline stays news (labelled honestly),
+        // even past the news quota.
+        else if (want === 'news' && validNi) pt = 'news';
+        else pt = (quota[want] > 0) ? want : (quota[_slots[i]] > 0 ? _slots[i] : (_slots.find(t => quota[t] > 0) || 'tip'));
+        const out = Object.assign({}, idea, { postType: pt });
+        if (pt === 'news') {
+          if (validNi) out.newsSource = { title: _fresh[ni - 1].title, url: _fresh[ni - 1].url };
+          // types r2 — written as news but pointing at no stored headline: its "news" is made up, so it
+          // is DROPPED (warnings:['news_dropped']), never relabelled; no refill call. An idea only placed
+          // in a news slot by the server (not written as news) keeps its text as a tip.
+          else if (want === 'news' || (raw.newsIndex != null && raw.newsIndex !== 0 && raw.newsIndex !== '0')) { dropped++; return null; }
+          else out.postType = 'tip';
+        }
+        if (_slots && quota[out.postType] > 0) quota[out.postType]--;
+        if (_slots && out.postType === 'qna') out.format = 'qna';
+        const g = guardIdeaFacts(out, _allowedBase + (out.newsSource ? '\n' + out.newsSource.title : ''));
+        return g.idea;
+      }).filter(Boolean);
+      return { list, dropped };
+    };
+    const _a1 = assignTypes(cleanIdeas(ideas), ideas);
+    ideas = _a1.list;
+    let _newsDropped = _a1.dropped;
 
     // v666 — NEVER RETURN A BLANK CARD AS A SUCCESS.
     // Every field above falls back to '' and the title to 'Untitled', so a reply the parser could
@@ -610,8 +715,9 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
         let _i2 = extractJson(_c2);
         if (_i2 && !Array.isArray(_i2)) _i2 = [_i2];
         if (Array.isArray(_i2) && _i2.length) {
-          const _clean2 = cleanIdeas(_i2);
-          if (outputViolations(JSON.stringify(_clean2), bc).length < _viol.length) ideas = _clean2;
+          const _a2 = assignTypes(cleanIdeas(_i2), _i2);
+          const _clean2 = _a2.list;
+          if (_clean2.length && outputViolations(JSON.stringify(_clean2), bc).length < _viol.length) { ideas = _clean2; _newsDropped = _a2.dropped; }
         }
       }
     } catch (e) { /* keep the original batch — guardrail is best-effort */ }
@@ -622,7 +728,7 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     if (_billingUser) await _usage.logUsage({ userId: _billingUser, brandId: _meterBrand || brandId || bc.brandId || bc.brand_id || null, action: 'ideas', model: require('./_write').usageModel(bc) });
     // v693 — `warnings` is always an array (same as /api/angles and /api/write): ['tones_over_limit']
     // when the brand has more than 3 tones and none were used.
-    return res.status(200).json({ ideas, warnings });
+    return res.status(200).json({ ideas, warnings: warnings.concat(_typeWarn, _newsDropped ? ['news_dropped'] : []) });
 
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
