@@ -4,8 +4,8 @@
   "description": "AI-powered content engine that learns your brand voice and generates ready-to-film scripts.",
   "start_url": "/app.html",
   "display": "standalone",
-  "background_color": "#F9F6EA",
-  "theme_color": "#16130F",
+  "background_color": "#212121",
+  "theme_color": "#212121",
   "orientation": "portrait",
   "icons": [
     {

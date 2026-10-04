@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#212121"><!-- v699: set to the resolved theme by the first script below -->
 <meta name="robots" content="noindex, nofollow">
 <meta name="description" content="Content Shrimp app — AI-powered content engine that learns your brand voice and generates ready-to-film scripts.">
 <title>Content Shrimp</title>
@@ -13,7 +14,25 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v698';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  /* v699 clean shell — THE DEFAULT THEME LIVES IN ONE PLACE. 'dark' | 'light' | 'system'.
+     It only decides for people who never chose: a saved choice (bn-dark-mode '1' / '0', written by
+     toggleDarkMode in Settings → Workspace → Dark Mode) always wins. Applied here, in <head>, so the
+     first paint is already in the right theme. */
+  var CS_DEFAULT_THEME = 'dark';
+  function csResolveTheme(){
+    var saved = null;
+    try { saved = localStorage.getItem('bn-dark-mode'); } catch (e) {}
+    if (saved === '1') return 'dark';
+    if (saved === '0') return 'light';
+    if (CS_DEFAULT_THEME === 'system') {
+      try { return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; } catch (e) { return 'light'; }
+    }
+    return CS_DEFAULT_THEME === 'light' ? 'light' : 'dark';
+  }
+  try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
+  // the status bar matches from the first paint: #212121 dark, #ffffff light (toggleDarkMode keeps it in step)
+  try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#212121' : '#ffffff'; } catch (e) {}
+  window.APP_VERSION = 'v699';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -142,7 +161,6 @@
     }).catch(function(){});
   } catch (e) {} }); }
 </script>
-<meta name="theme-color" content="#F7F6F3">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -151,6 +169,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap">
 <style>
 
 :root {
@@ -3440,13 +3459,13 @@ input:focus, textarea:focus, select:focus {
   .header { padding: 4px 16px 0; }
   .header-top { padding: 12px 16px; border-radius: var(--radius-sm); }
   .header h1 { font-size: 18px; margin: 0; }
-  /* NOTE: the brand switcher lives in .header-top > div:first-child > div:last-child.
+  /* NOTE: the brand switcher lives in .header-top > div:first-of-type > div:last-child.
      Do NOT hide it on mobile — it's shown as a tappable chip (see .header-brand rule
      further below). The old "hide description" rule here hid the whole switcher. */
   .header-actions { gap: 6px; flex-shrink: 0; }
   /* brand name shrinks/truncates so the icon group is never clipped by the panel's overflow:hidden */
-  .header-top > div:first-child { flex: 1 1 auto; min-width: 0; }
-  .header-top > div:first-child > div { min-width: 0; }
+  .header-top > div:first-of-type { flex: 1 1 auto; min-width: 0; }
+  .header-top > div:first-of-type > div { min-width: 0; }
   .header-top .brand-switcher-wrap, .header-top .header-brand { min-width: 0; }
   .header-brand > span.hb-name { min-width: 0; }
   .icon-btn { width: 36px; height: 36px; font-size: 16px; }
@@ -5270,7 +5289,7 @@ body, body * {
 
 /* light outlined header (Wispr nav card) */
 .header-top, .header-top * { color: var(--text); }
-.header-top > div:first-child > div:last-child { color: var(--text3) !important; }
+.header-top > div:first-of-type > div:last-child { color: var(--text3) !important; }
 .header-brand { color: var(--text) !important; }
 .header-btn {
   background: #E7DAF9 !important; color: #16130F !important;
@@ -6025,7 +6044,147 @@ body, body * {
 [data-theme="dark"] #bmContainer .bm-add-row button {
   background: var(--surface2) !important; color: var(--text) !important; border: 1.5px solid var(--border2) !important;
 }
+/* ===== v699 CLEAN SHELL (agent S) — STRUCTURE ONLY: header, drawer, composer, Quick Post button.
+   Colours are var(--cs-*) tokens; /clean.css (agent T) owns the look and loads after this sheet.
+   The token defaults below are the PLAN.md values, so the shell is complete even before clean.css arrives. */
+:root, [data-theme="light"] {
+  --cs-bg: #ffffff; --cs-card: #ffffff; --cs-raise: #f7f7f7; --cs-text: #0d0d0d; --cs-muted: #5d5d5d;
+  --cs-line: #e6e6e6; --cs-chip: #f2f2f2; --cs-input: #f2f2f2; --cs-primary: #0d0d0d; --cs-on-primary: #ffffff;
+  --cs-danger: #dc2626; --cs-ok: #16a34a; --cs-overlay: rgba(0,0,0,.35);
+}
+[data-theme="dark"] {
+  --cs-bg: #212121; --cs-card: #212121; --cs-raise: #2a2a2a; --cs-text: #ececec; --cs-muted: #b4b4b4;
+  --cs-line: #3d3d3d; --cs-chip: #333333; --cs-input: #303030; --cs-primary: #ececec; --cs-on-primary: #0d0d0d;
+  --cs-danger: #f87171; --cs-ok: #4ade80; --cs-overlay: rgba(0,0,0,.6);
+}
+/* the bottom tab bar is gone at every width: phones/tablets use the drawer, desktop the sidebar.
+   renderNav still fills #navTabs (the tour and the counters read it), it is just never shown. */
+#navTabs { display: none !important; }
+.cs-hdr-btn { display: none; width: 44px; height: 44px; flex: 0 0 44px; border: 0; padding: 0; border-radius: 12px;
+  background: transparent; color: var(--cs-text); align-items: center; justify-content: center; cursor: pointer; }
+.cs-hdr-btn svg { width: 22px; height: 22px; display: block; }
+@media (max-width: 899px) {
+  .header { padding: 0 !important; }
+  .header-top { height: 56px; min-height: 56px; box-sizing: border-box; margin: 0 !important; padding: 0 6px !important;
+    overflow: visible !important;   /* border, radius and shadow: clean.css (look) */
+    display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .header-top > div:first-of-type { flex: 1 1 auto; min-width: 0; justify-content: center; }
+  .header-actions { display: none !important; }          /* Bookmarks, Brain, Settings, Help live in the drawer */
+  .cs-hdr-btn { display: inline-flex; }
+  .header-brand { max-width: 60vw !important; min-height: 44px; box-sizing: border-box; }
+  body { padding-bottom: 0 !important; }
+  .mascot-wrap { bottom: calc(16px + env(safe-area-inset-bottom)) !important; }
+}
+/* ── drawer ── */
+.csd-wrap[hidden] { display: none !important; }
+/* the page behind the open drawer does not scroll (and no iOS rubber-band through it) */
+body.csd-open { overflow: hidden; overscroll-behavior: none; }
+.csd-backdrop { touch-action: none; }
+.csd-body { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.csd-wrap { position: fixed; inset: 0; z-index: 10050; }   /* above .pwa-banner (10000), below the tour (50000) and toasts */
+.csd-backdrop { position: absolute; inset: 0; background: var(--cs-overlay); opacity: 0; transition: opacity .2s ease; }
+.csd-panel { position: absolute; top: 0; left: 0; bottom: 0; width: min(300px, 84vw); box-sizing: border-box;
+  display: flex; flex-direction: column; background: var(--cs-bg); color: var(--cs-text); border-right: 1px solid var(--cs-line);
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); transform: translateX(-100%); transition: transform .22s ease; outline: none;
+  font-family: 'Geist', system-ui, sans-serif; }
+.csd-wrap.open .csd-backdrop { opacity: 1; }
+.csd-wrap.open .csd-panel { transform: none; }
+@media (prefers-reduced-motion: reduce) { .csd-backdrop, .csd-panel { transition: none; } }
+.csd-head { display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 6px 0 18px; flex: none; }
+.csd-title { font-size: 17px; font-weight: 600; }
+.csd-x { width: 44px; height: 44px; border: 0; background: transparent; color: var(--cs-muted); border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.csd-x svg { width: 20px; height: 20px; }
+.csd-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 10px 12px; }
+.csd-group { padding: 4px 0; }
+.csd-group + .csd-group { border-top: 1px solid var(--cs-line); margin-top: 4px; padding-top: 8px; }
+.csd-lbl { font-size: 13px; color: var(--cs-muted); padding: 8px 10px 4px; }
+.csd-item { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 10px; border: 0; border-radius: 12px;
+  background: transparent; color: var(--cs-text); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+.csd-item svg { width: 20px; height: 20px; flex: none; stroke: currentColor; }
+.csd-item .csd-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.csd-item.active { background: var(--cs-chip); font-weight: 500; }
+.csd-item.locked { color: var(--cs-muted); }
+.csd-item .csd-lock { width: 16px; height: 16px; }
+.csd-item:focus-visible, .csd-x:focus-visible, .cs-hdr-btn:focus-visible, .csd-ver:focus-visible, .csd-foot a:focus-visible { outline: 2px solid var(--cs-muted); outline-offset: 2px; }
+.csd-panel:focus, .csd-panel:focus-visible { outline: none; }
+.csd-count { font-size: 13px; color: var(--cs-muted); }
+.csd-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.csd-foot { flex: none; padding: 10px 20px 14px; font-size: 13px; color: var(--cs-muted); border-top: 1px solid var(--cs-line); }
+.csd-foot a { color: var(--cs-muted); text-decoration: none; }
+.csd-ver { display: block; margin-top: 6px; padding: 6px 0; border: 0; background: transparent; color: var(--cs-muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+@media (min-width: 900px) { .csd-wrap { display: none !important; } }
+/* ── composer, pinned on Ideas + Quick Post ── */
+.cs-composer { display: none; }
+body[data-cs-view="ideas"] .cs-composer, body[data-cs-view="today"] .cs-composer {
+  display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 160; box-sizing: border-box;
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--cs-bg); }
+.cs-composer-box { max-width: 600px; margin: 0 auto; display: flex; align-items: center; gap: 8px; box-sizing: border-box;
+  min-height: 52px; padding: 6px 6px 6px 18px; border-radius: 28px; background: var(--cs-input); }
+.cs-composer-in { flex: 1; min-width: 0; border: 0 !important; outline: 0; background: transparent !important; box-shadow: none !important; resize: none;
+  color: var(--cs-text); font-family: inherit; font-size: 16px; line-height: 22px; height: 40px; padding: 0 !important; margin: 0; box-sizing: border-box;
+  text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+.cs-composer-in::placeholder { color: var(--cs-muted); opacity: 1; }
+.cs-composer-send { width: 40px; height: 40px; flex: none; border: 0; border-radius: 999px; background: var(--cs-primary); color: var(--cs-on-primary);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.cs-composer-send svg { width: 18px; height: 18px; }
+.cs-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* the last card is never under the composer */
+body[data-cs-view="ideas"] #view-ideas, body[data-cs-view="today"] #view-today { padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important; }
+body[data-cs-view="ideas"] .mascot-wrap, body[data-cs-view="today"] .mascot-wrap { bottom: calc(84px + env(safe-area-inset-bottom)) !important; }
+@media (min-width: 601px) and (max-width: 899px) { body[data-cs-view] .cs-composer { left: 50%; right: auto; width: 600px; transform: translateX(-50%); } }
+@media (min-width: 900px) {
+  body[data-cs-view] .cs-composer { left: 248px; }
+  .cs-composer-box { max-width: 760px; }
+}
+/* the little "Content Shrimp" footer would sit under the composer on these two screens */
+body[data-cs-view="ideas"] #mainViews > .footer, body[data-cs-view="today"] #mainViews > .footer { display: none; }
+/* ── desktop sidebar (≥900px), kept and restyled: plain rows, tokens only (the v431 ink/lavender look is retired) ── */
+@media (min-width: 900px) {
+  #desktopSidebar { background: var(--cs-raise); border-right: 1px solid var(--cs-line); font-family: 'Geist', system-ui, sans-serif; }
+  #desktopSidebar .ds-logo { font-size: 16px; font-weight: 600; letter-spacing: 0; color: var(--cs-text); padding: 6px 10px 14px; }
+  #desktopSidebar .ds-lbl { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--cs-muted); padding: 14px 11px 4px; }
+  #desktopSidebar .ds-item { color: var(--cs-text); font-size: 15px; font-weight: 400; border-radius: 10px; min-height: 40px; }
+  #desktopSidebar .ds-item:hover { background: var(--cs-chip); }
+  #desktopSidebar .ds-item.active { background: var(--cs-chip); box-shadow: none; font-weight: 500; }
+  #desktopSidebar .ds-item svg { stroke: var(--cs-muted); }
+  #desktopSidebar .ds-item.active svg { stroke: var(--cs-text); }
+  #desktopSidebar .ds-count { background: transparent; border: 0; color: var(--cs-muted); font-size: 13px; font-weight: 400; padding: 0; }
+  #desktopSidebar .ds-coach { background: transparent; box-shadow: none; font-weight: 400; }
+  #desktopSidebar .ds-bottom { border-top: 1px solid var(--cs-line); }
+  #desktopSidebar .ds-plan { border: 1px solid var(--cs-line); color: var(--cs-text); }
+  #desktopSidebar .ds-plan:empty { display: none; }
+  #desktopSidebar .ds-foot, #desktopSidebar .ds-foot a { color: var(--cs-muted); }
+}
+/* ── Ideas first: heading + pill; the plan card folds while ideas are waiting ── */
+.cs-ideas-head[hidden] { display: none !important; }
+.cs-ideas-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 8px 4px 14px; }
+.cs-ih-text { min-width: 0; }
+.cs-ih-title { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--cs-text); }
+.cs-ih-sub { margin: 4px 0 0; font-size: 15px; line-height: 1.4; color: var(--cs-muted); }
+.cs-pill-btn { flex: none; min-height: 40px; margin-top: 0; padding: 0 16px; border: 1px solid var(--cs-line); border-radius: 999px; background: transparent;
+  color: var(--cs-text); font-family: inherit; font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.cs-pill-btn[aria-expanded="true"] { background: var(--cs-chip); }
+.cs-pill-btn:focus-visible { outline: 2px solid var(--cs-muted); outline-offset: 2px; }
+#view-ideas.cs-plan-folded #ideasQuick, #view-ideas.cs-plan-folded #ideasManualPanel { display: none !important; }
+/* compact Filters fold + "approve several at once" while ideas are waiting */
+#view-ideas.cs-ideas-has .pro-tools-section > .collapsible-header { margin-top: 0 !important; padding: 8px 14px !important; min-height: 44px; box-sizing: border-box; font-size: 14px; border-radius: 12px; }
+#view-ideas.cs-ideas-has #ideaContent > .tp-shz-angle:first-child { margin: 6px 0 8px !important; padding: 8px 2px !important; font-size: 13px; }
+/* ── FAQ: a small muted "How this works" link at the bottom of each screen ── */
+#mainViews .fn-faq { margin: 28px auto 8px; }
+#mainViews .fn-faq .fn-faq-box.cs-faq-link { background: transparent; border: 0; box-shadow: none; border-radius: 0; overflow: visible; }
+#mainViews .fn-faq .fn-faq-box.cs-faq-link > summary { display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 0 4px;
+  font-size: 13px; font-weight: 400; color: var(--cs-muted); text-decoration: underline; text-underline-offset: 3px; }
+#mainViews .fn-faq .fn-faq-box.cs-faq-link > summary::after { content: none; }
+#mainViews .fn-faq .fn-faq-box.cs-faq-link[open] > .fn-faq-body { border: 1px solid var(--cs-line); border-radius: 18px; padding: 4px 14px; margin-top: 4px; }
+/* ── Quick Post: one clean primary button instead of the shrimp circle ── */
+.tp-shz-stage.cs-qp-stage { width: auto; height: auto; margin: 18px auto 0; display: flex; justify-content: center; }
+.cs-primary-btn { min-height: 44px; padding: 0 24px; border: 0; border-radius: 999px; background: var(--cs-primary); color: var(--cs-on-primary);
+  font-family: inherit; font-size: 15px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.cs-primary-btn:disabled { opacity: .6; cursor: default; }
+.tp-shz-stage.cs-qp-stage.generating .cs-primary-btn { opacity: .7; }
 </style>
+<!-- v699: the clean theme (agent T). MUST stay the last stylesheet in <head>, after the inline <style> above. -->
+<link rel="stylesheet" href="/clean.css">
 </head>
 <body>
 <script>window._csSplashStart = Date.now();</script>
@@ -6266,6 +6425,7 @@ if (!window.supabase) {
 
 <div class="header">
   <div class="header-top">
+    <button type="button" class="cs-hdr-btn cs-menu-btn" id="csMenuBtn" aria-label="Open menu" aria-controls="csDrawerWrap" aria-expanded="false" onclick="csDrawerToggle()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 16h10"/></svg></button>
     <div style="display:flex;align-items:center;gap:12px;">
       <div id="headerLogoWrap" style="display:none;"><img id="headerLogo" src="" alt="" style="height:32px;max-width:80px;object-fit:contain;border-radius:4px;"></div>
       <div>
@@ -6282,7 +6442,13 @@ if (!window.supabase) {
       <button class="header-btn" onclick="openSettings()" title="Settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
       <button class="header-btn" onclick="startTour()" title="Help"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
     </div>
+    <button type="button" class="cs-hdr-btn cs-new-btn" id="csNewBtn" aria-label="New post" title="New post" onclick="csNewPost()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
   </div>
+</div>
+<!-- v699: the left drawer (phones + tablets, under 900px). Filled by csDrawerHtml() each time it opens. -->
+<div class="csd-wrap" id="csDrawerWrap" hidden>
+  <div class="csd-backdrop" onclick="csDrawerClose()"></div>
+  <nav class="csd-panel" id="csDrawer" role="dialog" aria-modal="true" aria-label="Menu" tabindex="-1"></nav>
 </div>
 
 
@@ -6300,6 +6466,8 @@ if (!window.supabase) {
     </div>
     <div class="pro-tools-section" id="proToolsSection" style="display:block;">
     <div id="brainLearnSlot"></div>
+    <!-- v699: "N ideas ready" heading; with pending ideas the Plan my week card folds behind its pill (csIdeasHeadSync) -->
+    <div class="cs-ideas-head" id="csIdeasHead" hidden></div>
     <!-- v455: Ideas Shazam quick lane — one tap plans the week; the classic generate module folds below -->
     <div id="ideasQuick" style="background:var(--surface,#fff);border:1.5px solid var(--border2,#16130F);border-radius:16px;padding:16px;margin:0 0 14px;">
       <div style="font-size:15px;font-weight:800;margin-bottom:4px;">Plan my week</div>
@@ -6311,11 +6479,7 @@ if (!window.supabase) {
     </div>
     <!-- v458: #statsBar moved from here into #filterCollapse (stat squares folded into Filters) -->
     <div id="ideasManualPanel" class="ideas-manual-hidden">
-    <div class="ai-learns-banner">
-      <div class="ai-learns-anim">
-        <div class="al-brain">&#129504;</div>
-        <div class="al-sparkle">&#10024;</div>
-      </div>
+    <div class="ai-learns-banner"><!-- v699: decorative emoji animation removed -->
       <div class="ai-learns-text">
         <strong>AI learns from you.</strong> Approve ideas you like, dismiss ones you don't — and say why. Each generation gets smarter.
       </div>
@@ -6362,14 +6526,7 @@ if (!window.supabase) {
   <div class="view" id="view-create">
 
     <div class="create-section active" id="createRemix">
-      <div class="al-banner">
-        <div class="al-banner-anim">
-          <div class="al-remix-src al-remix-1">&#127760;</div>
-          <div class="al-remix-arrow">&#10140;</div>
-          <div class="al-remix-brain">&#9889;</div>
-          <div class="al-remix-arrow">&#10140;</div>
-          <div class="al-remix-result al-remix-2">&#10024;</div>
-        </div>
+      <div class="al-banner"><!-- v699: decorative emoji animation removed -->
         <div class="al-banner-text"><strong>Start from what's proven.</strong> The smartest creators study what already works. We rebuild the idea in your voice with your facts baked in — inspired by, never copied.</div>
       </div>
 
@@ -6648,6 +6805,14 @@ if (!window.supabase) {
   <div class="view" id="view-today"></div>
 
   <div class="footer">Content Shrimp</div>
+  <!-- v699: composer pinned at the bottom of Ideas + Quick Post (shown by body[data-cs-view]). csComposerSend routes it. -->
+  <form class="cs-composer" id="csComposer" onsubmit="event.preventDefault();csComposerSend();">
+    <div class="cs-composer-box">
+      <label for="csComposerIn" class="cs-sr">Write a post or paste a link</label>
+      <input type="text" class="cs-composer-in" id="csComposerIn" placeholder="Write a post about… or paste a TikTok link" autocomplete="off" enterkeyhint="send">
+      <button type="submit" class="cs-composer-send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg></button>
+    </div>
+  </form>
 </div>
 
 <div class="settings-overlay" id="settingsOverlay"></div>
@@ -6897,11 +7062,11 @@ function showBrandLoadError(msg) {
   if (!el) {
     el = document.createElement('div');
     el.id = 'brandLoadErr';
-    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--bg,#F9F6EA);display:flex;align-items:center;justify-content:center;padding:24px;';
-    el.innerHTML = '<div style="max-width:340px;text-align:center;background:var(--surface,#fff);border:1.5px solid #16130F;border-radius:16px;padding:24px;">'
-      + '<div style="font-size:17px;font-weight:800;color:#16130F;margin-bottom:8px;">Couldn\'t reach the server</div>'
-      + '<div id="brandLoadErrMsg" style="font-size:14px;line-height:1.5;color:var(--text2,#5b544a);margin-bottom:18px;">We couldn\'t load your workspace. Nothing has been deleted — your brand and posts are safe. Check your connection and try again.</div>'
-      + '<button id="brandLoadErrBtn" style="width:100%;padding:14px 18px;border-radius:999px;border:1.5px solid #16130F;background:#E7DAF9;color:#16130F;font-size:15px;font-weight:700;cursor:pointer;">Try again</button>'
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--cs-bg);display:flex;align-items:center;justify-content:center;padding:24px;';
+    el.innerHTML = '<div style="max-width:340px;text-align:center;background:var(--cs-card);border:1px solid var(--cs-line);border-radius:18px;padding:24px;">'
+      + '<div style="font-size:17px;font-weight:600;color:var(--cs-text);margin-bottom:8px;">Couldn\'t reach the server</div>'
+      + '<div id="brandLoadErrMsg" style="font-size:15px;line-height:1.5;color:var(--cs-muted);margin-bottom:18px;">We couldn\'t load your workspace. Nothing has been deleted — your brand and posts are safe. Check your connection and try again.</div>'
+      + '<button id="brandLoadErrBtn" style="width:100%;min-height:44px;padding:0 18px;border-radius:999px;border:0;background:var(--cs-primary);color:var(--cs-on-primary);font-size:15px;font-weight:500;font-family:inherit;cursor:pointer;">Try again</button>'
       + '</div>';
     document.body.appendChild(el);
     const btn = el.querySelector('#brandLoadErrBtn');
@@ -8702,10 +8867,10 @@ async function initApp() {
     // Render — each wrapped so one failure doesn't kill the rest
     try { renderNav(); } catch(e) { debugLog('renderNav error: ' + e.message); }
 
-    // Force today view visible
+    // v699: the app opens on Ideas (CS_START_VIEW). A deep link (?open=…, csHandleOpenIdeas below) still wins.
     try {
-      switchView('today');
-      debugLog('initApp: switchView(today) OK');
+      switchView(CS_START_VIEW);
+      debugLog('initApp: switchView(' + CS_START_VIEW + ') OK');
     } catch(e) {
       debugLog('switchView error: ' + e.message);
       // Manual fallback: just make the view visible
@@ -9463,7 +9628,7 @@ function _dsItem(v,label){ return '<button class="ds-item" data-view="'+v+'" onc
 function buildDesktopSidebar(){
   try{
     if(document.getElementById('desktopSidebar')) return;
-    var h = '<div class="ds-logo"><span>'+DS_ICONS.shrimp+'</span>Content Shrimp</div>';
+    var h = '<div class="ds-logo">Content Shrimp</div>';   // v699: mascot mark removed
     h += _dsItem('today','Quick Post')+_dsItem('ideas','Ideas')+_dsItem('pipeline','Pipeline');
     h += '<div class="ds-lbl">Create</div>'+_dsItem('create','Remix')+_dsItem('idea','Idea Catcher')+_dsItem('viral','Trends');
     h += '<div class="ds-lbl">Tools</div>'+_dsItem('notebook','Notebook')+_dsItem('questions','What people search');
@@ -9540,6 +9705,234 @@ function toggleMoreSheet() {
 function moreGo(v) { closeMoreSheet(); switchView(v); }
 function closeMoreSheet() { const w = document.getElementById('moreSheetWrap'); if (w) w.remove(); }
 
+// ===== v699 CLEAN SHELL (agent S) — phone header ☰ · brand ▾ · pencil, left drawer, pinned composer =====
+// LOOK ONLY. Every row below calls a function that already existed; nothing here changes what a screen does.
+// The drawer replaces the phone/tablet bottom tab bar and its More sheet, so it lists EVERY destination
+// those two reached (tab bar: Quick Post, Ideas, Pipeline, Remix, Notebook, Assistant, More; More: Assistant,
+// Idea Catcher, What people search, Notebook, Trends, Terms/Privacy/Refunds, check for update) plus the
+// header buttons that moved in here on phones (Bookmarks, Brain, Settings, Help).
+var CS_START_VIEW = 'ideas';
+// The floating shrimp (#mascotWrap) is OFF for anyone who never chose; Settings → Workspace → Shrimp Mascot
+// (setMascotVisible, 'mascot-hidden' '0'/'1') still turns it on and off, and a saved choice always wins.
+var CS_MASCOT_DEFAULT_ON = false;
+function csMascotHidden(){
+  var v = null; try { v = localStorage.getItem('mascot-hidden'); } catch (e) {}
+  if (v === '1') return true;
+  if (v === '0') return false;
+  return !CS_MASCOT_DEFAULT_ON;
+}   // where the app opens; a deep link (?open=…) still wins (csHandleOpenIdeas)
+var CS_DRAWER_ICONS = {
+  bookmarks:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>',
+  brain:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 10-5.997.125 4 4 0 00-2.526 5.77 4 4 0 00.556 6.588A4 4 0 1012 18z"/><path d="M12 5a3 3 0 115.997.125 4 4 0 012.526 5.77 4 4 0 01-.556 6.588A4 4 0 1112 18z"/></svg>',
+  help:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>',
+  lock:'<svg class="csd-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>'
+};
+// The same two screens renderNavWithLocks locks (Pipeline, Remix) — locked until the brand minimum is met.
+var CS_LOCKED_VIEWS = ['pipeline', 'create'];
+function csNavLocked(view){ return CS_LOCKED_VIEWS.indexOf(view) !== -1 && !(typeof isBrandMinimumMet === 'function' && isBrandMinimumMet()); }
+// groups: a row is a screen ({view}) or an action ({act}: the exact function the old control called)
+var CS_DRAWER_GROUPS = [
+  { label: '', rows: [ { view: 'today', label: 'Quick Post' }, { view: 'ideas', label: 'Ideas' }, { view: 'pipeline', label: 'Pipeline' } ] },
+  { label: 'Create', rows: [ { view: 'create', label: 'Remix' }, { view: 'idea', label: 'Idea Catcher' }, { view: 'viral', label: 'Trends' } ] },
+  { label: 'Tools', rows: [ { view: 'notebook', label: 'Notebook' }, { view: 'questions', label: 'What people search' }, { act: 'toggleBookmarkBar', icon: 'bookmarks', label: 'Bookmarks' } ] },
+  { label: '', rows: [ { act: 'bvTabClick', icon: 'coach', label: 'Assistant', hold: true }, { act: 'openBrain', icon: 'brain', label: 'Brand brain' }, { act: 'openSettings', icon: 'settings', label: 'Settings' }, { act: 'startTour', icon: 'help', label: 'Help' } ] }
+];
+function csDrawerCounts(){
+  var c = {};
+  try { c.ideas = (typeof getPendingIdeas === 'function') ? getPendingIdeas().length : 0; } catch (e) {}
+  try { c.pipeline = (state || []).filter(function(i){ return i && i.status === 'filming'; }).length; } catch (e) {}
+  try { c.create = (typeof remixes !== 'undefined' && remixes) ? remixes.length : 0; } catch (e) {}
+  try { c.notebook = (typeof notebookNotes !== 'undefined' && notebookNotes) ? notebookNotes.length : 0; } catch (e) {}
+  return c;
+}
+function csDrawerHtml(){
+  var counts = csDrawerCounts();
+  var icons = (typeof DS_ICONS !== 'undefined') ? DS_ICONS : {};
+  var h = '<div class="csd-head"><span class="csd-title">Content Shrimp</span>'
+    + '<button type="button" class="csd-x" aria-label="Close menu" onclick="csDrawerClose()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'
+    + '<div class="csd-body">';
+  CS_DRAWER_GROUPS.forEach(function(g){
+    var rows = g.rows.filter(function(r){ return !(r.view && typeof csShelved === 'function' && csShelved(r.view)); });
+    if (!rows.length) return;
+    h += '<div class="csd-group">' + (g.label ? '<div class="csd-lbl">' + g.label + '</div>' : '');
+    rows.forEach(function(r){
+      var ic = (r.view ? icons[r.view] : (icons[r.icon] || CS_DRAWER_ICONS[r.icon])) || '';
+      if (r.view && csNavLocked(r.view)) {
+        h += '<button type="button" class="csd-item locked" data-view="' + r.view + '" aria-disabled="true" onclick="csDrawerClose();showLockedToast()">'
+          + ic + '<span class="csd-label">' + r.label + '</span>' + CS_DRAWER_ICONS.lock + '<span class="csd-sr">(locked)</span></button>';
+      } else if (r.view) {
+        var n = counts[r.view] || 0;
+        h += '<button type="button" class="csd-item' + (typeof activeView !== 'undefined' && activeView === r.view ? ' active' : '') + '" data-view="' + r.view + '"'
+          + (typeof activeView !== 'undefined' && activeView === r.view ? ' aria-current="page"' : '')
+          + ' onclick="csDrawerGo(\'' + r.view + '\')">' + ic + '<span class="csd-label">' + r.label + '</span>'
+          + (n ? '<span class="csd-count">' + n + '</span>' : '') + '</button>';
+      } else {
+        // hold: the old Assistant tab's press-and-hold (450 ms → opens already listening), same handlers
+        var hold = r.hold ? ' onpointerdown="bvTabDown();csDrawerHoldWatch()" onpointerup="bvTabUp();csDrawerHoldStop()" onpointercancel="bvTabUp();csDrawerHoldStop()" onpointerleave="bvTabUp();csDrawerHoldStop()"' : '';
+        h += '<button type="button" class="csd-item" data-act="' + r.act + '"' + hold + ' onclick="csDrawerClose();' + r.act + '()">' + ic + '<span class="csd-label">' + r.label + '</span></button>';
+      }
+    });
+    h += '</div>';
+  });
+  h += '</div><div class="csd-foot">'
+    + '<a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="/refunds.html" target="_blank" rel="noopener">Refunds</a>'
+    + '<button type="button" class="csd-ver" onclick="csCheckUpdate(this)">Content Shrimp · ' + (window.APP_VERSION || '') + ' · check for update</button></div>';
+  return h;
+}
+var _csDrawerLastFocus = null;
+function csDrawerIsOpen(){ var w = document.getElementById('csDrawerWrap'); return !!(w && !w.hidden); }
+function csDrawerOpen(){
+  var w = document.getElementById('csDrawerWrap'), p = document.getElementById('csDrawer'), b = document.getElementById('csMenuBtn');
+  if (!w || !p) return;
+  try { if (typeof closeMoreSheet === 'function') closeMoreSheet(); } catch (e) {}
+  p.innerHTML = csDrawerHtml();
+  _csDrawerLastFocus = document.activeElement;
+  w.hidden = false;
+  try { document.body.classList.add('csd-open'); } catch (e) {}
+  if (b) b.setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(function(){ try { w.classList.add('open'); } catch (e) {} });
+  // focus the panel itself (tabindex=-1): no item shows a ring on a tap-open; Tab then walks the rows
+  try { p.focus({ preventScroll: true }); } catch (e) { try { p.focus(); } catch (_) {} }
+}
+function csDrawerClose(){
+  var w = document.getElementById('csDrawerWrap'), b = document.getElementById('csMenuBtn');
+  if (!w || w.hidden) return;
+  var hadFocus = false; try { hadFocus = w.contains(document.activeElement); } catch (e) {}
+  w.classList.remove('open');
+  w.hidden = true;
+  try { document.body.classList.remove('csd-open'); } catch (e) {}
+  if (b) b.setAttribute('aria-expanded', 'false');
+  if (hadFocus) { try { (b || _csDrawerLastFocus).focus(); } catch (e) {} }
+}
+// when the hold fires (bvTabDown opened the Assistant listening), get the drawer out of its way
+var _csHoldT = null;
+function csDrawerHoldWatch(){ clearTimeout(_csHoldT); _csHoldT = setTimeout(function(){ if (typeof _bvHeld !== 'undefined' && _bvHeld) csDrawerClose(); }, 480); }
+function csDrawerHoldStop(){ clearTimeout(_csHoldT); }
+function csDrawerToggle(){ if (csDrawerIsOpen()) csDrawerClose(); else csDrawerOpen(); }
+function csDrawerGo(v){ csDrawerClose(); if (csNavLocked(v)) { showLockedToast(); return; } switchView(v); }
+// Esc closes; Tab stays inside the open drawer.
+document.addEventListener('keydown', function(e){
+  if (!csDrawerIsOpen()) return;
+  if (e.key === 'Escape') { e.preventDefault(); csDrawerClose(); return; }
+  if (e.key === 'Tab') {
+    var p = document.getElementById('csDrawer'); if (!p) return;
+    var f = Array.prototype.slice.call(p.querySelectorAll('button, a[href]')).filter(function(x){ return !x.disabled; });
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === p)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+// crossing to the desktop layout (≥900px, no drawer there): close it — state, aria-expanded, body class
+try {
+  var _csMq = window.matchMedia ? window.matchMedia('(min-width: 900px)') : null;
+  var _csMqOn = function(e){ if (e && e.matches) csDrawerClose(); };
+  if (_csMq) { if (_csMq.addEventListener) _csMq.addEventListener('change', _csMqOn); else if (_csMq.addListener) _csMq.addListener(_csMqOn); }
+} catch (e) {}
+// The pencil: a new post = Quick Post.
+function csNewPost(){ csDrawerClose(); switchView('today'); }
+// Called by switchView after every screen change: closes the drawer, tells the CSS which screen is up
+// (the composer shows on Ideas and Quick Post only).
+function csShellSync(view){
+  try { document.body.setAttribute('data-cs-view', String(view || '')); } catch (e) {}
+  csDrawerClose();
+}
+// ── Composer (Ideas + Quick Post) ──
+var CS_COMPOSER_VIEWS = ['ideas', 'today'];
+// What the composer does with what was typed: '' = nothing; 'remix' = a link (TikTok/YouTube/article/
+// Instagram, by remixPickLink's ≤8-plain-words rule); 'idea' = your own words → Idea Catcher's writer.
+function csComposerSource(raw){ return { kind: 'idea', text: ('MY IDEA: ' + String(raw == null ? '' : raw).trim()).slice(0, 12000) }; }
+// The sheet's "classic" escape hatch for a composer idea: Idea Catcher's classic develop (ideaDevelop),
+// but only when Idea Catcher holds no draft — its classic path clears that screen when it finishes,
+// so a saved draft there is never overwritten; the person is told instead.
+function csComposerClassic(text){
+  switchView('idea');
+  var d = (typeof icDraftLoad === 'function') ? icDraftLoad() : null;
+  var g = function(id){ var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  var busy = (d && (String(d.idea || '').trim() || d.url || d.notes || d.img)) || g('icIdea') || g('icUrl') || g('icNotes');
+  if (busy) { try { showToast('Idea Catcher has a draft of yours — it is kept. Finish or clear it there to use the classic develop.', 7000); } catch (e) {} return; }
+  var ic = document.getElementById('icIdea');
+  if (!ic) return;
+  ic.value = String(text || '');
+  return ideaDevelop();
+}
+function csComposerRoute(raw){
+  var t = String(raw == null ? '' : raw).trim();
+  if (!t) return '';
+  var pick = (typeof remixPickLink === 'function') ? remixPickLink(t) : { kind: 'text' };
+  return (pick && pick.kind && pick.kind !== 'text') ? 'remix' : 'idea';
+}
+function csComposerSend(){
+  var box = document.getElementById('csComposerIn');
+  var raw = String((box && box.value) || '').trim();
+  var route = csComposerRoute(raw);
+  if (!route) { try { if (box) box.focus(); } catch (e) {} return; }
+  if (route === 'remix') {
+    // the Remix tab's own lock (renderNavWithLocks) applies here too
+    if (csNavLocked('create')) { showLockedToast(); return; }
+    // a Remix read or twist is already running: leave its box alone and keep the text here
+    if ((typeof _rxBusy !== 'undefined' && _rxBusy) || (typeof _rxFetching !== 'undefined' && _rxFetching)) {
+      try { showToast('Wait for this one to finish first.'); } catch (e) {}
+      return;
+    }
+    switchView('create');
+    var q = document.getElementById('remixQuickIn');
+    if (!q) return;
+    q.value = raw;
+    if (box) box.value = '';
+    return remixQuickGo(document.getElementById('remixQuickBtn'));
+  }
+  // your own idea → the SAME writer Idea Catcher's "Develop into a brief" uses (icDevelopV2 → rv2Start,
+  // source "MY IDEA: …", the full-screen sheet), with ONLY the composer text. The Idea Catcher screen,
+  // its fields and its saved draft are never read or touched (origin 'composer', not 'catcher').
+  var before = (typeof _rv2Runs !== 'undefined') ? _rv2Runs.rv2Sheet : null;
+  var p = rv2Start(null, csComposerSource(raw), { host: 'rv2Sheet', origin: { name: 'composer', meta: { text: raw.slice(0, 12000) } } });
+  if (box && typeof _rv2Runs !== 'undefined' && _rv2Runs.rv2Sheet && _rv2Runs.rv2Sheet !== before) box.value = '';
+  return p;
+}
+// ── Ideas first (v699 polish): with pending ideas the screen opens on "N ideas ready" and the cards;
+// the Plan my week card (same ids, same functions) folds behind a pill and unfolds in place on tap.
+// With 0 pending the full card shows as before.
+var _csPlanOpen = false, _csIdeasPrevN = null;
+function csIdeasHeadHtml(n){
+  return '<div class="cs-ih-text"><h1 class="cs-ih-title">' + n + (n === 1 ? ' idea ready' : ' ideas ready') + '</h1>'
+    + '<p class="cs-ih-sub">Pick the ones you\u2019d post. Skip the rest.</p></div>'
+    + '<button type="button" class="cs-pill-btn" id="csPlanToggle" aria-controls="ideasQuick" aria-expanded="' + (_csPlanOpen ? 'true' : 'false') + '" onclick="csPlanToggle()">Plan my week</button>';
+}
+function csIdeasHeadSync(){
+  var head = document.getElementById('csIdeasHead'), view = document.getElementById('view-ideas');
+  if (!head || !view) return;
+  var n = 0; try { n = (typeof getPendingIdeas === 'function') ? getPendingIdeas().length : 0; } catch (e) {}
+  // the card was showing because nothing was waiting and a run just filled the list: keep it open
+  // (its "Added N ideas ✓" line is in it) until the person folds it with the pill
+  if (n > 0 && _csIdeasPrevN === 0) _csPlanOpen = true;
+  _csIdeasPrevN = n;
+  if (n > 0) {
+    head.innerHTML = csIdeasHeadHtml(n);
+    head.hidden = false;
+    view.classList.add('cs-ideas-has');
+    view.classList.toggle('cs-plan-folded', !_csPlanOpen);
+  } else {
+    head.innerHTML = '';
+    head.hidden = true;
+    view.classList.remove('cs-ideas-has', 'cs-plan-folded');
+  }
+}
+function csPlanToggle(){
+  _csPlanOpen = !_csPlanOpen;
+  csIdeasHeadSync();
+  if (_csPlanOpen) { try { var q = document.getElementById('ideasQuick'); if (q && q.scrollIntoView) q.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }
+}
+// every Ideas re-render (approve, dismiss, generate, filters) refreshes the heading
+(function(){
+  var orig = window.renderIdeas;
+  if (typeof orig !== 'function' || orig.__csHead) return;
+  var w = function(){ var r = orig.apply(this, arguments); try { csIdeasHeadSync(); } catch (e) {} return r; };
+  w.__csHead = true;
+  window.renderIdeas = w;
+})();
+// ===== end v699 CLEAN SHELL =====
+
 // ── Per-function FAQ ("Open FAQ only about this function") ──
 const FN_FAQ_TITLE = {
   today:'Quick Post', ideas:'Ideas', idea:'Idea Catcher', questions:'What people search',
@@ -9608,12 +10001,13 @@ function renderFnFaq(view, el){
   }
   const wrap = document.createElement('div');
   wrap.className = 'fn-faq';
-  wrap.innerHTML = '<details class="fn-faq-box"><summary><svg class="btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>FAQ — about ' + escHtml(FN_FAQ_TITLE[view]||'this') + '</summary><div class="fn-faq-body">' +
+  // v699: a small muted "How this works" link at the BOTTOM of the screen; it opens the same Q&A.
+  wrap.innerHTML = '<details class="fn-faq-box cs-faq-link"><summary>How this works<span class="cs-sr"> \u2014 ' + escHtml(FN_FAQ_TITLE[view]||'this') + '</span></summary><div class="fn-faq-body">' +
     items.map(it => '<details class="fn-faq-q"><summary>' + escHtml(it.q) + '</summary><div class="fn-faq-a">' + escHtml(it.a) + '</div></details>').join('') +
     '</div></details>';
-  // v449 (Jörgen): FAQ sits at the TOP on every screen incl. the Shazam home —
-  // under the main header panel, where it always lived.
-  el.insertBefore(wrap, el.firstChild);
+  // v699 (owner, redesign): the FAQ moves from the top to the bottom so the screen opens on its work.
+  // (v449 had put it at the top.)
+  el.appendChild(wrap);
 }
 
 function switchView(view) {
@@ -9635,6 +10029,7 @@ function switchView(view) {
   el.classList.add('active', direction);
   renderNav();
   try{ if(typeof syncDesktopNav==='function') syncDesktopNav(); }catch(e){}
+  try{ if(typeof csShellSync==='function') csShellSync(view); }catch(e){}   // v699: drawer closes, composer shows on Ideas/Quick Post
   if(view==='today') { renderTodayView(); }
   else if(view==='ideas') { renderFilmingQueue(); restoreProToolsState(); renderStats(); renderIdeaFilters(); renderIdeas(); try{ renderIdeaDelivery(); }catch(e){} }
   else if(view==='questions') renderPAASection();
@@ -13502,7 +13897,7 @@ function renderPipeline() {
       </div>
       <div class="pipeline-card-header" onclick="toggleExpand(${idea.id})">
         <div class="pipeline-card-info">
-          <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.isRemix?'<span class="remix-origin-tag">Remix</span>':''}${idea.delivery==='faceless'?'<span class="remix-origin-tag" style="background:#E7DAF9;color:#16130F;">Faceless</span>':''}
+          <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.isRemix?'<span class="remix-origin-tag">Remix</span>':''}${idea.delivery==='faceless'?'<span class="remix-origin-tag" style="background:var(--cs-chip);color:var(--cs-text);">Faceless</span>':''}
           <div class="pipeline-card-title" style="padding-right:50px">${exp?'\u25BC':'\u25B6'} ${escHtml(idea.title)}</div>
           ${idea.hook && asText(idea.hook).trim().toLowerCase() !== asText(idea.title).trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="pipeline-card-hook">${escHtml(idea.hook)}</div>` : ''}
           <div class="pipeline-card-day">${escHtml(idea.day)}${idea.originalCreator?' \u2022 via '+escHtml(idea.originalCreator):''}${idea.community?' \u2022 '+escHtml(idea.community):''}</div>
@@ -13512,7 +13907,7 @@ function renderPipeline() {
                 opened post so every collapsed card is the same shape \u2014 one primary + undo. They ragged-
                 wrapped differently per format and left a lonely undo circle on 2-button cards. */''}
           ${prevStage?`<button class="pipe-btn" onclick="moveStage(${idea.id},'${prevStage}')">\u2190 ${STAGE_LABELS[prevStage]}</button>`:''}
-          ${nextStage?`<button class="pipe-btn next" onclick="pipeAdvance(event,${idea.id},'${nextStage}')">${nextStage==='done'?'Mark Done \u2713':STAGE_LABELS[nextStage]+' \u2192'}</button>`:''}
+          ${nextStage?`<button class="pipe-btn next" onclick="pipeAdvance(event,${idea.id},'${nextStage}')">${nextStage==='done'?'Mark done':STAGE_LABELS[nextStage]+' \u2192'}</button>`:''}
           <button class="pipe-btn pipe-undo" onclick="moveStage(${idea.id},'pending')" title="Back to pending" aria-label="Back to pending">${ICO.undo}</button>
         </div>
       </div>
@@ -14407,7 +14802,7 @@ function renderFilmingQueue() {
             <span class="fq-format-tag">${escHtml(FORMAT_LABELS[idea.format] || idea.format)}</span>
             <span class="fq-item-title">${escHtml(idea.title)}</span>
           </div>
-          <button class="fq-done-btn" onclick="fqDone(event,${idea.id})">Mark Done ✓</button>
+          <button class="fq-done-btn" onclick="fqDone(event,${idea.id})">Mark done</button>
         </div>
       `).join('')}
     </div>
@@ -14429,7 +14824,7 @@ function homeBrainNudgeHtml(){
     return `<div class="bb-nudge">
       <button class="bb-nudge-x" onclick="dismissBrainNudge()" aria-label="Hide">&times;</button>
       <div class="bb-nudge-top">
-        <div class="bb-nudge-ring" style="background:conic-gradient(var(--lav,#E7DAF9) 0 ${pct}%, var(--surface3,#EDE8DA) ${pct}% 100%)"><span>${pct}%</span></div>
+        <div class="bb-nudge-ring" style="background:conic-gradient(var(--cs-text) 0 ${pct}%, var(--cs-chip) ${pct}% 100%)"><span>${pct}%</span></div>
         <div class="bb-nudge-txt"><strong>Your brand brain is ${pct}% full</strong><span>The fuller it is, the more every post sounds like you.${left>0?` ${left} still to fill.`:''}</span></div>
       </div>
       <button class="bb-nudge-go" onclick="openBrandVoice()">Finish your brand brain &rarr;</button>
@@ -14483,16 +14878,13 @@ function renderTodayView() {
       <div class="tp-shz" id="tpShz">
         <div class="tp-shz-day">${today} · ${escHtml(community)}</div>
         ${(_ok && typeof tvTypeRowHtml === 'function') ? `<div class="qp-types-wrap" id="tvTypeRow">${tvTypeRowHtml()}</div>` : ''}
-        <div class="tp-shz-stage${_ok ? '' : ' locked'}">
-          <span class="tp-shz-ring r1"></span><span class="tp-shz-ring r2"></span>
-          <button class="tp-shz-btn" id="tvGenerateBtn" aria-label="Generate today's post" onclick="${_ok ? 'tvGenerateV2()' : 'showLockedToast()'}">
-            <img src="/shrimp-mascot.png?v=162" alt="">
-          </button>
+        <div class="tp-shz-stage cs-qp-stage${_ok ? '' : ' locked'}">
+          <button type="button" class="cs-primary-btn" id="tvGenerateBtn" onclick="${_ok ? 'tvGenerateV2()' : 'showLockedToast()'}">Write today’s post</button>
         </div>
-        <div class="tp-shz-cap" id="tvShzCap">${_ok ? 'Today’s post, one tap' : 'Set up your brand first'}</div>
+        <div class="tp-shz-cap" id="tvShzCap">${_ok ? '' : 'Set up your brand first'}</div>
         <div class="tp-shz-sub">${_ok
           ? 'Written through your brand brain — your voice, not generic AI'
-          : `${getMissingFields().join(', ')} — <span onclick="openSettingsFromLock()" style="color:var(--text,#16130F);cursor:pointer;font-weight:700;text-decoration:underline;">Go to Settings</span>`}</div>
+          : `${getMissingFields().join(', ')} — <span onclick="openSettingsFromLock()" style="color:var(--cs-text);cursor:pointer;font-weight:600;text-decoration:underline;">Go to Settings</span>`}</div>
         ${_ok ? `<button class="tp-shz-angle" onclick="openAngleSheet()">or pick the angle myself<span class="fold-caret" aria-hidden="true">▾</span></button>` : ''}
         <div class="tp-status" id="tvStatus"></div>
       </div>
@@ -15360,8 +15752,8 @@ function tvApprove() {
   const approveBtn = document.querySelector('#tvResult .tp-action-btn.approve');
   if (approveBtn) {
     approveBtn.textContent = 'Ready to Film & Post! →';
-    approveBtn.style.background = 'var(--lav, #E7DAF9)';
-    approveBtn.style.color = '#16130F';
+    approveBtn.style.background = 'var(--cs-primary)';
+    approveBtn.style.color = 'var(--cs-on-primary)';
     // Make it actionable: jump to the Pipeline where this approved post lives.
     approveBtn.onclick = () => switchView('pipeline');
   }
@@ -15951,8 +16343,8 @@ async function usePAAQuestion(idx, chosenFormat) {
             const el = document.querySelector(`.list-card[data-id="${newIdea.id}"]`) || document.querySelectorAll('.list-card')[document.querySelectorAll('.list-card').length - 1];
             if (el) {
               el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              el.style.boxShadow = '0 0 0 2px var(--accent), 0 4px 20px rgba(0,0,0,0.3)';
-              setTimeout(() => { el.style.transition = 'box-shadow 1s ease'; el.style.boxShadow = ''; }, 2000);
+              el.style.outline = '2px solid var(--cs-text)'; el.style.outlineOffset = '2px';   // v699: token outline, no accent glow
+              setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = ''; }, 2000);
             }
           }, 100);
         }, 300);
@@ -16215,8 +16607,8 @@ function renderIdeas() {
     const _fresh = day === '__fresh__';
     const _label = _fresh ? 'Just generated' : day;
     const _sub = _fresh ? (grouped[day].length + ' new') : (grouped[day][0].community || '');
-    const _col = _fresh ? 'var(--accent,#8B5CF6)' : 'var(--gold)';
-    const _brd = _fresh ? 'var(--accent,#8B5CF6)' : '#16130F';
+    const _col = _fresh ? 'var(--cs-text)' : 'var(--cs-muted)';   // v699: theme tokens, no hard-coded ink/purple
+    const _brd = 'var(--cs-line)';
     html += `<div style="margin-bottom:24px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:8px;border-bottom:1.5px solid ${_brd}">
         <h2 style="font-size:15px;font-weight:${_fresh?'800':'700'};color:${_col};text-transform:uppercase;letter-spacing:0.5px">${escHtml(_label)}</h2>
@@ -16240,8 +16632,8 @@ function renderIdeas() {
               ${idea.status!=='pending' ? `<span class="list-card-status s-${escAttr(idea.status)}">${escHtml(STAGE_LABELS[idea.status]||idea.status)}${idea.dismissReason?' \u2022 '+escHtml(idea.dismissReason):''}</span>` : ''}
             </div>
             <div class="list-actions" onclick="event.stopPropagation()">${_ideaSelectMode ? (isPending ? `<button class="idea-pick ${_ideaSelected.has(idea.id)?'on':''}" onclick="toggleIdeaPick(${idea.id})" aria-label="Select">${_ideaSelected.has(idea.id)?ICO.check:''}</button>` : '') : (isPending ? `
-                <button class="action-circle approve" onclick="quickApprove(${idea.id})" title="Approve">\u2713</button>
-                <button class="action-circle dismiss" onclick="showDismissPopupFn(${idea.id})" title="Dismiss">\u2717</button>
+                <button class="action-circle approve" onclick="quickApprove(${idea.id})" title="Approve" aria-label="Approve"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
+                <button class="action-circle dismiss" onclick="showDismissPopupFn(${idea.id})" title="Dismiss" aria-label="Dismiss"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
               ` : `
                 <button class="action-circle undo" onclick="undoStatus(${idea.id})" title="Back to pending">${ICO.undo}</button>
               `)}</div>
@@ -21163,6 +21555,10 @@ function rv2OriginFor(name, meta) {
       const box = document.getElementById('icResult');
       if (box) box.innerHTML = '<div class="ic-result-card"><div class="ic-result-tag">✓ Saved to your Ideas</div><button class="gen-btn" style="width:100%;margin-top:12px;" onclick="switchView(\'ideas\')">Open in Ideas →</button></div>';
     } });
+  // v699: an idea typed in the composer — same writer and tags as Idea Catcher, but nothing on the
+  // Idea Catcher screen (fields, saved draft) is read, cleared or replaced.
+  if (name === 'composer') return Object.assign(base, { title: 'Develop your idea', extra: { sparkSource: true, paaSource: false },
+    classic: () => csComposerClassic(m.text), classicLabel: 'Use the classic develop instead' });
   if (name === 'paa') {
     const q = String(m.question || '');
     return Object.assign(base, { title: 'Answer a real question', extra: { paaSource: q },
@@ -23358,15 +23754,15 @@ function renderPromptRefGrid() {
 // ===== SETTINGS =====
 function toggleDarkMode(on) {
   document.documentElement.dataset.theme = on ? 'dark' : 'light';
-  document.querySelector('meta[name="theme-color"]').content = on ? '#111111' : '#F0F0F0';
+  document.querySelector('meta[name="theme-color"]').content = on ? '#212121' : '#ffffff';   // v699: clean theme bg
   localStorage.setItem('bn-dark-mode', on ? '1' : '0');
 }
 // Restore dark mode on load
 (function() {
   try {
-    if (localStorage.getItem('bn-dark-mode') === '1') {
+    if (csResolveTheme() === 'dark') {   // v699: a saved choice wins, else CS_DEFAULT_THEME
       document.documentElement.dataset.theme = 'dark';
-      var mc = document.querySelector('meta[name="theme-color"]'); if (mc) mc.content = '#111111';
+      var mc = document.querySelector('meta[name="theme-color"]'); if (mc) mc.content = '#212121';
     }
   } catch (e) {}
 })();
@@ -24177,7 +24573,7 @@ function spScrollToField(match) {
     if (el) {
       try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(_){}
       try { el.focus({ preventScroll: true }); } catch(_){ try { el.focus(); } catch(e){} }
-      try { el.style.transition = 'box-shadow .25s'; el.style.boxShadow = '0 0 0 3px var(--lav,#E7DAF9)'; setTimeout(() => { el.style.boxShadow = ''; }, 1500); } catch(_){}
+      try { el.style.outline = '2px solid var(--cs-text)'; el.style.outlineOffset = '2px'; setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = ''; }, 1500); } catch(_){}
     } else {
       spAskAssistant(match); // couldn't find the field in the DOM — fall back to the AI assistant
     }
@@ -24515,14 +24911,14 @@ function renderSettingsPanel() {
           <div style="font-size:14px;font-weight:700;color:var(--text);">Dark Mode</div>
           <div style="font-size:12px;color:var(--text3);">Easier on the eyes at night</div>
         </div>
-        <label class="toggle-switch"><input type="checkbox" ${localStorage.getItem('bn-dark-mode')==='1'?'checked':''} onchange="toggleDarkMode(this.checked)"><span class="toggle-track"></span></label>
+        <label class="toggle-switch"><input type="checkbox" ${csResolveTheme()==='dark'?'checked':''} onchange="toggleDarkMode(this.checked)"><span class="toggle-track"></span></label>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--surface3);margin-bottom:16px;">
         <div>
           <div style="font-size:14px;font-weight:700;color:var(--text);">Shrimp Mascot</div>
           <div style="font-size:12px;color:var(--text3);">Tips and reactions in the corner</div>
         </div>
-        <label class="toggle-switch"><input type="checkbox" ${localStorage.getItem('mascot-hidden')==='1'?'':'checked'} onchange="setMascotVisible(this.checked)"><span class="toggle-track"></span></label>
+        <label class="toggle-switch"><input type="checkbox" ${csMascotHidden()?'':'checked'} onchange="setMascotVisible(this.checked)"><span class="toggle-track"></span></label>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--surface3);margin-bottom:16px;gap:10px;">
         <div style="flex:1;min-width:0;">
@@ -26139,7 +26535,7 @@ function applyFeatureLocks() {
     if (!unlocked) {
       const missing = getMissingFields();
       genBtn.disabled = true;
-      genBtn.innerHTML = '🔒 Complete Profile to Generate';
+      genBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg> Complete Profile to Generate';
       genBtn.onclick = function(e) { e.preventDefault(); showLockedToast(); };
       // Add missing fields hint below button
       let hint = document.getElementById('genLockedHint');
@@ -26149,7 +26545,7 @@ function applyFeatureLocks() {
         hint.style.cssText = 'text-align:center;font-size:12px;color:var(--text3);margin-top:8px;';
         genBtn.insertAdjacentElement('afterend', hint);
       }
-      if (hint) hint.innerHTML = 'Missing: ' + missing.join(', ') + ' — <span onclick="openSettingsFromLock()" style="color:var(--text,#16130F);cursor:pointer;font-weight:600;">Go to Settings</span>';
+      if (hint) hint.innerHTML = 'Missing: ' + missing.join(', ') + ' — <span onclick="openSettingsFromLock()" style="color:var(--cs-text);cursor:pointer;font-weight:600;">Go to Settings</span>';
     } else {
       genBtn.disabled = false;
       genBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Generate Ideas';
@@ -26183,7 +26579,7 @@ function renderNavWithLocks() {
   document.getElementById("navTabs").innerHTML = tabs.filter(t => !(typeof csShelved==='function' && csShelved(t.id))).map(t => {
     if (t.locked) {
       return `<button class="nav-tab locked-tab" data-tab="${t.id}" onclick="showLockedToast()">
-        <span class="tab-icon">${t.icon}</span>${t.label}<span class="lock-icon">🔒</span>
+        <span class="tab-icon">${t.icon}</span>${t.label}<span class="lock-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg></span>
       </button>`;
     }
     return `<button class="nav-tab ${activeView===t.id?'active':''}" data-tab="${t.id}" onclick="switchView('${t.id}')">
@@ -26208,7 +26604,7 @@ function showLockedToast() {
   const toast = document.createElement('div');
   toast.className = 'locked-toast';
   toast.innerHTML = `
-    🔒 Complete your brand profile to unlock all features<br>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg> Complete your brand profile to unlock all features<br>
     <span style="font-size:11px;opacity:0.85;">Missing: ${missing.join(', ')}</span><br>
     <span class="toast-cta" onclick="openSettingsFromLock()">→ Complete profile now</span>
   `;
@@ -26261,8 +26657,8 @@ function _drainToasts() {
 }
 
 function renderEmptyState(icon, title, desc) {
-  // icon param kept for back-compat but ignored — every empty state now shows the monochrome idle shrimp.
-  return `<div class="empty-state"><img class="empty-shrimp" src="/shrimp-mascot.png?v=162" alt=""><div class="empty-state-title">${title}</div><div class="empty-state-desc">${desc}</div></div>`;
+  // icon param kept for back-compat but ignored. v699: no mascot art on main screens — title + text only.
+  return `<div class="empty-state"><div class="empty-state-title">${title}</div><div class="empty-state-desc">${desc}</div></div>`;
 }
 
 function renderSkeletonCards(count = 3) {
@@ -26438,45 +26834,65 @@ setTimeout(function() {
 // ===== GUIDED TOUR =====
 const TOUR_STEPS = [
   {
-    target: '#navTabs',
+    target: '#navTabs', deskTarget: '#desktopSidebar', phoneTarget: '#csMenuBtn',
     title: 'Welcome to Content Shrimp',
     text: 'Your content command center — one tab per job. Quick tour, 30 seconds.',
+    phoneText: 'Your content command center — every screen is in this menu. Quick tour, 30 seconds.',
     position: 'auto'
   },
   {
-    target: '.nav-tab:nth-child(1)',
+    target: '.nav-tab:nth-child(1)', deskTarget: '#desktopSidebar .ds-item[data-view="today"]', phoneTarget: '#csNewBtn',
     title: 'Quick Post',
     text: 'One tap, one post. Pick a format and get a ready-to-film brief for today.',
+    phoneText: 'The pencil opens Quick Post: one tap, one post — a ready-to-film brief for today.',
     position: 'auto'
   },
   {
-    target: '.nav-tab:nth-child(2)',
+    target: '.nav-tab:nth-child(2)', deskTarget: '#desktopSidebar .ds-item[data-view="ideas"]', phoneTarget: null,
     title: 'Ideas',
     text: 'Your week of AI-generated ideas, mapped to your 7-day rotation. Approve the ones you like, dismiss the rest.',
     position: 'auto'
   },
   {
-    target: '.nav-tab:nth-child(3)',
+    target: '.nav-tab:nth-child(3)', deskTarget: '#desktopSidebar .ds-item[data-view="pipeline"]', phoneTarget: null,
     title: 'Pipeline',
     text: 'Approved ideas land here. Track filming and done — teleprompter built in for video scripts.',
     position: 'auto'
   },
   {
-    target: '.nav-tab:nth-child(4)',
+    target: '.nav-tab:nth-child(4)', deskTarget: '#desktopSidebar .ds-item[data-view="create"]', phoneTarget: null,
     title: 'Remix',
     text: 'Paste any creator\'s post, article, or video — it gets rewritten in your brand voice with your product facts baked in.',
     position: 'auto'
   },
   {
-    target: '.header-actions',
+    target: '.header-actions', deskTarget: '.header-actions', phoneTarget: '#csMenuBtn',
     title: 'Settings & Help',
     text: 'Fine-tune your brand voice, upload your logo, set your content mix. Hit Help anytime to replay this tour.',
+    phoneText: 'Settings, your brand brain and Help are in this menu. Hit Help anytime to replay this tour.',
     position: 'auto'
   }
 ];
 
 let tourStep = 0;
 let tourOverlay = null;
+/* v699 — the tab bar is hidden at every width now. Under 900px a step points at the ☰ menu or the pencil
+   (phoneTarget; null = no such control here, the step is skipped); at 900px+ at the desktop sidebar
+   (deskTarget). A step whose target is missing or not on screen is skipped, never pointed at nothing. */
+function tourTargetSel(step, w) {
+  const width = (w == null) ? window.innerWidth : w;
+  if (width < 900) return ('phoneTarget' in step) ? step.phoneTarget : step.target;
+  return step.deskTarget || step.target;
+}
+function tourTargetEl(step) {
+  const sel = tourTargetSel(step);
+  if (!sel) return null;
+  const el = document.querySelector(sel);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return (r && r.width > 0 && r.height > 0) ? el : null;
+}
+function tourVisibleSteps() { return TOUR_STEPS.filter(s => !!tourTargetEl(s)); }
 
 function startTour() {
   tourStep = 0;
@@ -26493,10 +26909,12 @@ function startTour() {
 }
 
 function showTourStep() {
-  if (tourStep >= TOUR_STEPS.length) { endTour(); return; }
-  const step = TOUR_STEPS[tourStep];
-  const el = document.querySelector(step.target);
-  if (!el) { tourStep++; showTourStep(); return; }
+  const steps = tourVisibleSteps();
+  if (tourStep >= steps.length) { endTour(); return; }
+  const step = steps[tourStep];
+  const el = tourTargetEl(step);
+  if (!el) { endTour(); return; }
+  const _phone = window.innerWidth < 900;
 
   const rect = el.getBoundingClientRect();
   const pad = 8;
@@ -26511,20 +26929,21 @@ function showTourStep() {
   tt.offsetHeight; // reflow
   tt.style.animation = '';
   tt.innerHTML = `
-    <div class="tour-step-indicator">Step ${tourStep + 1} of ${TOUR_STEPS.length}</div>
+    <div class="tour-step-indicator">Step ${tourStep + 1} of ${steps.length}</div>
     <h3>${step.title}</h3>
-    <p>${step.text}</p>
+    <p>${(_phone && step.phoneText) || step.text}</p>
     <div class="tour-actions">
       <button class="tour-btn skip" onclick="endTour()">Skip</button>
       <div style="flex:1"></div>
       ${tourStep > 0 ? '<button class="tour-btn skip" onclick="prevTourStep()">Back</button>' : ''}
-      <button class="tour-btn primary" onclick="nextTourStep()">${tourStep === TOUR_STEPS.length - 1 ? 'Done' : 'Next'}</button>
+      <button class="tour-btn primary" onclick="nextTourStep()">${tourStep === steps.length - 1 ? 'Done' : 'Next'}</button>
     </div>`;
 
-  // Position tooltip — auto: above on mobile (nav at bottom), below on desktop
+  // Position tooltip — auto: below a target in the top half of the screen, above one in the bottom half
+  // (v699: the targets are the header ☰ / pencil on phones now, not a bottom tab bar)
   let pos = step.position;
   if (pos === 'auto') {
-    pos = window.innerWidth <= 600 ? 'top' : 'bottom';
+    pos = rect.top < window.innerHeight / 2 ? 'bottom' : 'top';
   }
   let top, left;
   if (pos === 'bottom' || pos === 'bottom-left') {
@@ -26947,7 +27366,7 @@ setTimeout(() => {
     const w = document.getElementById('mascotWrap');
     if (w) w.style.display = on ? '' : 'none';
   };
-  if (localStorage.getItem('mascot-hidden') === '1') {
+  if (csMascotHidden()) {   // v699: off unless this device turned it on (CS_MASCOT_DEFAULT_ON)
     setTimeout(function(){ const w = document.getElementById('mascotWrap'); if (w) w.style.display = 'none'; }, 0);
   }
 
@@ -27570,7 +27989,7 @@ function bvRenderHome(){
   const more = empty.length>6 ? `<span class="bv-home-more">+${empty.length-6} more</span>` : '';
   el.innerHTML = `
     <div class="bv-home-top">
-      <div class="bv-home-ring" style="background:conic-gradient(var(--lav,#E7DAF9) 0 ${pct}%, var(--surface3,#EDE8DA) ${pct}% 100%)"><span>${pct}%</span></div>
+      <div class="bv-home-ring" style="background:conic-gradient(var(--cs-text) 0 ${pct}%, var(--cs-line) ${pct}% 100%)"><span>${pct}%</span></div>
       <div class="bv-home-info">
         <div class="bv-home-h">${cov.filled} of ${total} pieces filled</div>
         <div class="bv-home-sub">${escHtml(brainCoverageLine(cov))}</div>

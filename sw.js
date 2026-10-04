@@ -4,7 +4,7 @@
 // changing BUILD makes this file byte-different, the browser detects a new worker, and `install`
 // pulls the fresh app.html into the SAME stable cache while the OLD copy keeps serving instantly.
 const CACHE = 'cs-shell';   // stable — never rename
-const BUILD = 'v698-5a9a4143';       // ← bump this string on every app.html/asset change to push an update
+const BUILD = 'v699-a8b4bfbe';       // ← bump this string on every app.html/asset change to push an update
 
 // Only the app shell is refreshed on update. Images/icons are cached lazily on first use (never
 // eagerly precached — on a very slow connection an eager 1.8MB precache saturates the pipe and is
@@ -14,7 +14,10 @@ const BUILD = 'v698-5a9a4143';       // ← bump this string on every app.html/a
 // to be here, and that is what froze contentshrimp.com on an old build for anyone who had ever
 // opened the app: this worker's scope is the whole origin, so it served the landing page from cache
 // too, and index.html carries no service-worker code of its own to ever ask for a newer copy.
-const CORE = ['/app.html', '/manifest.json'];
+// v699: /clean.css (the clean theme) is in CORE because the fetch handler below is cache-first for
+// everything but the shell — without this, the first copy a device fetched would be served forever.
+// In CORE it is re-downloaded with every BUILD bump, together with the app.html that links it.
+const CORE = ['/app.html', '/manifest.json', '/clean.css'];
 
 // Requests the worker must never answer from cache. Compared against the pathname, not the raw URL,
 // so a query string or a hash cannot slip a stale copy through (`/?utm_source=…` is still the
@@ -42,6 +45,11 @@ const ALWAYS_LIVE = ['/', '/index.html', '/terms.html', '/privacy.html', '/refun
 // v663: the marker that says WHICH build's shell is actually in the cache. Without it nothing
 // could tell a successful update from a failed one — see the install handler below.
 const SHELL_MARK = '/__cs_shell_build';
+// v699: the same idea for the clean theme. /clean.css is only served from cache when the copy there was
+// fetched for THIS build; otherwise it is fetched fresh (and cached + marked), falling back to the cached
+// copy only when the network is down. So a new app.html never runs on an old clean.css for long.
+const CSS_URL = '/clean.css';
+const CSS_MARK = '/__cs_css_build';
 self.addEventListener('install', e => {
   self.skipWaiting();
   // Pull the fresh shell into the stable cache IN THE BACKGROUND. The currently-cached copy keeps
@@ -61,16 +69,23 @@ self.addEventListener('install', e => {
      missed download heals itself on the next launch instead of never. */
   e.waitUntil(
     caches.open(CACHE).then(async c => {
-      let shellOk = false;
+      let shellOk = false, cssOk = false;
       await Promise.allSettled(CORE.map(u =>
         fetch(u, { cache: 'reload' })
           .then(r => {
             if (!r || !r.ok) return null;
             if (u === '/app.html') shellOk = true;
+            if (u === CSS_URL) cssOk = true;
             return c.put(u, r);
           })
           .catch(() => {})
       ));
+      // v699: a clean.css that did not arrive (404, dropped line) leaves no mark, so the fetch handler
+      // re-fetches it instead of pairing this build's shell with an older stylesheet. Never fails install.
+      try {
+        if (cssOk) await c.put(CSS_MARK, new Response(BUILD, { headers: { 'content-type': 'text/plain' } }));
+        else await c.delete(CSS_MARK).catch(() => {});
+      } catch (_) {}
       // The marker is written ONLY when this build's shell really landed. A stale marker is worse
       // than none: it is what would let the app claim an update it does not have.
       try {
@@ -146,6 +161,28 @@ self.addEventListener('fetch', e => {
      so this is deliberately limited to /app.html: one request per launch, after the response has
      already been served from cache, so nothing the user is waiting on is delayed. It is what makes
      a failed install heal itself instead of stranding the device on an old build forever. */
+  // v699: the clean theme — cached copy only if it was fetched for this BUILD, else network (then cached).
+  if (_path === CSS_URL) {
+    e.respondWith((async () => {
+      const cached = await caches.match(CSS_URL);
+      try {
+        const mark = await caches.match(CSS_MARK);
+        if (cached && mark && (await mark.text()) === BUILD) return cached;
+      } catch (_) {}
+      try {
+        const r = await fetch(CSS_URL, { cache: 'reload' });
+        if (r && r.ok) {
+          const c = await caches.open(CACHE);
+          await c.put(CSS_URL, r.clone());
+          await c.put(CSS_MARK, new Response(BUILD, { headers: { 'content-type': 'text/plain' } }));
+          return r;
+        }
+        if (!cached) return r;
+      } catch (_) {}
+      return cached || Response.error();
+    })());
+    return;
+  }
   if (_path === '/app.html') {
     e.respondWith((async () => {
       /* v674 — MATCH THE PATH, NOT THE URL. The shell is cached as the bare '/app.html',

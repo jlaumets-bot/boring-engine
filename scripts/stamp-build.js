@@ -16,7 +16,12 @@ let app = fs.readFileSync(appPath, 'utf8');
 const ver = (app.match(/APP_VERSION = '(v\d+)'/) || [])[1];
 if (!ver) { console.error('FAIL: no APP_VERSION found in app.html'); process.exit(1); }
 
-const hash = crypto.createHash('sha256').update(app).digest('hex').slice(0, 8);
+// v699: clean.css is the app's theme and the SW only re-fetches it when BUILD moves,
+// so a clean.css-only change must also move BUILD. Hash app.html + clean.css (when present).
+const cssPath = path.join(root, 'clean.css');
+const hasher = crypto.createHash('sha256').update(app);
+if (fs.existsSync(cssPath)) hasher.update('\0clean.css\0').update(fs.readFileSync(cssPath, 'utf8'));
+const hash = hasher.digest('hex').slice(0, 8);
 let sw = fs.readFileSync(swPath, 'utf8');
 const before = (sw.match(/BUILD = '([^']+)'/) || [])[1];
 const stamp = `${ver}-${hash}`;
@@ -58,7 +63,7 @@ const prevServer = fs.existsSync(buildPath)
   ? (fs.readFileSync(buildPath, 'utf8').match(/'([^']+)'/) || [])[1] : null;
 if (prevServer !== serverStamp) fs.writeFileSync(buildPath, want);
 
-console.log(before === stamp ? `BUILD already current: ${stamp}` : `BUILD ${before}  ->  ${stamp}   (hash of app.html)`);
+console.log(before === stamp ? `BUILD already current: ${stamp}` : `BUILD ${before}  ->  ${stamp}   (hash of app.html + clean.css)`);
 console.log(prevServer === serverStamp
   ? `server stamp already current: ${serverStamp}`
   : `server ${prevServer || '(none)'}  ->  ${serverStamp}   (+ hash of ${apiFiles.length} api files)`);

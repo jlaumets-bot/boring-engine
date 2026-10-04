@@ -2,6 +2,20 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-04 — v699. CLEAN REDESIGN "A · Clean" (ChatGPT-like, dark default) (owner: "clean and sleek … im already super tired of the shrimp design").
+
+Contract .unlazy/redesign/PLAN.md; mockup canvas https://claude.ai/artifact/JTqFEMoK86agRFde1Ya5gA. LOOK-only: every function still reachable.
+- clean.css (new, loaded last): --cs-* tokens (dark default + light), all 37 legacy vars re-pointed, Geist font, flat cards/pills.
+  Section 4 is GENERATED from app.html by .unlazy/redesign/gen.py — rerun it after adding hard-coded colours to app.html CSS.
+  Gate scripts/verify/clean-theme.mjs (tokens, legacy vars, contrast, 52 state-vs-base pairs). Mutations .unlazy/redesign/mutations-T.json 14/14.
+- app.html shell: CS_DEFAULT_THEME='dark' (saved bn-dark-mode wins), CS_START_VIEW='ideas', CS_MASCOT_DEFAULT_ON=false.
+  <900px: header ☰ · brand ▾ · pencil; left drawer holds every destination (tab bar hidden at all widths; renderNav still fills it). ≥900: sidebar.
+  Composer on Ideas + Quick Post: link → remixQuickGo (blocked while _rxBusy/_rxFetching); text → rv2Start("MY IDEA: …") with origin 'composer' (never touches the Idea Catcher draft).
+  Ideas: "N ideas ready" heading, Plan my week folded into a pill when pending > 0. FAQ → "How this works" link at the bottom. Tour retargeted for phones.
+  Gate scripts/verify/clean-shell.mjs. Mutations .unlazy/redesign/mutations-S.json 53/53.
+- sw.js precaches /clean.css and re-fetches it when BUILD changes; stamp-build now hashes app.html + clean.css. manifest colours #212121.
+- One independent review round: 8 findings, all fixed. Not verified on a real iPhone (safe area, keyboard over composer, hold gesture).
+
 ## ▶▶ 2026-10-04 — v698. REMIX IS TIKTOK-FIRST + "CREATORS YOU FOLLOW" PANELS (owner: "first exactly same transcript and then own twist options", "the ones you follow need to be more present").
 
 Contract .unlazy/tiktok/PLAN.md. Gates: scripts/verify/remix-transcript-ui.mjs (REMIX TRANSCRIPT OK), scripts/verify/creator-panels-ui.mjs (CREATOR PANELS OK).

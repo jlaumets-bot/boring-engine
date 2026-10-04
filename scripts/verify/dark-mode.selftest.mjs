@@ -26,12 +26,12 @@ const MUTATIONS = [
   {
     name: 'nav indicator re-hardcoded to ink (the original dead-code bug)',
     expect: /nav active indicator/i,
-    apply: (s) => s.replace('</style>\n</head>', '@media (max-width: 600px) { .nav-tab.active::before { background: #16130F !important; height: 3px; } }\n</style>\n</head>'),
+    apply: (s) => s.replace('</style>\n<!-- v699: the clean theme', '@media (max-width: 600px) { .nav-tab.active::before { background: #16130F !important; height: 3px; } }\n</style>\n<!-- v699: the clean theme'),
   },
   {
     name: 'active bottom-nav icon re-hardcoded to ink',
     expect: /nav active tab icon/i,
-    apply: (s) => s.replace('</style>\n</head>', '@media (max-width: 600px) { .nav-tab.active .tab-icon svg { stroke: #16130F !important; } }\n</style>\n</head>'),
+    apply: (s) => s.replace('</style>\n<!-- v699: the clean theme', '@media (max-width: 600px) { .nav-tab.active .tab-icon svg { stroke: #16130F !important; } }\n</style>\n<!-- v699: the clean theme'),
   },
   // ── THE HISTORICAL FAILURE MODE ────────────────────────────────────────────
   // Every past dark-mode fix died the same way: it was written at normal weight
@@ -115,7 +115,7 @@ const MUTATIONS = [
   {
     name: '"Go to Settings" recovery link reverted to inline ink',
     expect: /Go to Settings/i,
-    apply: (s) => s.replace('<span onclick="openSettingsFromLock()" style="color:var(--text,#16130F);cursor:pointer;font-weight:700;', '<span onclick="openSettingsFromLock()" style="color:#16130F;cursor:pointer;font-weight:700;'),
+    apply: (s) => s.replace('<span onclick="openSettingsFromLock()" style="color:var(--cs-text);cursor:pointer;font-weight:600;text-decoration:underline;', '<span onclick="openSettingsFromLock()" style="color:#16130F;cursor:pointer;font-weight:600;text-decoration:underline;'),
   },
   {
     name: 'white text left on the --accent fills (contrast failure)',
