@@ -2,6 +2,19 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-04 — v698. REMIX IS TIKTOK-FIRST + "CREATORS YOU FOLLOW" PANELS (owner: "first exactly same transcript and then own twist options", "the ones you follow need to be more present").
+
+Contract .unlazy/tiktok/PLAN.md. Gates: scripts/verify/remix-transcript-ui.mjs (REMIX TRANSCRIPT OK), scripts/verify/creator-panels-ui.mjs (CREATOR PANELS OK).
+Mutations .unlazy/tiktok/mutations.json 54/54. One independent review round, all 5 findings fixed.
+- Remix Step 1: paste a TikTok/YouTube link → exact transcript in an editable card (copy, creator, link). Transcript error → empty card "paste the words yourself".
+  Paste counts as a link only if ≤8 plain words around it (RX_LINK_MAX_WORDS); longer pastes are text. Instagram link → refusal sentence, no network call.
+- Step 2 twists (My take, Simplify, Flip it, Different format, Series, Roast & respond) use the card text. Results: "Save to Ideas" (pending) replaces "Send to Pipeline".
+  Series saves every part. Hidden source is replaced, never appended. Trends "Make it mine" fills the Step 1 card. remixQuickGo blocked while _rxBusy.
+- KNOWN: reading a link still logs transcribeurl (2 credits) before a twist is picked — server-side, unchanged.
+- "Creators you follow" panel row at the bottom of Remix (replaced the Borrow-from strip), built from bookmarks.
+  Open → profile (fpProfileUrl derives @user from video links; http/no-scheme links normalised by fpNormLink).
+  Inline "why I follow" note (entry.note, max 140), also in Settings → Bookmarks and the Bookmarks sheet. Remove confirms inline. Edit/remove state keyed by creator, not slot.
+
 ## ▶▶ 2026-09-29 — v697. POST TYPES: "WHAT IS THE POST ABOUT" IS A FIRST-CLASS CHOICE (owner: "these categories are super important").
 
 Six types, same ids everywhere: tip · about (our product/service) · news (category news) · qna · story · bts.

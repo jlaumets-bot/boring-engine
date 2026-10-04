@@ -13,7 +13,7 @@
   // the listener late means the prompt is lost and the Install button has nothing to fire.
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
-  window.APP_VERSION = 'v697';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v698';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -431,9 +431,6 @@ body {
   /* (#dfyReqBtn is covered by the v431 primary tier above) */
   /* Single-line text inputs: readable desktop width (textareas stay full-column) */
   input.sp-input, input.creator-input { max-width: 520px; }
-  /* Remix borrow-strip: fade at the edge instead of a hard mid-chip clip */
-  /* v594: fade only the SCROLLING chip row — masking the whole strip also erased the "Manage" link in the head row */
-  .remix-borrow-strip .borrow-row { -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent); mask-image: linear-gradient(90deg, #000 90%, transparent); }
   /* Pipeline assign avatar: label readable so the circle reads as a deliberate avatar control */
   .assign-name { font-size: 10px; font-weight: 600; max-width: 72px; }
   /* v429/v430: Settings plan buttons join the tier (were flex:1 full-width bars). !important
@@ -701,7 +698,7 @@ input:focus, textarea:focus, select:focus {
 /* v472: the sticky header used to swallow the first lines of anything we
    scrollIntoView (QA: remix + Trends results "top lines cut off"). One rule,
    every auto-scrolled result target. */
-#remixResults, #rv2Panel, #vlResults, #tvResult, #icResult, .list-card, .pipeline-card { scroll-margin-top: 84px; }
+#remixResults, #remixOrigCard, #rv2Panel, #vlResults, #tvResult, #icResult, .list-card, .pipeline-card { scroll-margin-top: 84px; }
 /* v593: the sticky brand header was still clipping these when scrolled to — QA saw it on Pipeline
    (expanded post card), Settings (Content Mix accordion title) and Questions (first question card). */
 .pipeline-card-detail, .list-card-detail, .sp-section, .sp-field, .paa-section, .paa-card, .paa-question { scroll-margin-top: 84px; }
@@ -3437,7 +3434,7 @@ input:focus, textarea:focus, select:focus {
   .copy-reel-btn, .vt-copy, .cs-onb-go { min-height: 36px !important; padding-top: 8px !important; padding-bottom: 8px !important; display: inline-flex !important; align-items: center; justify-content: center; }
   /* a11y: tiny close/delete controls + inline text-links get a real 40px tap area on phones */
   .conn-x, .bm-entry-del, .ref-card-remove, .cs-onb-x, .cm-close, .bv-close { min-width: 40px !important; min-height: 40px !important; display: inline-flex !important; align-items: center; justify-content: center; }
-  .borrow-empty a, a[onclick*="resetAuthForm"] { display: inline-block; padding: 8px 6px; }
+  a[onclick*="resetAuthForm"] { display: inline-block; padding: 8px 6px; }
 
   /* Header — compact but readable on mobile */
   .header { padding: 4px 16px 0; }
@@ -5613,8 +5610,8 @@ body, body * {
 
 /* Kill the exposed horizontal scrollbar on every chip/tab row (Android Chrome showed a grey bar
    between a filter row and the cards, clipping the pills). Rows stay scrollable, just no bar. */
-.filter-row, .pipeline-stages, .create-sub-tabs, .source-tabs, .bm-bar, .borrow-row, .tp-cats, .search-tags { scrollbar-width: none; -ms-overflow-style: none; }
-.filter-row::-webkit-scrollbar, .pipeline-stages::-webkit-scrollbar, .create-sub-tabs::-webkit-scrollbar, .source-tabs::-webkit-scrollbar, .bm-bar::-webkit-scrollbar, .borrow-row::-webkit-scrollbar, .tp-cats::-webkit-scrollbar, .search-tags::-webkit-scrollbar { display: none; }
+.filter-row, .pipeline-stages, .create-sub-tabs, .source-tabs, .bm-bar, .tp-cats, .search-tags { scrollbar-width: none; -ms-overflow-style: none; }
+.filter-row::-webkit-scrollbar, .pipeline-stages::-webkit-scrollbar, .create-sub-tabs::-webkit-scrollbar, .source-tabs::-webkit-scrollbar, .bm-bar::-webkit-scrollbar, .tp-cats::-webkit-scrollbar, .search-tags::-webkit-scrollbar { display: none; }
 .stmt-tpl-chip{font:600 12px/1 Archivo,sans-serif;padding:7px 12px;border-radius:999px;border:1.5px solid var(--border,#DDD7C3);background:#fff;color:#16130F;cursor:pointer;letter-spacing:.02em;}
 .stmt-tpl-chip.on{background:#E7DAF9;border-color:#16130F;}
 .dp-sub{font-size:12px;color:var(--text3,#8A8270);margin:-2px 0 12px;line-height:1.4;}
@@ -6377,19 +6374,72 @@ if (!window.supabase) {
       </div>
 
       <style>
-      .remix-borrow-strip{margin:0 0 14px;}
-      .borrow-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
-      .borrow-head>span{font-size:13px;font-weight:800;color:var(--text2,#5C564A);}
-      .borrow-manage{font-size:12px;font-weight:700;color:var(--text3,#8A8270);cursor:pointer;}
-      .borrow-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
-      .borrow-chip{flex:0 0 auto;display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid #16130F;border-radius:999px;padding:7px 13px;cursor:pointer;font-size:13px;font-weight:800;color:#16130F;white-space:nowrap;font-family:inherit;}
-      .borrow-chip:active{transform:scale(.97);}
-      .borrow-plats{display:flex;gap:4px;}
-      .borrow-plat{font-size:10px;font-weight:800;background:#E7DAF9;border-radius:6px;padding:1px 6px;color:#16130F;cursor:pointer;}
-      .borrow-empty{font-size:12px;color:var(--text3,#8A8270);background:#fff;border:1px dashed var(--border,#DDD7C3);border-radius:10px;padding:9px 16px;}
-      .borrow-empty a{color:#7A5AF8;text-decoration:underline;cursor:pointer;font-weight:700;}
+      /* follow-panels: "Creators you follow" — bottom of Remix; the row scrolls sideways on its own, the page never does */
+      .fp-wrap{margin:22px 0 8px;max-width:100%;min-width:0;box-sizing:border-box;}
+      .fp-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 8px;min-width:0;}
+      .fp-title{font-size:14px;font-weight:800;color:var(--text);}
+      .fp-manage{font-size:12px;font-weight:700;color:var(--text3);background:none;border:0;padding:6px 4px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;font-family:inherit;}
+      .fp-hint{font-size:12.5px;line-height:1.45;color:var(--text3);margin:0 0 8px;}
+      .fp-row{display:flex;gap:10px;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 2px 8px;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;max-width:100%;min-width:0;box-sizing:border-box;}
+      .fp-panel{position:relative;flex:0 0 196px;width:196px;max-width:80vw;box-sizing:border-box;scroll-snap-align:start;background:var(--surface);color:var(--text);border:1.5px solid var(--border2);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0;}
+      .fp-panel.fp-editing{flex-basis:236px;width:236px;}
+      .fp-open{display:flex;flex-direction:column;gap:6px;color:var(--text);text-decoration:none;min-width:0;}
+      .fp-open::after{content:'';position:absolute;inset:0;border-radius:14px;}
+      .fp-top{min-width:0;}
+      .fp-open:focus-visible{outline:none;}
+      .fp-open:focus-visible::after{outline:2px solid var(--text);outline-offset:2px;}
+      .fp-name{font-size:14px;font-weight:800;line-height:1.25;overflow-wrap:anywhere;min-width:0;}
+      .fp-badge{align-self:flex-start;font-size:10.5px;font-weight:800;letter-spacing:.02em;border-radius:6px;padding:2px 7px;background:var(--surface2);color:var(--text2);}
+      .fp-badge.fp-b-tt{background:var(--text);color:var(--surface);}
+      .fp-toprow{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0;}
+      .fp-go{font-size:12px;font-weight:800;color:var(--text);white-space:nowrap;}
+      .fp-notebtn{position:relative;z-index:1;display:block;width:100%;background:none;border:0;padding:0;margin:0;text-align:left;font-family:inherit;color:var(--text2);cursor:pointer;min-width:0;}
+      .fp-note{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12.5px;line-height:1.4;color:var(--text2);overflow-wrap:anywhere;min-width:0;}
+      .fp-confirm{position:relative;z-index:1;font-size:12px;font-weight:700;color:var(--text);margin-top:auto;padding-top:4px;}
+      .fp-tool.fp-danger{background:var(--red);color:var(--surface);}
+      /* the same "why I follow them" note in Settings → Bookmarks and in the Bookmarks sheet */
+      .bm-entry-note{font-size:12px;line-height:1.4;color:var(--text3);margin:-4px 0 6px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+      .bm-note-edit{display:flex;flex-direction:column;gap:4px;flex:1 1 100%;min-width:0;font-size:11px;color:var(--text3);}
+      .bm-note-edit textarea{width:100%;max-width:100%;box-sizing:border-box;min-height:52px;resize:vertical;padding:6px 8px;border:1px solid var(--surface3);border-radius:4px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--text);}
+      .bm-card-main{flex:1;min-width:0;}
+      .bm-card-note{font-size:12.5px;line-height:1.4;color:var(--text3);margin-top:3px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+      .fp-ghost{position:relative;z-index:1;align-self:flex-start;background:none;border:0;padding:2px 0;font-family:inherit;font-size:12.5px;line-height:1.4;color:var(--text4);text-align:left;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;}
+      .fp-addlink{position:relative;z-index:1;align-self:flex-start;background:var(--surface2);color:var(--text);border:1.5px dashed var(--border2);border-radius:8px;padding:5px 9px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;}
+      .fp-tools{position:relative;z-index:1;display:flex;gap:6px;margin-top:auto;padding-top:4px;}
+      .fp-tool{background:var(--surface2);color:var(--text2);border:0;border-radius:8px;padding:6px 9px;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;}
+      .fp-add{background:var(--surface2);border-style:dashed;}
+      .fp-add-btn{flex:1;display:flex;align-items:center;justify-content:center;min-height:88px;background:none;border:0;color:var(--text);font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;}
+      .fp-label{font-size:11px;font-weight:800;color:var(--text3);}
+      .fp-panel input,.fp-panel textarea{width:100%;max-width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;background:var(--bg);color:var(--text);border:1.5px solid var(--border2);border-radius:8px;padding:7px 8px;}
+      .fp-panel textarea{min-height:64px;resize:vertical;}
+      .fp-count{font-size:11px;color:var(--text3);text-align:right;}
+      .fp-actions{display:flex;gap:6px;}
+      .fp-save{flex:1;background:var(--text);color:var(--surface);border:0;border-radius:8px;padding:8px 10px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;}
+      .fp-err{font-size:12px;line-height:1.4;color:var(--red);}
+      .fp-err:empty{display:none;}
       /* v450: classic remix form folds behind "set it up manually" (beats the desktop display:flex !important) */
       #remixManualPanel.remix-manual-hidden{display:none !important;}
+      /* remix-tt: Step 1 "The original" (exact words) + Step 2 "Make it yours" */
+      .rx-orig{background:var(--surface);color:var(--text);border:1.5px solid var(--text);border-radius:16px;padding:16px;margin:0 0 14px;box-sizing:border-box;max-width:100%;min-width:0;overflow:hidden;}
+      .rx-step{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin:0 0 6px;}
+      .rx-step-2{margin-top:16px;}
+      .rx-orig-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:13px;margin:0 0 8px;min-width:0;}
+      .rx-orig-creator{font-weight:800;color:var(--text);overflow-wrap:anywhere;min-width:0;}
+      .rx-orig-meta a{color:var(--text);font-weight:700;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;min-width:0;}
+      .rx-orig-empty{font-size:13px;line-height:1.5;color:var(--text2);background:var(--surface2);border-radius:10px;padding:10px 12px;margin:0 0 8px;}
+      .rx-orig .gen-textarea{width:100%;max-width:100%;box-sizing:border-box;min-height:160px;margin:0;}
+      .rx-orig-tools{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;font-size:12px;color:var(--text3);}
+      .rx-modes{display:flex;flex-wrap:wrap;gap:8px;min-width:0;}
+      .rx-modes .search-tag{flex:1 1 auto;min-width:0;margin:0;white-space:normal;text-align:center;padding:9px 12px;font-size:13px;font-weight:700;border:1.5px solid var(--border2);}
+      .rx-modes .rx-mode-main{flex-basis:100%;font-weight:800;background:var(--text);color:var(--surface);border-color:var(--text);}
+      .rx-modes .search-tag:disabled{opacity:.55;cursor:progress;}
+      .rx-orig-hint{font-size:12px;line-height:1.45;color:var(--text3);margin-top:8px;}
+      .rx-orig-status{font-size:12.5px;line-height:1.45;color:var(--text2);margin-top:8px;min-height:0;}
+      .rx-orig-status:empty{display:none;}
+      .rx-opts{margin-top:10px;font-size:13px;color:var(--text2);min-width:0;}
+      .rx-opts>summary{cursor:pointer;font-weight:700;color:var(--text2);padding:6px 0;}
+      .rx-opts-body{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:4px 0 2px;min-width:0;}
+      .rx-opts-body .search-tag{margin:0;}
       /* v451: same fold for the Viral Lab manual inputs */
       #vlManualPanel.vl-manual-hidden{display:none !important;}
       /* v461: same fold for Idea Catcher's optional reference panel */
@@ -6419,16 +6469,16 @@ if (!window.supabase) {
       @keyframes rxRing{0%{transform:scale(1);opacity:0.7;}100%{transform:scale(1.08,2.1);opacity:0;}}
       @media (prefers-reduced-motion: reduce){#remixQuickBtn,#remixQuickBtn.btn-working{animation:none;}#remixQuickBtn.btn-working::before{animation:none;opacity:0;}}
       </style>
-      <div id="remixBorrowStrip" class="remix-borrow-strip"></div>
 
       <div id="remixQuick" style="background:var(--surface,#fff);border:1.5px solid #16130F;border-radius:16px;padding:16px;margin:0 0 14px;">
         <div style="font-size:19px;font-weight:800;letter-spacing:-0.01em;line-height:1.25;margin-bottom:4px;">Seen something that works? Make it yours.</div>
-        <div style="font-size:12.5px;color:var(--text3);line-height:1.5;margin-bottom:10px;">Paste a TikTok, YouTube or article link &mdash; or any text. One tap, rebuilt in your voice.</div>
+        <div style="font-size:12.5px;color:var(--text3);line-height:1.5;margin-bottom:10px;">Paste a TikTok, YouTube or article link &mdash; or any text. You see the exact words first, then pick how to make it yours.</div>
         <textarea class="gen-textarea" id="remixQuickIn" placeholder="Paste a link or text&hellip;" style="min-height:64px;"></textarea>
         <div id="remixQuickStatus" style="font-size:12px;color:var(--text3);margin-top:6px;min-height:15px;"></div>
         <button class="gen-btn" style="width:100%;margin-top:8px;" id="remixQuickBtn" onclick="remixQuickGo(this)">Remix it</button>
         <button class="tp-shz-angle" style="margin-top:6px;padding:6px 10px;" onclick="remixToggleManual()">or set it up manually<span class="fold-caret" aria-hidden="true">▾</span></button>
       </div>
+      <div id="remixOrigCard"></div>
 
       <div class="remix-input-group grp-panel remix-manual-hidden" id="remixManualPanel">
         <div class="remix-row">
@@ -6523,6 +6573,7 @@ if (!window.supabase) {
 
       <div id="rv2Panel"></div>
       <div id="remixResults"></div>
+      <div id="followPanels" class="fp-wrap"></div>
     </div>
 
 
@@ -9588,7 +9639,7 @@ function switchView(view) {
   else if(view==='ideas') { renderFilmingQueue(); restoreProToolsState(); renderStats(); renderIdeaFilters(); renderIdeas(); try{ renderIdeaDelivery(); }catch(e){} }
   else if(view==='questions') renderPAASection();
   else if(view==='pipeline') { renderPipeline(); }
-  else if(view==='create') { renderCreate(); try{ renderRemixBorrowStrip(); }catch(e){} try{ renderRemixDelivery(); }catch(e){} }
+  else if(view==='create') { renderCreate(); try{ renderFollowPanels(); }catch(e){} try{ renderRemixDelivery(); }catch(e){} }
   else if(view==='notebook') renderNotebook();
   else if(view==='viral') renderViralLab();
   else if(view==='idea') renderIdeaCatcher();
@@ -14489,7 +14540,7 @@ window._ideaDelivery = window._ideaDelivery || 'faceon';
 window._remixDelivery = window._remixDelivery || 'faceon';
 function renderIdeaDelivery(){ var s=document.getElementById('ideaDeliverySlot'); if(s) s.innerHTML = deliverySegHtml(window._ideaDelivery||'faceon','setIdeaDelivery'); }
 function setIdeaDelivery(d){ window._ideaDelivery = (d==='faceless'?'faceless':'faceon'); renderIdeaDelivery(); }
-function renderRemixDelivery(){ var s=document.getElementById('remixDeliverySlot'); if(s) s.innerHTML = deliverySegHtml(window._remixDelivery||'faceon','setRemixDelivery'); }
+function renderRemixDelivery(){ var h = deliverySegHtml(window._remixDelivery||'faceon','setRemixDelivery'); var s=document.getElementById('remixDeliverySlot'); if(s) s.innerHTML = h; var s2=document.getElementById('rxOrigDelivery'); if(s2) s2.innerHTML = h; }
 function setRemixDelivery(d){ window._remixDelivery = (d==='faceless'?'faceless':'faceon'); renderRemixDelivery(); }
 
 // Open a filming-queue item in the Pipeline tab, expanded
@@ -20188,6 +20239,7 @@ function refShotSet(kind, dataUrl) {
   if (kind === 'ic') { try { if (typeof icDraftSave === 'function') icDraftSave(); } catch(e) {} }
   const box = document.getElementById(kind + 'ShotPreview');
   if (!box) return;
+  if (kind !== 'ic') { try { if (typeof _rxOrig !== 'undefined' && _rxOrig) remixOrigRender(); } catch (e) {} }   // remix-tt: the Step 1 card's "Options" says whether one is attached
   box.innerHTML = dataUrl
     ? '<img src="' + dataUrl + '" style="height:54px;width:54px;object-fit:cover;border-radius:8px;border:1.5px solid var(--border);"><span style="font-size:12px;color:var(--text3);">Screenshot attached — the AI will look at it</span><button onclick="refShotClear(\'' + kind + '\')" style="margin-left:auto;background:none;border:none;color:var(--text3);font-size:22px;line-height:1;cursor:pointer;">&times;</button>'
     : '';
@@ -20301,48 +20353,226 @@ function remixToggleManual(show){
   if (show === true) { p.classList.remove('remix-manual-hidden'); return; }
   p.classList.toggle('remix-manual-hidden');
 }
+// remix-tt — ONE-BOX, ORIGINAL FIRST. A TikTok / YouTube link (or pasted text) is shown as Step 1
+// "The original": the EXACT words, editable, with Copy and a word count. Step 2 "Make it yours" runs
+// on those (possibly edited) words: My take = the opinion-first flow (rv2Start), the other five = the
+// classic /api/remix modes (remixContent). Every run REPLACES the hidden source fields — it never
+// appends, so an older source can never mix into a new remix. Article links keep today's path.
 function remixDetectKind(s){
-  if (/^https?:\/\/\S+$/i.test(s) || /^[\w.-]+\.[a-z]{2,}\/\S*$/i.test(s)) {
-    if (/tiktok\.com/i.test(s)) return 'tiktok';
-    if (/youtu\.be|youtube\.com/i.test(s)) return 'youtube';
+  const t = String(s == null ? '' : s).trim();
+  if (/^https?:\/\/\S+$/i.test(t) || /^[\w.-]+\.[a-z]{2,}\/\S*$/i.test(t)) {
+    // the HOST decides: tiktok.com, www./m./vm./vt.tiktok.com, tiktok.com/t/… — never "tiktok.com" in a query string
+    if (/^(?:https?:\/\/)?(?:[\w-]+\.)*(?:instagram\.com|instagr\.am)(?:[\/?#:]|$)/i.test(t)) return 'instagram';   // remix-tt: not supported yet
+    if (/^(?:https?:\/\/)?(?:[\w-]+\.)*tiktok\.com(?:[\/?#:]|$)/i.test(t)) return 'tiktok';
+    if (/^(?:https?:\/\/)?(?:[\w-]+\.)*(?:youtube\.com|youtu\.be)(?:[\/?#:]|$)/i.test(t)) return 'youtube';
     return 'article';
   }
   return 'text';
 }
+const RX_LINK_MAX_WORDS = 8;   // remixPickLink: more plain words than this around a link = pasted text
+function remixAbsUrl(u){ const t = String(u == null ? '' : u).trim(); return /^https?:\/\//i.test(t) ? t : (t ? 'https://' + t : ''); }
+// what was pasted → { kind, url }. A share sheet pastes "caption … https://vm.tiktok.com/…/":
+// a TikTok / YouTube link anywhere in the box wins; otherwise a lone (or leading http) link is an article.
+function remixPickLink(raw){
+  const toks = String(raw == null ? '' : raw).trim().split(/\s+/).filter(Boolean);
+  // a link only takes over when the paste is essentially JUST the link (+ a few words like "check this"
+  // or a share sheet's #tags). A script or notes that merely MENTION a link stay pasted text — they are
+  // never refused (Instagram) or swapped for a transcript (TikTok / YouTube).
+  const linky = t => remixDetectKind(t.replace(/[)\].,!?'"»”]+$/, '')) !== 'text';
+  const words = toks.filter(t => !linky(t) && !/^[#@]\S/.test(t)).length;
+  if (words > RX_LINK_MAX_WORDS) return { kind: 'text', url: '' };
+  let ig = '';
+  for (const t0 of toks) {
+    const t = t0.replace(/[)\].,!?'"»”]+$/, '');
+    const k = remixDetectKind(t);
+    if (k === 'tiktok' || k === 'youtube') return { kind: k, url: remixAbsUrl(t) };
+    if (k === 'instagram' && !ig) ig = remixAbsUrl(t);
+  }
+  if (ig) return { kind: 'instagram', url: ig };   // never sent anywhere — remixQuickGo says so instead
+  const first = toks[0] || '';
+  if (first.length > 8 && /^https?:\/\//i.test(first) && remixDetectKind(first) !== 'text') return { kind: 'article', url: first };
+  if (toks.length === 1 && remixDetectKind(first) !== 'text') return { kind: 'article', url: remixAbsUrl(first) };
+  return { kind: 'text', url: '' };
+}
+function remixCreatorFromUrl(u){ const m = /(?:tiktok\.com|youtube\.com)\/@([\w.\-]{1,60})/i.exec(String(u || '')); return m ? m[1] : ''; }
+// the words of a TikTok (/api/transcribe-url) or YouTube video (/api/transcribe, mode youtube), EXACTLY as
+// the server sent them. A refusal throws the server's own sentence (they are written for people).
+async function remixFetchWords(kind, url){
+  const isTT = kind === 'tiktok';
+  const resp = await fetch(isTT ? '/api/transcribe-url' : '/api/transcribe', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(isTT ? { url: url } : { url: url, mode: 'youtube' })
+  });
+  let data = null;
+  try { data = JSON.parse(await resp.text()); } catch (e) { data = null; }
+  const said = (data && typeof data.error === 'string') ? data.error.trim() : '';
+  if (!resp.ok) throw new Error(said || (isTT ? "Couldn't get the words from that TikTok — try again in a minute." : "Couldn't get the words from that video — try again in a minute."));
+  if (!data || typeof data !== 'object') throw new Error("The words came back unreadable — try again in a minute.");
+  const words = isTT ? data.transcript : data.text;
+  return typeof words === 'string' ? words : '';
+}
+const RX_IG_MSG = "Instagram links aren't supported yet — paste the spoken words instead";
+let _rxOrig = null;       // Step 1: { kind, url, creator, platform, text, empty, note }
+let _rxBusy = '';         // the Step 2 mode running right now ('' = none) — one at a time
+let _rxFetching = false;  // a link is being read
+let _rxOptsOpen = false;  // the card's "Options" fold is open (kept across re-renders)
+function remixOptsToggle(el){ _rxOptsOpen = !!(el && el.open); }
+// the optional screenshot reuses the manual form's picker (refShotPick → remixRefImage → /api/remix refImage)
+function remixOrigShot(){ const inp = document.getElementById('remixShotInput'); if (inp && inp.click) inp.click(); }
+const RX_MODES = [
+  { id: 'remix', label: 'My take' }, { id: 'simplify', label: 'Simplify' }, { id: 'flip', label: 'Flip it' },
+  { id: 'format-swap', label: 'Different format' }, { id: 'series', label: 'Series' }, { id: 'roast', label: 'Roast & respond' }
+];
+function rxWordCount(t){ return String(t == null ? '' : t).split(/\s+/).filter(Boolean).length; }
+function rxWordsLabel(t){ const n = rxWordCount(t); return n + (n === 1 ? ' word' : ' words'); }
+function remixShowOriginal(o){
+  const kind = (o && o.kind) || 'text';
+  const text = String((o && o.text) == null ? '' : o.text);
+  _rxOrig = { kind: kind, url: (o && o.url) || '', creator: (o && o.creator) || '',
+    platform: kind === 'youtube' ? 'youtube' : (kind === 'tiktok' ? 'tiktok' : ''),
+    text: text, empty: !text.trim(), failed: !!(o && o.failed), note: '' };
+  remixOrigRender();
+  try { const el = document.getElementById('remixOrigCard'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+}
+function remixOrigRender(){
+  const el = document.getElementById('remixOrigCard'); if (!el) return;
+  const o = _rxOrig;
+  if (!o) { el.innerHTML = ''; return; }
+  const where = o.kind === 'tiktok' ? 'TikTok' : (o.kind === 'youtube' ? 'YouTube' : '');
+  const oHref = safeUrl(o.url || '');
+  const who = o.creator ? '<span class="rx-orig-creator">@' + escapeHtml(o.creator) + '</span>' : (o.kind === 'trend' ? '<span class="rx-orig-creator">From Trends</span>' : '');
+  const link = oHref ? '<a href="' + escAttr(oHref) + '" target="_blank" rel="noopener">' + (o.kind === 'trend' ? 'See the post' : 'Watch on ' + (where || 'the original')) + ' ↗</a>' : '';
+  const empty = o.empty
+    ? '<div class="rx-orig-empty" id="rxOrigEmpty">' + (o.failed
+        ? 'Or paste the words yourself — type what they say in the box below, then pick how to make it yours.'
+        : (o.kind === 'tiktok'
+          ? 'This TikTok has no spoken words to pick up — it may be a photo slideshow or music only.'
+          : 'There were no words to pick up from this one.') + ' Type a short description of what it shows in the box below instead, then pick how to make it yours.') + '</div>'
+    : '';
+  const busy = _rxBusy;
+  const modes = RX_MODES.map(m => '<button type="button" class="search-tag rx-mode' + (m.id === 'remix' ? ' rx-mode-main' : '') + '" data-rxmode="' + m.id + '"'
+    + (busy ? ' disabled aria-disabled="true"' : '') + ' onclick="remixRunMode(\'' + m.id + '\', this)">' + (busy === m.id ? 'Working…' : escapeHtml(m.label)) + '</button>').join('');
+  el.innerHTML = '<div class="rx-orig">'
+    + '<div class="rx-step">Step 1 · The original</div>'
+    + ((who || link) ? '<div class="rx-orig-meta">' + who + link + '</div>' : '')
+    + empty
+    + '<textarea class="gen-textarea" id="rxOrigText" aria-label="The original words" oninput="remixOrigEdit(this.value)" placeholder="'
+    + (o.failed ? 'Paste or type what they say' : (o.empty ? 'What does it show? e.g. 5 photos of a messy desk turning tidy, upbeat music' : 'The original words')) + '"></textarea>'
+    + '<div class="rx-orig-tools"><span id="rxOrigWords">' + rxWordsLabel(o.text) + '</span><button type="button" class="search-tag" onclick="remixOrigCopy()">Copy</button></div>'
+    + '<div class="rx-step rx-step-2">Step 2 · Make it yours</div>'
+    + '<div class="rx-modes">' + modes + '</div>'
+    + '<div class="rx-orig-hint">My take writes it from your own opinion. The other five rewrite the original in your voice.</div>'
+    + '<details class="rx-opts" id="rxOrigOpts"' + (_rxOptsOpen ? ' open' : '') + ' ontoggle="remixOptsToggle(this)"><summary>Options · Face-on / Faceless, screenshot</summary><div class="rx-opts-body">'
+    + '<div id="rxOrigDelivery"></div>'
+    + '<button type="button" class="search-tag" onclick="remixOrigShot()">' + (remixRefImage ? 'Change the screenshot' : 'Add a screenshot (optional)') + '</button>'
+    + '<div class="rx-orig-hint" id="rxOrigShotNote">' + (remixRefImage ? 'Screenshot attached — the five rewrite styles look at it (My take does not).' : 'A screenshot helps the five rewrite styles see the original (My take does not use it).') + '</div>'
+    + '</div></details>'
+    + '<div id="rxOrigStatus" class="rx-orig-status">' + escapeHtml(o.note || '') + '</div>'
+    + '</div>';
+  // the exact words go in as the box's VALUE (never parsed as HTML, nothing trimmed or escaped away)
+  const ta = document.getElementById('rxOrigText'); if (ta) ta.value = o.text;
+  try { renderRemixDelivery(); } catch (e) {}
+}
+function remixOrigEdit(v){
+  if (!_rxOrig) return;
+  _rxOrig.text = String(v == null ? '' : v);
+  const w = document.getElementById('rxOrigWords'); if (w) w.textContent = rxWordsLabel(_rxOrig.text);
+}
+function remixOrigCopy(){
+  const ta = document.getElementById('rxOrigText');
+  const text = String(ta ? ta.value : (_rxOrig ? _rxOrig.text : ''));
+  if (!text.trim()) { try { showToast('Nothing to copy yet.'); } catch (e) {} return; }
+  try {
+    navigator.clipboard.writeText(text).then(() => { try { showToast('Copied the original'); } catch (e) {} }).catch(() => copyFallback(text));
+  } catch (e) { copyFallback(text); }
+}
+// REPLACES every hidden source field with this run's source — never appends.
+function remixSetSource(o, text){
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  ['remixPostUrl', 'youtubeUrl', 'articleUrl', 'pasteSourceText'].forEach(id => set(id, ''));
+  set('remixDescription', String(text == null ? '' : text));
+  if (o && o.kind === 'tiktok') set('remixPostUrl', o.url || '');
+  if (o && o.kind === 'youtube') set('youtubeUrl', o.url || '');
+  if (o && o.kind === 'trend') set('remixPostUrl', o.url || '');
+  set('remixCreatorName', (o && o.creator) || '');
+  if (o && o.platform) set('remixPlatform', o.platform);
+  // a Trends post (remixTopPost) is a trend, not someone's video: rv2Source tags it from this
+  try { window._rv2TrendText = (o && o.kind === 'trend') ? String(text == null ? '' : text) : ''; } catch (e) {}
+}
+async function remixRunMode(mode, btn){
+  const o = _rxOrig;
+  if (!o) return false;
+  if (_rxBusy) { try { showToast('One at a time — wait for this one to finish.'); } catch (e) {} return false; }
+  if (!RX_MODES.some(m => m.id === mode)) return false;
+  const ta = document.getElementById('rxOrigText');
+  const text = String(ta ? ta.value : o.text);   // the EDITED words
+  o.text = text;
+  if (!text.trim()) { o.note = (o.empty && !o.failed) ? 'Type a short description of what it shows first.' : 'The box is empty — paste or type the words first.'; remixOrigRender(); return false; }
+  _rxBusy = mode; o.note = ''; remixOrigRender();
+  const prevMode = currentRemixMode;
+  try {
+    remixSetSource(o, text);
+    currentRemixMode = mode;
+    if (mode === 'remix') await rv2Start(null);
+    else await remixContent({ classic: true });
+  } finally {
+    currentRemixMode = prevMode;
+    _rxBusy = '';
+    remixOrigRender();
+  }
+  return true;
+}
 async function remixQuickGo(btn){
-  const raw = (document.getElementById('remixQuickIn').value || '').trim();
+  const box = document.getElementById('remixQuickIn');
+  const raw = String((box && box.value) || '').trim();
   const status = document.getElementById('remixQuickStatus');
-  if (!raw) { if (status) status.textContent = 'Paste a link or some text first.'; return; }
+  const say = (t, bad) => { if (status) { status.textContent = t; try { status.style.color = bad ? 'var(--red)' : ''; } catch (e) {} } };
+  if (!raw) { say('Paste a link or some text first.'); return; }
+  if (_rxFetching) return;   // one read at a time
+  // a Step 2 run borrows the shared currentRemixMode until it finishes: starting another paste now
+  // could inherit that mode (e.g. Series) or replace the run's card
+  if (_rxBusy) { try { showToast('Wait for this one to finish first.'); } catch (e) {} return; }
+  const pick = remixPickLink(raw);
+  if (pick.kind === 'instagram') { say(RX_IG_MSG, true); return; }   // no network call; the link stays in the box
+  if (pick.kind === 'tiktok' || pick.kind === 'youtube') {
+    _rxFetching = true;
+    const stopW = btnWork(btn, 'remix');
+    say(pick.kind === 'tiktok' ? 'Getting the words from the TikTok… this can take up to a minute.' : 'Getting the words from the YouTube video… this can take up to a minute.');
+    try {
+      const words = await remixFetchWords(pick.kind, pick.url);
+      remixShowOriginal({ kind: pick.kind, url: pick.url, creator: remixCreatorFromUrl(pick.url), text: words });
+      say('');
+      try { if (box) box.value = ''; } catch (e) {}
+    } catch (e) {
+      say((e && e.message) || "Couldn't get the words from that link — try again in a minute.", true);   // the server's own words; the link stays in the box
+      // PLAN 1: the card opens EMPTY so the words can be pasted or typed by hand (nothing is charged for that)
+      remixShowOriginal({ kind: pick.kind, url: pick.url, creator: remixCreatorFromUrl(pick.url), text: '', failed: true });
+    } finally { _rxFetching = false; stopW(); }
+    return;
+  }
+  if (pick.kind === 'text') {
+    remixShowOriginal({ kind: 'text', url: '', creator: '', text: raw });   // pasted words ARE the original
+    say('');
+    try { if (box) box.value = ''; } catch (e) {}
+    return;
+  }
+  // any other link: today's path — the article text is read into the (cleared) source box, then remixed
   const stopW = btnWork(btn, 'remix');
   try {
-    const kind = remixDetectKind(raw.split(/\s+/)[0].length > 8 && /^https?:\/\//i.test(raw.split(/\s+/)[0]) ? raw.split(/\s+/)[0] : raw);
-    const _dummy = { target: document.createElement('button') }; // handlers btnWork their ev.target — keep it off-screen
-    if (status) status.textContent = ({ tiktok: 'TikTok detected — pulling the transcript…', youtube: 'YouTube detected — pulling the transcript…', article: 'Link detected — extracting the article…', text: 'Text captured — remixing…' })[kind];
-    if (kind === 'tiktok') {
-      setRemixSource('tiktok');
-      document.getElementById('remixPostUrl').value = raw.split(/\s+/)[0];
-      await transcribeFromUrl();
-    } else if (kind === 'youtube') {
-      setRemixSource('youtube');
-      document.getElementById('youtubeUrl').value = raw.split(/\s+/)[0];
-      await transcribeFromYoutube(_dummy);
-    } else if (kind === 'article') {
-      setRemixSource('article');
-      document.getElementById('articleUrl').value = raw.split(/\s+/)[0];
-      await extractArticle(_dummy);
-    } else {
-      setRemixSource('paste');
-      document.getElementById('pasteSourceText').value = raw;
-      useSourcePaste();
-    }
+    _rxOrig = null; remixOrigRender();
+    say('Link detected — extracting the article…');
+    remixSetSource(null, '');
+    setRemixSource('article');
+    document.getElementById('articleUrl').value = pick.url;
+    await extractArticle({ target: document.createElement('button') });   // handlers btnWork their ev.target — keep it off-screen
     const desc = (document.getElementById('remixDescription').value || '').trim();
     if (!desc) throw new Error("Couldn't read that source — try the manual setup below.");
-    if (status) status.textContent = 'Writing it in your voice…';
+    say('Writing it in your voice…');
     await remixContent();
-    if (status) status.textContent = '';
-    try { document.getElementById('remixQuickIn').value = ''; } catch(e) {}
-  } catch(e) {
-    if (status) status.textContent = (e && e.message) || "Couldn't remix that — try the manual setup below.";
+    say('');
+    try { if (box) box.value = ''; } catch (e) {}
+  } catch (e) {
+    say((e && e.message) || "Couldn't remix that — try the manual setup below.", true);
     remixToggleManual(true); // open the classic form so nobody's stuck
   } finally { stopW(); }
 }
@@ -20411,6 +20641,11 @@ async function extractArticle(ev) {
   const url = document.getElementById('articleUrl').value.trim();
   if (!url) { alert('Paste an article URL first'); return; }
   const status = document.getElementById('articleStatus');
+  // remix-tt: Instagram is not an article — never send it to the article reader
+  if (typeof remixDetectKind === 'function' && remixDetectKind(url) === 'instagram') {
+    if (status) { status.textContent = RX_IG_MSG; status.style.color = 'var(--red)'; }
+    return;
+  }
   const btn = (ev && ev.target) || document.activeElement;
   btn.disabled = true;
   btn.textContent = 'Extracting...';
@@ -20736,7 +20971,7 @@ function renderRemixResults() {
         <button onclick="removeRemix(${i})">Remove</button>
         <button onclick="copyRemix(${i})">Copy Script</button>
         ${!(r.seriesParts && r.seriesParts.length) ? `<button onclick="sharpenRemix(${i},this)">Sharpen</button>` : ''}
-        <button class="primary" onclick="sendRemixToPipeline(${i})">Send to Pipeline</button>
+        <button class="primary" onclick="saveRemixToIdeas(${i}, this)">Save to Ideas</button>
       </div>
     </div>`;
   }).join('');
@@ -22095,49 +22330,104 @@ function copyFallback(text){
     if(typeof showToast==='function') showToast(ok?'Copied':'Select the text to copy it.');
   }catch(e){ if(typeof showToast==='function') showToast('Select the text to copy it.'); }
 }
+// remix-tt — a SERIES lives in seriesParts (api/remix.js), not in the top-level fields: copy, Pipeline
+// and Save to Ideas read the parts (one idea per part), never the empty top level.
+function remixParts(r){ return (r && Array.isArray(r.seriesParts)) ? r.seriesParts.filter(p => p && typeof p === 'object') : []; }
+function remixCopyText(r){
+  const t = v => String(v == null ? '' : v);
+  const parts = remixParts(r);
+  if (parts.length) {
+    const head = t(r.remixTitle).trim() ? 'SERIES: ' + t(r.remixTitle).trim() + '\n\n' : '';
+    return head + parts.map((p, i) => `PART ${t(p.partNumber || (i + 1))}: ${t(p.remixTitle)}${t(p.suggestedDay).trim() ? ' (' + t(p.suggestedDay).trim() + ')' : ''}\n\nHOOK: ${t(p.remixHook)}\n\nSCRIPT:\n${t(p.remixScript)}\n\nFORMAT: ${t(p.remixFormat)}`).join('\n\n-----\n\n')
+      + `\n\n-----\n\nCAPTION:\n${t(r.remixCaption)}\n\nHASHTAGS: ${t(r.remixHashtags)}`;
+  }
+  return `TITLE: ${t(r.remixTitle)}\n\nHOOK: ${t(r.remixHook)}\n\nSCRIPT:\n${t(r.remixScript)}\n\nCAPTION:\n${t(r.remixCaption)}\n\nHASHTAGS: ${t(r.remixHashtags)}\n\nFORMAT: ${t(r.remixFormat)}`;
+}
+// A classic remix as idea rows: one per series part, else one. status 'filming' (Pipeline) or 'pending' (Ideas).
+function remixToIdeas(r, status){
+  if (!r) return [];
+  const t = v => String(v == null ? '' : v).trim();
+  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const today = days[new Date().getDay()];
+  // the ideas save replaces rows BY TITLE — a second idea with an existing title would overwrite it
+  const taken = new Set((Array.isArray(state) ? state : []).map(i => String((i && i.title) || '').toLowerCase()));
+  const uniq = (x) => { x = x.slice(0, 140); if (taken.has(x.toLowerCase())) { let n = 2; while (taken.has((x + ' (' + n + ')').toLowerCase())) n++; x = x + ' (' + n + ')'; } taken.add(x.toLowerCase()); return x; };
+  const pt = (typeof typesValid === 'function' && typesValid(r.postType)) || 'tip';
+  const creator = (r.creatorName && r.creatorName !== 'unknown') ? String(r.creatorName) : '';
+  const one = (p, title) => {
+    const format = t(p.remixFormat) || 'video';
+    const idea = { title: uniq(title), hook: t(p.remixHook), script: t(p.remixScript), caption: t(p.remixCaption || r.remixCaption),
+      hashtags: t(p.remixHashtags || r.remixHashtags), tags: t(p.remixHashtags || r.remixHashtags),
+      day: days.indexOf(t(p.suggestedDay)) >= 0 ? t(p.suggestedDay) : today, format: format, duration: '60s', tone: 'remix', community: 'All',
+      status: status, dismissReason: null, assignee: '', isRemix: true, originalCreator: creator,
+      delivery: (r.delivery === 'faceless' && DELIVERY_FORMATS.has(format)) ? 'faceless' : 'faceon',
+      postType: pt, createdAt: Date.now(), id: 0 };
+    if (status === 'filming') idea.approvedAt = Date.now();   // sorts to the TOP of Film & Post
+    else { idea.isGenerated = true; idea.freshAt = Date.now(); }
+    return idea;
+  };
+  const parts = remixParts(r);
+  if (parts.length) {
+    const series = t(r.remixTitle) || 'Series';
+    return parts.map((p, i) => one(p, (t(p.remixTitle) || series) + ' (part ' + (Number(p.partNumber) || (i + 1)) + ' of ' + parts.length + ')'));
+  }
+  return [one(r, t(r.remixTitle) || 'Untitled Remix')];
+}
 function copyRemix(idx) {
   const r = remixes[idx];
   if (!r) return;
-  const text = `TITLE: ${r.remixTitle || ''}\n\nHOOK: ${r.remixHook || ''}\n\nSCRIPT:\n${r.remixScript || ''}\n\nCAPTION:\n${r.remixCaption || ''}\n\nHASHTAGS: ${r.remixHashtags || ''}\n\nFORMAT: ${r.remixFormat || ''}`;
+  const text = remixCopyText(r);
   navigator.clipboard.writeText(text).then(() => { showToast('Remix copied'); if (typeof mascotReact === 'function') mascotReact('wink', '📋'); }).catch(() => copyFallback(text));
 }
 
 function sendRemixToPipeline(idx) {
   const r = remixes[idx];
   if (!r) return;
-  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-  const today = days[new Date().getDay()];
-  const idea = {
-    title: r.remixTitle || 'Untitled Remix',
-    hook: r.remixHook || '',
-    script: r.remixScript || '',
-    caption: r.remixCaption || '',
-    hashtags: r.remixHashtags || '',
-    day: today,
-    format: r.remixFormat || 'video',
-    duration: '60s',
-    tone: 'remix',
-    community: 'All',
-    status: 'filming',
-    approvedAt: Date.now(),   // timestamp so a just-sent remix sorts to the TOP of Film & Post — instantly findable, not buried at the bottom
-    dismissReason: null,
-    assignee: '',
-    isRemix: true,
-    originalCreator: r.creatorName || '',
-    delivery: (r.delivery === 'faceless' && DELIVERY_FORMATS.has(r.remixFormat || 'video')) ? 'faceless' : 'faceon',
-    id: IDEAS.length
-  };
-  IDEAS.push(idea);
-  state.push(idea);
+  const ideas = remixToIdeas(r, 'filming');
+  const inIdeas = (typeof IDEAS !== 'undefined' && Array.isArray(IDEAS) && IDEAS !== state);
+  ideas.forEach(idea => { idea.id = state.length; state.push(idea); if (inIdeas) IDEAS.push(idea); });
   saveState();
   saveGeneratedIdeas();
   renderNav();
-  showToast('Added to Pipeline → top of Film & Post');
+  showToast(ideas.length > 1 ? ideas.length + ' parts added to Pipeline → top of Film & Post' : 'Added to Pipeline → top of Film & Post');
   if (typeof mascotReact === 'function') mascotReact('spin', '✨');
   // Remove from remixes list
   remixes.splice(idx, 1);
   saveRemixes();
   renderRemixResults();
+}
+
+// remix-tt — "Save to Ideas": the same pending path the opinion-first flow uses (rv2Save →
+// saveGeneratedIdeas). "Saved" is said only once the database confirms; a failed save takes the
+// ideas back out and keeps the remix in the list.
+const _rxSaving = new WeakSet();
+async function saveRemixToIdeas(idx, btn) {
+  const r = remixes[idx];
+  if (!r || _rxSaving.has(r)) return false;
+  const ideas = remixToIdeas(r, 'pending');
+  if (!ideas.length) return false;
+  _rxSaving.add(r);
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const inIdeas = (typeof IDEAS !== 'undefined' && Array.isArray(IDEAS) && IDEAS !== state);
+  ideas.forEach(idea => { idea.id = state.length; state.push(idea); if (inIdeas) IDEAS.push(idea); });
+  try { saveState(); } catch (e) {}
+  const _sameBrand = brandGate();
+  let res = null;
+  try { res = await Promise.resolve(saveGeneratedIdeas()); } catch (e) { res = { ok: false }; }
+  _rxSaving.delete(r);
+  if (!res || res.ok === false) {
+    if (_sameBrand()) {
+      ideas.forEach(idea => { const i = state.indexOf(idea); if (i >= 0) state.splice(i, 1); if (inIdeas) { const j = IDEAS.indexOf(idea); if (j >= 0) IDEAS.splice(j, 1); } });
+      try { saveState(); } catch (e) {}
+    }
+    if (btn) { btn.disabled = false; btn.textContent = 'Save to Ideas'; }
+    try { showToast("Couldn't save it to your account — it is still here. Check your connection and try again.", 6000); } catch (e) {}
+    return false;
+  }
+  if (_sameBrand()) { const k = remixes.indexOf(r); if (k >= 0) { remixes.splice(k, 1); saveRemixes(); } renderRemixResults(); }
+  try { renderNav(); } catch (e) {}
+  try { showToast((ideas.length > 1 ? ideas.length + ' parts saved' : 'Saved') + ' to Ideas. Tap to open.', 5000, function () { try { switchView('ideas'); } catch (e) {} }); } catch (e) {}
+  return ideas;
 }
 
 // ===== TRY ALL MODES =====
@@ -22307,47 +22597,194 @@ let _bmEditingEntry = null; // {catId, entId} currently editing links
 
 function bmId() { return 'bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
-// ===== "Borrow from" strip (Remix) — bookmarked creators as one-tap links to their page =====
-var _borrowCreators = [];
-function _bmBorrowLink(links){
-  if(!links) return null;
-  var order=['tt','yt','ig','x','li','web'];
-  for(var i=0;i<order.length;i++){ if(links[order[i]]) return { plat:order[i], url:links[order[i]] }; }
+// ===== follow-panels: "Creators you follow" (bottom of Remix, owner 2026-10-04) =====
+// The creators are the saved Bookmarks (bookmarkCategories → entries { id, name, links, note }), stored
+// as ONE JSON blob in competitors.notes (saveBookmarksToDB / loadBookmarksFromDB) — so the per-creator
+// "why I follow them" note rides along in that JSON: no new column, no new table.
+// Each panel opens the profile in a new tab (https only, TikTok first). Replaces the old "Borrow from" strip.
+const FP_NOTE_MAX = 140;
+const FP_ORDER = ['tt', 'ig', 'yt', 'x', 'li', 'web'];
+const FP_PLAT = { tt: 'TikTok', ig: 'Instagram', yt: 'YouTube', x: 'X', li: 'LinkedIn', web: 'Website' };
+let _fpItems = [];       // what the panels show right now: { catId, entId, name, note, best:{plat,url}|null }
+let _fpEdit = '';        // the entry being edited, as fpKeyAt() ('' = none) — keyed by the ENTRY, never its slot
+let _fpAdding = false;   // the "+ Add creator" panel is open
+let _fpConfirm = '';     // the entry asking "Remove?" (fpKeyAt key, '' = none) — no window.confirm
+let _fpReplaceAsk = '';  // fpSaveEdit: the entry + link the person was told "this replaces your saved … link"
+function fpKeyAt(i){ const it = _fpItems[i]; return it ? it.catId + '/' + it.entId : ''; }
+function fpIdx(key){ if (!key) return -1; for (let i = 0; i < _fpItems.length; i++) if (fpKeyAt(i) === key) return i; return -1; }
+// https only: safeUrl drops javascript:/data:, then anything that is not https:// is not opened
+function fpHttps(u){ const s = safeUrl(u); return /^https:\/\/[^\s]/i.test(s) ? s : ''; }
+function fpBest(links){
+  if (!links || typeof links !== 'object') return null;
+  // old saves keep links as typed (addBmEntry / saveBmLinks): http:// and "tiktok.com/@a" are upgraded to https first
+  for (const k of FP_ORDER) { const u = fpHttps(fpNormLink(links[k])); if (u) return { plat: k, url: u }; }
   return null;
 }
-function openBorrow(i, plat){
-  var c=_borrowCreators[i]; if(!c) return;
-  var url = safeUrl((plat && c.links[plat]) ? c.links[plat] : (c.best && c.best.url));
-  if(url){ try{ window.open(url, '_blank', 'noopener,noreferrer'); }catch(e){} }
+// a saved VIDEO / post link → the creator's PROFILE, so "Open" lands on their account:
+//   tiktok.com/@user/video/123 → https://www.tiktok.com/@user   youtube.com/@h/shorts → https://www.youtube.com/@h
+//   instagram.com/user/reel/x  → https://www.instagram.com/user  x.com/user/status/1 → https://x.com/user
+// A link with no name in it (vm.tiktok.com/…, youtu.be/…, instagram.com/reel/…) is opened as saved.
+function fpProfileUrl(u){
+  const s = fpHttps(u); if (!s) return '';
+  const rest = s.replace(/^https:\/\//i, ''), host = rest.split(/[\/?#]/)[0].toLowerCase(), path = rest.slice(host.length).split(/[?#]/)[0];
+  let m;
+  if (/(^|\.)tiktok\.com$/.test(host) && (m = /^\/@([\w.\-]{1,60})(?:\/|$)/.exec(path))) return 'https://www.tiktok.com/@' + m[1];
+  if (/(^|\.)youtube\.com$/.test(host) && (m = /^\/(@[\w.\-]{1,60}|channel\/[\w\-]{1,60}|c\/[\w.\-]{1,60}|user\/[\w.\-]{1,60})(?:\/|$)/.exec(path))) return 'https://www.youtube.com/' + m[1];
+  if (/(^|\.)instagram\.com$/.test(host) && (m = /^\/([\w.]{1,30})(?:\/|$)/.exec(path)) && !/^(p|reel|reels|tv|stories|explore|accounts)$/i.test(m[1])) return 'https://www.instagram.com/' + m[1];
+  if (/(^|\.)(x\.com|twitter\.com)$/.test(host) && (m = /^\/(\w{1,15})(?:\/|$)/.exec(path)) && !/^(i|home|search|intent|hashtag|share|explore|settings)$/i.test(m[1])) return 'https://x.com/' + m[1];
+  return s;
 }
-function renderRemixBorrowStrip(){
-  var el=document.getElementById('remixBorrowStrip'); if(!el) return;
-  _borrowCreators=[];
-  (bookmarkCategories||[]).forEach(function(cat){
-    (cat.entries||[]).forEach(function(e){
-      var best=_bmBorrowLink(e.links);
-      if(best) _borrowCreators.push({ name:e.name, links:e.links, best:best });
-    });
-  });
-  if(!_borrowCreators.length){
-    // v647d: a creator saved by NAME has links:{} (pre-v596 entries, or anyone who typed a name
-    // instead of pasting a URL), so _bmBorrowLink returns null and they are silently excluded —
-    // which read as "my bookmark vanished". Say which of the two situations it actually is.
-    var _saved = 0;
-    (bookmarkCategories||[]).forEach(function(cat){ _saved += ((cat.entries||[]).length); });
-    el.innerHTML = _saved
-      ? '<div class="borrow-empty">★ <b>Borrow from</b> — you have '+_saved+' saved creator'+(_saved!==1?'s':'')+', but none has a profile link yet, so there is nothing to open or pull. <a onclick="toggleBookmarkBar()">Add their link</a> — open Bookmarks, tap a name, and paste their profile URL.</div>'
-      : '<div class="borrow-empty">★ <b>Borrow from</b> — save the creators you riff on and they show up here to open in one tap. <a onclick="toggleBookmarkBar()">Add one</a></div>';
+function fpPlatOf(u){
+  const h = String(u || '').toLowerCase().replace(/^https?:\/\//, '').split(/[\/?#]/)[0];
+  if (/(^|\.)tiktok\.com$/.test(h)) return 'tt';
+  if (/(^|\.)(instagram\.com|instagr\.am)$/.test(h)) return 'ig';
+  if (/(^|\.)(youtube\.com|youtu\.be)$/.test(h)) return 'yt';
+  if (/(^|\.)(x\.com|twitter\.com)$/.test(h)) return 'x';
+  if (/(^|\.)linkedin\.com$/.test(h)) return 'li';
+  return 'web';
+}
+// a pasted profile link → https://… (scheme added / upgraded), or '' when it is not a web link
+function fpNormLink(raw){
+  let t = String(raw == null ? '' : raw).trim();
+  if (!t || /\s/.test(t)) return '';
+  if (/^http:\/\//i.test(t)) t = 'https://' + t.slice(7);
+  else if (!/^[a-z][a-z0-9+.\-]*:/i.test(t)) t = 'https://' + t.replace(/^\/+/, '');
+  return fpHttps(t) && /^https:\/\/[\w-]+(\.[\w-]+)+/i.test(t) ? t : '';
+}
+function fpNameFromLink(u){
+  const m = /\/@([\w.\-]{1,40})/.exec(u);
+  if (m) return m[1];
+  const parts = u.replace(/^https:\/\//i, '').split(/[?#]/)[0].split('/').filter(Boolean);
+  return (parts.length > 1 ? parts[parts.length - 1] : parts[0] || 'Creator').slice(0, 40);
+}
+function fpCleanNote(v){ return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, FP_NOTE_MAX); }
+function fpFind(i){
+  const it = _fpItems[i]; if (!it) return null;
+  const cat = (bookmarkCategories || []).find(c => c.id === it.catId); if (!cat) return null;
+  const ent = (cat.entries || []).find(e => e.id === it.entId); if (!ent) return null;
+  return { cat: cat, ent: ent, it: it };
+}
+function fpCount(el, outId){ const o = document.getElementById(outId); if (o) o.textContent = String((el && el.value || '').length) + '/' + FP_NOTE_MAX; }
+function renderFollowPanels(){
+  const el = document.getElementById('followPanels'); if (!el) return;
+  _fpItems = [];
+  (bookmarkCategories || []).forEach(cat => (cat.entries || []).forEach(e => {
+    if (!e) return;
+    _fpItems.push({ catId: cat.id, entId: e.id, name: String(e.name || 'Creator'), note: fpCleanNote(e.note), best: fpBest(e.links) });
+  }));
+  // a reload, a brand switch or a removal can move or drop entries: state follows the entry or is cleared
+  if (fpIdx(_fpEdit) < 0) _fpEdit = '';
+  if (fpIdx(_fpConfirm) < 0) _fpConfirm = '';
+  const head = '<div class="fp-head"><span class="fp-title">Creators you follow</span><button type="button" class="fp-manage" onclick="toggleBookmarkBar()">Manage all</button></div>';
+  if (typeof listLoadFailed === 'function' && listLoadFailed('bookmarks')) {
+    el.innerHTML = head + '<div class="fp-hint">Couldn\'t load the creators you follow — nothing has been deleted. Reload when your connection is back.</div>';
     return;
   }
-  var PL={tt:'TT',yt:'YT',ig:'IG',x:'X',li:'in',web:'web'};
-  var chips=_borrowCreators.map(function(c,i){
-    var plats=['tt','yt','ig','x','li','web'].filter(function(k){return c.links[k];}).map(function(k){
-      return '<span class="borrow-plat" onclick="event.stopPropagation();openBorrow('+i+',\''+k+'\')" title="'+PL[k]+'">'+PL[k]+'</span>';
-    }).join('');
-    return '<button class="borrow-chip" onclick="openBorrow('+i+')" title="Open '+escapeHtml(c.name)+'">'+escapeHtml(c.name)+(plats?'<span class="borrow-plats">'+plats+'</span>':'')+'</button>';
-  }).join('');
-  el.innerHTML='<div class="borrow-head"><span>★ Borrow from</span><a class="borrow-manage" onclick="toggleBookmarkBar()">Manage</a></div><div class="borrow-row">'+chips+'</div>';
+  const panels = _fpItems.map((c, i) => {
+    if (fpKeyAt(i) === _fpEdit) {
+      return '<div class="fp-panel fp-editing" data-fp="' + i + '">'
+        + '<div class="fp-name">' + escapeHtml(c.name) + '</div>'
+        + '<label class="fp-label" for="fpEditLink">Profile link</label>'
+        + '<input type="url" id="fpEditLink" inputmode="url" autocomplete="off" placeholder="tiktok.com/@name" value="' + escAttr(c.best ? c.best.url : '') + '">'
+        + '<label class="fp-label" for="fpEditNote">Why you follow them</label>'
+        + '<textarea id="fpEditNote" maxlength="' + FP_NOTE_MAX + '" placeholder="e.g. best hooks in my niche" oninput="fpCount(this,\'fpEditCount\')">' + escapeHtml(c.note) + '</textarea>'
+        + '<div class="fp-count" id="fpEditCount">' + c.note.length + '/' + FP_NOTE_MAX + '</div>'
+        + '<div class="fp-err" id="fpEditErr"></div>'
+        + '<div class="fp-actions"><button type="button" class="fp-save" onclick="fpSaveEdit()">Save</button><button type="button" class="fp-tool" onclick="fpCancel()">Cancel</button></div>'
+        + '</div>';
+    }
+    const top = c.best
+      ? '<a class="fp-open" href="' + escAttr(safeUrl(fpProfileUrl(c.best.url))) + '" target="_blank" rel="noopener noreferrer" aria-label="Open ' + escAttr(c.name) + ' on ' + FP_PLAT[c.best.plat] + '">'
+        + '<span class="fp-toprow"><span class="fp-badge fp-b-' + c.best.plat + '">' + FP_PLAT[c.best.plat] + '</span><span class="fp-go" aria-hidden="true">Open ↗</span></span><span class="fp-name">' + escapeHtml(c.name) + '</span></a>'
+      : '<div class="fp-top"><span class="fp-name">' + escapeHtml(c.name) + '</span></div><button type="button" class="fp-addlink" onclick="fpEditOpen(' + i + ')">Add link</button>';
+    const note = c.note
+      ? '<button type="button" class="fp-notebtn" onclick="fpEditOpen(' + i + ')" title="' + escAttr(c.note) + '" aria-label="Why you follow ' + escAttr(c.name) + ' — tap to edit"><span class="fp-note">' + escapeHtml(c.note) + '</span></button>'
+      : '<button type="button" class="fp-ghost" onclick="fpEditOpen(' + i + ')">Add why you follow them</button>';
+    const tools = fpKeyAt(i) === _fpConfirm
+      ? '<div class="fp-confirm">Remove from this list?</div><div class="fp-tools"><button type="button" class="fp-tool fp-danger" onclick="fpRemove(' + i + ')" aria-label="Yes, remove ' + escAttr(c.name) + '">Remove</button>'
+        + '<button type="button" class="fp-tool" onclick="fpCancel()">Keep</button></div>'
+      : '<div class="fp-tools"><button type="button" class="fp-tool" onclick="fpEditOpen(' + i + ')" aria-label="Edit ' + escAttr(c.name) + '">Edit</button>'
+        + '<button type="button" class="fp-tool" onclick="fpRemove(' + i + ')" aria-label="Remove ' + escAttr(c.name) + '">Remove</button></div>';
+    return '<div class="fp-panel" data-fp="' + i + '">' + top + note + tools + '</div>';
+  });
+  panels.push(_fpAdding
+    ? '<div class="fp-panel fp-editing fp-add">'
+      + '<label class="fp-label" for="fpAddLink">Their profile link</label>'
+      + '<input type="url" id="fpAddLink" inputmode="url" autocomplete="off" placeholder="TikTok, Instagram or YouTube link">'
+      + '<label class="fp-label" for="fpAddNote">Why you follow them (optional)</label>'
+      + '<textarea id="fpAddNote" maxlength="' + FP_NOTE_MAX + '" placeholder="e.g. best hooks in my niche" oninput="fpCount(this,\'fpAddCount\')"></textarea>'
+      + '<div class="fp-count" id="fpAddCount">0/' + FP_NOTE_MAX + '</div>'
+      + '<div class="fp-err" id="fpAddErr"></div>'
+      + '<div class="fp-actions"><button type="button" class="fp-save" onclick="fpAdd()">Save</button><button type="button" class="fp-tool" onclick="fpCancel()">Cancel</button></div>'
+      + '</div>'
+    : '<div class="fp-panel fp-add"><button type="button" class="fp-add-btn" onclick="fpAddOpen()">+ Add creator</button></div>');
+  el.innerHTML = head
+    + (_fpItems.length ? '' : '<div class="fp-hint">Save the creators you learn from — one tap opens their account.</div>')
+    + '<div class="fp-row">' + panels.join('') + '</div>';
+}
+function fpEditOpen(i){ _fpAdding = false; _fpConfirm = ''; _fpReplaceAsk = ''; _fpEdit = fpKeyAt(i); renderFollowPanels(); try { const f = document.getElementById(_fpItems[i] && !_fpItems[i].best ? 'fpEditLink' : 'fpEditNote'); if (f) f.focus(); } catch (e) {} }
+function fpAddOpen(){ _fpEdit = ''; _fpConfirm = ''; _fpAdding = true; renderFollowPanels(); try { const f = document.getElementById('fpAddLink'); if (f) f.focus(); } catch (e) {} }
+function fpCancel(){ _fpEdit = ''; _fpAdding = false; _fpConfirm = ''; _fpReplaceAsk = ''; renderFollowPanels(); }
+function fpSaveEdit(){
+  const f = fpFind(fpIdx(_fpEdit)); if (!f) { fpCancel(); return false; }
+  const err = document.getElementById('fpEditErr');
+  const rawLink = String((document.getElementById('fpEditLink') || {}).value || '').trim();
+  const links = Object.assign({}, f.ent.links || {});
+  const old = f.it.best;
+  if (rawLink) {
+    const u = fpNormLink(rawLink);
+    if (!u) { if (err) err.textContent = 'That doesn\'t look like a web link — paste their profile link, e.g. tiktok.com/@name'; return false; }
+    if (!old || u !== old.url) {
+      const np = fpPlatOf(u);
+      // the new link's platform already holds ANOTHER link the box never showed: say so, replace only on a second Save
+      const hidden = (!old || np !== old.plat) && links[np] && fpNormLink(links[np]) !== u ? String(links[np]) : '';
+      const ask = f.ent.id + ' ' + u;
+      if (hidden && _fpReplaceAsk !== ask) {
+        _fpReplaceAsk = ask;
+        if (err) err.textContent = 'This replaces your saved ' + FP_PLAT[np] + ' link (' + hidden + '). Tap Save again to replace it, or Cancel.';
+        return false;
+      }
+      if (old) delete links[old.plat];
+      links[np] = u;
+    }
+  } else if (old) delete links[old.plat];
+  f.ent.links = links;
+  const note = fpCleanNote((document.getElementById('fpEditNote') || {}).value);
+  if (note) f.ent.note = note; else delete f.ent.note;
+  _fpEdit = ''; _fpReplaceAsk = '';
+  saveBookmarks();
+  rerenderBookmarks();
+  return true;
+}
+function fpAdd(){
+  const err = document.getElementById('fpAddErr');
+  const raw = String((document.getElementById('fpAddLink') || {}).value || '').trim();
+  const u = fpNormLink(raw);
+  const plat = u ? fpPlatOf(u) : '';
+  if (!u || !/^(tt|ig|yt)$/.test(plat)) { if (err) err.textContent = 'Paste a TikTok, Instagram or YouTube profile link.'; return false; }
+  const note = fpCleanNote((document.getElementById('fpAddNote') || {}).value);
+  let cat = (bookmarkCategories || [])[0];
+  if (!cat) { cat = { id: bmId(), name: 'Following', entries: [] }; bookmarkCategories.push(cat); }
+  if (!Array.isArray(cat.entries)) cat.entries = [];
+  const ent = { id: bmId(), name: fpNameFromLink(u), links: {} };
+  ent.links[plat] = u;
+  if (note) ent.note = note;
+  cat.entries.push(ent);
+  _fpAdding = false;
+  saveBookmarks();
+  rerenderBookmarks();
+  return true;
+}
+function fpRemove(i){
+  const f = fpFind(i); if (!f) return false;
+  // first tap asks on the panel itself ("Remove from this list?  Remove · Keep"); the second removes
+  const key = fpKeyAt(i);
+  if (_fpConfirm !== key) { _fpEdit = ''; _fpAdding = false; _fpConfirm = key; renderFollowPanels(); return false; }
+  f.cat.entries = f.cat.entries.filter(e => e.id !== f.ent.id);
+  _fpEdit = ''; _fpConfirm = '';
+  saveBookmarks();
+  rerenderBookmarks();
+  return true;
 }
 
 function saveBookmarks() {
@@ -22437,6 +22874,9 @@ function saveBmLinks(catId, entId) {
     if (v) links[k] = v;
   });
   ent.links = links;
+  // follow-panels: the note is edited here too (≤140, tidied); an empty box removes it
+  const _nb = document.getElementById('bmNote_' + entId);
+  if (_nb) { const _n = fpCleanNote(_nb.value); if (_n) ent.note = _n; else delete ent.note; }
   _bmEditingEntry = null;
   saveBookmarks();
   rerenderBookmarks();
@@ -22489,6 +22929,9 @@ function renderBookmarksInner() {
       html += '<button class="bm-entry-del" onclick="editBmLinks(\'' + cat.id + '\',\'' + ent.id + '\')" title="Edit links" style="color:var(--text3);">✎</button>';
       html += '<button class="bm-entry-del" onclick="deleteBmEntry(\'' + cat.id + '\',\'' + ent.id + '\')" title="Remove">✕</button>';
       html += '</div>';
+      // follow-panels: the "why I follow them" note (old entries have none — nothing is shown)
+      const _note = fpCleanNote(ent.note);
+      if (_note) html += '<div class="bm-entry-note">' + escapeHtml(_note) + '</div>';
 
       // Inline link editor
       if (_bmEditingEntry?.entId === ent.id) {
@@ -22496,6 +22939,7 @@ function renderBookmarksInner() {
         BM_PLATFORMS.forEach(p => {
           html += '<label>' + p.label + ' <input id="bmLink_' + ent.id + '_' + p.key + '" placeholder="' + p.title + ' URL" value="' + escapeHtml(ent.links?.[p.key] || '') + '"></label>';
         });
+        html += '<label class="bm-note-edit" for="bmNote_' + ent.id + '">Why you follow them <textarea id="bmNote_' + ent.id + '" maxlength="' + FP_NOTE_MAX + '" placeholder="e.g. best hooks in my niche">' + escapeHtml(fpCleanNote(ent.note)) + '</textarea></label>';
         html += '<div class="bm-link-editor-actions"><button class="bm-save-btn" onclick="saveBmLinks(\'' + cat.id + '\',\'' + ent.id + '\')">Save</button><button class="bm-cancel-btn" onclick="cancelBmLinks()">Cancel</button></div>';
         html += '</div>';
       }
@@ -22515,7 +22959,7 @@ function rerenderBookmarks() {
   const el = document.getElementById('bmContainer');
   if (el) el.innerHTML = renderBookmarksInner();
   renderBookmarkBar();
-  try{ renderRemixBorrowStrip(); }catch(e){}
+  try{ renderFollowPanels(); }catch(e){}
 }
 
 // ===== BOOKMARK BAR =====
@@ -22534,7 +22978,8 @@ function openBookmarks() {
       if (!cat.entries || !cat.entries.length) return;
       body += '<div class="bm-cat"><div class="bm-cat-h">' + escapeHtml(cat.name) + '</div>';
       cat.entries.forEach(ent => {
-        body += '<div class="bm-card"><div class="bm-card-name">' + escapeHtml(ent.name) + '</div><div class="bm-card-links">';
+        const _note = fpCleanNote(ent.note);
+        body += '<div class="bm-card"><div class="bm-card-main"><div class="bm-card-name">' + escapeHtml(ent.name) + '</div>' + (_note ? '<div class="bm-card-note">' + escapeHtml(_note) + '</div>' : '') + '</div><div class="bm-card-links">';
         BM_PLATFORMS.forEach(p => {
           const url = safeUrl(ent.links && ent.links[p.key]);
           if (url) body += '<a class="bm-lnk bm-' + p.key + '" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="' + p.title + '">' + p.label + '</a>';
@@ -24532,27 +24977,20 @@ function getTopPosts(){
 // Hand the post to Remix and run it. Same pattern as every other "don't strand the user" jump in
 // this app: pre-fill the real inputs, switch view, then trigger the work — never make them copy a
 // URL across two screens.
+// remix-tt (PLAN 4): the post becomes Step 1 "The original" — the same card a pasted link fills — and
+// the card is scrolled into view, so the six "Make it yours" buttons are right there. Nothing goes
+// into the hidden source boxes until a button is pressed (remixSetSource REPLACES them then).
 function remixTopPost(i){
   try{
     const p = getTopPosts()[i];
     if(!p){ if(typeof showToast==='function') showToast('Could not find that post'); return; }
     try { window._rv2TrendText = String(p.text || ''); } catch(e) {}   // v693: rv2Source sends it as kind 'trend'
     switchView('create');
-    setTimeout(function(){
-      try{
-        if(typeof setRemixSource==='function') setRemixSource('paste');
-        const ta = document.getElementById('pasteSourceText');
-        if(ta){ ta.value = p.text; ta.dispatchEvent(new Event('input', { bubbles:true })); }
-        const url = document.getElementById('remixPostUrl');
-        if(url && safeUrl(p.link)) url.value = p.link;
-        if(typeof useSourcePaste==='function') useSourcePaste();
-        const d = document.getElementById('remixDescription');
-        if(d && !String(d.value||'').trim()){ d.value = p.text; d.dispatchEvent(new Event('input', { bubbles:true })); }
-        if(typeof remixCheckStage2==='function') remixCheckStage2();
-        if(typeof showToast==='function') showToast('Dropped into Remix — hit Remix it to make it yours');
-      }catch(e){ if(typeof showToast==='function') showToast('Opened Remix — paste is ready'); }
-    }, 260);
-  }catch(e){}
+    remixShowOriginal({ kind: 'trend', url: safeUrl(p.link) ? String(p.link) : '', creator: '', text: String(p.text || '') });
+    // the view switch can still be laying out — scroll again once it has
+    setTimeout(function(){ try{ const el = document.getElementById('remixOrigCard'); if(el && el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(e){} }, 260);
+    if(typeof showToast==='function') showToast('Dropped into Remix — pick how to make it yours');
+  }catch(e){ if(typeof showToast==='function') showToast('Could not open that post in Remix'); }
 }
 /* v673 — THIS TOOK THE 16 OLDEST TRENDS AND CALLED THEM "RIGHT NOW".
    It read `getTrendStore().concat(getAutoTrends())` and sliced from the FRONT. The store is
