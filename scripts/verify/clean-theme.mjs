@@ -22,6 +22,13 @@
  *     clean.css or in app.html — the cascade inside clean.css (!important, specificity, order) must give the state
  *     a different background / colour / border / ring than the bare class, in light and in dark. Catches a state rule
  *     losing to an !important base rule (e.g. `.create-sub-tab{background:transparent !important}` eating `.active`).
+ *  8. Type scale (v700): --cs-fs-body 17 / -title 19 / -screen 28 / -meta 14 / -btn 16 on :root.
+ *  9. Floor: no visible text under 13px. clean.css itself sets nothing under 13px (teleprompter / camera / video-render
+ *     rules excepted — the teleprompter has its own size control), every app.html rule (sheets + JS-injected sheets)
+ *     under 13px is re-emitted in clean.css at ≥ 13px with the same !important, and every inline font size under 13px
+ *     has an !important [style*=…] override at ≥ 13px.
+ * 10. Inputs, textareas and selects are ≥ 16px (iOS zooms the page on focus below 16): a base rule for all three, and
+ *     every app.html / clean.css rule aimed at an input sets ≥ 16px.
  * Prints "CLEAN THEME OK" only when everything passes.
  */
 import fs from 'node:fs';
@@ -327,8 +334,117 @@ for (const [, [base, state]] of pairs) {
 if (statePairs < 20) fail('state: only ' + statePairs + ' state pairs checked — the scan is not seeing the file');
 for (const must of ['.create-sub-tab.active', '.sp-invite-btn.primary', '.list-card.picked']) if (!pairs.has(must)) fail('state: expected pair ' + must + ' not found');
 
+/* ───────────── 8. type-scale tokens ───────────── */
+const FS = { 'fs-body': '17px', 'fs-title': '19px', 'fs-screen': '28px', 'fs-meta': '14px', 'fs-btn': '16px' };
+for (const [k, v] of Object.entries(FS)) {
+  const got = tokenVals.light[k];
+  if (got === undefined) fail('type: --cs-' + k + ' is not defined on :root');
+  else if (norm(got) !== norm(v)) fail('type: --cs-' + k + ' is ' + got + ', the scale says ' + v);
+}
+
+/* ───────────── 9. 13px floor ───────────── */
+const EXEMPT_SEL = /teleprompter|#tp|\.tp-(script|camera|countdown|font-btn|mode|play-btn|rec|record|speed|voice-btn|adv|primer|read-line|beat|w\b|em\b|line\b|blk|left|review|rv-)|\.vdot|cam-on|camera|video|broll|#brollStage|\.br-|player|thumb|lightbox|swatch|color-dot|brand-color|\bqr|cm-slide\b|cm-canvas|slide-preview|carousel-slide/i;
+const INPUTISH = /(^|[^\w-])(input|textarea|select)\b|-input\b|-textarea\b|composer-in\b/i;
+const lastCompound = (sel) => sel.trim().split(/\s+|>|\+|~/).filter(Boolean).pop() || '';
+function sizePx(v) {
+  v = String(v).trim();
+  const t = v.match(/^var\(--cs-(fs-[\w-]+)\)$/); if (t) return sizePx(tokenVals.light[t[1]] || 'x');
+  const m = v.match(/^([\d.]+)(px|rem)$/); if (!m) return null;
+  return Number(m[1]) * (m[2] === 'rem' ? 16 : 1);
+}
+function fontSizeOf(prop, val) {
+  if (prop === 'font-size') return sizePx(val);
+  if (prop === 'font') { const m = val.match(/(?:^|\s)([\d.]+(?:px|rem))(?=\s*(?:\/|\s))/); return m ? sizePx(m[1]) : null; }
+  return null;
+}
+for (const r of RULES) {
+  if (r.media.some(m => /keyframes/.test(m))) continue;
+  for (const d of r.decls) {
+    const px = fontSizeOf(d.prop, d.val);
+    if (px === null || px <= 1) continue;
+    for (const one of r.sel.split(',').map(x => x.trim())) {
+      if (EXEMPT_SEL.test(one)) continue;
+      if (px < 13) fail('floor: clean.css sets ' + px + 'px on "' + one.slice(0, 70) + '"');
+      if (INPUTISH.test(lastCompound(one)) && px < 16) fail('inputs: clean.css sets ' + px + 'px on input "' + one.slice(0, 70) + '"');
+    }
+  }
+}
+/* the app's own sheets, in the order the generator reads them: the first <style> block sits before clean.css;
+   later blocks and JS-injected sheets come after it, so their re-emissions carry a :root prefix */
+function cssOf(text) { return text.replace(/\/\*[\s\S]*?\*\//g, ''); }
+function rulesOf(text) {
+  const out = []; const walk = (s) => { let i = 0;
+    while (i < s.length) { const o = s.indexOf('{', i); if (o < 0) return; const pre = s.slice(i, o).trim();
+      let dep = 0, j = o; for (; j < s.length; j++) { if (s[j] === '{') dep++; else if (s[j] === '}') { dep--; if (dep === 0) break; } }
+      const body = s.slice(o + 1, j);
+      if (/^@(media|supports)/.test(pre)) walk(body); else if (!/^@/.test(pre) && pre) out.push({ sel: pre.replace(/\s+/g, ' '), body });
+      i = j + 1; } };
+  walk(cssOf(text)); return out;
+}
+const sheets = [];
+let first = true;
+for (const m of app.matchAll(/(?:^|\n)[ \t]*<style>([\s\S]*?)<\/style>/g)) { if (m[1].includes("' + css + '")) continue; sheets.push({ css: m[1], late: !first }); first = false; }
+for (const m of app.matchAll(/(?:st|s)\.textContent\s*=\s*((?:\s*'(?:[^'\\\n]|\\.)*'\s*\+?)+)\s*;\s*\n\s*document\.head\.appendChild/g))
+  sheets.push({ css: [...m[1].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map(x => x[1].replace(/\\'/g, "'")).join(''), late: true });
+if (sheets.length < 4) fail('floor: found only ' + sheets.length + ' style sources in app.html — the scan is broken');
+const cleanBySel = new Map();
+for (const r of RULES) for (const one of r.sel.split(',').map(x => x.trim())) {
+  for (const d of r.decls) { const px = fontSizeOf(d.prop, d.val); if (px === null) continue;
+    if (!cleanBySel.has(one)) cleanBySel.set(one, []); cleanBySel.get(one).push({ px, imp: d.imp }); }
+}
+let floorChecked = 0;
+for (const sh of sheets) for (const r of rulesOf(sh.css)) {
+  const decls = r.body.split(';').map(x => x.trim()).filter(Boolean).map(x => { const i = x.indexOf(':'); return { prop: x.slice(0, i).trim().toLowerCase(), val: x.slice(i + 1).replace(/!\s*important/i, '').trim(), imp: /!\s*important/i.test(x) }; });
+  for (const d of decls) {
+    const px = fontSizeOf(d.prop, d.val);
+    if (px === null || px <= 1) continue;
+    for (const one of r.sel.split(',').map(x => x.trim()).filter(Boolean)) {
+      if (EXEMPT_SEL.test(one)) continue;
+      const input = INPUTISH.test(lastCompound(one));
+      const min = input ? 16 : 13;
+      if (px >= min) continue;
+      floorChecked++;
+      const want = sh.late ? (one.startsWith('[data-theme') ? ':root' + one : ':root ' + one) : one;
+      const got = cleanBySel.get(want) || [];
+      if (!got.some(g => g.px >= min && (!d.imp || g.imp)))
+        fail((input ? 'inputs' : 'floor') + ': app.html sets ' + px + 'px on "' + one.slice(0, 70) + '" and clean.css does not raise it to ≥ ' + min + 'px' + (d.imp ? ' with !important' : ''));
+    }
+  }
+}
+if (floorChecked < 100) fail('floor: only ' + floorChecked + ' small app.html sizes found — the scan is broken');
+/* inline sizes */
+const body = app.replace(/(?:^|\n)[ \t]*<style>[\s\S]*?<\/style>/g, '');
+const inlineSpell = new Map();
+for (const m of body.matchAll(/style\s*=\s*\\?(["'])([\s\S]{0,600}?)\\?\1|cssText\s*\+?=\s*(['"`])([\s\S]{0,600}?)\3/g)) {
+  const txt = m[2] !== undefined ? m[2] : m[4];
+  for (const f of txt.matchAll(/font-size\s*:\s*([\d.]+)px|font\s*:\s*((?:[\w-]+\s+)*?)([\d.]+)px/g)) {
+    const spell = (f[1] ? 'font-size:' + f[1] + 'px' : 'font:' + f[2] + f[3] + 'px');
+    inlineSpell.set(spell, Number(f[1] || f[3]));
+  }
+}
+let inlineChecked = 0;
+for (const [spell, px] of inlineSpell) {
+  if (px < 13 && px > 1) {
+    inlineChecked++;
+    // the general override (any element), not the form-control one
+    const hit = RULES.some(r => r.sel.split(',').some(x => x.trim().toLowerCase().startsWith('[style*="' + spell.toLowerCase() + '"')) && r.decls.some(d => d.imp && (fontSizeOf(d.prop, d.val) || 0) >= 13));
+    if (!hit) fail('floor: inline "' + spell + '" in app.html has no !important [style*=…] override at ≥ 13px');
+  }
+}
+for (const [spell, px] of inlineSpell) {
+  if (px > 1 && px < 16) {
+    const hit = RULES.some(r => r.sel.toLowerCase().includes(':is(input, textarea, select)[style*="' + spell.toLowerCase() + '"') && r.decls.some(d => d.imp && (fontSizeOf(d.prop, d.val) || 0) >= 16));
+    if (!hit) fail('inputs: inline "' + spell + '" can sit on a form control and has no :is(input, textarea, select) override at ≥ 16px');
+  }
+}
+if (inlineChecked < 5) fail('floor: only ' + inlineChecked + ' small inline sizes found — the scan is broken');
+/* 10. base rule for every form control */
+const baseInput = RULES.find(r => r.media.length === 0 && ['input', 'textarea', 'select'].every(t => r.sel.split(',').map(x => x.trim()).includes(t)) && r.decls.some(d => d.prop === 'font-size'));
+if (!baseInput) fail('inputs: no base `input, textarea, select { font-size }` rule');
+else { const px = sizePx(baseInput.decls.find(d => d.prop === 'font-size').val); if (!(px >= 16)) fail('inputs: base input font-size is ' + px + 'px (needs ≥ 16)'); }
+
 /* ───────────── result ───────────── */
 for (const n of notes) console.log('note: ' + n);
-console.log('clean.css: ' + RULES.length + ' rules, ' + Object.keys(remap).length + ' variables re-pointed, ' + legacy.length + ' legacy variables required, ' + checked + ' contrast pairs, ' + statePairs + ' state pairs');
+console.log('clean.css: ' + RULES.length + ' rules, ' + Object.keys(remap).length + ' variables re-pointed, ' + legacy.length + ' legacy variables required, ' + checked + ' contrast pairs, ' + statePairs + ' state pairs, ' + floorChecked + ' small app sizes + ' + inlineChecked + ' inline sizes floored');
 if (failures.length) { for (const f of failures) console.error('FAIL ' + f); console.error('clean theme verification FAILED (' + failures.length + ')'); process.exit(1); }
 console.log('CLEAN THEME OK');

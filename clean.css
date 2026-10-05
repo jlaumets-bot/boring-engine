@@ -33,6 +33,12 @@
   --cs-overlay: rgba(0,0,0,.35);
   --cs-hover: rgba(0,0,0,.04);
   --cs-font: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* type scale (v700, owner: bigger text). Same in both themes. Floor: nothing visible under 13px; inputs ≥ 16px. */
+  --cs-fs-body: 17px;     /* body, idea hooks, paragraphs, drawer items, inputs */
+  --cs-fs-title: 19px;    /* card titles (idea, pipeline, remix) */
+  --cs-fs-screen: 28px;   /* screen titles ("3 ideas ready", Settings, Trends …) */
+  --cs-fs-meta: 14px;     /* meta, labels, chips, section labels */
+  --cs-fs-btn: 16px;      /* buttons */
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -110,11 +116,13 @@ body {
   background: var(--cs-bg);
   color: var(--cs-text);
   font-family: var(--cs-font);
-  font-size: 15px;
+  font-size: var(--cs-fs-body);
   line-height: 1.5;
   letter-spacing: 0;
 }
 button, input, textarea, select { font-family: var(--cs-font); }
+/* form controls do not inherit font-size; anything under 16px makes iOS zoom the page on focus */
+input, textarea, select { font-size: var(--cs-fs-body); }
 code, pre, kbd, samp { font-family: var(--mono, ui-monospace, Menlo, Consolas, monospace); }
 a { color: inherit; }
 ::selection { background: var(--cs-chip); color: var(--cs-text); }
@@ -670,7 +678,7 @@ input:focus, textarea:focus, select:focus{box-shadow:0 0 0 3px var(--cs-line)}
 .bv-text-input:focus{border-color:var(--gold)}
 .bv-send-btn{border:1px solid var(--border);background:var(--surface);color:var(--text)}
 @media (max-width: 600px){.header-brand{border:1.5px solid var(--border2)}}
-.stmt-tpl-chip{background:var(--cs-card);font:600 12px/1 var(--cs-font);color:var(--cs-text)}
+.stmt-tpl-chip{background:var(--cs-card);font:600 var(--cs-fs-meta)/1 var(--cs-font);color:var(--cs-text)}
 .stmt-tpl-chip.on{background:var(--cs-primary);border-color:var(--cs-text);color:var(--cs-on-primary)}
 .dismiss-popup.ap .dp-option:hover, .dismiss-popup.ap .dp-option:active{background:var(--cs-chip);border-color:var(--cs-line);color:var(--cs-text)}
 .dp-custom-send.ap{background:var(--cs-chip);color:var(--cs-text);border:1px solid var(--cs-line)}
@@ -773,28 +781,777 @@ input:focus, textarea:focus, select:focus{box-shadow:0 0 0 3px var(--cs-line)}
 :root .bh-ring{background:var(--cs-chip)}
 :root .bh-pin{color:var(--cs-text)}
 :root .bh-pout{border:1px solid var(--cs-line);color:var(--cs-text)}
-
+:root .cs-usage-pill{font:600 var(--cs-fs-meta)/1 var(--cs-font);box-shadow:none}
+:root .cs-usage-pill.cs-usage-low{color:var(--cs-text)}
+:root .cs-upgrade-overlay{background:var(--cs-overlay)}
+:root .cs-upgrade-card{box-shadow:none}
+:root .cs-upgrade-title{font:700 22px/1.25 var(--cs-font)}
+:root .cs-upgrade-body{font:400 17px/1.5 var(--cs-font)}
+:root .cs-upgrade-meta{font:600 14px/1 var(--cs-font)}
+:root .cs-upgrade-btn{background:var(--cs-primary);color:var(--cs-on-primary);border:1px solid var(--cs-line);font:700 var(--cs-fs-btn)/1 var(--cs-font)}
+:root .cs-upgrade-alt{font:600 14px/1 var(--cs-font)}
+:root .cs-upgrade-close{font:600 14px/1 var(--cs-font)}
+:root .sp-plan-box{border:1px solid var(--cs-line)}
+:root .sp-plan-name{font:700 17px/1.2 var(--cs-font)}
+:root .sp-plan-tag{background:var(--cs-chip);font:700 var(--cs-fs-meta)/1 var(--cs-font);color:var(--cs-text);border:1px solid var(--cs-line)}
+:root .sp-plan-sub{font:500 14px/1.4 var(--cs-font)}
+:root .sp-plan-bar-fill{background:var(--cs-primary);color:var(--cs-on-primary)}
+:root .sp-plan-btn{border:1px solid var(--cs-line);font:700 var(--cs-fs-btn)/1 var(--cs-font)}
+:root .sp-plan-btn.primary{background:var(--cs-primary);color:var(--cs-on-primary)}
 :root .cs-onb-card{box-shadow:none;font-family:var(--cs-font)}
-:root .cs-onb-head{font:700 13px/1 var(--cs-font)}
+:root .cs-onb-head{font:700 14px/1 var(--cs-font)}
 :root .cs-onb-bar-fill{background:var(--cs-primary);color:var(--cs-on-primary)}
-:root .cs-onb-row{font:500 13px/1.2 var(--cs-font)}
+:root .cs-onb-row{font:500 14px/1.2 var(--cs-font)}
 :root .cs-onb-check{color:var(--cs-on-primary)}
 :root .cs-onb-row.done .cs-onb-check{background:var(--cs-primary);border-color:var(--cs-line);color:var(--cs-on-primary)}
-:root .cs-onb-go{font:600 12px/1 var(--cs-font)}
+:root .cs-onb-go{font:600 var(--cs-fs-btn)/1 var(--cs-font)}
+/* ---- 4d. type scale: every font-size in app.html, in source order, moved up the v700 scale (floor 13px, inputs 16px) ---- */
+body{font-size:var(--cs-fs-body)}
+@media (min-width: 900px){#desktopSidebar .ds-logo{font-size:17px}}
+@media (min-width: 900px){#desktopSidebar .ds-lbl{font-size:13px}}
+@media (min-width: 900px){#desktopSidebar .ds-item{font-size:15px}}
+@media (min-width: 900px){#desktopSidebar .ds-count{font-size:14px}}
+@media (min-width: 900px){#desktopSidebar .ds-plan{font-size:14px}}
+@media (min-width: 900px){.gen-btn, .tp-generate-btn, .generate-ideas-btn, .batch-enter, #dfyReqBtn{font-size:var(--cs-fs-btn) !important}}
+@media (min-width: 900px){.vl-mic{font-size:14px !important}}
+@media (min-width: 900px){.sp-extra-btn{font-size:var(--cs-fs-btn) !important}}
+@media (min-width: 900px){.detail-btn, .pipe-btn, .tp-action-btn, .nb-act:not(.del), .sp-expand-btn, .sp-ask-btn, .brain-rule-btn, .batch-cancel, .batch-all, .batch-go, .dp-cancel, .dp-custom-send, .dz-btn, .fq-done-btn, .sp-invite-btn, .sp-plan-btn{font-size:var(--cs-fs-btn) !important}}
+@media (min-width: 900px){.assign-name{font-size:13px}}
+@media (min-width: 900px){.ds-foot{font-size:13px}}
+input[type="text"], input[type="url"], input[type="search"], input:not([type]), textarea, select{font-size:17px}
+.badge{font-size:var(--cs-fs-meta)}
+.tp-tip{font-size:14px !important}
+.header-brand{font-size:13px}
+.header-brand::after{font-size:14px}
+.brand-dropdown-item{font-size:14px}
+.brand-dropdown-add{font-size:14px}
+.header h1{font-size:24px}
+.icon-btn{font-size:22px}
+.header-btn{font-size:var(--cs-fs-btn)}
+.nav-tab{font-size:17px}
+.nav-tab .tab-icon{font-size:22px}
+.nav-tab .tab-count{font-size:14px}
+.empty-state-icon{font-size:48px}
+.empty-state-title{font-size:19px}
+.empty-state-desc{font-size:15px}
+.status-chip{font-size:var(--cs-fs-meta)}
+.collapsible-header{font-size:14px}
+.generate-ideas-btn{font-size:var(--cs-fs-btn)}
+.generate-count-select{font-size:17px}
+.ai-learns-text{font-size:14px}
+.ai-learns-text strong{font-size:14px}
+.al-brain{font-size:24px}
+.al-sparkle{font-size:14px}
+.al-banner-text{font-size:14px}
+.al-pipe-stage{font-size:15px}
+.al-pipe-arrow{font-size:13px}
+.al-remix-src, .al-remix-result, .al-remix-brain{font-size:15px}
+.al-remix-arrow{font-size:13px}
+.al-pg-scene, .al-pg-product, .al-pg-photo{font-size:22px}
+.al-pg-plus{font-size:17px}
+.al-pg-arrow{font-size:15px}
+.al-comp-eye, .al-comp-remix{font-size:22px}
+.al-comp-arrow{font-size:15px}
+.al-bv-pen, .al-bv-brain, .al-bv-spark{font-size:15px}
+.al-bv-arrow{font-size:13px}
+.generate-status{font-size:14px}
+.locked-badge-text{font-size:var(--cs-fs-meta)}
+.nav-tab.locked-tab .lock-icon{font-size:14px}
+.locked-toast{font-size:14px}
+.generic-toast{font-size:14px}
+.bc-logo-ob span{font-size:14px}
+.bc-logo-app span{font-size:14px}
+.onboarding-step h2{font-size:28px}
+.onboarding-step .ob-sub{font-size:17px}
+.onboarding-step input[type="text"], .onboarding-step input[type="url"], .onboarding-step textarea{font-size:17px}
+.ob-voice-prompt{font-size:15px}
+.ob-voice-mic{font-size:17px}
+.sp-voice-log > summary{font-size:14px}
+.sp-voice-note{font-size:14px}
+.sp-voice-src{font-size:13px}
+.sp-voice-x{font-size:15px}
+.ob-voice-count{font-size:14px}
+.ob-btn{font-size:var(--cs-fs-btn)}
+.ob-back{font-size:15px}
+.ob-skip{font-size:14px}
+.ob-voice-divider span{font-size:14px}
+.ob-voice-btn{font-size:var(--cs-fs-btn)}
+.ob-voice-hint{font-size:14px}
+.bv-ob-progress-text{font-size:14px}
+.bv-ob-finish-btn{font-size:var(--cs-fs-btn)}
+.ob-auto-badge{font-size:var(--cs-fs-meta)}
+.ob-field-label{font-size:14px}
+.ob-crawl-msg{font-size:17px}
+.ob-crawl-error{font-size:15px}
+.ob-nosite .ob-skip{font-size:14px}
+.ob-steps-title{font-size:17px}
+.ob-step{font-size:15px}
+.ob-step-ico{font-size:14px}
+.ob-steps-note{font-size:14px}
+.ob-tone-card .tone-name{font-size:15px}
+.ob-tone-card .tone-desc{font-size:14px}
+.ob-tone-count{font-size:14px}
+.ob-tag-input-wrap button{font-size:22px}
+.ob-tag{font-size:var(--cs-fs-meta)}
+.ob-example-chip{font-size:var(--cs-fs-meta)}
+.ob-day-grid label{font-size:15px}
+.ob-day-grid select{font-size:16px}
+.ob-summary h3{font-size:19px}
+.ob-summary p{font-size:15px}
+.ob-hint-bar{font-size:14px}
+@media (max-width: 600px){.onboarding-step h2{font-size:24px}}
+@media (max-width: 600px){.ob-anim .ob-anim-icon{font-size:22px !important}}
+.ob-anim-icon{font-size:28px}
+.ob-a3-wave1{font-size:19px !important}
+.ob-a3-wave2{font-size:19px !important}
+.ob-a5-vs{font-size:17px !important}
+.ob-a6-hash{font-size:24px !important}
+.ob-a7-arrow{font-size:17px !important}
+.ob-a9-star1{font-size:19px !important}
+.ob-a9-star2{font-size:19px !important}
+.onboarding-step h2{font-size:28px}
+.onboarding-step .ob-sub{font-size:17px}
+.ob-btn{font-size:var(--cs-fs-btn)}
+.ob-voice-btn{font-size:var(--cs-fs-btn)}
+.ob-field-label{font-size:14px}
+.ob-tone-count{font-size:14px}
+.ob-confirm-bubble{font-size:14px}
+.stat-pill .stat-icon{font-size:22px}
+.stat-pill .num{font-size:32px}
+.stat-pill .label{font-size:14px}
+.format-tag{font-size:var(--cs-fs-meta)}
+.remix-origin-tag{font-size:var(--cs-fs-meta)}
+.paa-badge-idea{font-size:var(--cs-fs-meta)}
+.spark-badge-idea{font-size:var(--cs-fs-meta)}
+.new-badge-idea{font-size:var(--cs-fs-meta)}
+.paa-source-row{font-size:14px}
+.pipeline-stage-tab{font-size:14px}
+.pipeline-stage-tab .stage-count{font-size:22px}
+.pipeline-card-title{font-size:19px}
+.pipeline-card-hook{font-size:15px}
+.pipeline-card-day{font-size:14px}
+.assign-avatar{font-size:14px}
+.assign-avatar.unassigned{font-size:19px}
+.assign-name{font-size:13px}
+.assign-popup-item{font-size:14px}
+.assign-popup-item .mini-avatar{font-size:13px}
+.pipe-btn{font-size:var(--cs-fs-btn)}
+.tp-tip{font-size:14px}
+.tp-shots-title{font-size:15px}
+.tp-shot-item{font-size:22px}
+.tp-screen-title{font-size:15px}
+.tp-screen-text{font-size:22px}
+.create-sub-tab{font-size:15px}
+.create-empty-icon{font-size:48px}
+.create-empty p{font-size:15px}
+.creator-input{font-size:16px}
+.creator-add-btn{font-size:var(--cs-fs-btn)}
+.creator-avatar{font-size:22px}
+.creator-name{font-size:15px}
+.creator-url{font-size:14px}
+.creator-platform{font-size:13px}
+.creator-status{font-size:14px}
+.creator-status .remix-count{font-size:19px}
+.creator-remove{font-size:15px}
+.remixed-source{font-size:13px}
+.remixed-title{font-size:15px}
+.remixed-hook{font-size:14px}
+.remixed-badge{font-size:var(--cs-fs-meta)}
+.visual-section-label{font-size:15px}
+.visual-section-hint{font-size:14px}
+.search-tag{font-size:var(--cs-fs-meta)}
+.ref-card-remove{font-size:14px}
+.ref-count-badge{font-size:var(--cs-fs-meta)}
+.filter-chip{font-size:var(--cs-fs-meta)}
+.paa-subtitle{font-size:14px}
+.paa-header h3{font-size:15px}
+.paa-badge{font-size:var(--cs-fs-meta)}
+.paa-q-icon{font-size:15px}
+.paa-q-text{font-size:15px}
+.paa-q-source{font-size:14px}
+.paa-q-source .src-badge{font-size:var(--cs-fs-meta)}
+.paa-use-btn{font-size:var(--cs-fs-btn)}
+.paa-fmt-chip{font-size:var(--cs-fs-meta)}
+.paa-refresh-btn{font-size:var(--cs-fs-btn)}
+.paa-empty{font-size:14px}
+.paa-loading{font-size:14px}
+.list-card-title{font-size:19px}
+.list-card-hook{font-size:15px}
+.hook-label{font-size:14px}
+.vt-title{font-size:14px}
+.vt-tag{font-size:var(--cs-fs-meta)}
+.vt-copy{font-size:14px}
+.vt-hook{font-size:17px}
+.vt-why{font-size:14px}
+.vt-tip{font-size:14px}
+.vt-loading, .vt-error{font-size:14px}
+.vt-use{font-size:14px}
+.vt-rw-title{font-size:14px}
+.vt-rw-val{font-size:15px}
+.vl-sub{font-size:15px}
+.vl-status{font-size:14px}
+.vl-sec-title{font-size:14px}
+.vl-why li{font-size:15px}
+.vl-meta-val{font-size:15px}
+.vl-take-text{font-size:17px}
+.vl-fmt{font-size:13px}
+.vl-idea-hook{font-size:19px}
+.vl-idea-script{font-size:14px}
+.vl-edit-label{font-size:13px}
+.vl-edit-hint{font-size:14px}
+.vl-edit-format{font-size:14px}
+.vl-trend-empty{font-size:14px}
+.vl-top-handle{font-size:14px}
+.vl-top-nums{font-size:14px}
+.vl-top-text{font-size:14px}
+.vl-top-use{font-size:14px}
+.vl-top-note{font-size:14px}
+.vl-trend-head{font-size:14px}
+.vl-trend-chip{font-size:var(--cs-fs-meta)}
+.vl-trend-pull-head{font-size:14px}
+.vl-win-label{font-size:14px}
+.vl-win-chip{font-size:var(--cs-fs-meta)}
+.vl-rise{font-size:13px}
+.vl-cm{font-size:14px}
+.vl-trend-x{font-size:15px}
+.vl-cm-row{font-size:14px}
+.vl-src-name{font-size:14px}
+.bm-cat-h{font-size:14px}
+.bm-card-name{font-size:17px}
+.bm-lnk{font-size:14px}
+.bm-empty{font-size:15px}
+.bm-empty span{font-size:14px}
+.ic-result-card.err{font-size:15px}
+.ic-result-tag{font-size:var(--cs-fs-meta)}
+.ic-result-title{font-size:19px}
+.ic-result-lbl{font-size:14px}
+.ic-result-txt{font-size:15px}
+.ic-result-src{font-size:14px}
+.dfy-card-title{font-size:17px}
+.dfy-card-text{font-size:14px}
+.dfy-card .conn-flabel{font-size:14px}
+.conn-x{font-size:22px}
+.conn-sub{font-size:14px}
+.conn-empty{font-size:14px}
+.conn-item-name{font-size:15px}
+.conn-item-sub{font-size:14px}
+.conn-test-badge{font-size:var(--cs-fs-meta)}
+.conn-del{font-size:14px}
+.conn-add-title{font-size:14px}
+.conn-hint{font-size:14px}
+.conn-flabel{font-size:14px}
+.conn-testflag{font-size:14px}
+.conn-msg{font-size:14px}
+.vl-field-label{font-size:14px}
+.vl-mic{font-size:17px}
+.list-card-status{font-size:13px}
+.batch-enter{font-size:var(--cs-fs-btn)}
+.batch-bar .batch-cancel, .batch-bar .batch-all{font-size:var(--cs-fs-btn)}
+.batch-bar .batch-go{font-size:var(--cs-fs-btn)}
+.action-circle{font-size:19px}
+.dismiss-popup .dp-title{font-size:19px}
+.dismiss-popup .dp-option{font-size:15px}
+.dp-custom-label{font-size:14px}
+.dp-custom-input{font-size:16px}
+.dp-custom-send{font-size:var(--cs-fs-btn)}
+.dismiss-popup .dp-cancel{font-size:var(--cs-fs-btn)}
+.detail-label{font-size:13px}
+.detail-text{font-size:14px}
+.detail-text.tags{font-size:14px}
+.detail-text.preview{font-size:19px}
+.detail-btn{font-size:var(--cs-fs-btn)}
+.reel-title-label{font-size:13px}
+.reel-title-text{font-size:14px}
+.copy-reel-btn{font-size:var(--cs-fs-btn)}
+.canva-label{font-size:13px}
+.canva-sizes{font-size:14px}
+.canva-link{font-size:13px}
+.cm-card-btn{font-size:var(--cs-fs-btn)}
+.cm-header h3{font-size:19px}
+.cm-close{font-size:24px}
+.cm-nav-btn{font-size:var(--cs-fs-btn)}
+.cm-textarea{font-size:16px}
+.cm-colors-label{font-size:14px}
+.cm-download-btn{font-size:var(--cs-fs-btn)}
+.cm-aspect-btn{font-size:var(--cs-fs-btn)}
+.export-btn{font-size:var(--cs-fs-btn)}
+.footer{font-size:13px}
+.sp-header h2{font-size:28px;font-size:15px}
+.sp-back{font-size:14px}
+.sp-section-header{font-size:17px}
+.sp-section-header .sp-arrow{font-size:14px}
+.sp-label{font-size:14px}
+.sp-input{font-size:17px}
+.logo-upload-btn{font-size:var(--cs-fs-btn)}
+.logo-remove-btn{font-size:15px}
+.sp-textarea{font-size:17px}
+.sp-chip{font-size:var(--cs-fs-meta)}
+.sp-expand-btn{font-size:var(--cs-fs-btn)}
+.sp-quality{font-size:14px}
+.sp-tip{font-size:14px}
+.sp-tip::before{font-size:14px}
+.sp-team-avatar{font-size:15px}
+.sp-team-email{font-size:15px}
+.sp-team-role{font-size:14px}
+.sp-team-remove{font-size:19px}
+.sp-invite-btn{font-size:var(--cs-fs-btn)}
+.sp-invite-link{font-size:14px}
+.sp-invite-link code{font-size:14px}
+.sp-invite-pending{font-size:14px}
+.sp-copied{font-size:14px}
+.sp-tone-card .sp-tone-check{font-size:14px}
+.sp-tone-name{font-size:15px}
+.sp-tone-desc{font-size:14px}
+.sp-tone-count{font-size:14px}
+.sp-completeness-label{font-size:15px}
+.sp-completeness-pct{font-size:24px}
+.sp-completeness-field-label{font-size:14px}
+.sp-platform-name{font-size:15px}
+.sp-platform-input{font-size:16px}
+.sp-platform-unit{font-size:14px}
+.sp-platform-tip{font-size:14px}
+.sp-format-name{font-size:15px}
+.sp-format-input{font-size:16px}
+.sp-format-unit{font-size:14px}
+.sp-format-avail{font-size:14px}
+.sp-extra-btn{font-size:var(--cs-fs-btn)}
+.sp-time-row{font-size:14px}
+@media (max-width: 600px){.header h1{font-size:19px}}
+@media (max-width: 600px){.icon-btn{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.header-btn{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.nav-tab{font-size:17px}}
+@media (max-width: 600px){.nav-tab .tab-icon{font-size:28px}}
+@media (max-width: 600px){.stat-pill .num{font-size:24px}}
+@media (max-width: 600px){.stat-pill .label{font-size:13px}}
+@media (max-width: 600px){.filter-chip{font-size:var(--cs-fs-meta)}}
+@media (max-width: 600px){.pipeline-stage-tab{font-size:13px}}
+@media (max-width: 600px){.pipe-btn{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.pipeline-card-title{font-size:19px}}
+@media (max-width: 600px){.list-card-title{font-size:19px}}
+@media (max-width: 600px){.detail-btn{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.pipe-btn, .tp-action-btn, .nb-act:not(.del), .sp-expand-btn, .sp-ask-btn, .brain-rule-btn{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.detail-text{font-size:17px}}
+@media (max-width: 600px){.detail-text.script{font-size:17px}}
+@media (max-width: 600px){.detail-text.preview{font-size:19px}}
+@media (max-width: 600px){.remix-platform-select{font-size:17px}}
+@media (max-width: 600px){.remix-input-group input, .remix-input-group textarea{font-size:17px}}
+@media (max-width: 600px){.remix-mode-tag{font-size:var(--cs-fs-meta)}}
+@media (max-width: 600px){.remix-actions button{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.remix-col h3{font-size:15px}}
+@media (max-width: 600px){.remix-col .remix-script{font-size:14px}}
+@media (max-width: 600px){.gen-textarea{font-size:17px}}
+@media (max-width: 600px){.gen-btn{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.gen-btn.hero{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.create-sub-tab{font-size:14px}}
+@media (max-width: 600px){.visual-section-label{font-size:15px}}
+@media (max-width: 600px){.sp-input, .sp-textarea{font-size:17px}}
+@media (max-width: 600px){.sp-section-header{font-size:17px}}
+@media (max-width: 600px){.sp-tone-btn{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.creator-input{font-size:17px}}
+@media (max-width: 600px){.source-tab{font-size:14px}}
+@media (max-width: 600px){.remix-url-row input{font-size:17px}}
+@media (max-width: 600px){.remix-url-row button{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){#ideaContent > div > div:first-child h2{font-size:14px !important}}
+@media (max-width: 600px){#ideaContent > div > div:first-child span{font-size:13px !important}}
+@media (max-width: 600px){.sp-section-header{font-size:15px}}
+@media (max-width: 600px){.sp-platform-name{font-size:14px}}
+@media (max-width: 600px){.sp-platform-tip{font-size:13px}}
+@media (max-width: 600px){.sp-platform-input{font-size:16px}}
+@media (max-width: 600px){.sp-format-name{font-size:14px}}
+@media (max-width: 600px){.sp-format-input{font-size:16px}}
+@media (max-width: 600px){.sp-header h2{font-size:19px}}
+@media (max-width: 600px){.sp-tip{font-size:13px}}
+@media (max-width: 600px){.generate-ideas-btn{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.generate-count-select{font-size:17px}}
+.gen-textarea{font-size:17px}
+.gen-btn{font-size:var(--cs-fs-btn)}
+.gen-btn.hero{font-size:var(--cs-fs-btn)}
+.source-tab{font-size:14px}
+.remix-url-row button{font-size:var(--cs-fs-btn)}
+.remix-platform-select{font-size:14px}
+.rv2-step{font-size:14px}
+.rv2-h{font-size:19px}
+.rv2-sub{font-size:14px}
+.rv2-err{font-size:14px}
+.rv2-note{font-size:14px}
+.rv2-belief{font-size:17px}
+.rv2-why{font-size:14px}
+.rv2-belief-top{font-size:17px}
+.rv2-lbl{font-size:14px}
+.rv2-hook{font-size:17px}
+.rv2-script{font-size:17px}
+.rv2-slot{font-size:15px}
+.rv2-slot-k{font-size:13px}
+.rv2-ask{font-size:15px}
+.rv2-edit{font-size:17px}
+.rv2-actions button{font-size:var(--cs-fs-btn)}
+.rv2-link{font-size:14px}
+.rv2-metrics{font-size:14px}
+.rv2-idea-belief{font-size:14px}
+.rv2-lab-top h2{font-size:22px}
+.rv2-lab-input select{font-size:16px}
+.rv2-lab-label{font-size:14px}
+.remix-result-creator{font-size:14px}
+.remix-result-badge{font-size:var(--cs-fs-meta)}
+.remix-col-label{font-size:13px}
+.remix-col h3{font-size:17px}
+.remix-col .remix-hook{font-size:14px}
+.remix-col .remix-script{font-size:14px}
+.remix-col .remix-meta{font-size:14px}
+.remix-col .remix-tags{font-size:14px}
+.remix-why{font-size:14px}
+.remix-actions button{font-size:var(--cs-fs-btn)}
+.bm-bar-empty{font-size:14px}
+.bm-bar-cat-label{font-size:13px}
+.bm-chip-name{font-size:var(--cs-fs-meta)}
+.bm-chip-links a{font-size:13px}
+.bm-cat-title{font-size:14px}
+.bm-cat-actions button{font-size:var(--cs-fs-btn)}
+.bm-entry-name{font-size:14px}
+.bm-entry-links a{font-size:14px}
+.bm-entry-del{font-size:14px}
+.bm-add-row input{font-size:16px}
+.bm-add-row button{font-size:var(--cs-fs-btn)}
+.bm-empty{font-size:14px}
+.bm-link-editor label{font-size:14px}
+.bm-link-editor input{font-size:16px}
+.bm-link-editor-actions button{font-size:var(--cs-fs-btn)}
+[style*="font-size:10px"], [style*="font-size: 10px"], [style*="font-size:11px"], [style*="font-size: 11px"]{font-size:14px !important}
+[style*="font-size:12px"], [style*="font-size: 12px"]{font-size:14px !important}
+.header-brand{font-size:14px !important}
+.format-tag{font-size:var(--cs-fs-meta) !important}
+.pipeline-card-day, .dismiss-popup .dp-title, .detail-label, .reel-title-label, .canva-label, .canva-link, .footer, .sp-section-header .sp-arrow, .sp-tip::before, .sp-tone-count, .sp-platform-tip, .sp-format-avail, .pipeline-stage-tab, .remixed-source{font-size:14px !important}
+.copy-reel-btn{font-size:var(--cs-fs-btn) !important}
+.nav-tab, .pipeline-stage-label, .creator-url, .visual-section-hint, .sp-tip, .sp-tone-desc, .sp-platform-unit, .sp-format-unit, .sp-label, .canva-sizes, .sub-desc, .pipeline-card-hook, .remix-hook, .remix-meta, .remix-tags, .remix-why, .remix-script{font-size:14px !important}
+.dismiss-popup .dp-cancel, .header-btn{font-size:var(--cs-fs-btn) !important}
+.tour-tooltip h3{font-size:17px}
+.tour-tooltip p{font-size:14px}
+.tour-step-indicator{font-size:14px}
+.tour-btn{font-size:var(--cs-fs-btn)}
+.info-btn{font-size:13px}
+.info-tip{font-size:14px}
+.auth-card h1{font-size:28px}
+.auth-card .auth-sub{font-size:14px}
+.auth-card input[type="email"]{font-size:16px}
+.auth-sent .auth-sent-icon{font-size:40px}
+.auth-sent h3{font-size:17px}
+.auth-sent p{font-size:14px}
+.auth-sent a{font-size:14px}
+.auth-btn{font-size:var(--cs-fs-btn)}
+.auth-toggle{font-size:14px}
+.auth-error{font-size:14px}
+.auth-loading{font-size:14px}
+.logout-btn{font-size:var(--cs-fs-btn)}
+.bv-popup-close{font-size:22px}
+.bv-popup-title{font-size:19px}
+.bv-popup-subtitle{font-size:14px}
+.bv-meter-label{font-size:14px}
+.bv-checklist li{font-size:14px}
+.bv-checklist li .bv-check{font-size:14px}
+.bv-popup-btn{font-size:var(--cs-fs-btn)}
+.bv-popup-dismiss{font-size:14px}
+.pwa-banner-icon{font-size:28px}
+.pwa-banner-title{font-size:15px}
+.pwa-banner-sub{font-size:14px}
+.pwa-banner-btn{font-size:var(--cs-fs-btn)}
+.pwa-banner-close{font-size:24px}
+.pwa-banner-step{font-size:14px}
+.pwa-banner-step-num{font-size:14px}
+.mascot-bubble{font-size:19px}
+.mascot-bubble-label{font-size:14px}
+.mascot-bubble-powers{font-size:14px}
+.mascot-bubble-btn{font-size:var(--cs-fs-btn)}
+.mascot-dismiss{font-size:15px}
+.mascot-emoji-burst{font-size:19px}
+.mascot-mini-bubble{font-size:14px}
+.mascot-zzz{font-size:15px}
+.mascot-dot::after{font-size:14px}
+.tp-day-badge{font-size:var(--cs-fs-meta)}
+.tp-theme{font-size:14px}
+.tp-cat{font-size:15px}
+.bb-nudge-ring span{font-size:14px}
+.bb-nudge-txt strong{font-size:15px}
+.bb-nudge-txt span{font-size:14px}
+.bb-nudge-go{font-size:var(--cs-fs-btn)}
+.bb-nudge-x{font-size:19px}
+.tp-shz-day{font-size:14px}
+.tp-shz-cap{font-size:19px}
+.tp-shz-sub{font-size:14px}
+.tp-shz-angle{font-size:14px}
+.tv-sharpen-note{font-size:14px}
+.tp-redo-lbl{font-size:14px}
+.tp-deliv-cap{font-size:14px}
+.tp-deliv-chip{font-size:var(--cs-fs-meta)}
+.tp-deliv-help{font-size:14px}
+.tp-headline{font-size:34px}
+.tp-sub{font-size:15px}
+.tp-generate-btn{font-size:var(--cs-fs-btn)}
+.tp-status{font-size:14px}
+.qp-types-lbl{font-size:14px}
+.qp-type{font-size:14px}
+.mix-lbl{font-size:14px}
+.mix-btn{font-size:17px}
+.mix-n{font-size:15px}
+.mix-total{font-size:14px}
+.type-tag{font-size:var(--cs-fs-meta)}
+.type-src{font-size:14px}
+.type-filter-lbl{font-size:14px}
+.fq-title{font-size:14px}
+.fq-count{font-size:14px}
+.fq-format-tag{font-size:var(--cs-fs-meta)}
+.fq-item-title{font-size:14px}
+.fq-done-btn{font-size:var(--cs-fs-btn)}
+.tp-result-title{font-size:17px}
+.tp-result-tag{font-size:var(--cs-fs-meta)}
+.tp-field-label{font-size:14px}
+.tp-field-copy{font-size:13px}
+.tp-field-content{font-size:15px}
+.tp-edit-hint{font-size:13px}
+.tp-action-btn{font-size:var(--cs-fs-btn)}
+.ws-eng-pill{font-size:var(--cs-fs-meta)}
+.tp-dismiss-label{font-size:14px}
+.tp-dismiss-hint{font-size:14px}
+.tp-dismiss-chip{font-size:var(--cs-fs-meta)}
+.dz-btn{font-size:var(--cs-fs-btn)}
+.nb-header h2{font-size:24px}
+.nb-header p{font-size:14px}
+.nb-input{font-size:17px}
+.nb-save{font-size:var(--cs-fs-btn)}
+.nb-note-text{font-size:17px}
+.nb-note-time{font-size:14px}
+.nb-act{font-size:var(--cs-fs-btn)}
+.nb-act.del{font-size:15px}
+.brain-banner-txt{font-size:14px}
+.brain-banner-cta{font-size:var(--cs-fs-btn)}
+.brain-review-title{font-size:17px}
+.brain-review-sub{font-size:14px}
+.brain-rule-text{font-size:15px}
+.brain-rule-ev{font-size:14px}
+.brain-rule-btn{font-size:var(--cs-fs-btn)}
+.brain-rule-status{font-size:14px}
+.brain-review-done{font-size:14px}
+.tv-praise-label{font-size:14px}
+.tv-praise-chip{font-size:var(--cs-fs-meta)}
+.tv-praise-done{font-size:14px}
+.bv-launch-title{font-size:17px}
+.bv-launch-sub{font-size:14px}
+.bv-header-title{font-size:17px}
+.bv-header-sub{font-size:14px}
+.bv-msg{font-size:15px}
+.bv-home-ring span{font-size:15px}
+.bv-home-h{font-size:15px}
+.bv-home-sub{font-size:14px}
+.bv-home-lbl{font-size:13px}
+.bv-home-scan{font-size:15px}
+.bv-scan-slot-text{font-size:15px}
+.bv-home-chip{font-size:var(--cs-fs-meta)}
+.bv-home-more{font-size:14px}
+.bv-suggestion-label{font-size:13px}
+.bv-suggestion-field{font-size:14px}
+.bv-suggestion-value{font-size:14px}
+.bv-suggestion-btn{font-size:var(--cs-fs-btn)}
+.bv-action-btn{font-size:var(--cs-fs-btn)}
+.bv-mic-tooltip{font-size:14px}
+.bv-vp-cancel{font-size:28px}
+.pipeline-stage-tab{font-size:14px !important}
+.pipeline-stage-tab .stage-count{font-size:14px}
+.fq-title{font-size:17px}
+.sp-section-header{font-size:17px}
+.vp-label{font-size:14px}
+.vp-stop{font-size:14px}
+.stats-hidden-note{font-size:14px}
+.stat-sq .num{font-size:28px}
+.stat-sq .label{font-size:13px}
+.spark-input{font-size:17px}
+.spark-btn{font-size:var(--cs-fs-btn)}
+.sp-status-done{font-size:14px}
+.sp-status-line{font-size:14px}
+.sp-missing-item{font-size:14px}
+.sp-fill-btn{font-size:var(--cs-fs-btn)}
+.tp-nudge{font-size:14px}
+.sp-ask-btn{font-size:var(--cs-fs-btn)}
+.more-lock, .ds-lock{font-size:13px}
+.more-row-text strong{font-size:17px}
+.more-row-text small{font-size:14px}
+.sp-tab{font-size:14px}
+.sp-fill{font-size:14px}
+.sp-quickadd{font-size:14px}
+.bv-starter-chip{font-size:var(--cs-fs-meta)}
+.bv-launch-card.compact .bv-launch-title{font-size:14px}
+.mascot-hide-btn{font-size:14px}
+.bv-text-input{font-size:17px}
+@media (max-width: 600px){.header-brand{font-size:15px}}
+@media (max-width: 600px){.header-brand::after{font-size:19px !important}}
+@media (max-width: 600px){.header-btn{font-size:0}}
+@media (max-width: 600px){.logout-btn{font-size:var(--cs-fs-btn)}}
+@media (max-width: 600px){.pipeline-stage-tab{font-size:14px !important}}
+@media (max-width: 600px){.stat-pill .label{font-size:14px !important}}
+.bv-voice-indicator{font-size:14px}
+.pro-tools-toggle{font-size:14px}
+.stmt-tpl-chip{font-size:var(--cs-fs-meta)}
+.dp-sub{font-size:14px}
+.dp-hint{font-size:14px}
+.vt-copy, .vt-use, .canva-link{font-size:14px}
+.copy-reel-btn, .cm-card-btn{font-size:var(--cs-fs-btn)}
+.sp-fill-head{font-size:14px}
+.sp-method-t{font-size:15px}
+.sp-method-d{font-size:14px}
+.sp-fill-note{font-size:14px}
+.brv-title{font-size:19px}
+.brv-sub{font-size:14px}
+.brv-label{font-size:14px}
+.brv-val{font-size:14px}
+.brv-cancel{font-size:var(--cs-fs-btn)}
+.brv-save{font-size:var(--cs-fs-btn)}
+.fold-caret{font-size:13px}
+.pipe-done-title{font-size:15px}
+.pipe-done-date{font-size:14px}
+.csd-title{font-size:19px}
+.csd-lbl{font-size:14px}
+.csd-item{font-size:17px}
+.csd-count{font-size:14px}
+.csd-foot{font-size:14px}
+.csd-ver{font-size:14px}
+.cs-composer-in{font-size:17px}
+@media (min-width: 900px){#desktopSidebar .ds-logo{font-size:17px}}
+@media (min-width: 900px){#desktopSidebar .ds-lbl{font-size:14px}}
+@media (min-width: 900px){#desktopSidebar .ds-item{font-size:17px}}
+@media (min-width: 900px){#desktopSidebar .ds-count{font-size:14px}}
+.cs-ih-title{font-size:28px}
+.cs-ih-sub{font-size:17px}
+.cs-pill-btn{font-size:var(--cs-fs-btn)}
+#view-ideas.cs-ideas-has .pro-tools-section > .collapsible-header{font-size:15px}
+#view-ideas.cs-ideas-has #ideaContent > .tp-shz-angle:first-child{font-size:14px}
+#mainViews .fn-faq .fn-faq-box.cs-faq-link > summary{font-size:14px}
+.cs-primary-btn{font-size:var(--cs-fs-btn)}
+:root .cs-splash-bubble{font-size:15px}
+:root .cs-splash-word{font-size:17px}
+:root .fp-title{font-size:15px}
+:root .fp-manage{font-size:14px}
+:root .fp-hint{font-size:14px}
+:root .fp-name{font-size:15px}
+:root .fp-badge{font-size:var(--cs-fs-meta)}
+:root .fp-go{font-size:var(--cs-fs-btn)}
+:root .fp-note{font-size:14px}
+:root .fp-confirm{font-size:14px}
+:root .bm-entry-note{font-size:14px}
+:root .bm-note-edit{font-size:14px}
+:root .bm-note-edit textarea{font-size:16px}
+:root .bm-card-note{font-size:14px}
+:root .fp-ghost{font-size:14px}
+:root .fp-addlink{font-size:14px}
+:root .fp-tool{font-size:14px}
+:root .fp-add-btn{font-size:var(--cs-fs-btn)}
+:root .fp-label{font-size:14px}
+:root .fp-panel input, :root .fp-panel textarea{font-size:16px}
+:root .fp-count{font-size:14px}
+:root .fp-save{font-size:var(--cs-fs-btn)}
+:root .fp-err{font-size:14px}
+:root .rx-step{font-size:14px}
+:root .rx-orig-meta{font-size:14px}
+:root .rx-orig-empty{font-size:14px}
+:root .rx-orig-tools{font-size:14px}
+:root .rx-modes .search-tag{font-size:var(--cs-fs-meta)}
+:root .rx-orig-hint{font-size:14px}
+:root .rx-orig-status{font-size:14px}
+:root .rx-opts{font-size:14px}
+:root .bw-label{font-size:15px}
+:root .fn-faq-box>summary{font-size:14px}
+:root .fn-faq-box>summary::after{font-size:19px}
+:root .fn-faq-q>summary{font-size:14px}
+:root .fn-faq-a{font-size:14px}
+:root .bh-pill{font-size:var(--cs-fs-meta)}
+:root .cs-usage-pill{font-size:var(--cs-fs-meta)}
+:root .cs-upgrade-title{font-size:22px}
+:root .cs-upgrade-body{font-size:17px}
+:root .cs-upgrade-meta{font-size:14px}
+:root .cs-upgrade-btn{font-size:var(--cs-fs-btn)}
+:root .cs-upgrade-alt{font-size:14px}
+:root .cs-upgrade-close{font-size:14px}
+:root .sp-plan-name{font-size:17px}
+:root .sp-plan-tag{font-size:var(--cs-fs-meta)}
+:root .sp-plan-sub{font-size:14px}
+:root .sp-plan-btn{font-size:var(--cs-fs-btn)}
+:root .cs-onb-head{font-size:14px}
+:root .cs-onb-x{font-size:19px}
+:root .cs-onb-row{font-size:14px}
+:root .cs-onb-check{font-size:14px}
+:root .cs-onb-go{font-size:var(--cs-fs-btn)}
+/* ---- 4e. inline font sizes (style="" / cssText) — !important because an inline style beats every sheet ---- */
+[style*="font-size:10px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:13px !important}
+[style*="font-size:10.5px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:13px !important}
+[style*="font-size:11px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:14px !important}
+[style*="font:11px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:14px !important}
+[style*="font-size:11.5px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:14px !important}
+[style*="font-size:12px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:14px !important}
+[style*="font:700 12px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:14px !important}
+[style*="font-size:12.5px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:14px !important}
+[style*="font-size:13px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:14px !important}
+[style*="font:600 13px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:14px !important}
+[style*="font-size:13.5px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:14px !important}
+[style*="font-size:14px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:15px !important}
+[style*="font:700 14px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:15px !important}
+[style*="font-size:15px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:17px !important}
+[style*="font:700 15px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:17px !important}
+[style*="font-size:16px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:17px !important}
+[style*="font-size:17px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:19px !important}
+[style*="font-size:18px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:19px !important}
+[style*="font-size:19px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:22px !important}
+[style*="font-size:20px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:22px !important}
+[style*="font-size:22px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:24px !important}
+[style*="font-size:26px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:28px !important}
+:is(input, textarea, select)[style*="font-size:10px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font-size:10.5px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font-size:11px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font:11px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font-size:11.5px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font-size:12px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font:700 12px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font-size:12.5px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font-size:13px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font:600 13px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font-size:13.5px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font-size:14px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font:700 14px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:16px !important}
+:is(input, textarea, select)[style*="font-size:15px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:17px !important}
+:is(input, textarea, select)[style*="font:700 15px" i]:not(#teleprompterOverlay *):not(#brollStage *){font-size:17px !important}
 
 /* ============ 5. components ============ */
 
-/* ---- type scale: screen title 26/600, card title 17/600, body 15, meta 13 ---- */
+/* ---- type scale (v700, tokens --cs-fs-*): screen 28/600 · card title 19/600 · body 17 · meta 14 · buttons 16 ----
+   Section 4d already moved every app font-size up the scale; these pin the named roles. `:root` adds one class of
+   specificity so a role wins over the app's own two-class rules (e.g. `.list-card .list-card-title`). */
 h1, h2, h3, h4 { font-family: var(--cs-font); letter-spacing: -0.01em; }
-.view h1, .view h2.view-title, .page-title, .sp-header h2, .nb-header h2, .vl-head h2 { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; text-transform: none; }
-.sp-back { background: transparent; border: 1px solid var(--cs-line); color: var(--cs-text); border-radius: 999px; box-shadow: none; min-height: 44px; }
-.list-card-title, .pipeline-card-title, .remix-card-title, .tp-result-title, .create-section h2, .create-section h3 { font-size: 17px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
-.list-card-hook, .pipeline-card-hook, .detail-text { font-size: 15px; line-height: 1.45; color: var(--cs-muted); }
+:root .view h1, :root .view h2.view-title, :root .page-title, :root .sp-header h2, :root .nb-header h2, :root .vl-head h2, :root .cs-ih-title {
+  font-size: var(--cs-fs-screen); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; text-transform: none;
+}
+:root .list-card-title, :root .pipeline-card-title, :root .remix-card-title, :root .tp-result-title, :root .create-section h2, :root .create-section h3 {
+  font-size: var(--cs-fs-title); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em;
+}
+:root .list-card-hook, :root .pipeline-card-hook, :root .detail-text, :root .cs-ih-sub, :root .fn-faq-a, :root .al-banner-text, :root .csd-item {
+  font-size: var(--cs-fs-body); line-height: 1.5;
+}
+:root .list-card-hook, :root .pipeline-card-hook, :root .detail-text { color: var(--cs-muted); }
+/* app.html's "readable floor" sweep sets .pipeline-card-hook with !important, so the body size needs it too */
+:root .pipeline-card-hook { font-size: var(--cs-fs-body) !important; }
 .hook-label, .detail-label, .reel-title-label, .format-tag, .type-tag, .pipeline-card-day, .stage-count, .mix-lbl, .fp-label, .rx-step, .sp-fill-head, .fn-faq-a {
   letter-spacing: 0;
 }
-.hook-label, .detail-label, .reel-title-label, .rx-step, .sp-fill-head { font-size: 13px; font-weight: 500; text-transform: none; color: var(--cs-muted); }
-.footer { color: var(--cs-muted); letter-spacing: 0; text-transform: none; font-size: 13px; }
+:root .hook-label, :root .detail-label, :root .reel-title-label, :root .rx-step, :root .sp-fill-head, :root .pipeline-card-day, :root .mix-lbl,
+:root .fp-label, :root .csd-lbl, :root .csd-count, :root .csd-foot, :root .format-tag, :root .type-tag, :root .stage-count, :root .footer {
+  font-size: var(--cs-fs-meta);
+}
+.hook-label, .detail-label, .reel-title-label, .rx-step, .sp-fill-head { font-weight: 500; text-transform: none; color: var(--cs-muted); }
+.footer { color: var(--cs-muted); letter-spacing: 0; text-transform: none; }
+:root .cs-pill-btn, :root .cs-primary-btn, :root .gen-btn, :root .pipe-btn, :root .detail-btn { font-size: var(--cs-fs-btn); }
+:root .mix-lbl { line-height: 1.2; }
+/* bigger card text needs the room: on phones the ✓ / ✕ circles go 46 → 44px (still the 44px touch minimum) and the
+   gaps tighten, so the idea text keeps ≥ 60% of the card */
+@media (max-width: 899px) {
+  .list-actions .action-circle { width: 44px; height: 44px; }
+  .list-actions { gap: 6px; }
+  .list-card-top { gap: 8px; }
+}                       /* "Behind the scenes" may wrap to two lines; the 3-per-row stepper grid stays */
 
 /* ---- header: 56px, flat, brand name ▾ in plain text (structure is S's; this is the look) ---- */
 .header, [data-theme="dark"] .header { background: var(--cs-bg); box-shadow: none; border: 0; }
@@ -803,9 +1560,12 @@ h1, h2, h3, h4 { font-family: var(--cs-font); letter-spacing: -0.01em; }
   border-bottom: 1px solid transparent;
 }
 .header-brand, .header-brand > span.hb-name {
-  font-size: 17px !important;            /* beats the v-era `.header-brand { font-size:12px !important }` */
+  font-size: var(--cs-fs-body) !important;   /* beats the v-era `.header-brand { font-size:12px !important }` */
   font-weight: 600; letter-spacing: -0.01em; text-transform: none; color: var(--cs-text) !important;
 }
+/* the brand name truncates with … instead of wrapping (bigger type, long brand names) */
+.header-brand { min-width: 0; }
+.header-brand > span.hb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 899px) {
   .header-brand { border: 0 !important; background: transparent !important; padding: 0 10px !important; border-radius: 12px !important; }
 }
@@ -826,7 +1586,9 @@ h1, h2, h3, h4 { font-family: var(--cs-font); letter-spacing: -0.01em; }
 
 /* ---- install banner ---- */
 .pwa-banner { background: var(--cs-raise); color: var(--cs-text); border-bottom: 1px solid var(--cs-line); box-shadow: none; }
-.pwa-banner-sub { color: var(--cs-muted); }
+.pwa-banner-sub { color: var(--cs-muted); font-size: var(--cs-fs-meta); line-height: 1.35; }
+.pwa-banner-title { font-size: var(--cs-fs-btn); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pwa-banner-text { min-width: 0; }
 .pwa-banner-btn { background: var(--cs-primary); color: var(--cs-on-primary); border: 0; border-radius: 999px; }
 .pwa-banner-close { color: var(--cs-muted); background: transparent; }
 
@@ -857,7 +1619,7 @@ h1, h2, h3, h4 { font-family: var(--cs-font); letter-spacing: -0.01em; }
 /* tags / badges */
 .format-tag, .type-tag, .stage-count, .ds-count, .badge, .count-badge, .fp-badge, .tp-day-badge, .tp-result-tag, .sp-plan-tag {
   background: var(--cs-chip) !important; color: var(--cs-text) !important; border: 0 !important;
-  border-radius: 999px; font-size: 13px; font-weight: 500; text-transform: none;
+  border-radius: 999px; font-size: var(--cs-fs-meta); font-weight: 500; text-transform: none;
 }
 .type-tag { padding: 3px 9px; }
 
@@ -962,7 +1724,7 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
 .dismiss-popup .dp-option.sel, .dismiss-popup.ap .dp-option.sel {
   background: var(--cs-primary) !important; color: var(--cs-on-primary) !important; border-color: var(--cs-primary) !important;
 }
-.dismiss-popup .dp-title { color: var(--cs-text); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: 15px; }
+.dismiss-popup .dp-title { color: var(--cs-text); font-weight: 600; text-transform: none; letter-spacing: 0; font-size: var(--cs-fs-body); }
 
 /* mascot coach bubble: plain card, no lavender label */
 .mascot-bubble { border-radius: 18px; }
@@ -976,15 +1738,15 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
 
 /* ---- FAQ folds ---- */
 .fn-faq-box { overflow: hidden; }
-.fn-faq-box > summary { color: var(--cs-text); font-weight: 500; font-size: 15px; }
+.fn-faq-box > summary { color: var(--cs-text); font-weight: 500; font-size: var(--cs-fs-body); }
 .fn-faq-q { border-top: 1px solid var(--cs-line); }
 .fn-faq-q > summary { color: var(--cs-text); font-weight: 500; }
-.fn-faq-a { color: var(--cs-muted); font-size: 15px; }
+.fn-faq-a { color: var(--cs-muted); }
 
 /* ---- stat squares ---- */
 .stat-sq { background: var(--cs-raise); border-color: var(--cs-line); }
 .stat-sq .num { color: var(--cs-text); font-weight: 600; }
-.stat-sq .label { color: var(--cs-muted); font-size: 13px; text-transform: none; letter-spacing: 0; }
+.stat-sq .label { color: var(--cs-muted); font-size: var(--cs-fs-meta); text-transform: none; letter-spacing: 0; }
 .stat-pill::before, .stat-pill::after { background: none !important; }
 
 /* ---- Pipeline: segmented stage tabs, flat cards ---- */
@@ -1006,7 +1768,7 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
 #remixQuick { border-radius: 18px; }
 .fp-panel { background: var(--cs-card); border: 1px solid var(--cs-line); border-radius: 18px; }
 .fp-add, .fp-panel.fp-add { background: transparent; border: 1px dashed var(--cs-line); }
-.fp-title { font-size: 17px; font-weight: 600; }
+.fp-title { font-size: var(--cs-fs-title); font-weight: 600; }
 .fp-manage, .fp-ghost { color: var(--cs-muted); }
 .fp-tool, .fp-addlink { background: var(--cs-chip); color: var(--cs-text); border: 0; border-radius: 999px; }
 .fp-addlink { border: 1px dashed var(--cs-line); background: transparent; }
@@ -1035,15 +1797,15 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
   #desktopSidebar .ds-logo > span { background: transparent; border: 0; }
   #desktopSidebar .ds-item {
     color: var(--cs-text) !important; background: transparent !important; border: 0 !important; box-shadow: none !important;
-    border-radius: 10px; font-size: 14px; font-weight: 400; min-height: 44px;
+    border-radius: 10px; font-size: 15px; font-weight: 400; min-height: 44px;
   }
   #desktopSidebar .ds-item svg { stroke: currentColor !important; color: var(--cs-muted); }
   #desktopSidebar .ds-item:hover { background: var(--cs-hover) !important; }
   #desktopSidebar .ds-item.active { background: var(--cs-chip) !important; box-shadow: none !important; font-weight: 500; }
   #desktopSidebar .ds-item.active svg { color: var(--cs-text); }
   #desktopSidebar .ds-item.locked, #desktopSidebar .ds-item[aria-disabled="true"] { color: var(--cs-muted) !important; }
-  #desktopSidebar .ds-count { background: transparent !important; border: 0 !important; color: var(--cs-muted) !important; font-size: 13px; min-width: 0; }
-  #desktopSidebar .ds-section, #desktopSidebar .ds-label, #desktopSidebar .ds-head { color: var(--cs-muted); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+  #desktopSidebar .ds-count { background: transparent !important; border: 0 !important; color: var(--cs-muted) !important; font-size: var(--cs-fs-meta); min-width: 0; }
+  #desktopSidebar .ds-section, #desktopSidebar .ds-label, #desktopSidebar .ds-head { color: var(--cs-muted); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; }
   #desktopSidebar .ds-coach { background: transparent !important; border: 1px solid var(--cs-line) !important; box-shadow: none !important; color: var(--cs-text) !important; border-radius: 999px; }
   #desktopSidebar .ds-plan, #desktopSidebar .ds-usage { background: transparent; border: 1px solid var(--cs-line); color: var(--cs-text); box-shadow: none; }
   #desktopSidebar .ds-foot, #desktopSidebar .ds-foot a { color: var(--cs-muted); }
