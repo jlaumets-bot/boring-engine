@@ -2,6 +2,14 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-05 — v699 site. WEBSITE IN THE SAME "A · Clean" LOOK (owner: "all the website landingpage also").
+
+Contract .unlazy/redesign/PLAN-site.md. index/faq/terms/privacy/refunds restyled: dark tokens, Geist, no mascot art, no gradients.
+Copy, links, meta, JSON-LD, anchors byte-identical (gate scripts/verify/site-clean.mjs, SITE CLEAN OK 5/5; mutations-site.json 13/13).
+Landing hero = HTML/CSS phone mock of the new Ideas screen (data-site-mock, aria-hidden). Brain animation kept (landing.mjs requires it).
+OPEN copy questions for owner: "Jord Digital Ltd" (likely JORG), refunds intro "It is operated", FAQ AI-training claim broader than privacy §4,
+free plan Pipeline mismatch, "no setup" vs FAQ setup step, Static vs "Remixes"/5 formats in meta.
+
 ## ▶▶ 2026-10-04 — v699. CLEAN REDESIGN "A · Clean" (ChatGPT-like, dark default) (owner: "clean and sleek … im already super tired of the shrimp design").
 
 Contract .unlazy/redesign/PLAN.md; mockup canvas https://claude.ai/artifact/JTqFEMoK86agRFde1Ya5gA. LOOK-only: every function still reachable.
