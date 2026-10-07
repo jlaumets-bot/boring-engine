@@ -1862,3 +1862,105 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
 
 /* Ideas day headings ("MONDAY") are built with an inline uppercase style: sentence case, like the mockup */
 #view-ideas h2[style*="text-transform:uppercase"] { text-transform: none !important; letter-spacing: 0 !important; font-weight: 600 !important; }
+
+/* ============ 7. desktop layout (v701, hand-written; ≥900px only — phones and tablets are untouched) ============
+   ChatGPT-desktop shape: a 260px sidebar that holds every destination (brand switcher first), no header row in the
+   content area, and each screen as a centred column with its own width. Tokens only. */
+@media (min-width: 900px) {
+  /* ---- shell ---- */
+  body { padding-left: 260px !important; }
+  #desktopSidebar { width: 260px; padding: 12px 10px; overflow-y: auto; overscroll-behavior: contain; }
+  /* the content header row is gone; it stays in the DOM only so the brand dropdown (fixed, anchored to the
+     sidebar's brand row) can open */
+  .header { position: static !important; height: 0; padding: 0 !important; margin: 0 !important; border: 0 !important; background: none !important;
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }   /* a filter would trap the fixed dropdown inside the header */
+  .header-top { visibility: hidden; height: 0 !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; border: 0 !important; overflow: visible !important; }
+  #brandDropdown { visibility: visible; }
+  #mainViews { max-width: none !important; margin: 0 !important; padding: 24px 32px 0; box-sizing: border-box; }
+  #mainViews > .footer { display: none; }   /* the sidebar footer already says Content Shrimp */
+  #mainViews > .view { margin-left: auto; margin-right: auto; padding-left: 0 !important; padding-right: 0 !important; box-sizing: border-box; }
+  #view-ideas { max-width: 1040px; }
+  #view-pipeline, #view-viral, #view-questions { max-width: 880px; }
+  #view-today, #view-create, #view-idea, #view-notebook, #view-dfy { max-width: 760px; }
+  #settingsOverlay .sp-header, #settingsOverlay .sp-body { max-width: 880px !important; }
+  /* page header row: 28px title left, the screen's main action right */
+  .cs-page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 auto 16px; min-height: 44px; }
+  body[data-cs-view="ideas"] .cs-page-head { max-width: 1040px; }
+  body[data-cs-view="pipeline"] .cs-page-head, body[data-cs-view="viral"] .cs-page-head, body[data-cs-view="questions"] .cs-page-head { max-width: 880px; }
+  body[data-cs-view="today"] .cs-page-head, body[data-cs-view="create"] .cs-page-head, body[data-cs-view="idea"] .cs-page-head, body[data-cs-view="notebook"] .cs-page-head { max-width: 760px; }
+  body.cs-ideas-has[data-cs-view="ideas"] .cs-page-head { display: none; }   /* "N ideas ready" + Plan my week is Ideas' header */
+  .cs-page-title { margin: 0; font-size: var(--cs-fs-screen); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--cs-text); }
+  /* screens that print their own big heading under the page title: keep one title */
+  #view-viral .vl-head h2, #view-idea .vl-head h2, #view-questions .vl-head h2 { display: none; }
+  /* composer: pinned at the bottom of the content column, as wide as the column */
+  body[data-cs-view] .cs-composer { left: 260px !important; right: 0 !important; width: auto !important; transform: none !important; padding: 8px 32px 16px; }
+  body[data-cs-view="ideas"] .cs-composer-box { max-width: 1040px; }
+  body[data-cs-view="today"] .cs-composer-box { max-width: 760px; }
+
+  /* ---- sidebar ---- */
+  #desktopSidebar .ds-brand-wrap { margin: 0 0 8px; }
+  #desktopSidebar .ds-brand { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 10px;
+    background: transparent; color: var(--cs-text); font-family: inherit; font-size: var(--cs-fs-body); font-weight: 600; text-align: left; cursor: pointer; }
+  #desktopSidebar .ds-brand-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #desktopSidebar .ds-brand svg { width: 16px; height: 16px; flex: none; stroke: var(--cs-muted); }
+  #desktopSidebar .ds-item { min-height: 44px; }
+  #desktopSidebar .ds-plan { min-height: 44px; box-sizing: border-box; margin-top: 6px; font-size: 13px; color: var(--cs-muted); border-radius: 10px; }
+  #desktopSidebar .ds-foot { font-size: 13px; }
+
+  /* ---- Ideas: actions under the text, full-width text, 1 or 2 columns ---- */
+  #ideaContent > div { grid-template-columns: 1fr !important; }
+  #ideaContent .list-card-top { flex-direction: column; align-items: stretch; gap: 14px; }
+  #ideaContent .list-card-top > div:first-child { width: 100%; }
+  #ideaContent .list-actions { justify-content: flex-start; gap: 8px; }
+  #ideaContent .list-actions .action-circle.approve, #ideaContent .list-actions .action-circle.dismiss {
+    width: auto !important; height: 44px !important; min-height: 44px !important; padding: 0 18px !important; border-radius: 999px !important; gap: 6px; font-size: var(--cs-fs-btn); font-weight: 500; }
+  #ideaContent .list-actions .action-circle.dismiss { background: transparent !important; border: 1px solid var(--cs-line) !important; color: var(--cs-text) !important; }
+  #ideaContent .list-actions .action-circle .cs-act-lbl { display: inline; }
+  #ideaContent .list-actions .action-circle svg { width: 16px; height: 16px; }
+  .format-tag:empty { display: none; }
+
+  /* ---- Pipeline: compact segmented control, one column, "Read script" first ---- */
+  /* the painted segment is 36px tall; transparent 4px borders keep each tab's tap area at 44px */
+  .pipeline-stages { display: inline-flex !important; width: auto; padding: 0 3px !important; gap: 2px !important; border-radius: 12px !important; margin-bottom: 16px !important; }
+  .pipeline-stage-tab { flex: none !important; flex-direction: row !important; height: 44px; min-height: 44px; box-sizing: border-box; padding: 0 14px !important;
+    border-top: 4px solid transparent !important; border-bottom: 4px solid transparent !important; background-clip: padding-box !important;
+    gap: 8px !important; font-size: var(--cs-fs-meta) !important; border-radius: 13px !important; }
+  .pipeline-stage-tab svg { display: none; }
+  .pipeline-stage-tab .stage-count { order: 2; }
+  .pipeline-card .pipe-btn.cs-read-btn { display: inline-flex !important; background: var(--cs-primary) !important; color: var(--cs-on-primary) !important; border: 1px solid var(--cs-primary) !important; }
+  .pipeline-card-actions:has(.cs-read-btn) .pipe-btn.next { background: transparent !important; color: var(--cs-text) !important; border: 1px solid var(--cs-line) !important; }
+  .pipeline-card-actions { gap: 8px; }
+
+  /* ---- Quick Post: a left-aligned 760 column ---- */
+  #view-today .cs-qp-col { max-width: none !important; margin: 0 !important; }
+  #view-today .tp-shz { align-items: flex-start; text-align: left; padding-left: 0; padding-right: 0; }
+  #view-today .qp-types-lbl { text-align: left; }
+  #view-today .qp-types { justify-content: flex-start; }
+  #view-today .tp-shz-stage.cs-qp-stage { margin: 18px 0 0; justify-content: flex-start; }
+  #view-today .tp-shz-sub { max-width: none; }
+  #view-today .tp-shz-angle { padding-left: 0; }
+  #view-today #tvResult { max-width: none; }
+
+  /* ---- sheets become centred dialogs ---- */
+  .more-sheet.angle-sheet { position: fixed; left: calc(50% + 130px) !important; right: auto !important; top: 50% !important; bottom: auto !important;
+    transform: translate(-50%, -50%) !important; width: min(640px, calc(100vw - 324px)); max-width: 640px; max-height: 85vh; overflow-y: auto; border-radius: 20px !important; }
+  .dismiss-popup, .brv-sheet, .conn-modal { border-radius: 20px !important; max-width: 640px; }
+  .brv-overlay, #bmOverlay, #notifOverlay { align-items: center !important; padding-left: 260px; }
+  #pwaGuideOverlay { align-items: center !important; }
+  /* the opinion sheet (Idea Catcher / composer / Quick Post writer) is a full-screen page on phones; here a dialog */
+  #rv2Sheet.rv2-lab { inset: auto; top: 50%; left: calc(50% + 130px); transform: translate(-50%, -50%); width: min(720px, calc(100vw - 324px));
+    max-height: 85vh; border: 1px solid var(--cs-line); border-radius: 20px; background: var(--cs-bg); }
+  body:has(#rv2Sheet.rv2-lab)::after { content: ''; position: fixed; inset: 0; background: var(--cs-overlay); z-index: 8999; }
+  #rv2Sheet .rv2-lab-in { padding: 16px 24px 28px; }
+
+  /* ---- hover + keyboard focus ---- */
+  #desktopSidebar .ds-item:hover, #desktopSidebar .ds-brand:hover { background: var(--cs-hover); }
+  .list-card:hover, .pipeline-card:hover, .collapsible-header:hover { background: var(--cs-hover); }
+  .pipe-btn:hover, .detail-btn:hover, .cs-pill-btn:hover, .gen-btn:hover, .tp-shz-angle:hover { filter: brightness(1.08); }
+  #desktopSidebar .ds-item:focus-visible, #desktopSidebar .ds-brand:focus-visible, .list-card :focus-visible, .pipeline-card :focus-visible,
+  .cs-pill-btn:focus-visible, .cs-primary-btn:focus-visible, .cs-composer-send:focus-visible { outline: 2px solid var(--cs-text); outline-offset: 2px; }
+}
+/* 2 idea columns from 1100px; one column 900–1099 */
+@media (min-width: 1100px) {
+  #ideaContent > div { grid-template-columns: 1fr 1fr !important; }
+}

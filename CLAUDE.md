@@ -2,6 +2,17 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-07 — v701. DESKTOP LAYOUT PASS (owner: "make better in desktop … the overall layouts").
+
+≥900px only (phone measurements snapshot in .unlazy/redesign/phone-measure.json, unchanged). clean.css "§7 desktop layout" (hand-written).
+- Sidebar 260px: brand switcher row (toggleBrandSwitcher) → nav → Tools (+Bookmarks, Brand brain) → coach/Settings/Help/plan. Content header row hidden on desktop.
+- Centred columns: Ideas 1040 (2 cols ≥1100), Pipeline/Trends/Search/Settings 880, Quick Post/Remix/Catcher/Notebook 760; 28px page titles.
+- Ideas: Approve/Skip pills under the text on desktop (same buttons). "▶ " title marker removed on all widths.
+- Pipeline: compact segmented control; "Read script" primary → openTeleprompter(id) (Read mode); Mark done secondary.
+- Bottom sheets → centred dialogs (rv2Sheet 720/85vh; others 640). csUsageText guards missing used/limit.
+- Gate scripts/verify/desktop-layout.mjs; mutations .unlazy/redesign/mutations-desktop.json 18/18.
+- KNOWN: clean.css section 4 is out of sync with a fresh gen.py run (~1.5k chars); theme gate passes. Regenerate deliberately + re-shoot before relying on gen.py.
+
 ## ▶▶ 2026-10-07 — v700. DESKTOP TELEPROMPTER "READ MODE" (owner: "big format in desktop … not film in the desktop, just read and film with phone on a side").
 
 - Wide (≥900px) + fine pointer → read mode: no camera ever (tpEnsureCamera refuses), black full window, Geist clamp(40px,4.2vw,84px), 30ch column.

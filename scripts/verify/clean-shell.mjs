@@ -373,8 +373,8 @@ for (const unlocked of [true, false]) {
   const none = mkTour(375, {});
   none.c.showTourStep();
   ok(none.ended() === 1 && none.tt.innerHTML === '', '11 nothing to point at → the tour ends instead of pointing at nothing');
-  const desk = mkTour(1280, { '#desktopSidebar': true, '#desktopSidebar .ds-item[data-view="today"]': true, '#desktopSidebar .ds-item[data-view="ideas"]': true, '#desktopSidebar .ds-item[data-view="pipeline"]': true, '#desktopSidebar .ds-item[data-view="create"]': true, '.header-actions': true, '#navTabs': false });
-  ok(desk.c.tourVisibleSteps().length === 6, '11 at 1280px all 6 steps point at the sidebar / header icons');
+  const desk = mkTour(1280, { '#desktopSidebar': true, '#desktopSidebar .ds-item[data-view="today"]': true, '#desktopSidebar .ds-item[data-view="ideas"]': true, '#desktopSidebar .ds-item[data-view="pipeline"]': true, '#desktopSidebar .ds-item[data-view="create"]': true, '#desktopSidebar .ds-bottom': true, '.header-actions': false, '#navTabs': false });
+  ok(desk.c.tourVisibleSteps().length === 6, '11 at 1280px all 6 steps point at the desktop sidebar (v701: the header icons moved there)');
 }
 
 /* ═══ 12. Ideas first ═══ */

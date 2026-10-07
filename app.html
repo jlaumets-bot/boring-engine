@@ -32,7 +32,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #212121 dark, #ffffff light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#212121' : '#ffffff'; } catch (e) {}
-  window.APP_VERSION = 'v700';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v701';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6176,6 +6176,10 @@ body[data-cs-view="ideas"] #mainViews > .footer, body[data-cs-view="today"] #mai
   font-size: 13px; font-weight: 400; color: var(--cs-muted); text-decoration: underline; text-underline-offset: 3px; }
 #mainViews .fn-faq .fn-faq-box.cs-faq-link > summary::after { content: none; }
 #mainViews .fn-faq .fn-faq-box.cs-faq-link[open] > .fn-faq-body { border: 1px solid var(--cs-line); border-radius: 18px; padding: 4px 14px; margin-top: 4px; }
+/* v701: desktop-only pieces — hidden on phones and tablets (clean.css §7 shows them at ≥900px) */
+.cs-page-head { display: none; }
+.list-actions .action-circle .cs-act-lbl { display: none; }
+.pipeline-card .pipe-btn.cs-read-btn { display: none !important; }
 /* ── Quick Post: one clean primary button instead of the shrimp circle ── */
 .tp-shz-stage.cs-qp-stage { width: auto; height: auto; margin: 18px auto 0; display: flex; justify-content: center; }
 .cs-primary-btn { min-height: 44px; padding: 0 24px; border: 0; border-radius: 999px; background: var(--cs-primary); color: var(--cs-on-primary);
@@ -6532,6 +6536,8 @@ if (!window.supabase) {
 
 
 <div class="main-views" id="mainViews">
+  <!-- v701: desktop page title (≥900px only; csShellSync sets the text) -->
+  <div class="cs-page-head" id="csPageHead" aria-hidden="true"><h1 class="cs-page-title" id="csPageTitle"></h1></div>
   <nav class="nav-tabs" id="navTabs"></nav>
 
   <div class="view" id="view-ideas">
@@ -7328,6 +7334,8 @@ function _brandOwnership(brandId) {
 // Single source of truth for the header brand label (keeps the .hb-name span so
 // long names ellipsis and the ▾ arrow stays visible). Never leaves it blank.
 function setHeaderBrand(name) {
+  // v701: the desktop sidebar's brand row shows the same name
+  try { const ds = document.getElementById('dsBrandName'); if (ds) ds.textContent = name || 'Your Brand'; } catch (e) {}
   const el = document.getElementById('headerBrand');
   if (!el) return;
   el.innerHTML = '<span class="hb-name">' + escHtml(name || 'Your Brand') + '</span>';
@@ -7335,7 +7343,10 @@ function setHeaderBrand(name) {
 
 function positionBrandDropdown() {
   const dd = document.getElementById('brandDropdown');
-  const trig = document.getElementById('headerBrand');
+  // v701: on desktop the header row is hidden; the dropdown anchors to the sidebar's brand row instead
+  const _ds = document.getElementById('dsBrand');
+  const _dsOn = !!(_ds && _ds.getBoundingClientRect().width > 0);
+  const trig = _dsOn ? _ds : document.getElementById('headerBrand');
   if (!dd || !trig) return;
   const r = trig.getBoundingClientRect();
   const ddW = dd.offsetWidth || 240;
@@ -9729,13 +9740,22 @@ function _dsItem(v,label){ return '<button class="ds-item" data-view="'+v+'" onc
 function buildDesktopSidebar(){
   try{
     if(document.getElementById('desktopSidebar')) return;
-    var h = '<div class="ds-logo">Content Shrimp</div>';   // v699: mascot mark removed
+    /* v701 desktop: the content-area header row is gone at ≥900px, so everything it held lives here —
+       the brand switcher (first row, the SAME toggleBrandSwitcher), Bookmarks, Brand brain, Settings, Help. */
+    var _bn = '';
+    try { _bn = (document.querySelector('#headerBrand .hb-name') || {}).textContent || ''; } catch(_){}
+    var h = '<div class="brand-switcher-wrap ds-brand-wrap"><button type="button" class="ds-brand" id="dsBrand" aria-haspopup="true" onclick="toggleBrandSwitcher()">'
+      + '<span class="ds-brand-name" id="dsBrandName">' + escHtml(_bn || 'Your Brand') + '</span>'
+      + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></div>';
     h += _dsItem('today','Quick Post')+_dsItem('ideas','Ideas')+_dsItem('pipeline','Pipeline');
     h += '<div class="ds-lbl">Create</div>'+_dsItem('create','Remix')+_dsItem('idea','Idea Catcher')+_dsItem('viral','Trends');
-    h += '<div class="ds-lbl">Tools</div>'+_dsItem('notebook','Notebook')+_dsItem('questions','What people search');
+    h += '<div class="ds-lbl">Tools</div>'+_dsItem('notebook','Notebook')+_dsItem('questions','What people search')+
+      '<button class="ds-item" data-act="toggleBookmarkBar" onclick="toggleBookmarkBar()">'+CS_DRAWER_ICONS.bookmarks+'<span>Bookmarks</span></button>'+
+      '<button class="ds-item" data-act="openBrain" onclick="openBrain()">'+CS_DRAWER_ICONS.brain+'<span>Brand brain</span></button>';
     h += '<div class="ds-spring"></div><div class="ds-bottom">'+
       '<button class="ds-item ds-coach" onclick="bvTabClick()">'+DS_ICONS.coach+'<span>Talk to your coach</span></button>'+
-      '<button class="ds-item" onclick="openSettings()">'+DS_ICONS.settings+'<span>Settings</span></button>'+
+      '<button class="ds-item" data-act="openSettings" onclick="openSettings()">'+DS_ICONS.settings+'<span>Settings</span></button>'+
+      '<button class="ds-item" data-act="startTour" onclick="startTour()">'+CS_DRAWER_ICONS.help+'<span>Help</span></button>'+
       '<div class="ds-plan" id="dsPlan"></div>'+
       '<div class="ds-foot">Content Shrimp · '+(window.APP_VERSION||'')+' · <span style="text-decoration:underline;cursor:pointer;" onclick="csCheckUpdate(this)">check for update</span><br><a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="/refunds.html" target="_blank" rel="noopener">Refunds</a></div></div>';
     var el=document.createElement('aside'); el.id='desktopSidebar'; el.innerHTML=h;
@@ -9934,8 +9954,11 @@ try {
 function csNewPost(){ csDrawerClose(); switchView('today'); }
 // Called by switchView after every screen change: closes the drawer, tells the CSS which screen is up
 // (the composer shows on Ideas and Quick Post only).
+var CS_PAGE_TITLES = { today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: 'Remix', idea: 'Idea Catcher',
+  notebook: 'Notebook', viral: 'Trends', questions: 'What people search' };
 function csShellSync(view){
   try { document.body.setAttribute('data-cs-view', String(view || '')); } catch (e) {}
+  try { var _pt = document.getElementById('csPageTitle'); if (_pt) _pt.textContent = CS_PAGE_TITLES[view] || ''; } catch (e) {}
   csDrawerClose();
 }
 // ── Composer (Ideas + Quick Post) ──
@@ -10012,11 +10035,13 @@ function csIdeasHeadSync(){
     head.innerHTML = csIdeasHeadHtml(n);
     head.hidden = false;
     view.classList.add('cs-ideas-has');
+    try { document.body.classList.add('cs-ideas-has'); } catch (e) {}
     view.classList.toggle('cs-plan-folded', !_csPlanOpen);
   } else {
     head.innerHTML = '';
     head.hidden = true;
     view.classList.remove('cs-ideas-has', 'cs-plan-folded');
+    try { document.body.classList.remove('cs-ideas-has'); } catch (e) {}
   }
 }
 function csPlanToggle(){
@@ -14472,8 +14497,8 @@ function renderPipeline() {
       </div>
       <div class="pipeline-card-header" onclick="toggleExpand(${idea.id})">
         <div class="pipeline-card-info">
-          <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.isRemix?'<span class="remix-origin-tag">Remix</span>':''}${idea.delivery==='faceless'?'<span class="remix-origin-tag" style="background:var(--cs-chip);color:var(--cs-text);">Faceless</span>':''}
-          <div class="pipeline-card-title" style="padding-right:50px">${exp?'\u25BC':'\u25B6'} ${escHtml(idea.title)}</div>
+          <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format] || idea.format || '')}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.isRemix?'<span class="remix-origin-tag">Remix</span>':''}${idea.delivery==='faceless'?'<span class="remix-origin-tag" style="background:var(--cs-chip);color:var(--cs-text);">Faceless</span>':''}
+          <div class="pipeline-card-title" style="padding-right:50px">${escHtml(idea.title)}</div>
           ${idea.hook && asText(idea.hook).trim().toLowerCase() !== asText(idea.title).trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="pipeline-card-hook">${escHtml(idea.hook)}</div>` : ''}
           <div class="pipeline-card-day">${escHtml(idea.day)}${idea.originalCreator?' \u2022 via '+escHtml(idea.originalCreator):''}${idea.community?' \u2022 '+escHtml(idea.community):''}</div>
         </div>
@@ -14481,6 +14506,7 @@ function renderPipeline() {
           ${/* v477: format-specific tools (Slides / Preview / Teleprompter / B-roll) moved INTO the
                 opened post so every collapsed card is the same shape \u2014 one primary + undo. They ragged-
                 wrapped differently per format and left a lonely undo circle on 2-button cards. */''}
+          ${(idea.status === 'filming' && CS_READ_FORMATS.indexOf(idea.format) !== -1) ? `<button class="pipe-btn cs-read-btn" onclick="openTeleprompter(${idea.id})">Read script</button>` : ''}
           ${prevStage?`<button class="pipe-btn" onclick="moveStage(${idea.id},'${prevStage}')">\u2190 ${STAGE_LABELS[prevStage]}</button>`:''}
           ${nextStage?`<button class="pipe-btn next" onclick="pipeAdvance(event,${idea.id},'${nextStage}')">${nextStage==='done'?'Mark done':STAGE_LABELS[nextStage]+' \u2192'}</button>`:''}
           <button class="pipe-btn pipe-undo" onclick="moveStage(${idea.id},'pending')" title="Back to pending" aria-label="Back to pending">${ICO.undo}</button>
@@ -14493,6 +14519,10 @@ function renderPipeline() {
   }).join('');
 }
 
+// v701 desktop: the formats the opened post offers the teleprompter for (renderDetailContent: video, micro,
+// qna → "Teleprompter"; statement → "Film it"). On desktop a Film & Post card shows "Read script" for them,
+// which is the same openTeleprompter(id) — tpOpenMode() gives a desktop the Read mode.
+var CS_READ_FORMATS = ['video', 'micro', 'qna', 'statement'];
 function setPipelineStage(s) { activePipelineStage=s; renderPipeline(); }
 function moveStage(id, newStatus) {
   const idea = state[id];
@@ -15448,7 +15478,7 @@ function renderTodayView() {
   const _ok = isBrandMinimumMet();
   let _hbOpen = '0'; try { const _v = localStorage.getItem('home-brain-open'); if (_v !== null) _hbOpen = _v; } catch(e){}
   container.innerHTML = `
-    <div style="padding:6px 0 12px;max-width:480px;margin:0 auto;">
+    <div class="cs-qp-col" style="padding:6px 0 12px;max-width:480px;margin:0 auto;">
       ${homeBrainNudgeHtml()}
       <div class="tp-shz" id="tpShz">
         <div class="tp-shz-day">${today} · ${escHtml(community)}</div>
@@ -17199,16 +17229,16 @@ function renderIdeas() {
         <div class="list-card-summary" onclick="${(_ideaSelectMode && isPending)?('toggleIdeaPick('+idea.id+')'):('toggleExpand('+idea.id+')')}">
           <div class="list-card-top">
             <div style="flex:1">
-              <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format])}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.paaSource ? '<span class="paa-badge-idea">People ask</span>' : ''}${idea.sparkSource ? '<span class="spark-badge-idea">Your idea</span>' : ''}${isFreshIdea(idea) ? '<span class="new-badge-idea">New</span>' : ''}${idea.format==='carousel'?`<button class="cm-card-btn" onclick="event.stopPropagation();openCarouselMaker(${idea.id})" title="Make Slides"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg> Slides</button>`:''}${['video','micro','qna'].includes(idea.format)?`<button class="cm-card-btn" onclick="event.stopPropagation();openBroll(${idea.id})" title="B-roll preview"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 7h5M17 17h5"/></svg> B-roll</button>`:''}
-              <div class="list-card-title">${exp?'\u25BC':'\u25B6'} ${escHtml(idea.title)}</div>
+              <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format] || idea.format || '')}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.paaSource ? '<span class="paa-badge-idea">People ask</span>' : ''}${idea.sparkSource ? '<span class="spark-badge-idea">Your idea</span>' : ''}${isFreshIdea(idea) ? '<span class="new-badge-idea">New</span>' : ''}${idea.format==='carousel'?`<button class="cm-card-btn" onclick="event.stopPropagation();openCarouselMaker(${idea.id})" title="Make Slides"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg> Slides</button>`:''}${['video','micro','qna'].includes(idea.format)?`<button class="cm-card-btn" onclick="event.stopPropagation();openBroll(${idea.id})" title="B-roll preview"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 7h5M17 17h5"/></svg> B-roll</button>`:''}
+              <div class="list-card-title">${escHtml(idea.title)}</div>
               ${(typeof rv2BeliefLine === 'function') ? rv2BeliefLine(idea) : ''}
               ${(typeof typesSourceHtml === 'function') ? typesSourceHtml(idea) : ''}
               ${idea.hook && asText(idea.hook).trim().toLowerCase() !== asText(idea.title).trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="list-card-hook">${escHtml(idea.hook)}</div>` : ''}
               ${idea.status!=='pending' ? `<span class="list-card-status s-${escAttr(idea.status)}">${escHtml(STAGE_LABELS[idea.status]||idea.status)}${idea.dismissReason?' \u2022 '+escHtml(idea.dismissReason):''}</span>` : ''}
             </div>
             <div class="list-actions" onclick="event.stopPropagation()">${_ideaSelectMode ? (isPending ? `<button class="idea-pick ${_ideaSelected.has(idea.id)?'on':''}" onclick="toggleIdeaPick(${idea.id})" aria-label="Select">${_ideaSelected.has(idea.id)?ICO.check:''}</button>` : '') : (isPending ? `
-                <button class="action-circle approve" onclick="quickApprove(${idea.id})" title="Approve" aria-label="Approve"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
-                <button class="action-circle dismiss" onclick="showDismissPopupFn(${idea.id})" title="Dismiss" aria-label="Dismiss"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="action-circle approve" onclick="quickApprove(${idea.id})" title="Approve" aria-label="Approve"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="cs-act-lbl" aria-hidden="true">Approve</span></button>
+                <button class="action-circle dismiss" onclick="showDismissPopupFn(${idea.id})" title="Dismiss" aria-label="Dismiss"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span class="cs-act-lbl" aria-hidden="true">Skip</span></button>
               ` : `
                 <button class="action-circle undo" onclick="undoStatus(${idea.id})" title="Back to pending">${ICO.undo}</button>
               `)}</div>
@@ -20256,6 +20286,9 @@ async function refreshUsage(){
 function planLabel(p){ return ({trial:'Trial', free:'Free', starter:'Starter', pro:'Pro', agency:'Agency'})[p] || 'Plan'; }
 function csUsageText(){
   var u = csUsage; if(!u) return '';
+  // v701: no usage numbers (yet) → the plan name only, never "undefined/undefined"
+  var _n = function(v){ return typeof v === 'number' ? isFinite(v) : (typeof v === 'string' && v.trim() !== '' && isFinite(+v)); };
+  if(!_n(u.used) || !_n(u.limit)) return planLabel(u.plan);
   if(u.plan === 'trial' && u.trialDaysLeft != null) return 'Trial · ' + u.trialDaysLeft + ' day' + (u.trialDaysLeft===1?'':'s') + ' left · ' + u.used + '/' + u.limit;
   if(u.plan === 'free') return 'Free · ' + u.used + '/' + u.limit + ' · Upgrade';
   return planLabel(u.plan) + ' · ' + u.used + '/' + u.limit + ' this month';
@@ -27441,7 +27474,7 @@ const TOUR_STEPS = [
     position: 'auto'
   },
   {
-    target: '.header-actions', deskTarget: '.header-actions', phoneTarget: '#csMenuBtn',
+    target: '.header-actions', deskTarget: '#desktopSidebar .ds-bottom', phoneTarget: '#csMenuBtn',
     title: 'Settings & Help',
     text: 'Fine-tune your brand voice, upload your logo, set your content mix. Hit Help anytime to replay this tour.',
     phoneText: 'Settings, your brand brain and Help are in this menu. Hit Help anytime to replay this tour.',
