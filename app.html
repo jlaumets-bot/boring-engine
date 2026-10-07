@@ -32,7 +32,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #212121 dark, #ffffff light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#212121' : '#ffffff'; } catch (e) {}
-  window.APP_VERSION = 'v699';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v700';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6182,6 +6182,85 @@ body[data-cs-view="ideas"] #mainViews > .footer, body[data-cs-view="today"] #mai
   font-family: inherit; font-size: 15px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .cs-primary-btn:disabled { opacity: .6; cursor: default; }
 .tp-shz-stage.cs-qp-stage.generating .cs-primary-btn { opacity: .7; }
+/* ══ READ MODE — the desktop teleprompter (>= 900px + mouse/trackpad). Phones never get .read-mode. ══ */
+.tp-rm-bar, .tp-rm-hint, .tp-rm-flash, .tp-mode-switch { display: none; }
+.teleprompter-overlay.rm-eligible:not(.read-mode):not(.recording) .tp-mode-switch { display: inline-flex; }
+.tp-mode-switch { align-items: center; min-height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.22);
+  background: rgba(255,255,255,.08); color: #F2EFE6; font: 500 13px/1 'Geist', system-ui, sans-serif; cursor: pointer; white-space: nowrap; }
+.tp-mode-switch:hover { background: rgba(255,255,255,.16); }
+.teleprompter-overlay.read-mode { background: #000; font-family: 'Geist', system-ui, sans-serif; }
+.teleprompter-overlay.read-mode .tp-camera-feed,
+.teleprompter-overlay.read-mode .teleprompter-controls,
+.teleprompter-overlay.read-mode .teleprompter-advanced,
+.teleprompter-overlay.read-mode .tp-rec-timer,
+.teleprompter-overlay.read-mode .tp-mode,
+.teleprompter-overlay.read-mode .tp-tip,
+.teleprompter-overlay.read-mode .teleprompter-close { display: none !important; }
+.teleprompter-overlay.read-mode .teleprompter-top { position: absolute; top: 0; left: 0; right: 0; z-index: 5; padding: 18px 28px 34px;
+  background: linear-gradient(to bottom, rgba(0,0,0,.9), rgba(0,0,0,0)) !important; transition: opacity .35s ease; }
+.teleprompter-overlay.read-mode .teleprompter-title { font: 500 14px/1.3 'Geist', system-ui, sans-serif; color: rgba(242,239,230,.55); }
+.teleprompter-overlay.read-mode .teleprompter-body { flex: 1; padding: 0 40px; background: #000 !important; scroll-behavior: auto; scrollbar-width: none; }
+.teleprompter-overlay.read-mode .teleprompter-body::-webkit-scrollbar { display: none; }
+.teleprompter-overlay.read-mode .teleprompter-body .tp-script { width: fit-content; max-width: 30ch; margin: 0 auto; transition: opacity .3s ease; line-height: 1.35; color: #F2EFE6;
+  font-family: 'Geist', system-ui, sans-serif; font-weight: 500; letter-spacing: -.01em; text-shadow: none; text-align: left; }
+/* The script must NOT be positioned: the voice matcher measures each word's offsetTop against the scrolling
+   body. The reading line goes BEHIND the words instead (negative z inside the body's stacking context). */
+.teleprompter-overlay.read-mode .tp-em { color: #fff; font-weight: 600; text-decoration-thickness: .045em; }
+.teleprompter-overlay.read-mode .tp-blk { margin-bottom: .6em; }
+.teleprompter-overlay.read-mode .tp-beat { margin: .45em 0; }
+.teleprompter-overlay.read-mode .tp-beat::before { font-size: 22px; color: rgba(242,239,230,.4); }
+.teleprompter-overlay.read-mode .tp-primer { max-width: 46ch; margin: 150px auto 0; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.12); }
+.teleprompter-overlay.read-mode .tp-primer > summary { font-family: 'Geist', system-ui, sans-serif; }
+.teleprompter-overlay.read-mode .tp-read-line { border-top: 1px solid rgba(255,255,255,.14); z-index: -1; }
+.teleprompter-overlay.read-mode .tp-read-line::before { left: 22px; background: rgba(255,255,255,.35); }
+.teleprompter-overlay.read-mode.rm-mirror .tp-script { transform: scaleX(-1); }
+/* while the 3-2-1 runs the script steps back, so the count reads cleanly */
+.teleprompter-overlay.read-mode.rm-counting .tp-script, .teleprompter-overlay.read-mode.rm-counting .tp-primer { opacity: .22; }
+/* soft fades top and bottom: the eye stays on the reading line, and the bar never sits on live text */
+.teleprompter-overlay.read-mode::before, .teleprompter-overlay.read-mode::after { content: ''; position: absolute; left: 0; right: 0; z-index: 4; pointer-events: none; }
+.teleprompter-overlay.read-mode::before { top: 0; height: 14vh; background: linear-gradient(to bottom, #000 20%, rgba(0,0,0,0)); }
+.teleprompter-overlay.read-mode::after { bottom: 0; height: 24vh; background: linear-gradient(to top, #000 30%, rgba(0,0,0,0)); }
+.teleprompter-overlay.read-mode .tp-countdown { font: 500 clamp(120px, 13vw, 220px)/1 'Geist', system-ui, sans-serif; color: #F2EFE6; text-shadow: none; }
+.teleprompter-overlay.read-mode .tp-rm-bar { display: flex; }
+.tp-rm-bar { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 6; align-items: center; justify-content: center;
+  flex-wrap: wrap; gap: 4px; width: max-content; max-width: calc(100% - 32px); box-sizing: border-box; padding: 6px; border-radius: 999px;
+  background: rgba(30,30,32,.74); -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255,255,255,.1); box-shadow: 0 12px 40px rgba(0,0,0,.55); transition: opacity .35s ease, transform .35s ease; }
+.tp-rm-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 15px; border-radius: 999px; border: 0;
+  background: transparent; color: #F2EFE6; font: 500 14px/1 'Geist', system-ui, sans-serif; cursor: pointer; white-space: nowrap; }
+.tp-rm-btn:hover { background: rgba(255,255,255,.1); }
+.tp-rm-btn[aria-pressed="true"] { background: rgba(255,255,255,.2); color: #fff; }
+.tp-rm-primary { min-width: 88px; background: #F2EFE6; color: #0B0B0C; font-weight: 600; }
+.tp-rm-primary:hover { background: #fff; }
+.tp-rm-ico { min-width: 40px; padding: 0 10px; font-size: 18px; }
+.tp-rm-a-sm { font-size: 13px; font-weight: 600; }
+.tp-rm-a-lg { font-size: 19px; font-weight: 600; }
+.tp-rm-grp { display: inline-flex; align-items: center; gap: 0; border-radius: 999px; background: rgba(255,255,255,.06); }
+.tp-rm-val { min-width: 92px; text-align: center; font: 500 13px/1 'Geist', system-ui, sans-serif; color: rgba(242,239,230,.8); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tp-rm-lbl { color: rgba(242,239,230,.5); }
+.tp-rm-sep { width: 1px; height: 22px; background: rgba(255,255,255,.14); margin: 0 4px; }
+.teleprompter-overlay.read-mode button:focus-visible, .tp-mode-switch:focus-visible { outline: 2px solid #F2EFE6; outline-offset: 2px; }
+.teleprompter-overlay.read-mode.rm-idle { cursor: none; }
+.teleprompter-overlay.read-mode.rm-idle .tp-rm-bar:not(:has(:focus-visible)) { opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(10px); }
+.teleprompter-overlay.read-mode.rm-idle .teleprompter-top:not(:has(:focus-visible)) { opacity: 0; pointer-events: none; }
+.teleprompter-overlay.read-mode .tp-rm-hint, .teleprompter-overlay.read-mode .tp-rm-flash { display: block; }
+.tp-rm-hint { position: absolute; bottom: 92px; left: 50%; transform: translateX(-50%); z-index: 6; max-width: calc(100% - 32px); box-sizing: border-box;
+  padding: 10px 18px; border-radius: 999px; background: rgba(30,30,32,.82); border: 1px solid rgba(255,255,255,.1);
+  color: rgba(242,239,230,.8); font: 500 13px/1.6 'Geist', system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; transition: opacity .6s ease; pointer-events: none; }
+.tp-rm-hint.show { opacity: 1; }
+.tp-rm-hint kbd { display: inline-block; min-width: 1.1em; text-align: center; font: 600 13px/1.5 'Geist', system-ui, sans-serif; padding: 0 6px; margin-right: 4px;
+  border-radius: 6px; background: rgba(255,255,255,.12); color: #F2EFE6; }
+.tp-rm-hint i { display: inline-block; width: 14px; }
+.tp-rm-flash { position: absolute; left: 50%; bottom: 148px; transform: translateX(-50%); z-index: 6; padding: 9px 16px; border-radius: 999px;
+  background: rgba(30,30,32,.88); color: #F2EFE6; font: 500 14px/1.2 'Geist', system-ui, sans-serif; white-space: nowrap;
+  opacity: 0; transition: opacity .25s ease; pointer-events: none; }
+.tp-rm-flash.show { opacity: 1; }
+.teleprompter-overlay.read-mode.rm-idle .tp-rm-flash { bottom: 32px; }
+@media (prefers-reduced-motion: reduce) {
+  .teleprompter-overlay.read-mode .tp-countdown.pop { animation: none; }
+  .tp-rm-bar, .tp-rm-hint, .tp-rm-flash, .teleprompter-overlay.read-mode .teleprompter-top, .teleprompter-overlay.read-mode .tp-script { transition: none; }
+}
 </style>
 <!-- v699: the clean theme (agent T). MUST stay the last stylesheet in <head>, after the inline <style> above. -->
 <link rel="stylesheet" href="/clean.css">
@@ -6823,6 +6902,7 @@ if (!window.supabase) {
     <div class="teleprompter-title" id="tpTitle"></div>
     <div class="teleprompter-top-actions">
       <button class="teleprompter-done" id="tpDoneBtn" onclick="tpMarkDone()" style="display:none">Mark Done &#10003;</button>
+      <button type="button" class="tp-mode-switch" id="tpToReadBtn" onclick="tpSwitchToRead()" aria-label="Switch to read mode: big text, no camera">Read mode</button>
       <button class="teleprompter-close" onclick="closeTeleprompter()">Close</button>
     </div>
   </div>
@@ -6846,6 +6926,27 @@ if (!window.supabase) {
     <button class="tp-font-btn" onclick="tpFontUp()">A+</button>
   </div>
   <div class="teleprompter-body" id="tpBody"></div>
+  <div class="tp-rm-hint" id="tpRmHint" aria-hidden="true"><kbd>Space</kbd>play / pause<i></i><kbd>&uarr;</kbd><kbd>&darr;</kbd>speed<i></i><kbd>+</kbd><kbd>&minus;</kbd>text size<i></i><kbd>R</kbd>restart<i></i><kbd>F</kbd>full screen<i></i><kbd>M</kbd>mirror<i></i><kbd>Esc</kbd>close</div>
+  <div class="tp-rm-flash" id="tpRmFlash" role="status" aria-live="polite"></div>
+  <div class="tp-rm-bar" id="tpRmBar" role="toolbar" aria-label="Reading controls">
+    <button type="button" class="tp-rm-btn tp-rm-primary" id="tpRmPlay" onclick="tpReadToggle()" aria-label="Pause (Space)">Pause</button>
+    <div class="tp-rm-grp" role="group" aria-label="Speed">
+      <button type="button" class="tp-rm-btn tp-rm-ico" onclick="tpReadSpeed(-1)" aria-label="Slower (Down arrow)" title="Slower (&darr;)">&minus;</button>
+      <span class="tp-rm-val"><span class="tp-rm-lbl">Speed</span> <span id="tpRmSpeedVal">1.0&times;</span></span>
+      <button type="button" class="tp-rm-btn tp-rm-ico" onclick="tpReadSpeed(1)" aria-label="Faster (Up arrow)" title="Faster (&uarr;)">+</button>
+    </div>
+    <div class="tp-rm-grp" role="group" aria-label="Text size">
+      <button type="button" class="tp-rm-btn tp-rm-ico" onclick="tpReadSize(-1)" aria-label="Smaller text (minus key)" title="Smaller text (&minus;)"><span class="tp-rm-a-sm">A</span></button>
+      <button type="button" class="tp-rm-btn tp-rm-ico" onclick="tpReadSize(1)" aria-label="Larger text (plus key)" title="Larger text (+)"><span class="tp-rm-a-lg">A</span></button>
+    </div>
+    <button type="button" class="tp-rm-btn" id="tpRmRestart" onclick="tpReadRestart()" aria-label="Restart from the top (R)" title="Restart (R)">Restart</button>
+    <button type="button" class="tp-rm-btn" id="tpRmMirror" onclick="tpReadMirror()" aria-pressed="false" aria-label="Mirror the text for teleprompter glass (M)" title="Mirror (M)">Mirror</button>
+    <button type="button" class="tp-rm-btn" id="tpRmFull" onclick="tpReadFullscreen()" aria-label="Full screen (F)" title="Full screen (F)">Full screen</button>
+    <button type="button" class="tp-rm-btn" id="tpRmVoice" onclick="tpReadVoiceToggle()" aria-pressed="false" aria-label="Follow my voice (uses the microphone only)" title="Scroll follows your voice (microphone only)">Follow me</button>
+    <span class="tp-rm-sep" aria-hidden="true"></span>
+    <button type="button" class="tp-rm-btn" id="tpRmFilm" onclick="tpSwitchToFilm()" aria-label="Film here instead, with this computer's camera">Film here instead</button>
+    <button type="button" class="tp-rm-btn" id="tpRmClose" onclick="closeTeleprompter()" aria-label="Close (Esc)" title="Close (Esc)">Close</button>
+  </div>
 </div>
 
 <script>
@@ -10509,7 +10610,7 @@ function openTeleprompter(id) {
     tpSetSmartSpeed(_stTxt);   // v492: statements need a reading estimate too
     document.getElementById('teleprompterOverlay').classList.add('open');
     document.body.style.overflow = 'hidden';
-    tpEnsureCamera(true);      // v500: show yourself straight away
+    if (typeof tpOpenMode === 'function') tpOpenMode(); else tpEnsureCamera(true);   // read mode on a desktop, camera on phones (statement)
     return;
   }
   // Teleprompter = ONLY the spoken script — no shot list / on-screen text clutter.
@@ -10531,7 +10632,7 @@ function openTeleprompter(id) {
   } catch(e){}
   document.getElementById('teleprompterOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
-  tpEnsureCamera(true);        // v500: show yourself straight away
+  if (typeof tpOpenMode === 'function') tpOpenMode(); else tpEnsureCamera(true);   // read mode on a desktop, camera on phones (script)
 }
 
 // Pick a scroll speed that roughly matches natural speech, so the user doesn't
@@ -10677,6 +10778,11 @@ function tpShowFilmed(){
 }
 
 function closeTeleprompter() {
+  // Read mode (desktop): note how far they read BEFORE anything is torn down. Past ~60% or to the end,
+  // the same "Mark as filmed?" the phone shows is asked once the screen has closed. Never auto-marks.
+  let _rmAsk = false;
+  try { if (typeof tpReadClose === 'function') _rmAsk = tpReadClose(); } catch(e){}
+  try { if (typeof tpExitOwnFullscreen === 'function') tpExitOwnFullscreen(); } catch(e){}   // any mode: F, then "Film here", then Close
   // A countdown still ticking has to die with the screen. Nothing cancelled it, so its
   // callback fired ~2.4s after the user had already closed the teleprompter and armed a
   // take behind it. Disarm too — cancelling must never leave Record stuck disabled.
@@ -10777,6 +10883,7 @@ function closeTeleprompter() {
   document.getElementById('teleprompterOverlay').classList.remove('open');
   document.body.style.overflow = '';
   stopTpScroll();
+  if (_rmAsk) { try { tpAskMarkFilmed(); } catch(e){} }
 }
 
 async function toggleTpCamera() {
@@ -10839,6 +10946,7 @@ function tpStreamLive(stream) {
   } catch (e) { return false; }
 }
 async function tpEnsureCamera(quiet) {
+  if (typeof tpReadModeOn === 'function' && tpReadModeOn()) return false;   // read mode never asks for the camera
   if (tpCameraStream && !tpStreamLive(tpCameraStream)) {
     // Dead tracks. Drop them and fall through to a fresh getUserMedia rather than handing
     // the recorder a stream that will capture nothing.
@@ -10855,7 +10963,7 @@ async function tpEnsureCamera(quiet) {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 2560 }, height: { ideal: 1440 } }, audio: true });
     // the overlay can be closed while the permission prompt is up — don't leave
     // a live camera running behind a screen nobody is looking at
-    if (!overlay || !overlay.classList.contains('open')) { stream.getTracks().forEach(t => t.stop()); return; }
+    if (!overlay || !overlay.classList.contains('open') || overlay.classList.contains('read-mode')) { stream.getTracks().forEach(t => t.stop()); return; }
     tpCameraStream = stream;
     if (video) { video.srcObject = stream; video.classList.add('active'); }
     overlay.classList.add('cam-on');
@@ -13333,13 +13441,20 @@ function tpVoiceMatch(heard){
   }
   return win.end > 0 ? win.end : -1;
 }
+// A word's top inside the scrolling body, whatever sits between them: offsetTop is measured from the
+// nearest POSITIONED ancestor, so walk the offsetParent chain up to the body instead of trusting one hop.
+function tpWordTop(node, body){
+  let y = 0, n = node, guard = 0;
+  while (n && n !== body && guard++ < 50) { y += n.offsetTop || 0; n = n.offsetParent; }
+  return y;
+}
 function tpVoiceScrollTo(idx){
   if (tpVoiceBridge) { clearInterval(tpVoiceBridge); tpVoiceBridge = null; }   // v497
   const body = document.getElementById('tpBody');
   const w = tpVoiceWords[Math.min(idx, tpVoiceWords.length - 1)];
   if (!body || !w) return;
   tpVoiceWords.forEach((x, i) => x.node.classList.toggle('said', i < idx));
-  const target = w.node.offsetTop - body.clientHeight * tpReadFrac();
+  const target = tpWordTop(w.node, body) - body.clientHeight * tpReadFrac();
   if (window._tpSyncOn) {
     // v506: while the recording engine runs, a match only STEERS it (forward-only)
     window._tpSyncTargetY = Math.max(window._tpSyncTargetY || 0, Math.max(0, target));
@@ -13818,6 +13933,466 @@ document.getElementById('tpSpeed').addEventListener('input', () => {
   // voice-following (and its recognition session) just because you nudged the slider.
   if (tpScrolling && tpInterval) { clearInterval(tpInterval); tpInterval = null; tpStartTimedScroll(); }
 });
+
+/* ══ READ MODE — the desktop teleprompter ══════════════════════════════════════════════════════
+   The owner: "use the teleprompter in big format in desktop … not film in the desktop even but just
+   read and film with phone on a side." On a wide screen with a mouse or trackpad (>= 900px wide AND
+   pointer:fine) the teleprompter opens as a big black reading screen: large off-white text, a 3-2-1,
+   then a smooth scroll at speaking pace. It NEVER asks for the camera — no getUserMedia for video,
+   no recorder. The only thing that can use the microphone is "Follow me", and only once it is on.
+   Phones and tablets never see any of this: tpOpenMode() hands them exactly the old camera path.
+   "Film here instead" switches to the camera path, "Read mode" switches back; the choice is kept
+   per device. Every entry point (openTeleprompter, tvOpenTeleprompter, and the brollFilmGo /
+   rv2FilmNow paths that call openTeleprompter) ends in tpOpenMode() — none calls the camera itself. */
+const TP_READ_MIN_W = 900;        // same breakpoint as the desktop layout
+const TP_READ_ASK_FRAC = 0.6;     // read past this much (or to the end) → "Mark as filmed?" on close
+let _tpRm = null;                 // the live read-mode session; null whenever read mode is not on screen
+function tpRmGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function tpRmSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+function tpReadModeOn(){ return !!_tpRm; }
+function tpReadEligible(){
+  try {
+    const w = window.innerWidth || 0;
+    if (w < TP_READ_MIN_W) return false;
+    return !!(window.matchMedia && window.matchMedia('(pointer:fine)').matches);
+  } catch(e) { return false; }
+}
+function tpDesktopPref(){ return tpRmGet('tp_desktop_mode') === 'film' ? 'film' : 'read'; }
+// The one place an opened teleprompter decides between reading and filming.
+function tpOpenMode(){
+  const ov = document.getElementById('teleprompterOverlay');
+  const elig = tpReadEligible();
+  if (ov) ov.classList.toggle('rm-eligible', elig);
+  if (elig && tpDesktopPref() !== 'film') { tpEnterReadMode(); return 'read'; }
+  tpLeaveReadMode();
+  tpEnsureCamera(true);        // v500: phones, tablets and "Film here instead" — show yourself straight away
+  return 'film';
+}
+function tpReadReduced(){
+  try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch(e) { return false; }
+}
+function tpReadRaf(fn){
+  if (typeof window.requestAnimationFrame === 'function') return window.requestAnimationFrame(fn);
+  return setTimeout(() => fn(Date.now()), 16);
+}
+function tpReadCaf(id){
+  try { if (typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(id); else clearTimeout(id); } catch(e){}
+}
+function tpReadScale(){
+  const v = parseFloat(tpRmGet('tp_read_scale'));
+  return (isFinite(v) && v >= 0.6 && v <= 1.8) ? v : 1;
+}
+function tpReadInitMult(){
+  const v = parseFloat(tpRmGet('tp_read_speed'));
+  return (isFinite(v) && v >= 0.3 && v <= 3) ? v : 1;
+}
+function tpReadVoiceOn(){ return !!TP_VOICE_SUPPORTED && tpRmGet('tp_read_voice') === '1'; }
+function tpReadApplySize(){
+  const sc = document.querySelector('#tpBody .tp-script');
+  if (!sc) return false;
+  sc.style.fontSize = 'calc(clamp(40px, 4.2vw, 84px) * ' + tpReadScale().toFixed(2) + ')';
+  return true;
+}
+// First line on the reading line at the top, last line able to reach it at the bottom. keep = hold the
+// reader's place across a text-size change, a resize or full screen.
+function tpReadLayout(keep){
+  const s = _tpRm;
+  const b = document.getElementById('tpBody');
+  const sc = b && b.querySelector('.tp-script');
+  if (!b || !sc) return false;
+  const oldMax = Math.max(0, b.scrollHeight - b.clientHeight);
+  const cur = s ? s.pos : b.scrollTop;
+  const frac = (keep && oldMax > 0) ? Math.min(1, Math.max(0, cur / oldMax)) : 0;
+  sc.style.paddingTop = '0px';
+  const readOff = Math.round(b.clientHeight * tpReadFrac());
+  sc.style.paddingTop = Math.max(0, readOff - sc.offsetTop) + 'px';
+  sc.style.paddingBottom = Math.max(0, b.clientHeight - readOff) + 'px';
+  const max = Math.max(0, b.scrollHeight - b.clientHeight);
+  b.scrollTop = frac * max;
+  if (s) { s.pos = frac * max; s.setTop = b.scrollTop; }
+  return true;
+}
+function tpReadEnterUi(){
+  const ov = document.getElementById('teleprompterOverlay');
+  if (!ov) return;
+  ov.classList.add('read-mode');
+  ov.classList.remove('cam-on');
+  ov.classList.toggle('rm-mirror', tpRmGet('tp_read_mirror') === '1');
+}
+function tpEnterReadMode(){
+  const ov = document.getElementById('teleprompterOverlay');
+  const b = document.getElementById('tpBody');
+  if (!ov || !b) return false;
+  if (_tpRm) tpReadTeardown(false);
+  // read mode never holds the camera: one that is already up (switching from "Film here") goes down
+  try { if (tpCameraStream) stopTpCamera(); } catch(e){}
+  try { stopTpScroll(); } catch(e){}          // a phone-style preview scroll must not run underneath
+  const sc = b.querySelector('.tp-script');
+  _tpRm = { playing: false, counting: false, ended: false, pos: 0, setTop: 0, last: 0, raf: 0,
+            autoFrac: 0, endedAuto: false, mult: tpReadInitMult(), wake: null, idleT: 0, gate: 1,
+            origFont: sc ? sc.style.fontSize : '' };
+  tpReadEnterUi();
+  tpReadApplySize();
+  tpReadLayout(false);
+  tpReadSyncUi();
+  tpReadWake();
+  tpReadHint(false);
+  tpReadActivity();
+  tpReadStart(true);
+  return true;
+}
+// Stop everything read mode owns. exitFs: also leave browser full screen (closing, not switching).
+function tpReadTeardown(exitFs){
+  const s = _tpRm;
+  if (!s) return false;
+  tpReadPause();
+  if (s.counting) tpReadCancelCount();
+  try { clearTimeout(s.idleT); } catch(e){}
+  tpReadUnwake(s);
+  _tpRm = null;
+  if (exitFs) tpExitOwnFullscreen();          // only ours — never someone else's full screen
+  const ov = document.getElementById('teleprompterOverlay');
+  if (ov) { ov.classList.remove('read-mode'); ov.classList.remove('rm-idle'); ov.classList.remove('rm-mirror'); ov.classList.remove('rm-counting'); }
+  const sc = document.querySelector('#tpBody .tp-script');
+  if (sc) { sc.style.paddingTop = ''; sc.style.paddingBottom = ''; sc.style.fontSize = s.origFont || (tpFontSize + 'px'); }
+  ['tpRmHint', 'tpRmFlash'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove('show'); });
+  return true;
+}
+function tpLeaveReadMode(){ return tpReadTeardown(false); }
+// Called by closeTeleprompter. Returns true when the reader got far enough to be asked "Mark as filmed?".
+function tpReadClose(){
+  const s = _tpRm;
+  if (!s) return false;
+  // Only what the prompter itself carried them through counts (auto-scroll or Follow me), plus reaching the
+  // end that way. Scrolling by hand, or pressing End, is looking — not reading it out.
+  const ask = !!(s.endedAuto || s.autoFrac >= TP_READ_ASK_FRAC);
+  tpReadTeardown(true);
+  return ask;
+}
+function tpReadStart(countdown){
+  const s = _tpRm;
+  if (!s) return false;
+  tpReadPause();
+  if (!countdown || tpReadReduced()) { tpReadPlay(); return 'now'; }   // reduced motion: no 3-2-1, still scrolls
+  s.counting = true;
+  tpReadSyncUi();
+  tpCountdown(3, () => { if (_tpRm !== s) return; s.counting = false; tpReadPlay(); });
+  return 'count';
+}
+function tpReadCancelCount(){
+  try { if (window._tpCountdownIv) clearInterval(window._tpCountdownIv); } catch(e){}
+  window._tpCountdownIv = null;
+  const el = document.getElementById('tpCountdown');
+  if (el) { el.classList.remove('show'); el.classList.remove('pop'); el.textContent = ''; }
+  if (_tpRm) _tpRm.counting = false;
+}
+function tpReadPlay(){
+  const s = _tpRm;
+  if (!s || s.playing) return false;
+  if (s.counting) tpReadCancelCount();
+  if (s.ended) { tpReadRestart(); return false; }
+  s.playing = true;
+  s.last = 0;
+  if (tpReadVoiceOn()) tpReadVoiceStart();
+  s.raf = tpReadRaf(tpReadFrame);
+  tpReadSyncUi();
+  return true;
+}
+function tpReadPause(){
+  const s = _tpRm;
+  if (!s) return false;
+  s.playing = false;
+  if (s.raf) { tpReadCaf(s.raf); s.raf = 0; }
+  tpReadVoiceStop();
+  tpReadSyncUi();
+  return true;
+}
+function tpReadToggle(){
+  const s = _tpRm;
+  if (!s) return false;
+  if (s.counting) { tpReadCancelCount(); tpReadSyncUi(); tpReadFlash('Paused'); return 'paused'; }
+  if (s.playing) { tpReadPause(); tpReadFlash('Paused'); return 'paused'; }
+  if (s.ended) { tpReadRestart(); return 'restart'; }
+  tpReadPlay();
+  return 'playing';
+}
+function tpReadRestart(){
+  const s = _tpRm;
+  if (!s) return false;
+  tpReadPause();
+  s.ended = false;
+  s.pos = 0;
+  const b = document.getElementById('tpBody');
+  if (b) { b.scrollTop = 0; s.setTop = b.scrollTop; }
+  try {
+    tpVoiceCursor = 0; tpVoiceLastAdvanceDone = false; window._tpSyncTargetY = null;
+    (tpVoiceWords || []).forEach(w => w.node.classList.remove('said'));
+  } catch(e){}
+  return tpReadStart(true);
+}
+// One frame of the scroll. Pace = the script's own height over the time it takes to SAY it
+// (145 wpm, tpSetSmartSpeed), so a bigger font scrolls more pixels but the same words per minute.
+function tpReadFrame(ts){
+  const s = _tpRm;
+  if (!s || !s.playing) return;
+  const b = document.getElementById('tpBody');
+  if (!b) return;
+  const now = (typeof ts === 'number' && isFinite(ts)) ? ts : Date.now();
+  const dt = s.last ? Math.min(0.1, Math.max(0, (now - s.last) / 1000)) : 0;
+  s.last = now;
+  let jumped = false;
+  if (Math.abs(b.scrollTop - s.setTop) > 3) { s.pos = b.scrollTop; jumped = true; }   // scrolled by hand → carry on from there (not counted as read)
+  const max = Math.max(0, b.scrollHeight - b.clientHeight);
+  let secs = window._tpEstSecs || 0;
+  if (!secs) {
+    const sc = b.querySelector('.tp-script');
+    const words = sc ? (String(sc.textContent || '').trim().match(/\S+/g) || []).length : 0;
+    secs = words ? Math.max(5, Math.round(words / 145 * 60)) : 5;
+  }
+  let v = max / Math.max(5, secs) * s.mult;            // px per second
+  if (window._tpSyncOn && tpVoiceRec) {
+    // "Follow me" is on: move while they talk, ease almost to a stop when they pause,
+    // and let each recognised phrase pull the script to the exact line (same rule as filming).
+    const talking = tpVoiceHeardAt && (Date.now() - tpVoiceHeardAt < 1500);
+    const want = !tpVoiceHeardAt ? 0.35 : (talking ? 1 : 0.12);
+    s.gate += (want - s.gate) * Math.min(1, dt * 6);
+    v *= s.gate;
+    if (window._tpSyncTargetY != null && Date.now() - (window._tpSyncTargetAt || 0) < 2600) {
+      const err = window._tpSyncTargetY - s.pos;
+      if (err > 4) v += Math.min(err * 2.3, 300);
+      else if (err < -4) v *= Math.max(0.25, 1 + err / 500);
+    }
+  }
+  const from = s.pos;
+  s.pos = Math.min(max, s.pos + v * dt);
+  b.scrollTop = s.pos;
+  s.setTop = b.scrollTop;
+  if (max > 0) s.autoFrac += Math.max(0, s.pos - from) / max;   // credit only the prompter's own movement
+  if (max > 0 && s.pos >= max - 0.5) { s.pos = max; b.scrollTop = max; s.setTop = b.scrollTop; tpReadEnd(!jumped); return; }
+  s.raf = tpReadRaf(tpReadFrame);
+}
+function tpReadEnd(byPrompter){
+  const s = _tpRm;
+  if (!s) return false;
+  tpReadPause();
+  s.ended = true;
+  if (byPrompter) s.endedAuto = true;
+  tpReadSyncUi();
+  tpReadActivity();               // bring the controls back so Replay / Close are right there
+  tpReadFlash('End of script');
+  return true;
+}
+function tpReadSpeed(dir){
+  const s = _tpRm;
+  if (!s) return false;
+  s.mult = Math.max(0.3, Math.min(3, Math.round((s.mult + (dir > 0 ? 0.1 : -0.1)) * 10) / 10));
+  tpRmSet('tp_read_speed', String(s.mult));
+  tpReadSyncUi();
+  tpReadFlash('Speed ' + s.mult.toFixed(1) + '×');
+  return s.mult;
+}
+function tpReadSize(dir){
+  if (!_tpRm) return false;
+  const next = Math.max(0.6, Math.min(1.8, Math.round((tpReadScale() + (dir > 0 ? 0.1 : -0.1)) * 10) / 10));
+  tpRmSet('tp_read_scale', String(next));
+  tpReadApplySize();
+  tpReadLayout(true);
+  tpReadFlash('Text ' + Math.round(next * 100) + '%');
+  return next;
+}
+function tpReadMirror(){
+  const ov = document.getElementById('teleprompterOverlay');
+  if (!_tpRm || !ov) return false;
+  const on = !ov.classList.contains('rm-mirror');
+  ov.classList.toggle('rm-mirror', on);
+  tpRmSet('tp_read_mirror', on ? '1' : '0');
+  tpReadSyncUi();
+  tpReadFlash(on ? 'Mirrored' : 'Mirror off');
+  return on;
+}
+function tpReadFsEl(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
+// Leave browser full screen when the teleprompter (or anything inside it) holds it — read mode or camera mode.
+function tpExitOwnFullscreen(){
+  const fe = tpReadFsEl();
+  const ov = document.getElementById('teleprompterOverlay');
+  if (!fe || !ov || !(fe === ov || (typeof ov.contains === 'function' && ov.contains(fe)))) return false;
+  try { const x = document.exitFullscreen || document.webkitExitFullscreen; const p = x && x.call(document); if (p && p.catch) p.catch(() => {}); } catch(e){}
+  return true;
+}
+function tpReadFullscreen(){
+  const ov = document.getElementById('teleprompterOverlay');
+  if (!_tpRm || !ov) return false;
+  try {
+    if (tpReadFsEl()) {
+      const x = document.exitFullscreen || document.webkitExitFullscreen;
+      const p = x && x.call(document); if (p && p.catch) p.catch(() => {});
+      return 'exit';
+    }
+    const req = ov.requestFullscreen || ov.webkitRequestFullscreen;
+    if (typeof req === 'function') {
+      const p = req.call(ov);
+      if (p && p.catch) p.catch(() => tpReadFsFallback());
+      return 'enter';
+    }
+  } catch(e){}
+  tpReadFsFallback();
+  return 'fallback';
+}
+function tpReadFsFallback(){
+  tpReadFlash("Full screen isn't available here — press F11 (or Ctrl+Cmd+F on a Mac)");
+}
+function tpReadVoiceStart(){
+  if (!tpReadVoiceOn()) return false;
+  window._tpSyncOn = true;          // matches only STEER the read-mode scroll (see tpVoiceScrollTo)
+  window._tpSyncTargetY = null;
+  tpScrolling = true;
+  if (_tpRm) _tpRm.gate = 0.35;
+  let ok = false;
+  try { ok = startTpVoiceFollow(); } catch(e) { ok = false; }
+  if (!ok) { window._tpSyncOn = false; tpScrolling = false; }
+  return ok;
+}
+function tpReadVoiceStop(){
+  if (!window._tpSyncOn && !tpVoiceRec) return false;
+  window._tpSyncOn = false;
+  window._tpSyncTargetY = null;
+  tpScrolling = false;
+  try { stopTpVoiceFollow(); } catch(e){}
+  return true;
+}
+function tpReadVoiceToggle(){
+  if (!_tpRm || !TP_VOICE_SUPPORTED) return false;
+  const on = !tpReadVoiceOn();
+  tpRmSet('tp_read_voice', on ? '1' : '0');
+  if (_tpRm.playing) { if (on) tpReadVoiceStart(); else tpReadVoiceStop(); }
+  tpReadSyncUi();
+  tpReadFlash(on ? 'Following your voice' : 'Scrolling at a set pace');
+  return on;
+}
+// Screen Wake Lock: the screen must not dim while someone reads from it. Re-acquired on return to
+// the tab (the platform drops it whenever the page is hidden), released on close.
+async function tpReadWake(){
+  const s = _tpRm;
+  if (!s) return false;
+  try {
+    if (!navigator.wakeLock || typeof navigator.wakeLock.request !== 'function') return false;
+    if (s.wake && !s.wake.released) return true;
+    const lock = await navigator.wakeLock.request('screen');
+    if (_tpRm !== s) { try { const r = lock.release(); if (r && r.catch) r.catch(() => {}); } catch(e){} return false; }
+    s.wake = lock;
+    return true;
+  } catch(e) { return false; }
+}
+function tpReadUnwake(s){
+  try {
+    if (s && s.wake) { const l = s.wake; s.wake = null; const r = l.release(); if (r && r.catch) r.catch(() => {}); }
+  } catch(e){}
+}
+function tpReadHint(force){
+  const el = document.getElementById('tpRmHint');
+  if (!el) return false;
+  const n = parseInt(tpRmGet('tp_read_hint_n'), 10) || 0;
+  if (!force && n >= 1) return false;
+  tpRmSet('tp_read_hint_n', String(n + 1));
+  el.classList.add('show');
+  try { clearTimeout(window._tpRmHintT); } catch(e){}
+  window._tpRmHintT = setTimeout(() => el.classList.remove('show'), 6000);
+  return true;
+}
+function tpReadFlash(msg){
+  const el = document.getElementById('tpRmFlash');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  try { clearTimeout(window._tpRmFlashT); } catch(e){}
+  window._tpRmFlashT = setTimeout(() => el.classList.remove('show'), 1200);
+}
+// Controls show on mouse movement and hide after 2.5s without it.
+function tpReadActivity(){
+  const s = _tpRm;
+  const ov = document.getElementById('teleprompterOverlay');
+  if (!s || !ov) return false;
+  ov.classList.remove('rm-idle');
+  try { clearTimeout(s.idleT); } catch(e){}
+  s.idleT = setTimeout(() => { if (_tpRm === s) ov.classList.add('rm-idle'); }, 2500);
+  return true;
+}
+function tpReadSyncUi(){
+  const s = _tpRm;
+  if (!s) return;
+  const $ = id => document.getElementById(id);
+  const ov = $('teleprompterOverlay');
+  const p = $('tpRmPlay');
+  if (p) {
+    const lab = (s.playing || s.counting) ? 'Pause' : (s.ended ? 'Replay' : 'Play');
+    p.textContent = lab;
+    p.setAttribute('aria-label', lab + ' (Space)');
+  }
+  if (ov) ov.classList.toggle('rm-counting', !!s.counting);
+  const v = $('tpRmSpeedVal'); if (v) v.textContent = s.mult.toFixed(1) + '×';
+  const m = $('tpRmMirror'); if (m) m.setAttribute('aria-pressed', String(!!(ov && ov.classList.contains('rm-mirror'))));
+  const vb = $('tpRmVoice');
+  if (vb) { vb.style.display = TP_VOICE_SUPPORTED ? '' : 'none'; vb.setAttribute('aria-pressed', String(tpReadVoiceOn())); }
+  const f = $('tpRmFull'); if (f) f.textContent = tpReadFsEl() ? 'Exit full screen' : 'Full screen';
+}
+function tpReadKey(e){
+  if (!_tpRm || !e) return false;
+  const ov = document.getElementById('teleprompterOverlay');
+  if (!ov || !ov.classList.contains('open') || !ov.classList.contains('read-mode')) return false;
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;      // Cmd+R, Ctrl+F … stay the browser's
+  const t = e.target;
+  if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/i.test(t.tagName || ''))) return false;
+  const k = e.key;
+  let did = true;
+  if (k === ' ' || k === 'Spacebar') tpReadToggle();
+  else if (k === 'ArrowUp') tpReadSpeed(1);
+  else if (k === 'ArrowDown') tpReadSpeed(-1);
+  else if (k === '+' || k === '=') tpReadSize(1);
+  else if (k === '-' || k === '_') tpReadSize(-1);
+  else if (k === 'r' || k === 'R') tpReadRestart();
+  else if (k === 'f' || k === 'F') tpReadFullscreen();
+  else if (k === 'm' || k === 'M') tpReadMirror();
+  else if (k === '?') tpReadHint(true);
+  else if (k === 'Escape' || k === 'Esc') {
+    if (tpReadFsEl()) tpReadFullscreen();                   // first Esc leaves full screen
+    else closeTeleprompter();
+  }
+  else did = false;
+  if (did) { try { e.preventDefault(); } catch(_){} try { e.stopPropagation(); } catch(_){} }
+  return did;
+}
+// "Film here instead" — the existing camera path, remembered for this device.
+function tpSwitchToFilm(){
+  tpRmSet('tp_desktop_mode', 'film');
+  tpLeaveReadMode();
+  tpEnsureCamera(true);
+  return true;
+}
+// "Read mode" from the desktop camera screen.
+function tpSwitchToRead(){
+  if ((tpMediaRecorder && tpMediaRecorder.state === 'recording') || window._tpArming) {
+    try { showToast('Stop recording first, then switch to read mode.'); } catch(e){}
+    return false;
+  }
+  tpRmSet('tp_desktop_mode', 'read');
+  try { stopTpScroll(); } catch(e){}
+  try { stopTpCamera(); } catch(e){}
+  return tpEnterReadMode();
+}
+function tpReadBindOnce(){
+  if (window._tpReadBound) return;
+  window._tpReadBound = true;
+  document.addEventListener('keydown', e => { tpReadKey(e); }, true);
+  document.addEventListener('mousemove', () => { if (_tpRm) tpReadActivity(); });
+  document.addEventListener('mousedown', () => { if (_tpRm) tpReadActivity(); });
+  document.addEventListener('visibilitychange', () => { if (_tpRm && document.visibilityState === 'visible') tpReadWake(); });
+  const onFs = () => { if (_tpRm) { tpReadLayout(true); tpReadSyncUi(); } };
+  document.addEventListener('fullscreenchange', onFs);
+  document.addEventListener('webkitfullscreenchange', onFs);
+  window.addEventListener('resize', () => { if (_tpRm) tpReadLayout(true); });
+}
+try { tpReadBindOnce(); } catch(e){}
+/* ══ END READ MODE ══ */
 
 // ===== PIPELINE VIEW =====
 function renderPipeline() {
@@ -15834,7 +16409,7 @@ function tvOpenTeleprompter() {
   tpSyncDoneBtn();
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
-  tpEnsureCamera(true);        // v500: show yourself straight away
+  if (typeof tpOpenMode === 'function') tpOpenMode(); else tpEnsureCamera(true);   // read mode on a desktop, camera on phones (Quick Post)
 }
 
 function tvCopy(elId, btn) {

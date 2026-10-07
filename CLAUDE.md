@@ -2,6 +2,14 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-07 — v700. DESKTOP TELEPROMPTER "READ MODE" (owner: "big format in desktop … not film in the desktop, just read and film with phone on a side").
+
+- Wide (≥900px) + fine pointer → read mode: no camera ever (tpEnsureCamera refuses), black full window, Geist clamp(40px,4.2vw,84px), 30ch column.
+  3-2-1 countdown, auto-scroll at 145 wpm scaled to text height. Keys: Space ↑↓ +/− R F M Esc (?=hints). Wake lock while open.
+  "Follow me" = speech recognition only (no getUserMedia). Close → tpAskMarkFilmed only if the PROMPTER moved past 60% / reached the end.
+  "Film here instead" ↔ "Read mode" switch, choice remembered per device. All entry points go through tpOpenMode(). Phones/tablets unchanged.
+- Gate scripts/verify/tp-read-mode.mjs (138 checks); mutations .unlazy/teleprompter/mutations.json 26/26. One review round, 4 findings fixed.
+
 ## ▶▶ 2026-10-05 — v699 site. WEBSITE IN THE SAME "A · Clean" LOOK (owner: "all the website landingpage also").
 
 Contract .unlazy/redesign/PLAN-site.md. index/faq/terms/privacy/refunds restyled: dark tokens, Geist, no mascot art, no gradients.
