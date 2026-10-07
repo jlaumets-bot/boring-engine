@@ -71,6 +71,7 @@ add('JSON.parse with no try/catch nearby', lines.map((l, i) => ({ l, i }))
 //   cs_onb_hidden           the activation checklist was dismissed on this device
 //   sp-tab                  which Settings tab was last open
 //   bc_tour_done            the product tour was completed on this device
+//   cs-theme                the colour theme (dark / light / system) picked on this device (v702)
 //   mascot-hidden           the mascot was hidden on this device
 //   pwa-dismissed           the "install the app" prompt was dismissed
 //   bv_mic_tip_seen         the microphone tip was shown once
@@ -79,7 +80,7 @@ add('JSON.parse with no try/catch nearby', lines.map((l, i) => ({ l, i }))
 // captured BEFORE the await (app.html ~14980, _nbBrandId), which is the correct fix for this class
 // — lsSet would resolve bkey() at write time and is not safer here.
 const DEVICE_GLOBAL = new Set([
-  'notif-prompt-dismissed', 'cs_onb_hidden', 'sp-tab', 'bc_tour_done',
+  'notif-prompt-dismissed', 'cs_onb_hidden', 'sp-tab', 'bc_tour_done', 'cs-theme',
   'mascot-hidden', 'pwa-dismissed', 'bv_mic_tip_seen', 'stmt_tpl',
 ]);
 

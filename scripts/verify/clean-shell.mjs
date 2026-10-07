@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // GATE (redesign, agent S): the clean shell — LOOK changes only, every destination still reachable.
 // EXECUTED where it can be: the real functions are lifted from app.html and run in node:vm on a fake DOM.
-//   1  CS_DEFAULT_THEME is 'dark' and decides only for people with no saved choice; a saved choice
-//      (bn-dark-mode '1'/'0', written by toggleDarkMode) wins; 'light' / 'system' defaults work; the
-//      Settings switch shows the theme actually on screen.
+//   1  CS_DEFAULT_THEME is 'dark' and decides only for people with no saved choice; a choice saved under
+//      'cs-theme' ('dark'|'light'|'system', written by toggleDarkMode) wins; the OLD key bn-dark-mode is
+//      ignored and removed (v702: a leftover '0' kept people on white); 'light' / 'system' defaults work;
+//      the Settings switch shows the theme actually on screen.
 //   2  /clean.css is linked once, after the big inline <style>, as the LAST stylesheet before </head>;
 //      the Geist font is linked.
 //   3  the drawer lists EVERY destination the old phone tab bar + More sheet reached (read live from
@@ -78,10 +79,11 @@ function freshDom() {
   ok(m && m[1] === 'dark', '1 CS_DEFAULT_THEME is \'dark\'');
   ok(html.indexOf('var CS_DEFAULT_THEME') < html.indexOf('</head>') && html.indexOf('var CS_DEFAULT_THEME') < html.indexOf('<link rel="stylesheet" href="/clean.css">'), '1 the theme is applied in <head>, before the first paint');
   ok((html.match(/CS_DEFAULT_THEME = '/g) || []).length === 1, '1 the default lives in ONE constant');
-  const run = (saved, def, sysDark) => {
-    const store = saved == null ? {} : { 'bn-dark-mode': saved };
+  const run = (saved, def, sysDark, old) => {
+    const store = saved == null ? {} : { 'cs-theme': saved };
+    if (old != null) store['bn-dark-mode'] = old;
     const de = { dataset: {} };
-    const c = { window: { matchMedia: () => ({ matches: !!sysDark }) }, localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
+    const c = { window: { matchMedia: () => ({ matches: !!sysDark }) }, localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } },
       document: { documentElement: de, querySelector: () => ({ content: '' }) } };
     c.window.localStorage = c.localStorage;
     vm.createContext(c);
@@ -89,18 +91,31 @@ function freshDom() {
     return { theme: de.dataset.theme, c, store, de };
   };
   ok(run(null).theme === 'dark', '1 no saved choice → dark');
-  ok(run('0').theme === 'light', '1 a saved light choice wins over the dark default');
-  ok(run('1').theme === 'dark', '1 a saved dark choice → dark');
-  ok(run(null, 'light').theme === 'light' && run('1', 'light').theme === 'dark', '1 default \'light\' → light; a saved dark choice still wins');
-  ok(run(null, 'system', true).theme === 'dark' && run(null, 'system', false).theme === 'light' && run('0', 'system', true).theme === 'light', '1 default \'system\' follows the device; a saved choice still wins');
-  // the existing switch keeps working: toggleDarkMode writes the choice, and the resolver then obeys it
+  const legacy = run(null, null, false, '0');
+  ok(legacy.theme === 'dark' && !('bn-dark-mode' in legacy.store), '1 an old bn-dark-mode=\'0\' from the previous design is ignored (still dark) and removed');
+  ok(run(null, null, false, '1').theme === 'dark' && run('light', null, false, '1').theme === 'light', '1 the old key never decides, either way');
+  ok(run('light').theme === 'light', '1 cs-theme=\'light\' wins over the dark default');
+  ok(run('dark').theme === 'dark' && run('dark', 'light').theme === 'dark', '1 cs-theme=\'dark\' → dark (even with a light default)');
+  ok(run('system', null, true).theme === 'dark' && run('system', null, false).theme === 'light', '1 cs-theme=\'system\' follows the device');
+  ok(run('nonsense').theme === 'dark' && run('0').theme === 'dark', '1 an unknown cs-theme value falls back to the default');
+  ok(run(null, 'light').theme === 'light' && run(null, 'system', true).theme === 'dark' && run(null, 'system', false).theme === 'light', '1 default \'light\' / \'system\' work for people who never chose');
+  // the switch: toggleDarkMode writes cs-theme, and the resolver then obeys it
   const r = run(null);
   vm.runInContext(grab('toggleDarkMode'), r.c);
   r.c.toggleDarkMode(false);
-  ok(r.store['bn-dark-mode'] === '0' && r.de.dataset.theme === 'light' && r.c.csResolveTheme() === 'light', '1 Settings → Dark Mode off: saved, applied, and it now beats the default');
+  ok(r.store['cs-theme'] === 'light' && !('bn-dark-mode' in r.store) && r.de.dataset.theme === 'light' && r.c.csResolveTheme() === 'light', '1 Settings → Dark Mode off: cs-theme=\'light\' saved, applied, and it now beats the default');
   r.c.toggleDarkMode(true);
-  ok(r.store['bn-dark-mode'] === '1' && r.c.csResolveTheme() === 'dark', '1 Dark Mode on: saved and applied');
-  ok(/if \(csResolveTheme\(\) === 'dark'\) \{[^\n]*\n\s*document\.documentElement\.dataset\.theme = 'dark';/.test(html), '1 the on-load restore uses the same resolver');
+  ok(r.store['cs-theme'] === 'dark' && r.c.csResolveTheme() === 'dark', '1 Dark Mode on: cs-theme=\'dark\' saved and applied');
+  ok(!/localStorage\.(getItem|setItem)\('bn-dark-mode'/.test(html), '1 nothing reads or writes bn-dark-mode any more');
+  {
+    const restore = between("// Restore dark mode on load\n(function() {", '})();');
+    const de2 = { dataset: {} }, meta2 = { content: '' };
+    const c2 = { csResolveTheme: () => 'light', document: { documentElement: de2, querySelector: () => meta2 } };
+    vm.createContext(c2); vm.runInContext(restore, c2);
+    const c3 = { csResolveTheme: () => 'dark', document: { documentElement: { dataset: {} }, querySelector: () => ({ content: '' }) } };
+    vm.createContext(c3); vm.runInContext(restore, c3);
+    ok(de2.dataset.theme === 'light' && meta2.content === '#ffffff' && c3.document.documentElement.dataset.theme === 'dark', '1 the on-load restore applies the resolved theme both ways');
+  }
   ok(/<input type="checkbox" \$\{csResolveTheme\(\)==='dark'\?'checked':''\} onchange="toggleDarkMode\(this\.checked\)">/.test(html), '1 the Settings switch shows the theme on screen (default included)');
 }
 
@@ -480,10 +495,10 @@ await (async () => {
   const headTop = html.slice(0, html.indexOf('<script>'));
   ok(/<meta name="theme-color" content="#212121">/.test(headTop), '15 the theme-color meta is dark and comes BEFORE the first script');
   const seg = between('var CS_DEFAULT_THEME', "if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#212121' : '#ffffff'; } catch (e) {}");
-  const run = saved => { const st = saved == null ? {} : { 'bn-dark-mode': saved }; const meta = { content: 'x' };
-    const c = { window: {}, localStorage: { getItem: k => (k in st ? st[k] : null) }, document: { documentElement: { dataset: {} }, querySelector: q => (/theme-color/.test(q) ? meta : null) } };
+  const run = (saved, old) => { const st = saved == null ? {} : { 'cs-theme': saved }; if (old != null) st['bn-dark-mode'] = old; const meta = { content: 'x' };
+    const c = { window: {}, localStorage: { getItem: k => (k in st ? st[k] : null), removeItem: k => { delete st[k]; } }, document: { documentElement: { dataset: {} }, querySelector: q => (/theme-color/.test(q) ? meta : null) } };
     vm.createContext(c); vm.runInContext(seg, c); return meta.content; };
-  ok(run(null) === '#212121' && run('0') === '#ffffff' && run('1') === '#212121', '15 the early script sets it from the resolved theme (#212121 / #ffffff)');
+  ok(run(null) === '#212121' && run('light') === '#ffffff' && run('dark') === '#212121' && run(null, '0') === '#212121', '15 the early script sets it from the resolved theme (#212121 / #ffffff; an old bn-dark-mode=0 stays dark)');
   ok(/content = on \? '#212121' : '#ffffff';/.test(grab('toggleDarkMode')), '15 the Dark Mode switch keeps it in step');
   const man = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
   ok(man.background_color === '#212121' && man.theme_color === '#212121', '15 manifest background_color + theme_color are #212121');

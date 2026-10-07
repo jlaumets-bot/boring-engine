@@ -2,6 +2,12 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-07 — v702. THEME KEY RESET → everyone dark (owner: "why is it default white … better in dark mode in default").
+
+Cause: old `bn-dark-mode='0'` (saved by the old toggle) beat CS_DEFAULT_THEME. Now the theme lives in `cs-theme` ('dark'|'light'|'system');
+csResolveTheme reads only that; `bn-dark-mode` is deleted on load and never decides. Login/splash/onboarding/paywall verified dark.
+bug-scan.mjs lists cs-theme as a device-wide key. clean-shell checks 1 + 15 updated; mutations S54–S58 (58/58).
+
 ## ▶▶ 2026-10-07 — v701. DESKTOP LAYOUT PASS (owner: "make better in desktop … the overall layouts").
 
 ≥900px only (phone measurements snapshot in .unlazy/redesign/phone-measure.json, unchanged). clean.css "§7 desktop layout" (hand-written).

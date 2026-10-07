@@ -15,24 +15,27 @@
   // Register the service worker early too so the app is installable ASAP.
   window._deferredInstallPrompt = null;
   /* v699 clean shell — THE DEFAULT THEME LIVES IN ONE PLACE. 'dark' | 'light' | 'system'.
-     It only decides for people who never chose: a saved choice (bn-dark-mode '1' / '0', written by
-     toggleDarkMode in Settings → Workspace → Dark Mode) always wins. Applied here, in <head>, so the
-     first paint is already in the right theme. */
+     It only decides for people who never chose: a choice saved under 'cs-theme' ('dark' | 'light' |
+     'system', written by toggleDarkMode in Settings → Workspace → Dark Mode) wins. Applied here, in
+     <head>, so the first paint is already in the right theme.
+     v702: the old key 'bn-dark-mode' is IGNORED and removed. It was written by the old design's switch,
+     so a '0' left over from back then kept people on white after the clean redesign made dark the default. */
   var CS_DEFAULT_THEME = 'dark';
+  var CS_THEME_KEY = 'cs-theme';
+  try { localStorage.removeItem('bn-dark-mode'); } catch (e) {}
   function csResolveTheme(){
     var saved = null;
-    try { saved = localStorage.getItem('bn-dark-mode'); } catch (e) {}
-    if (saved === '1') return 'dark';
-    if (saved === '0') return 'light';
-    if (CS_DEFAULT_THEME === 'system') {
-      try { return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; } catch (e) { return 'light'; }
+    try { saved = localStorage.getItem(CS_THEME_KEY); } catch (e) {}
+    var pick = (saved === 'dark' || saved === 'light' || saved === 'system') ? saved : CS_DEFAULT_THEME;
+    if (pick === 'system') {
+      try { return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; } catch (e) { return 'dark'; }
     }
-    return CS_DEFAULT_THEME === 'light' ? 'light' : 'dark';
+    return pick === 'light' ? 'light' : 'dark';
   }
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #212121 dark, #ffffff light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#212121' : '#ffffff'; } catch (e) {}
-  window.APP_VERSION = 'v701';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v702';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -24363,15 +24366,15 @@ function renderPromptRefGrid() {
 function toggleDarkMode(on) {
   document.documentElement.dataset.theme = on ? 'dark' : 'light';
   document.querySelector('meta[name="theme-color"]').content = on ? '#212121' : '#ffffff';   // v699: clean theme bg
-  localStorage.setItem('bn-dark-mode', on ? '1' : '0');
+  try { localStorage.setItem(CS_THEME_KEY, on ? 'dark' : 'light'); } catch (e) {}   // v702: the new key (bn-dark-mode is retired)
 }
 // Restore dark mode on load
 (function() {
   try {
-    if (csResolveTheme() === 'dark') {   // v699: a saved choice wins, else CS_DEFAULT_THEME
-      document.documentElement.dataset.theme = 'dark';
-      var mc = document.querySelector('meta[name="theme-color"]'); if (mc) mc.content = '#212121';
-    }
+    // v702: same resolver as <head> (cs-theme, else CS_DEFAULT_THEME) — applied both ways
+    var _t = csResolveTheme();
+    document.documentElement.dataset.theme = _t;
+    var mc = document.querySelector('meta[name="theme-color"]'); if (mc) mc.content = _t === 'dark' ? '#212121' : '#ffffff';
   } catch (e) {}
 })();
 
