@@ -215,7 +215,7 @@ const belAdds = () => callsTo('/api/brand-memory', 'add').filter(x => x.body.kin
   recorders = 0; c.__mics = 0;
   c.rv2SlotMic(1, mk('mic')); c.rv2SlotMic(1, mk('mic')); await tick();
   ok(c._dictRec && recorders === 1 && c.__mics === 1 && timers.includes(30000), '#7 a double tap starts ONE recorder, capped at 30 s');
-  ok(/disabled>Listening… tap the pill to stop/.test(panel()), '#7 the mic button is disabled while recording');
+  ok(/disabled>Listening… press the pill to stop/.test(panel()), '#7 the mic button is disabled while recording');
   // M1: while recording slot 1, the person types slot 0 — the positions shift, the question does not
   c.rv2OpenSlot(0); put('rv2SlotText', { value: 'Views went from 9k to 900.' }); c.rv2SlotTyped(); await tick();
   ok(c.rv2Slots(c._rv2.script).length === 1 && c.rv2Slots(c._rv2.script)[0].ask === ASK1, 'the typed story filled slot 0; slot 1 is now the only one');
@@ -337,7 +337,7 @@ const belAdds = () => callsTo('/api/brand-memory', 'add').filter(x => x.body.kin
   const sp = c.rv2Start(null, { kind: 'note', text: 'A note' }, { host: 'rv2Sheet', origin: { name: 'note', meta: { id: 'n1' } } }); await tick();
   ok(c._rv2 !== remixRun && c._rv2Runs.rv2Panel === remixRun && remixRun.stage === 'script' && els.rv2Sheet, '#4 starting a sheet keeps the Remix run as it was');
   c.rv2CloseSheet();
-  ok(els.rv2Sheet && /Tap again to throw this away/.test(els.rv2Sheet.innerHTML) && c._rv2Runs.rv2Sheet, '#4 closing while it is still working asks first');
+  ok(els.rv2Sheet && /Press again to discard/.test(els.rv2Sheet.innerHTML) && c._rv2Runs.rv2Sheet, '#4 closing while it is still working asks first');
   hold2.res({ status: 200, body: { angles: ANGLES } }); await sp; await tick();
   ok(!/Tap again/.test(els.rv2Sheet.innerHTML), 'the question is reset once the sheet changed');
   ok(store.has('rv2_draft_sheet::brand-1') && JSON.parse(store.get('rv2_draft_sheet::brand-1')).origin.name === 'note', '#4 the sheet keeps its own draft');

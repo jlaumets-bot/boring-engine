@@ -2,6 +2,22 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-08 — v703. DESKTOP-NATIVE REWORK (owner: "truly desktop native … not adjusted and half baked and not consistent").
+
+Spec .unlazy/desktop/SPEC.md; audit (83 shots) + render harness in the cloud outputs/desktop-audit. >=900px only unless noted.
+- app.html "v703 DESKTOP-NATIVE STRUCTURE" (style#csx-layout + script section): sidebar "New post" → Composer dialog (csComposerSend,
+  draft kept on close); one .csx-toolbar per screen; master-detail (>=1100) for Ideas/Pipeline/Notebook/Bookmarks by MOVING the
+  existing detail nodes into the pane (900–1099: detail dialog); toolbar filters; Settings subnav (Workspace overflow fixed:
+  Brand Voice template closed .sp-body early); 15 sheets → .csx-dialog centred on window, ONE Escape handler, focus trap/restore;
+  sheets with no safe close (split-screen offer while rendering) are not closable — closing runs their own Skip/Stop path.
+  Keys: J/K ↑↓ Enter Esc; Ideas A/S/E; Pipeline R/M; ⌘K palette; ? shortcuts; N new post. Toasts bottom-right.
+- Copy sweep (ALL widths): no "tap" (87 strings), glyph icons → SVG, one label set (Title, Hook, Script, Shot list, Caption,
+  Hashtags, Call to action), shrimp art removed from splash/sign-in/onboarding, "Shrimp Mascot" → "Coach bubble", new 6-step tour.
+- clean.css §8 desktop system (--csd-* tokens; buttons 36/32/44, inputs 40, cards 14/20, one segmented style, 20/17 headings,
+  body 15/1.55) + §7 rewritten (left-aligned, title x constant). Distinct button heights 36 → 3.
+- Gates: desktop-native (94), desktop-system, copy-clean. Mutations D1 21/21, D2 28/28, D3 16/16. One review round: 6 fixed
+  (incl. HIGH: split-offer X discarded the recorded take).
+
 ## ▶▶ 2026-10-07 — v702. THEME KEY RESET → everyone dark (owner: "why is it default white … better in dark mode in default").
 
 Cause: old `bn-dark-mode='0'` (saved by the old toggle) beat CS_DEFAULT_THEME. Now the theme lives in `cs-theme` ('dark'|'light'|'system');

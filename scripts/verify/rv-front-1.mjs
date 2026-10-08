@@ -126,7 +126,7 @@ const idea = { script: 'We tested nine best sellers and only two matched', hook:
   const o = world({ answer: () => new Response(JSON.stringify({ error: 'no beats came back' }), { status: 500 }) });
   o.c.IDEA = idea;
   await vm.runInContext('openBrollIdea(IDEA, 7)', o.c);
-  ok(/Tap B-roll again to retry/.test(o.body.innerHTML), 'the opposite arm: an ordinary failure still offers the retry');
+  ok(/Press B-roll again to retry/.test(o.body.innerHTML), 'the opposite arm: an ordinary failure still offers the retry');
 }
 
 if (fail === 0) console.log('\nPASS — rv-front-1: the B-roll preview charges once, names missing photos, and promises no length it cannot keep.');

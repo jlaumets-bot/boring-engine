@@ -255,8 +255,12 @@ for (const theme of ['light', 'dark']) {
 }
 
 /* ───────────── 6. touch targets ───────────── */
+/* v703: the ≥900px desktop system (.unlazy/desktop/SPEC.md) uses mouse sizes on purpose — md 36 / sm 32 / chips 28 /
+   segmented 32 — so rules inside a min-width ≥900px block are not touch targets. Phones and tablets keep the 44px floor. */
+const DESKTOP_MEDIA = (m) => m.some(q => { const w = /min-width:\s*(\d+)px/.exec(q); return w && Number(w[1]) >= 900; });
 const INTERACTIVE = /btn|button|chip|tab\b|-tab|item|toggle|close|circle|action|\bnav\b/i;
 for (const r of RULES) {
+  if (DESKTOP_MEDIA(r.media)) continue;
   if (!INTERACTIVE.test(r.sel) || /::(before|after)|svg|\bi\b|-ic\b|-dot|count|badge|label|lbl|icon/i.test(r.sel.split(',').pop())) continue;
   for (const d of r.decls) {
     if (!['height', 'min-height', 'width', 'min-width'].includes(d.prop)) continue;
@@ -293,6 +297,9 @@ function matches(sel, cls, theme) {
   if (/:checked/.test(last) && !cls.includes(':checked')) return false;
   return need.every(c => cls.includes(c));
 }
+/* v703: split a selector list at top-level commas only, so `:is(.a, .b):hover` stays one selector (a plain split
+   cut it into fragments and read `.b` as an unconditional rule) */
+const splitSel = (sel) => { const out = []; let d = 0, cur = ''; for (const ch of sel) { if (ch === '(') d++; else if (ch === ')') d--; if (ch === ',' && d === 0) { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out; };
 const LOOK = { bg: ['background', 'background-color'], fg: ['color'], border: ['border', 'border-color', 'border-top', 'border-width'], ring: ['box-shadow'] };
 function resolve(cls, theme) {
   const out = {};
@@ -300,7 +307,7 @@ function resolve(cls, theme) {
     let best = null;
     RULES.forEach((r, order) => {
       if (r.media.some(m => /keyframes/.test(m))) return;
-      for (const one of r.sel.split(',')) {
+      for (const one of splitSel(r.sel)) {
         if (!matches(one.trim(), cls, theme)) continue;
         for (const d of r.decls) {
           if (!props.includes(d.prop)) continue;
@@ -322,7 +329,7 @@ for (const m of appCss.matchAll(pairRe)) addPair(m[1], m[2]);
 let statePairs = 0;
 for (const [, [base, state]] of pairs) {
   // only classes whose base look clean.css forces with !important can have their state eaten
-  const forced = RULES.some(r => r.decls.some(d => d.imp && Object.values(LOOK).flat().includes(d.prop)) && r.sel.split(',').some(s => matches(s.trim(), [base], 'light') || matches(s.trim(), [base], 'dark')));
+  const forced = RULES.some(r => r.decls.some(d => d.imp && Object.values(LOOK).flat().includes(d.prop)) && splitSel(r.sel).some(s => matches(s.trim(), [base], 'light') || matches(s.trim(), [base], 'dark')));
   if (!forced) continue;
   const stateCls = state.startsWith('.') ? [base, ...state.match(/\.[\w-]+/g)] : [base, state];
   for (const theme of ['light', 'dark']) {

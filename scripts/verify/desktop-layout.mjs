@@ -4,8 +4,9 @@
 //   1  every destination of the old content header row (brand switcher, Bookmarks, Brand brain, Settings,
 //      Help) and every screen is reachable from the desktop sidebar; the sidebar's brand row calls the SAME
 //      function as the header brand; the brand dropdown anchors to the sidebar row on desktop.
-//   2  column max-widths (Ideas 1040, Pipeline 880, Quick Post / Remix / Idea Catcher / Notebook 760,
-//      Settings 880); 1 idea column at 900–1099, 2 at ≥1100; the header row is hidden only at ≥900.
+//   2  (v703, .unlazy/desktop/SPEC.md) every screen LEFT-aligned at 32px with one 760px document column (no centred
+//      per-screen widths), the page header is a full-width 56px toolbar, Settings panel left-aligned (max 720 + 2×32),
+//      one idea column, the pinned composer hidden on desktop; the header row is hidden only at ≥900.
 //   3  Ideas: on desktop the Approve / Skip pills ARE the existing ✓ / ✕ buttons (same handlers), labelled.
 //   4  Pipeline: a "Read script" button on Film & Post cards opens openTeleprompter(<that idea>) for exactly
 //      the formats the opened post offers the teleprompter for; Mark done stays; desktop-only.
@@ -88,14 +89,14 @@ const wide = blocks.filter(b => inMin(b, 1100)).map(b => b.body).join('\n');
 /* ═══ 2. columns ═══ */
 {
   const mw = sel => { const m = new RegExp('(?:^|\\n)\\s*' + sel.replace(/[#.()-]/g, c => '\\' + c) + '[^{]*\\{[^}]*max-width:\\s*(\\d+)px').exec(desk); return m ? +m[1] : null; };
-  ok(mw('#view-ideas') === 1040, '2 Ideas column 1040');
-  ok(/#view-pipeline, #view-viral, #view-questions \{ max-width: 880px; \}/.test(desk), '2 Pipeline column 880');
-  ok(/#view-today, #view-create, #view-idea, #view-notebook, #view-dfy \{ max-width: 760px; \}/.test(desk), '2 Quick Post, Remix, Idea Catcher, Notebook 760');
-  ok(/#settingsOverlay \.sp-header, #settingsOverlay \.sp-body \{ max-width: 880px !important; \}/.test(desk), '2 Settings 880');
-  ok(/#mainViews \{ max-width: none !important; margin: 0 !important; padding: 24px 32px 0;/.test(desk), '2 32px side / 24px top padding');
+  ok(mw('#view-ideas') === null && !/#view-pipeline, #view-viral, #view-questions \{ max-width/.test(desk) && !/\.view \{[^}]*margin-left: auto/.test(desk), '2 no centred per-screen column widths (v701 1040 / 880 / 760 are gone)');
+  ok(/#mainViews > \.view \{ max-width: none; margin-left: 0; margin-right: 0; padding: 24px 32px 48px !important;/.test(desk), '2 every screen left-aligned at 32px');
+  ok(/#mainViews > \.view:not\(\.csx-md\):not\(\.csx-doc\) > :not\(#proToolsSection\):not\(\.csx-toolbar\)[^{]*\{ max-width: 760px; \}/.test(desk), '2 one 760px document column');
+  ok(/#settingsOverlay:not\(:has\(\.csx-subnav\)\) > :is\(\.sp-body, div:not\(\[class\]\)\) \{ max-width: 784px !important; margin-left: 0 !important;/.test(desk), '2 Settings panel left-aligned, 720 + 2×32 (the stray Workspace wrapper too)');
+  ok(/#mainViews \{ max-width: none !important; margin: 0 !important; padding: 0;/.test(desk) && /\.cs-page-head \{ display: flex;[^}]*min-height: 56px; padding: 0 32px;[^}]*border-bottom: 1px solid var\(--cs-line\)/.test(desk), '2 toolbar: full width, 56px, title at sidebar + 32');
   ok(/\.header-top \{ visibility: hidden; height: 0 !important;/.test(desk) && /#brandDropdown \{ visibility: visible; \}/.test(desk) && /backdrop-filter: none !important/.test(desk), '2 the content header row is gone on desktop; its dropdown can still open');
-  ok(/#ideaContent > div \{ grid-template-columns: 1fr !important; \}/.test(desk) && /#ideaContent > div \{ grid-template-columns: 1fr 1fr !important; \}/.test(wide), '2 one idea column at 900–1099, two at ≥1100');
-  ok(/body\[data-cs-view="ideas"\] \.cs-composer-box \{ max-width: 1040px; \}/.test(desk) && /body\[data-cs-view\] \.cs-composer \{ left: 260px !important;/.test(desk), '2 the composer is pinned at the column\'s width');
+  ok(/#ideaContent > div \{ grid-template-columns: 1fr !important; \}/.test(desk) && !/1fr 1fr/.test(wide), '2 one idea column (the list is a document column now)');
+  ok(/body\[data-cs-view\] \.cs-composer \{ display: none !important; \}/.test(desk), '2 no pinned composer on desktop (the Composer dialog replaces it)');
   ok(/\.cs-page-title \{ margin: 0; font-size: var\(--cs-fs-screen\);/.test(desk) && /var CS_PAGE_TITLES = \{ today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: 'Remix'/.test(html), '2 a page title per screen');
 }
 
@@ -131,7 +132,7 @@ const wide = blocks.filter(b => inMin(b, 1100)).map(b => b.body).join('\n');
   const ot = grab('openTeleprompter');
   ok((ot.match(/tpOpenMode\(\)/g) || []).length >= 2, '4 openTeleprompter ends in tpOpenMode() — desktop gets Read mode');
   ok(/\.pipeline-card \.pipe-btn\.cs-read-btn \{ display: none !important; \}/.test(html) && /\.pipeline-card \.pipe-btn\.cs-read-btn \{ display: inline-flex !important; background: var\(--cs-primary\)/.test(desk), '4 desktop-only primary; Mark done turns secondary next to it');
-  ok(/\.pipeline-stage-tab \{ flex: none !important; flex-direction: row !important; height: 44px;[\s\S]{0,200}border-top: 4px solid transparent !important; border-bottom: 4px solid transparent !important; background-clip: padding-box !important;/.test(desk), '4 compact segmented control: a 36px painted segment in a 44px tap area');
+  ok(/:root \.pipeline-stage-tab, :root \.create-sub-tab, :root \.sp-tab, :root \.source-tab \{[^}]*height: 28px !important;/.test(desk) && /:root \.pipeline-stages, :root \.create-sub-tabs, :root \.sp-tabs, :root \.source-tabs \{[^}]*height: var\(--csd-h-seg\) !important;/.test(desk), '4 Pipeline stages use the ONE segmented control (32 track, 28 segments; §8)');
 }
 
 /* ═══ 5. csUsageText ═══ */

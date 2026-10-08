@@ -1788,6 +1788,12 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
 .sp-method-primary { background: var(--cs-primary); color: var(--cs-on-primary); border-color: var(--cs-primary); }
 .sp-method-primary .sp-method-d { color: var(--cs-on-primary); opacity: .75; }
 .sp-method-ic, .sp-method-primary .sp-method-ic { background: var(--cs-chip); color: var(--cs-text); }
+/* info rows: app.html:3382 makes .sp-tip a flex row, so a sentence with a <strong> in it split into three flex columns
+   ("Your name is what the | Assistant | calls you"). Block layout instead; the "i" keeps its spot (absolutely placed in the
+   padding + 18px icon + 10px gap gutter the flex row had), so the text starts at the same x and the box keeps its size. */
+.sp-tip { display: block; position: relative; padding-left: 44px; }
+.sp-tip::before { position: absolute; left: 16px; top: 12px; }
+@media (max-width: 600px) { .sp-tip { padding-left: 38px; } .sp-tip::before { left: 10px; top: 8px; } }
 
 /* ---- desktop sidebar (≥900px), ChatGPT-like ---- */
 @media (min-width: 900px) {
@@ -1821,6 +1827,9 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
 .tp-record-main { box-shadow: none; background: #ececec; color: #0d0d0d; }
 
 /* ---- misc ---- */
+/* Help tour: §4 maps the spotlight's dim to --cs-line (an opaque grey wall over the screen being explained); dim with the overlay
+   token instead. app.html also sets this shadow inline once the spotlight is placed, which still wins. */
+.tour-highlight { box-shadow: 0 0 0 4000px var(--cs-overlay); }
 .progress-bar, .sp-plan-bar, .cs-onb-bar { background: var(--cs-chip); }
 .progress-bar-fill, .sp-plan-bar-fill, .cs-onb-bar-fill { background: var(--cs-text); }
 hr { border-color: var(--cs-line); }
@@ -1865,7 +1874,9 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
 
 /* ============ 7. desktop layout (v701, hand-written; ≥900px only — phones and tablets are untouched) ============
    ChatGPT-desktop shape: a 260px sidebar that holds every destination (brand switcher first), no header row in the
-   content area, and each screen as a centred column with its own width. Tokens only. */
+   content area. v703 (desktop-native spec): every screen starts with a full-width 56px toolbar whose title sits at the
+   SAME x (sidebar + 32); content is a LEFT-aligned document column (max 760, padding 32) — no centred columns of
+   different widths; dialogs centre on the window; the pinned composer is gone on desktop. Tokens only. */
 @media (min-width: 900px) {
   /* ---- shell ---- */
   body { padding-left: 260px !important; }
@@ -1876,26 +1887,29 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }   /* a filter would trap the fixed dropdown inside the header */
   .header-top { visibility: hidden; height: 0 !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; border: 0 !important; overflow: visible !important; }
   #brandDropdown { visibility: visible; }
-  #mainViews { max-width: none !important; margin: 0 !important; padding: 24px 32px 0; box-sizing: border-box; }
+  #mainViews { max-width: none !important; margin: 0 !important; padding: 0; box-sizing: border-box; }
   #mainViews > .footer { display: none; }   /* the sidebar footer already says Content Shrimp */
-  #mainViews > .view { margin-left: auto; margin-right: auto; padding-left: 0 !important; padding-right: 0 !important; box-sizing: border-box; }
-  #view-ideas { max-width: 1040px; }
-  #view-pipeline, #view-viral, #view-questions { max-width: 880px; }
-  #view-today, #view-create, #view-idea, #view-notebook, #view-dfy { max-width: 760px; }
-  #settingsOverlay .sp-header, #settingsOverlay .sp-body { max-width: 880px !important; }
+  /* every screen: left-aligned at 32px; its content is one 760px document column (master-detail screens: §8) */
+  #mainViews > .view { max-width: none; margin-left: 0; margin-right: 0; padding: 24px 32px 48px !important; box-sizing: border-box; }
+  #mainViews > .view:not(.csx-md):not(.csx-doc) > :not(#proToolsSection):not(.csx-toolbar), #view-ideas:not(.csx-md) #proToolsSection > :not(.cs-ideas-head) { max-width: 760px; }
+  /* Settings before the subnav exists: same toolbar line, panel left-aligned at 32px, max 720 (the stray Workspace wrapper too) */
+  #settingsOverlay:not(:has(.csx-subnav)) > :is(.sp-body, div:not([class])) { max-width: 784px !important; margin-left: 0 !important; margin-right: 0 !important;
+    padding-left: 32px !important; padding-right: 32px !important; box-sizing: border-box; }
+  #settingsOverlay:not(:has(.csx-subnav)) > .sp-header { max-width: none !important; margin: 0 0 24px !important; min-height: 56px; padding: 0 32px !important;
+    flex-direction: row-reverse; border-bottom: 1px solid var(--cs-line); box-sizing: border-box; }
   /* page header row: 28px title left, the screen's main action right */
-  .cs-page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 auto 16px; min-height: 44px; }
-  body[data-cs-view="ideas"] .cs-page-head { max-width: 1040px; }
-  body[data-cs-view="pipeline"] .cs-page-head, body[data-cs-view="viral"] .cs-page-head, body[data-cs-view="questions"] .cs-page-head { max-width: 880px; }
-  body[data-cs-view="today"] .cs-page-head, body[data-cs-view="create"] .cs-page-head, body[data-cs-view="idea"] .cs-page-head, body[data-cs-view="notebook"] .cs-page-head { max-width: 760px; }
+  /* the page header row is the toolbar: full width, 56px, 1px line under it, title at x = sidebar + 32 on every screen */
+  .cs-page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; min-height: 56px; padding: 0 32px;
+    border-bottom: 1px solid var(--cs-line); box-sizing: border-box; }
+  #view-ideas .cs-ideas-head { margin: -24px -32px 24px; min-height: 56px; padding: 0 32px; align-items: center; border-bottom: 1px solid var(--cs-line); box-sizing: border-box; }
+  #view-ideas .cs-ideas-head .cs-ih-text { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+  #view-ideas .cs-ideas-head .cs-ih-sub { margin: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   body.cs-ideas-has[data-cs-view="ideas"] .cs-page-head { display: none; }   /* "N ideas ready" + Plan my week is Ideas' header */
   .cs-page-title { margin: 0; font-size: var(--cs-fs-screen); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--cs-text); }
   /* screens that print their own big heading under the page title: keep one title */
   #view-viral .vl-head h2, #view-idea .vl-head h2, #view-questions .vl-head h2 { display: none; }
-  /* composer: pinned at the bottom of the content column, as wide as the column */
-  body[data-cs-view] .cs-composer { left: 260px !important; right: 0 !important; width: auto !important; transform: none !important; padding: 8px 32px 16px; }
-  body[data-cs-view="ideas"] .cs-composer-box { max-width: 1040px; }
-  body[data-cs-view="today"] .cs-composer-box { max-width: 760px; }
+  /* composer: not on desktop — the Composer dialog replaces it (same routing) */
+  body[data-cs-view] .cs-composer { display: none !important; }
 
   /* ---- sidebar ---- */
   #desktopSidebar .ds-brand-wrap { margin: 0 0 8px; }
@@ -1903,28 +1917,25 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     background: transparent; color: var(--cs-text); font-family: inherit; font-size: var(--cs-fs-body); font-weight: 600; text-align: left; cursor: pointer; }
   #desktopSidebar .ds-brand-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #desktopSidebar .ds-brand svg { width: 16px; height: 16px; flex: none; stroke: var(--cs-muted); }
-  #desktopSidebar .ds-item { min-height: 44px; }
-  #desktopSidebar .ds-plan { min-height: 44px; box-sizing: border-box; margin-top: 6px; font-size: 13px; color: var(--cs-muted); border-radius: 10px; }
+  #desktopSidebar .ds-item { min-height: 36px; }
+  #desktopSidebar .ds-plan { min-height: 36px; box-sizing: border-box; margin-top: 6px; font-size: 13px; color: var(--cs-muted); border-radius: 10px; }
   #desktopSidebar .ds-foot { font-size: 13px; }
 
-  /* ---- Ideas: actions under the text, full-width text, 1 or 2 columns ---- */
+  /* ---- Ideas: actions under the text, full-width text, one column ---- */
   #ideaContent > div { grid-template-columns: 1fr !important; }
   #ideaContent .list-card-top { flex-direction: column; align-items: stretch; gap: 14px; }
   #ideaContent .list-card-top > div:first-child { width: 100%; }
   #ideaContent .list-actions { justify-content: flex-start; gap: 8px; }
   #ideaContent .list-actions .action-circle.approve, #ideaContent .list-actions .action-circle.dismiss {
-    width: auto !important; height: 44px !important; min-height: 44px !important; padding: 0 18px !important; border-radius: 999px !important; gap: 6px; font-size: var(--cs-fs-btn); font-weight: 500; }
+    width: auto !important; height: 36px !important; min-height: 36px !important; padding: 0 14px !important; border-radius: 999px !important; gap: 6px; font-size: var(--cs-fs-btn); font-weight: 500; }
   #ideaContent .list-actions .action-circle.dismiss { background: transparent !important; border: 1px solid var(--cs-line) !important; color: var(--cs-text) !important; }
   #ideaContent .list-actions .action-circle .cs-act-lbl { display: inline; }
   #ideaContent .list-actions .action-circle svg { width: 16px; height: 16px; }
   .format-tag:empty { display: none; }
 
-  /* ---- Pipeline: compact segmented control, one column, "Read script" first ---- */
-  /* the painted segment is 36px tall; transparent 4px borders keep each tab's tap area at 44px */
-  .pipeline-stages { display: inline-flex !important; width: auto; padding: 0 3px !important; gap: 2px !important; border-radius: 12px !important; margin-bottom: 16px !important; }
-  .pipeline-stage-tab { flex: none !important; flex-direction: row !important; height: 44px; min-height: 44px; box-sizing: border-box; padding: 0 14px !important;
-    border-top: 4px solid transparent !important; border-bottom: 4px solid transparent !important; background-clip: padding-box !important;
-    gap: 8px !important; font-size: var(--cs-fs-meta) !important; border-radius: 13px !important; }
+  /* ---- Pipeline: the one segmented control (sizes in §8), one column, "Read script" first ---- */
+  .pipeline-stages { margin-bottom: 16px !important; }
+  .pipeline-stage-tab { flex-direction: row !important; box-sizing: border-box; }
   .pipeline-stage-tab svg { display: none; }
   .pipeline-stage-tab .stage-count { order: 2; }
   .pipeline-card .pipe-btn.cs-read-btn { display: inline-flex !important; background: var(--cs-primary) !important; color: var(--cs-on-primary) !important; border: 1px solid var(--cs-primary) !important; }
@@ -1932,7 +1943,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   .pipeline-card-actions { gap: 8px; }
 
   /* ---- Quick Post: a left-aligned 760 column ---- */
-  #view-today .cs-qp-col { max-width: none !important; margin: 0 !important; }
+  #view-today .cs-qp-col { max-width: 760px !important; margin: 0 !important; }
   #view-today .tp-shz { align-items: flex-start; text-align: left; padding-left: 0; padding-right: 0; }
   #view-today .qp-types-lbl { text-align: left; }
   #view-today .qp-types { justify-content: flex-start; }
@@ -1942,25 +1953,638 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   #view-today #tvResult { max-width: none; }
 
   /* ---- sheets become centred dialogs ---- */
-  .more-sheet.angle-sheet { position: fixed; left: calc(50% + 130px) !important; right: auto !important; top: 50% !important; bottom: auto !important;
-    transform: translate(-50%, -50%) !important; width: min(640px, calc(100vw - 324px)); max-width: 640px; max-height: 85vh; overflow-y: auto; border-radius: 20px !important; }
-  .dismiss-popup, .brv-sheet, .conn-modal { border-radius: 20px !important; max-width: 640px; }
-  .brv-overlay, #bmOverlay, #notifOverlay { align-items: center !important; padding-left: 260px; }
+  /* every dialog centres on the WINDOW (spec), 560 wide (720 for the long ones), 85vh max. Once app.html gives a sheet the
+     .csx-dialog / .csx-backdrop classes, its own csx-layout rules place it and these fallbacks step aside. */
+  .more-sheet.angle-sheet:not(.csx-dialog) { position: fixed; left: 50% !important; right: auto !important; top: 50% !important; bottom: auto !important;
+    transform: translate(-50%, -50%) !important; width: min(560px, calc(100vw - 48px)); max-width: 560px; max-height: 85vh; overflow-y: auto; border-radius: 16px !important; }
+  :is(.dismiss-popup, .brv-sheet, .conn-modal):not(.csx-dialog) { border-radius: 16px !important; max-width: 560px; }
+  .brv-overlay, #bmOverlay, #notifOverlay { align-items: center !important; }
   #pwaGuideOverlay { align-items: center !important; }
   /* the opinion sheet (Idea Catcher / composer / Quick Post writer) is a full-screen page on phones; here a dialog */
-  #rv2Sheet.rv2-lab { inset: auto; top: 50%; left: calc(50% + 130px); transform: translate(-50%, -50%); width: min(720px, calc(100vw - 324px));
-    max-height: 85vh; border: 1px solid var(--cs-line); border-radius: 20px; background: var(--cs-bg); }
-  body:has(#rv2Sheet.rv2-lab)::after { content: ''; position: fixed; inset: 0; background: var(--cs-overlay); z-index: 8999; }
-  #rv2Sheet .rv2-lab-in { padding: 16px 24px 28px; }
+  #rv2Sheet.rv2-lab:not(.csx-backdrop) { inset: auto; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(720px, calc(100vw - 48px));
+    max-height: 85vh; border: 1px solid var(--cs-line); border-radius: 16px; background: var(--cs-bg); }
+  body:has(#rv2Sheet.rv2-lab:not(.csx-backdrop))::after { content: ''; position: fixed; inset: 0; background: var(--cs-overlay); z-index: 8999; }
+  #rv2Sheet .rv2-lab-in { padding: 16px 24px 24px; }
 
-  /* ---- hover + keyboard focus ---- */
+  /* ---- hover + keyboard focus (the full hover / focus language is §8) ---- */
   #desktopSidebar .ds-item:hover, #desktopSidebar .ds-brand:hover { background: var(--cs-hover); }
   .list-card:hover, .pipeline-card:hover, .collapsible-header:hover { background: var(--cs-hover); }
-  .pipe-btn:hover, .detail-btn:hover, .cs-pill-btn:hover, .gen-btn:hover, .tp-shz-angle:hover { filter: brightness(1.08); }
   #desktopSidebar .ds-item:focus-visible, #desktopSidebar .ds-brand:focus-visible, .list-card :focus-visible, .pipeline-card :focus-visible,
-  .cs-pill-btn:focus-visible, .cs-primary-btn:focus-visible, .cs-composer-send:focus-visible { outline: 2px solid var(--cs-text); outline-offset: 2px; }
+  .cs-pill-btn:focus-visible, .cs-primary-btn:focus-visible { outline: 2px solid var(--cs-muted); outline-offset: 2px; }
 }
-/* 2 idea columns from 1100px; one column 900–1099 */
-@media (min-width: 1100px) {
-  #ideaContent > div { grid-template-columns: 1fr 1fr !important; }
+
+/* ============ 8. desktop system (v703, hand-written; ≥900px only — phones and tablets under 900px are untouched) ============
+   Contract: .unlazy/desktop/SPEC.md ("one of each — use these sizes everywhere on D"). Gate: scripts/verify/desktop-system.mjs.
+   Ownership: app.html's <style id="csx-layout"> sets LAYOUT for the .csx-* classes (display, grid/flex, position, size, overflow,
+   z-index, gap); this section sets every VISUAL property for them, and pulls every legacy component onto the same sizes:
+     buttons  md 36 · sm 32 · lg 44 (empty-state CTAs) · icon 32×32 r8 · chips 28 · segmented 32 — 14/500 pill (chips 13/500)
+     inputs   40 tall, r10, 1px line, 15px · textareas min 120, padding 12, 15/1.5
+     cards    r14, 1px line, padding 20, no shadow · dialogs r16 · menus r12 · rows r10
+     type     page 20/600 · section 17/600 · detail 22/600 · body 15/1.55 · meta 13
+   Hover language: primary → 90% fill; everything else → --cs-hover background. Focus-visible: 2px --cs-muted ring, offset 2.
+   !important is used only where an app.html / §4 / §5 rule or an inline style already uses it on that property (each says so). */
+@media (min-width: 900px) {
+  /* ---- 8.0 tokens ---- */
+  :root, :root[data-theme] {
+    --csd-h-sm: 32px; --csd-h-md: 36px; --csd-h-lg: 44px; --csd-h-chip: 28px; --csd-h-seg: 32px; --csd-h-icon: 32px;
+    --csd-h-input: 40px; --csd-h-textarea: 120px; --csd-h-row: 64px; --csd-h-toolbar: 56px; --csd-h-menu-item: 36px;
+    --csd-pad-md: 0 14px; --csd-pad-sm: 0 12px; --csd-pad-lg: 0 20px; --csd-pad-chip: 0 10px; --csd-pad-seg: 0 12px;
+    --csd-pad-card: 20px; --csd-pad-row: 12px 16px; --csd-pad-page: 32px; --csd-pad-detail: 32px;
+    --csd-r-pill: 999px; --csd-r-icon: 8px; --csd-r-input: 10px; --csd-r-row: 10px; --csd-r-menu: 12px; --csd-r-card: 14px; --csd-r-dialog: 16px;
+    --csd-fs-btn: 14px; --csd-fs-chip: 13px; --csd-fs-body: 15px; --csd-fs-meta: 13px; --csd-fs-label: 13px;
+    --csd-fs-page: 20px; --csd-fs-section: 17px; --csd-fs-detail: 22px; --csd-lh-body: 1.55;
+    --csd-doc: 760px; --csd-dialog-sm: 560px; --csd-dialog-lg: 720px; --csd-toast: 380px;
+    --csd-ring: 2px solid var(--cs-muted);
+    --csd-primary-hover: color-mix(in srgb, var(--cs-primary) 90%, var(--cs-bg));
+    --csd-side: #f9f9f9;
+    --csd-side-on: #ebebeb;   /* selected row / nav item: --cs-chip (#f2f2f2) is too faint on the light sidebar and on white */
+    --csd-seg-on: #ffffff;
+    /* the app's type tokens follow the desktop scale (every §4/§5 rule that reads them follows too) */
+    --cs-fs-body: 15px; --cs-fs-title: 17px; --cs-fs-screen: 20px; --cs-fs-meta: 13px; --cs-fs-btn: 14px;
+  }
+  :root[data-theme="dark"] { --csd-side: #181818; --csd-seg-on: #474747; --csd-side-on: var(--cs-chip); }
+  /* the select chevron (a 12px stroke icon in the muted colour of each theme) */
+  :root, :root[data-theme="light"] { --csd-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%235d5d5d' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  :root[data-theme="dark"] { --csd-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%23b4b4b4' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  body { font-size: var(--csd-fs-body); line-height: var(--csd-lh-body); }
+
+  /* ---- 8.1 shell + sidebar ---- */
+  #desktopSidebar, [data-theme="dark"] #desktopSidebar { background: var(--csd-side); border-right: 1px solid var(--cs-line); }
+  #desktopSidebar .ds-item, #desktopSidebar .ds-brand, #desktopSidebar .ds-plan { min-height: 36px; border-radius: var(--csd-r-row); font-size: 14px; }
+  #desktopSidebar .ds-coach { border: 0 !important; border-radius: var(--csd-r-row); }   /* !important: §5 paints the coach row's border with !important */
+  #desktopSidebar .ds-plan { border: 0; padding: 8px 10px; }
+  #desktopSidebar .ds-item.active, #desktopSidebar .ds-item.active:hover { background: var(--csd-side-on) !important; }   /* !important: §5's active fill is */
+  #desktopSidebar .ds-foot { line-height: 1.5; }
+  #desktopSidebar .ds-foot :is(a, button, span) { white-space: nowrap; }
+  #desktopSidebar .ds-item:focus-visible, #desktopSidebar .ds-brand:focus-visible { outline: var(--csd-ring); outline-offset: -2px; }
+  .csx-shell { background: var(--cs-bg); color: var(--cs-text); }
+  .csx-newpost { min-height: var(--csd-h-md); padding: var(--csd-pad-md); border: 1px solid var(--cs-line);
+    background: transparent; color: var(--cs-text); font: 500 var(--csd-fs-btn)/1 var(--cs-font); cursor: pointer; }
+  .csx-newpost .csx-kbd { margin-left: auto; }
+  #desktopSidebar .csx-newpost { margin-bottom: 8px; }
+  .csx-newpost:hover { background: var(--cs-hover); }
+
+  /* ---- 8.2 toolbar (one per screen) ---- */
+  .csx-toolbar { padding: 0 var(--csd-pad-page); border-bottom: 1px solid var(--cs-line); background: var(--cs-bg); }
+  .csx-toolbar-title { margin: 0; font-size: var(--csd-fs-page); font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--cs-text); }
+  .csx-toolbar-ctx { font-size: var(--csd-fs-meta); color: var(--cs-muted); }
+  .csx-toolbar-actions { color: var(--cs-text); font-size: var(--csd-fs-btn); }
+  .csx-toolbar-count { font-size: var(--csd-fs-meta); color: var(--cs-muted); white-space: nowrap; }
+
+  /* ---- 8.3 master-detail ---- */
+  .csx-md { background: var(--cs-bg); }
+  .csx-list { padding: 8px 4px; }
+  .csx-list-group { margin: 12px 8px 4px; font-size: var(--csd-fs-meta); font-weight: 600; color: var(--cs-muted); text-transform: none; letter-spacing: 0; }
+  .csx-row { min-height: var(--csd-h-row); padding: var(--csd-pad-row); border: 0; border-radius: var(--csd-r-row); background: transparent; color: var(--cs-text);
+    text-align: left; font: inherit; cursor: pointer; }
+  .csx-row:hover { background: var(--cs-hover); }
+  .csx-row.is-selected, .csx-row.is-selected:hover { background: var(--csd-side-on); box-shadow: inset 2px 0 0 var(--cs-text); }
+  .csx-row:focus-visible { outline: var(--csd-ring); outline-offset: -2px; }
+  .csx-row-meta { font-size: var(--csd-fs-meta); color: var(--cs-muted); line-height: 1.4; }
+  .csx-row-title { font-size: var(--csd-fs-body); font-weight: 600; line-height: 1.4; color: var(--cs-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .csx-row-hook { font-size: 14px; line-height: 1.45; color: var(--cs-muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .csx-detail { padding: var(--csd-pad-detail); padding-bottom: 0; border-left: 1px solid var(--cs-line); background: var(--cs-bg); color: var(--cs-text); font-size: var(--csd-fs-body); line-height: var(--csd-lh-body); }
+  .csx-detail-empty { color: var(--cs-muted); font-size: var(--csd-fs-body); text-align: center; }
+  .csx-detail-head { padding-bottom: 16px; margin-bottom: 8px; border-bottom: 1px solid var(--cs-line); }
+  .csx-detail-title { margin: 0; font-size: var(--csd-fs-detail); font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; color: var(--cs-text); }
+  .csx-section-label { margin: 24px 0 6px; font-size: 14px; font-weight: 600; color: var(--cs-muted); text-transform: none; letter-spacing: 0; }
+  .csx-detail-meta { color: var(--cs-muted); font-size: var(--csd-fs-meta); }
+  .csx-detail-meta .csx-chip, .csx-detail-head .csx-chip { cursor: default; background: var(--cs-chip); border-color: transparent; color: var(--cs-text); }
+  .csx-detail-body { color: var(--cs-text); }
+  .csx-detail-body .detail-text, .csx-detail-body .nb-note-text { font-size: var(--csd-fs-body); line-height: var(--csd-lh-body); color: var(--cs-text); }
+  .csx-actions { padding: 12px 0 16px; border-top: 1px solid var(--cs-line); background: var(--cs-bg); }   /* solid: it is sticky over scrolling text */
+  /* legacy action rows moved into the detail's action bar: Approve / Skip and Read script keep their desktop pill look */
+  #csxDetail .list-actions .action-circle.approve, #csxDetail .list-actions .action-circle.dismiss {
+    width: auto !important; height: var(--csd-h-md) !important; min-height: var(--csd-h-md) !important; padding: var(--csd-pad-md) !important; border-radius: var(--csd-r-pill) !important;
+    gap: 6px; font-size: var(--csd-fs-btn); font-weight: 500; }   /* !important: app.html's icon-circle rule sizes them with !important */
+  #csxDetail .list-actions .action-circle.dismiss { background: transparent !important; border: 1px solid var(--cs-line) !important; color: var(--cs-text) !important; }
+  #csxDetail .list-actions .action-circle .cs-act-lbl { display: inline; }
+  #csxDetail .list-actions .action-circle svg { width: 16px; height: 16px; }
+  /* Pipeline: the assignee row moved into the detail head keeps its old card offsets (top 18 / right 20) — line it up with the content */
+  :root .csx-detail-head .pipeline-assignee-row { inset: auto !important; margin: 8px 0 0 !important; }   /* !important: app.html's row rule is */
+  /* the one section label: 14/600 muted, sentence case; a copy icon sits on the label's line, vertically centred */
+  :root :is(.csx-section-label, #csxDetail .detail-label, #csxDetail .hook-label, #csxDetail .reel-title-label, .csx-dialog .detail-label, #view-today .detail-label) {
+    display: flex !important; align-items: center !important; gap: 4px !important; min-height: 28px; margin: 20px 0 6px !important; padding: 0 !important;
+    font-size: 14px !important; font-weight: 600 !important; line-height: 1.3 !important; color: var(--cs-muted) !important; text-transform: none !important; letter-spacing: 0 !important; }
+  :root :is(.csx-section-label, .detail-label, .hook-label, .reel-title-label) .section-copy-btn {
+    width: 28px !important; min-width: 28px !important; height: 28px !important; min-height: 28px !important; margin: 0 !important; font-size: 14px !important; }
+  :root :is(.csx-section-label, .detail-label, .hook-label, .reel-title-label) .section-copy-btn svg { width: 15px; height: 15px; }
+  #csxDetail .csx-detail-head + * > :first-child, #csxDetail .csx-detail-body > :first-child { margin-top: 16px !important; }
+  /* the detail's action bar: a solid sticky bar, flush to the bottom and to both pane edges, 1px line on top */
+  #csxDetail { scroll-padding-bottom: 72px; }   /* keyboard focus never lands under the bar */
+  #csxDetail > .csx-actions.csx-actions { width: auto; max-width: none; align-self: stretch; margin: 24px calc(-1 * var(--csd-pad-detail)) 0; padding: 12px var(--csd-pad-detail) 16px;
+    background: var(--cs-bg); border-top: 1px solid var(--cs-line); }   /* the doubled class outweighs the 720px cap on the pane's children: the bar runs edge to edge */
+  /* Plan my week dialog: the old card's own border / fill / padding inside the dialog body would be a box in a box */
+  :root .csx-dialog-body > #ideasQuick, :root .csx-dialog-body > #ideasManualPanel { border: 0 !important; background: transparent !important; padding: 0 !important; border-radius: 0 !important; margin: 0 !important; box-shadow: none !important; }   /* !important: their inline styles */
+  :root .csx-dialog-body > #ideasManualPanel { margin-top: 16px !important; }
+  /* the brief / script moved in from the old card: no card inset, no box around the text — the detail pane is the document */
+  /* same in the 900–1099 detail dialog: every section (Hook, Title, Script …) starts at one x */
+  #csxDetail :is(.list-card-detail, .pipeline-card-detail), :root .csx-dialog-body :is(.list-card-detail, .pipeline-card-detail) { padding-left: 0 !important; padding-right: 0 !important; border-top: 0 !important; margin: 0 !important; }   /* !important: the card rule in 8.9 is */
+  #csxDetail .detail-text, :root .csx-dialog-body .detail-text { background: transparent !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; color: var(--cs-text) !important; }   /* !important: app.html paints .detail-text.script with !important */
+  #csxDetail .pipe-btn.cs-read-btn, :root .csx-dialog .pipe-btn.cs-read-btn { background: var(--cs-primary) !important; color: var(--cs-on-primary) !important; border: 1px solid var(--cs-primary) !important; }
+
+  /* ---- 8.4 document column, settings subnav + panel ---- */
+  /* app.html's convention: the screen's .view itself carries .csx-doc / .csx-md and its first child is a 56px .csx-toolbar that
+     starts at x = 260, y = 0. The view has no padding / max-width / auto margins; the columns are set on its children. */
+  #mainViews > .view.csx-doc, #mainViews > .view.csx-md { max-width: none; margin: 0; padding: 0 !important; }   /* !important: §7's per-view padding is */
+  #mainViews > .view.csx-doc > :not(.csx-toolbar):not(style):not(script) { max-width: var(--csd-doc); margin-left: var(--csd-pad-page) !important; margin-right: var(--csd-pad-page) !important; box-sizing: border-box; }
+  #mainViews > .view.csx-doc > .csx-toolbar + * { margin-top: 24px; }
+  #mainViews > .view.csx-doc > :last-child { margin-bottom: 48px; }
+  #mainViews > .view.csx-md > :not(.csx-toolbar):not(.csx-list):not(style):not(script) { margin-left: 12px; margin-right: 12px; box-sizing: border-box; }
+  #mainViews > .view.csx-md > .csx-toolbar + * { margin-top: 12px; }
+  #bvOverlay .csx-doc { padding: 24px var(--csd-pad-page) 48px; max-width: calc(var(--csd-doc) + 2 * var(--csd-pad-page)); box-sizing: border-box; }
+  .csx-subnav { padding: 16px 8px; border-right: 1px solid var(--cs-line); }
+  .csx-subnav-item { min-height: var(--csd-h-md); padding: 0 12px; border: 0; border-radius: var(--csd-r-row); background: transparent; color: var(--cs-text);
+    font: 400 14px/1.2 var(--cs-font); text-align: left; cursor: pointer; }
+  .csx-subnav-item:hover { background: var(--cs-hover); }
+  /* the subnav items are the old .sp-tab buttons: undo the legacy segmented-tab sizing (8.9) for them */
+  :root .csx-subnav .sp-tab.csx-subnav-item { width: 100% !important; height: var(--csd-h-md) !important; min-height: var(--csd-h-md) !important; padding: 0 12px !important;
+    border-radius: var(--csd-r-row) !important; background: transparent !important; color: var(--cs-text) !important; font-size: 14px !important; font-weight: 400 !important; justify-content: flex-start; }
+  :root .csx-subnav .sp-tab.csx-subnav-item:hover { background: var(--cs-hover) !important; }
+  :root .csx-subnav .sp-tab.csx-subnav-item:is(.is-active, .active, [aria-current="page"], [aria-current="true"]) { background: var(--csd-side-on) !important; font-weight: 500 !important; }
+  .csx-subnav-item.is-selected, .csx-subnav-item.is-active, .csx-subnav-item[aria-current="page"], .csx-subnav-item[aria-current="true"], .csx-subnav-item[aria-selected="true"] { background: var(--csd-side-on); font-weight: 500; }
+  .csx-panel { padding: 24px var(--csd-pad-page) 48px; max-width: calc(720px + 2 * var(--csd-pad-page)); box-sizing: border-box; }
+
+  /* ---- 8.5 buttons ---- */
+  .csx-btn { height: var(--csd-h-md); min-height: var(--csd-h-md); padding: var(--csd-pad-md); border: 1px solid var(--cs-line); border-radius: var(--csd-r-pill);
+    background: transparent; color: var(--cs-text); font: 500 var(--csd-fs-btn)/1 var(--cs-font); white-space: nowrap; cursor: pointer; box-shadow: none;
+    transition: background-color .12s ease, color .12s ease, border-color .12s ease; }
+  .csx-btn--primary { background: var(--cs-primary); border-color: var(--cs-primary); color: var(--cs-on-primary); }
+  .csx-btn--secondary { background: transparent; border-color: var(--cs-line); color: var(--cs-text); }
+  .csx-btn--ghost { background: transparent; border-color: transparent; color: var(--cs-muted); }
+  .csx-btn--danger { background: transparent; border-color: var(--cs-danger); color: var(--cs-danger-text); }
+  .csx-btn--sm { height: var(--csd-h-sm); min-height: var(--csd-h-sm); padding: var(--csd-pad-sm); }
+  .csx-btn--lg { height: var(--csd-h-lg); min-height: var(--csd-h-lg); padding: var(--csd-pad-lg); }
+  .csx-btn--icon { width: var(--csd-h-icon); height: var(--csd-h-icon); min-height: var(--csd-h-icon); padding: 0; border-color: transparent; border-radius: var(--csd-r-icon); color: var(--cs-muted); }
+  .csx-btn svg { width: 16px; height: 16px; stroke: currentColor; flex: none; }
+  .csx-btn:hover:not(:disabled), .csx-btn--secondary:hover:not(:disabled) { background: var(--cs-hover); }
+  .csx-btn--ghost:hover:not(:disabled), .csx-btn--icon:hover:not(:disabled) { background: var(--cs-hover); color: var(--cs-text); }
+  .csx-btn--primary:hover:not(:disabled) { background: var(--csd-primary-hover); border-color: var(--csd-primary-hover); }
+  .csx-btn--danger:hover:not(:disabled) { background: var(--cs-danger-tint); }
+  .csx-btn:focus-visible { outline: var(--csd-ring); outline-offset: 2px; }
+  .csx-btn:disabled, .csx-btn[aria-disabled="true"] { opacity: .45; cursor: default; }
+
+  /* ---- 8.6 chips, segmented control, kbd ---- */
+  .csx-chip { height: var(--csd-h-chip); min-height: var(--csd-h-chip); padding: var(--csd-pad-chip); border: 1px solid var(--cs-line); border-radius: var(--csd-r-pill);
+    background: transparent; color: var(--cs-text); font: 500 var(--csd-fs-chip)/26px var(--cs-font); white-space: nowrap; cursor: pointer; box-sizing: border-box; }
+  .csx-chip:hover { background: var(--cs-hover); }
+  .csx-chip.is-selected, .csx-chip[aria-pressed="true"], .csx-chip.is-selected:hover { background: var(--cs-primary); border-color: var(--cs-primary); color: var(--cs-on-primary); }
+  .csx-chip:focus-visible { outline: var(--csd-ring); outline-offset: 2px; }
+  .csx-seg { height: var(--csd-h-seg); padding: 2px; border: 0; border-radius: var(--csd-r-pill); background: var(--cs-chip); box-sizing: border-box; }
+  .csx-seg-item { height: 28px; padding: var(--csd-pad-seg); border: 0; border-radius: var(--csd-r-pill); background: transparent; color: var(--cs-muted);
+    font: 500 var(--csd-fs-chip)/1 var(--cs-font); white-space: nowrap; cursor: pointer; }
+  .csx-toolbar .csx-seg-item { padding: 0 8px; }   /* toolbar segments run tighter so the Ideas type filter fits beside the day / format dropdowns at 1440 */
+  .csx-seg-item:hover { color: var(--cs-text); }
+  .csx-seg-item.is-selected, .csx-seg-item.is-active, .csx-seg-item[aria-selected="true"], .csx-seg-item[aria-pressed="true"] { background: var(--csd-seg-on); color: var(--cs-text); }
+  .csx-seg-item:focus-visible { outline: var(--csd-ring); outline-offset: 0; }
+  .csx-kbd { padding: 1px 6px; border: 1px solid var(--cs-line); border-radius: 6px; background: var(--cs-chip); color: var(--cs-muted);
+    font: 500 13px/1.3 var(--cs-font); white-space: nowrap; }
+
+  /* ---- 8.7 fields ---- */
+  .csx-field { margin: 0 0 16px; }
+  .csx-label { margin: 0 0 6px; font-size: var(--csd-fs-label); font-weight: 600; color: var(--cs-text); text-transform: none; letter-spacing: 0; }
+  .csx-input { height: var(--csd-h-input); padding: 0 12px; border: 1px solid var(--cs-line); border-radius: var(--csd-r-input); background: var(--cs-input);
+    color: var(--cs-text); font: 400 var(--cs-fs-body)/1.4 var(--cs-font); box-sizing: border-box; }
+  .csx-textarea { min-height: var(--csd-h-textarea); padding: 12px; border: 1px solid var(--cs-line); border-radius: var(--csd-r-input); background: var(--cs-input);
+    color: var(--cs-text); font: 400 var(--cs-fs-body)/1.5 var(--cs-font); box-sizing: border-box; resize: vertical; }
+  .csx-input:focus, .csx-textarea:focus { outline: none; border-color: var(--cs-text); }
+
+  /* ---- 8.8 dialogs, palette, toasts, dropdowns ---- */
+  .csx-backdrop { background: var(--cs-overlay); }
+  .csx-dialog { background: var(--cs-card); color: var(--cs-text); border: 1px solid var(--cs-line); border-radius: var(--csd-r-dialog); box-shadow: 0 16px 48px rgba(0,0,0,.28); }
+  /* dialogs / panes take focus programmatically (focus trap): no ring on the container itself, only on its controls */
+  .csx-dialog:focus, .csx-dialog:focus-visible, .csx-palette:focus-visible, .csx-detail:focus-visible, .csx-list:focus-visible, [role="dialog"]:focus-visible, [tabindex="-1"]:focus-visible { outline: none !important; }   /* !important: the ring rule in 8.9 is */
+  .csx-dialog-head { text-align: left; }
+  :root .csx-dialog-head > :first-child { text-align: left !important; }   /* !important: legacy titles (.cs-upgrade-title …) centre themselves with !important */
+  .csx-dialog-head { padding: 14px 16px 14px 20px; border-bottom: 1px solid var(--cs-line); font-size: var(--csd-fs-section); font-weight: 600; }
+  .csx-dialog-body { padding: 20px; font-size: var(--csd-fs-body); line-height: var(--csd-lh-body); }
+  .csx-dialog-foot { padding: 14px 20px; border-top: 1px solid var(--cs-line); }
+  .csx-palette { background: var(--cs-card); border: 1px solid var(--cs-line); border-radius: var(--csd-r-dialog); box-shadow: 0 16px 48px rgba(0,0,0,.28); padding: 6px; }
+  .csx-palette-input { height: 48px; padding: 0 14px; border: 0; border-bottom: 1px solid var(--cs-line); border-radius: 0; background: transparent; color: var(--cs-text);
+    font: 400 var(--cs-fs-body)/1.4 var(--cs-font); }
+  .csx-palette-input:focus { outline: none; border-bottom-color: var(--cs-text); }
+  .csx-palette-item { min-height: var(--csd-h-menu-item); padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--cs-text); font: 400 14px/1.2 var(--cs-font); text-align: left; cursor: pointer; }
+  .csx-palette-item:hover { background: var(--cs-hover); }
+  .csx-palette-item.is-selected, .csx-palette-item[aria-selected="true"] { background: var(--csd-side-on); }
+  .csx-palette-list { padding: 6px 0 0; }
+  .csx-palette .csx-list-group { margin: 10px 10px 4px; }
+  .csx-palette-item .csx-kbd { margin-left: auto; }
+  .csx-keys { margin: 0; }
+  .csx-keys-row { padding: 8px 0; border-bottom: 1px solid var(--cs-line); font-size: 14px; }
+  .csx-keys-row:last-child { border-bottom: 0; }
+  .csx-keys dt { margin: 0; }
+  .csx-keys dd { margin: 0; color: var(--cs-muted); }
+  .csx-hint { margin: 6px 0 0; font-size: var(--csd-fs-meta); color: var(--cs-muted); line-height: 1.45; }
+  /* legacy dim layers inside a window backdrop would double the dim */
+  .csx-backdrop .more-backdrop, .csx-backdrop .conn-backdrop { background: transparent !important; }   /* !important: §5 paints these overlays with !important */
+  .csx-toast { padding: 12px 16px; border: 0; border-radius: var(--csd-r-menu); background: var(--cs-primary); color: var(--cs-on-primary); font: 500 14px/1.4 var(--cs-font);
+    box-shadow: 0 8px 24px rgba(0,0,0,.24); text-align: left; }
+
+  /* ================== 8.9 legacy components → the same system ================== */
+
+  /* -- inline font sizes: §4f lifts every inline size one step for phones (with an id-weight :not(), so it beats class rules).
+     On desktop the same inline sizes map onto the desktop scale instead (13 meta · 14 · 15 body · 17 section · 20 page · 22 detail).
+     Same selector shape plus :root, so these win over §4f; !important because §4f and the inline styles are. -- */
+  :root [style*="font-size:10px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:10.5px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:11px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:11.5px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:12px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:12.5px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:13px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:13.5px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font:11px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font:700 12px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font:600 13px" i]:not(#teleprompterOverlay *):not(#brollStage *) { font-size: 13px !important; }
+  :root [style*="font-size:14px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font:700 14px" i]:not(#teleprompterOverlay *):not(#brollStage *) { font-size: 14px !important; }
+  :root [style*="font-size:15px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:16px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font:700 15px" i]:not(#teleprompterOverlay *):not(#brollStage *) { font-size: 15px !important; }
+  :root [style*="font-size:17px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:18px" i]:not(#teleprompterOverlay *):not(#brollStage *) { font-size: 17px !important; }
+  :root [style*="font-size:19px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:20px" i]:not(#teleprompterOverlay *):not(#brollStage *), :root [style*="font-size:22px" i]:not(#teleprompterOverlay *):not(#brollStage *) { font-size: 20px !important; }
+  :root [style*="font-size:26px" i]:not(#teleprompterOverlay *):not(#brollStage *) { font-size: 22px !important; }
+  :root :is(input, textarea, select)[style*="font-size:1" i]:not(#teleprompterOverlay *):not(#brollStage *), :root :is(input, textarea, select)[style*="font:" i]:not(#teleprompterOverlay *):not(#brollStage *) { font-size: var(--cs-fs-body) !important; }
+  /* heavy inline weights (700 / 800 headings and labels) → the desktop scale only uses 400 / 500 / 600 */
+  :root [style*="font-weight:800" i], :root [style*="font-weight: 800" i], :root [style*="font-weight:700" i], :root [style*="font-weight: 700" i], :root [style*="font:700" i], :root [style*="font:800" i] { font-weight: 600 !important; }
+
+  /* -- buttons: shared md shape (36, 0 14, 14/500, pill). The §5 colour rules stay; sizes come from here. -- */
+  :root :is(.gen-btn, .generate-btn, .generate-ideas-btn, .tp-generate-btn, .batch-enter, .cs-primary-btn, .cs-pill-btn, .pipe-btn,
+      .detail-btn, .tp-action-btn, .canva-link, .cm-detail-btn, .copy-reel-btn, .export-btn, .vt-copy, .vt-use,
+      .sharpen-btn, .viral-btn, .creator-add-btn, .paa-use-btn, .paa-refresh-btn, .sp-expand-btn, .sp-invite-btn, .sp-fill-btn,
+      .sp-ask-btn, .sp-extra-btn, .brain-rule-btn, .logo-upload-btn, .cs-upgrade-btn, .cs-upgrade-alt, .sp-plan-btn, .cs-onb-go,
+      .dp-cancel, .dp-custom-send, .tour-btn, .tour-next, .nb-act, .nb-save, .batch-cancel, .batch-all,
+      .batch-go, .dz-btn, .fq-done-btn, .vl-top-use, .vl-mic, .bv-action-btn, .cm-download-btn, .ob-btn,
+      .bv-ob-finish-btn, .fp-save, .bb-nudge-go, .auth-btn, .sp-back, .pwa-banner-btn, .creator-save-btn,
+      .rv2-actions button), :root #settingsOverlay button:not([class]), :root #view-dfy .detail-btn {
+    height: var(--csd-h-md) !important;          /* !important: app.html's v274/v275 sweeps and §4d size several of these with !important */
+    min-height: var(--csd-h-md) !important;
+    padding: var(--csd-pad-md) !important;
+    border-radius: var(--csd-r-pill) !important;
+    font-size: var(--csd-fs-btn) !important;
+    font-weight: 500 !important;
+    line-height: 1;
+    white-space: nowrap;
+    letter-spacing: 0;
+    text-transform: none;
+    box-shadow: none;
+    transition: background-color .12s ease, color .12s ease, border-color .12s ease, opacity .12s ease;
+  }
+  :root #settingsOverlay button:not([class]) { width: auto !important; border-radius: var(--csd-r-pill) !important; }   /* !important: inline width:100% / radius 12 on Log out, + Add new brand, Install */
+  :root #dfyReqBtn { height: var(--csd-h-md) !important; min-height: var(--csd-h-md) !important; padding: var(--csd-pad-md) !important; border-radius: var(--csd-r-pill) !important; font-size: var(--csd-fs-btn) !important; font-weight: 500 !important; }
+  /* idea cards: Approve / Skip are md pills */
+  :root #ideaContent .list-actions .action-circle.approve, :root #ideaContent .list-actions .action-circle.dismiss {
+    height: var(--csd-h-md) !important; min-height: var(--csd-h-md) !important; padding: var(--csd-pad-md) !important; font-size: var(--csd-fs-btn); }
+  /* "Talk / say it" mic controls → secondary md; the big round mic buttons → a 36 circle */
+  :root .nb-mic { height: var(--csd-h-md) !important; min-height: var(--csd-h-md) !important; font-weight: 500 !important; border-radius: var(--csd-r-pill) !important; font-size: var(--csd-fs-btn) !important; }
+  :root .dp-mic-btn, :root .bv-mic-btn, :root .bv-send-btn { width: var(--csd-h-md) !important; height: var(--csd-h-md) !important; min-height: var(--csd-h-md) !important; padding: 0 !important; border-radius: var(--csd-r-pill) !important; font-size: var(--csd-fs-btn) !important; font-weight: 500 !important; }
+  :root .vl-mic { border-width: 1px !important; border-style: solid !important; border-color: var(--cs-line) !important; background: transparent !important; color: var(--cs-text) !important; }
+  /* the dismiss / approve sheets' main action is the primary pill like every other main action */
+  :root .dismiss-popup .dp-custom-send { background: var(--cs-primary) !important; color: var(--cs-on-primary) !important; border: 1px solid var(--cs-primary) !important; min-width: 0 !important; width: auto !important; }
+
+  /* sm (32): small actions inside rows, sheets and cards */
+  :root :is(.fp-tool, .fp-notebtn, .fp-ghost, .fp-manage, .fp-addlink, .tp-field-copy, .rv2-link, .cs-upgrade-close, .tour-btn.skip, .bv-manual-link,
+      .tp-shz-angle, .assign-popup button, .cm-modal .cm-head button:not(.cm-close), .stmt-actions button, .sp-team-remove, .teleprompter-done,
+      .bm-add-row button, .rv2-slot, .bm-cat-actions button, .cm-modal button:not([class])) {
+    height: var(--csd-h-sm) !important;          /* !important: several carry inline / app !important sizes */
+    min-height: var(--csd-h-sm) !important;
+    padding: var(--csd-pad-sm) !important;
+    border-radius: var(--csd-r-pill) !important;
+    font-size: var(--csd-fs-btn) !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    white-space: nowrap;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+  }
+  /* ghost: the "or … ▾" text links and other quiet actions — no underline, muted text, hover lights them up */
+  :root :is(.tp-shz-angle, .rv2-link, .cs-upgrade-close, .fp-manage, .fp-ghost, .fp-notebtn, .tp-field-copy, .tour-btn.skip, .bv-manual-link) {
+    background: transparent !important; border: 1px solid transparent !important; color: var(--cs-muted) !important; text-decoration: none !important;
+  }
+  :root #view-today .tp-shz-angle, :root #view-ideas .tp-shz-angle { padding: var(--csd-pad-sm) !important; margin-left: -12px !important; }   /* text lines up with the column */
+  :root .fp-tool { background: transparent !important; border: 1px solid var(--cs-line) !important; color: var(--cs-text) !important; }
+  :root .fp-tool.fp-danger { color: var(--cs-danger-text) !important; border-color: var(--cs-danger) !important; }
+
+  /* icon-only (32×32, r8): close ×, copy, nav arrows, small round tools */
+  /* the two :not(#…) only add id weight: several close buttons carry an inline font-size that the block above maps with id weight */
+  :root :is(.dp-x, .cm-close, .as-close, .conn-x, .br-x, .vl-trend-x, .bm-entry-del, .cs-onb-x, .bv-close, .mix-btn, .cm-nav-btn, .section-copy-btn, .idea-pick,
+      .info-btn, .faq-close, .modal-close, .sheet-close, .brv-close, .pipe-undo, .action-circle.undo, .tp-rm-x, .creator-del, .bm-del):not(#csd-a):not(#csd-b) {
+    width: var(--csd-h-icon) !important; min-width: var(--csd-h-icon) !important; height: var(--csd-h-icon) !important; min-height: var(--csd-h-icon) !important;
+    padding: 0 !important; border-radius: var(--csd-r-icon) !important; font-size: 18px !important; line-height: 1 !important;   /* the × / − / + glyph reads at 18 in a 32 box */
+    background: transparent !important; border: 1px solid transparent !important; color: var(--cs-muted) !important; box-shadow: none !important;
+    font-weight: 500 !important;
+  }
+  :root .idea-pick.on, :root [data-theme="dark"] .idea-pick.on { background: var(--cs-primary) !important; color: var(--cs-on-primary) !important; border-color: var(--cs-primary) !important; }
+  :root :is(.dp-x, .cm-close, .as-close, .conn-x, .br-x, .vl-trend-x, .bm-entry-del, .cs-onb-x, .bv-close, .mix-btn, .cm-nav-btn, .section-copy-btn, .idea-pick:not(.on),
+      .info-btn, .faq-close, .modal-close, .sheet-close, .brv-close, .pipe-undo, .action-circle.undo, .tp-rm-x, .creator-del, .bm-del):hover {
+    background: var(--cs-hover) !important; color: var(--cs-text) !important;
+  }
+  :root .section-copy-btn svg, :root .cm-nav-btn svg, :root .mix-btn svg { width: 16px; height: 16px; }
+  /* teleprompter read-mode bar keeps its dark chrome; only the sizes join the system */
+  :root .tp-rm-btn { height: var(--csd-h-md) !important; min-height: var(--csd-h-md) !important; padding: var(--csd-pad-md) !important; font-size: var(--csd-fs-btn) !important; }
+
+  /* lg (44): only the empty-state call to action */
+  :root .empty-state :is(button, .gen-btn, .cs-primary-btn, .cs-pill-btn), :root .empty-state-cta {
+    height: var(--csd-h-lg) !important; min-height: var(--csd-h-lg) !important; padding: var(--csd-pad-lg) !important;
+  }
+
+  /* -- hover: secondary / ghost / chips → --cs-hover; primary → 90% fill (§5 paints the base fills with !important, so these restate it) -- */
+  :root :is(.pipe-btn, .detail-btn, .tp-action-btn, .canva-link, .cm-card-btn, .cm-detail-btn, .copy-reel-btn, .export-btn,
+      .vt-copy, .sharpen-btn, .viral-btn, .creator-add-btn, .paa-use-btn, .paa-refresh-btn, .sp-expand-btn, .sp-invite-btn,
+      .sp-fill-btn, .sp-ask-btn, .logo-upload-btn, .cs-upgrade-alt, .sp-plan-btn, .cs-onb-go, .dp-cancel, .tour-btn,
+      .cs-pill-btn, .nb-act, .nb-mic, .batch-cancel, .batch-all, .batch-enter, .dz-btn, .fq-done-btn,
+      .vl-top-use, .vl-mic, .bv-action-btn, .brain-rule-btn, .sp-extra-btn, .sp-back, .fp-tool, .fp-add-btn,
+      .tp-shz-angle, .rv2-link, .cs-upgrade-close, .fp-manage, .fp-ghost, .fp-notebtn, .tp-field-copy, .bv-manual-link,
+      .action-circle.dismiss, .sp-method, .rv2-angle, .dp-option, .stat-sq, .assign-popup button, .bm-add-row button, .brand-dropdown-item,
+      .assign-popup-item, .more-item, .sp-section-header, .collapsible-header, .paa-header, .rv2-actions button:not(.primary), .bm-cat-actions button, .cm-modal button:not([class]),
+      .brand-dropdown-add):hover:not(:disabled):not(.sel):not(.active):not(.selected):not(.on):not(.primary), :root #settingsOverlay button:not([class]):hover:not(:disabled) {
+    background: var(--cs-hover) !important;   /* !important: the §5 bases are !important */
+    filter: none; transform: none;
+  }
+  :root :is(.tp-shz-angle, .rv2-link, .cs-upgrade-close, .fp-manage, .fp-ghost, .fp-notebtn, .tp-field-copy, .bv-manual-link, .action-circle.dismiss, .tour-btn.skip):hover:not(:disabled) {
+    color: var(--cs-text) !important;
+  }
+  :root :is(.gen-btn, .generate-btn, .generate-ideas-btn, .tp-generate-btn, .cs-primary-btn, .pipe-btn.next, .pipe-btn.cs-read-btn, .detail-btn.primary,
+      .tp-action-btn.approve, .cm-download-btn, .vt-use, .ob-btn, .bv-ob-finish-btn, .cs-upgrade-btn, .sp-plan-btn.primary, .fp-save, .tour-btn.primary,
+      .tour-next, .bb-nudge-go, .batch-go, .dp-custom-send, .nb-save, .auth-btn, .sp-invite-btn.primary, .action-circle.approve, .pwa-banner-btn, .rv2-actions button.primary):hover:not(:disabled) {
+    background: var(--csd-primary-hover) !important; border-color: var(--csd-primary-hover) !important; color: var(--cs-on-primary) !important;
+    opacity: 1; filter: none; transform: none;
+  }
+  /* Pipeline: with "Read script" on the card, Mark done is the secondary one — its hover stays secondary */
+  :root .pipeline-card-actions:has(.cs-read-btn) .pipe-btn.next:hover { background: var(--cs-hover) !important; border-color: var(--cs-line) !important; color: var(--cs-text) !important; }
+  :root :is(button, [role="button"], a.btn):disabled, :root :is(button, [role="button"])[aria-disabled="true"] { opacity: .45; cursor: default; }
+  :root :is(button, [role="button"]):disabled:hover { filter: none; }
+
+  /* -- chips (28, 0 10, 13/500, pill; selected = primary fill from §5) -- */
+  :root :is(.filter-chip, .format-chip, .type-chip, .search-tag, .qp-type, .tp-cat, .paa-fmt-chip, .sp-chip, .ob-example-chip, .bv-starter-chip,
+      .tp-deliv-chip, .tp-dismiss-chip, .cm-aspect-btn, .mode-chip, .vl-win-chip, .stmt-tpl-chip, .vl-trend-chip, .rx-mode, .ob-tone-chip, .cm-card-btn) {
+    height: var(--csd-h-chip) !important;       /* !important: §4d / app sweeps set chip padding and size with !important */
+    min-height: var(--csd-h-chip) !important;
+    padding: var(--csd-pad-chip) !important;
+    border-radius: var(--csd-r-pill) !important;
+    font-size: var(--csd-fs-chip) !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    white-space: nowrap;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  :root :is(.filter-chip, .format-chip, .type-chip, .search-tag, .qp-type, .tp-cat, .paa-fmt-chip, .sp-chip, .ob-example-chip, .bv-starter-chip,
+      .tp-deliv-chip, .tp-dismiss-chip, .cm-aspect-btn, .mode-chip, .vl-win-chip, .stmt-tpl-chip, .vl-trend-chip, .rx-mode, .ob-tone-chip):not(.active):not(.selected):not(.on):not(.sel):not(.rx-mode-main):hover {
+    background: var(--cs-hover) !important;
+  }
+  :root .vl-win-chip, :root .stmt-tpl-chip, :root .vl-trend-chip, :root .ob-tone-chip { border: 1px solid var(--cs-line) !important; background: transparent !important; color: var(--cs-text) !important; }
+  :root .vl-win-chip.active, :root .vl-win-chip.on, :root .stmt-tpl-chip.active, :root .stmt-tpl-chip.on, :root .stmt-tpl-chip.sel, :root .ob-tone-chip.selected {
+    background: var(--cs-primary) !important; color: var(--cs-on-primary) !important; border-color: var(--cs-primary) !important;
+  }
+
+  /* stat squares (Ideas filters) become compact count chips: "12 Total" in one 36px pill */
+  :root .stat-sq { height: var(--csd-h-md) !important; min-height: var(--csd-h-md) !important; padding: var(--csd-pad-md) !important; border-radius: var(--csd-r-pill) !important;
+    flex-direction: row !important; gap: 6px !important; aspect-ratio: auto !important; font-size: var(--csd-fs-btn) !important; font-weight: 500 !important; background: transparent !important; border: 1px solid var(--cs-line) !important; }
+  :root .stat-sq .num { font-size: var(--csd-fs-btn) !important; line-height: 1 !important; }
+  :root .stat-sq .label { font-size: var(--csd-fs-btn) !important; line-height: 1 !important; margin: 0 !important; }
+  :root .stat-sq.active, :root .stat-sq.selected { background: var(--cs-chip) !important; border-color: var(--cs-text) !important; }
+  :root .stat-sq.active .num, :root .stat-sq.active .label, :root .stat-sq.selected .num, :root .stat-sq.selected .label { color: var(--cs-text) !important; }
+
+  /* -- one segmented style for every tab set: 32 track (--cs-chip, pill), 28 segments 13/500, selected = raised segment -- */
+  :root .pipeline-stages, :root .create-sub-tabs, :root .sp-tabs, :root .source-tabs {
+    display: inline-flex !important; width: auto !important; max-width: 100%; height: var(--csd-h-seg) !important; padding: 2px !important; gap: 2px !important;
+    border: 0 !important; border-radius: var(--csd-r-pill) !important; background: var(--cs-chip) !important; box-shadow: none !important; box-sizing: border-box;
+    grid-template-columns: none !important;   /* !important: app.html lays several of these out as 50/50 grids with !important */
+  }
+  :root .pipeline-stage-tab, :root .create-sub-tab, :root .sp-tab, :root .source-tab {
+    flex: none !important; transform: none !important; margin: 0 !important; width: auto !important; height: 28px !important; min-height: 28px !important; padding: var(--csd-pad-seg) !important;
+    border: 0 !important; border-radius: var(--csd-r-pill) !important; background: transparent !important; box-shadow: none !important;
+    color: var(--cs-muted) !important; font-size: var(--csd-fs-chip) !important; font-weight: 500 !important; line-height: 1 !important; gap: 6px !important;
+    white-space: nowrap; text-transform: none !important; letter-spacing: 0 !important;
+  }
+  :root .pipeline-stage-tab:hover, :root .create-sub-tab:hover, :root .sp-tab:hover, :root .source-tab:hover { color: var(--cs-text) !important; background: var(--cs-hover) !important; }
+  :root .pipeline-stage-tab.active, :root .pipeline-stage-tab.active.s-filming, :root .pipeline-stage-tab.active.s-done, :root .create-sub-tab.active, :root .sp-tab.active, :root .source-tab.active,
+  :root .pipeline-stage-tab.active:hover, :root .create-sub-tab.active:hover, :root .sp-tab.active:hover, :root .source-tab.active:hover {
+    background: var(--csd-seg-on) !important; color: var(--cs-text) !important; border: 0 !important;
+  }
+  :root .pipeline-stage-tab .stage-count { background: transparent !important; color: inherit !important; padding: 0 !important; min-width: 0 !important; font-size: var(--csd-fs-chip) !important; }
+  :root .pipeline-stage-tab svg, :root .create-sub-tab svg, :root .source-tab svg { width: 14px; height: 14px; }
+
+  /* -- inputs (40) and textareas (min 120) -- */
+  :root :is(input[type="text"], input[type="url"], input[type="search"], input[type="email"], input[type="number"], input[type="tel"], input[type="password"],
+      input[type="time"], input[type="date"], input:not([type]), select, .sp-input, .creator-input, .sp-platform-input, .sp-format-input, .bv-text-input) {
+    height: var(--csd-h-input) !important;       /* !important: app.html's v274 / dark-mode sweeps size inputs with !important */
+    min-height: var(--csd-h-input) !important;
+    padding: 0 12px !important;
+    border: 1px solid var(--cs-line) !important;
+    border-radius: var(--csd-r-input) !important;
+    background-color: var(--cs-input) !important;
+    color: var(--cs-text);
+    font-size: var(--cs-fs-body) !important;
+    line-height: 1.4;
+    box-sizing: border-box;
+    box-shadow: none !important;
+  }
+  :root select { padding-right: 32px !important; }
+  :root :is(textarea, .gen-textarea, .sp-textarea, .cm-textarea, .vl-paste, .nb-input, .dp-custom-input) {
+    min-height: var(--csd-h-textarea) !important;
+    padding: 12px !important;
+    border: 1px solid var(--cs-line) !important;
+    border-radius: var(--csd-r-input) !important;
+    background-color: var(--cs-input) !important;
+    color: var(--cs-text);
+    font-size: var(--cs-fs-body) !important;
+    line-height: 1.5 !important;
+    box-sizing: border-box;
+    box-shadow: none !important;
+  }
+  :root .tp-field-content { padding: 10px 12px !important; border-radius: var(--csd-r-input) !important; font-size: var(--cs-fs-body) !important; line-height: 1.5 !important; }
+  :root :is(input, textarea, select, .tp-field-content[contenteditable="true"]):focus,
+  :root :is(input, textarea, select):focus-visible { outline: none !important; border-color: var(--cs-text) !important; box-shadow: none !important; }
+  :root .cs-composer-in:focus, :root #trendPullTopic:focus { border-color: var(--cs-text) !important; }
+  /* field labels: 13/600 above, 6px gap */
+  :root .sp-label, :root .sp-field-label, :root .fp-label, :root .ob-label, :root .cm-label { font-size: var(--csd-fs-label) !important; font-weight: 600 !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--cs-text) !important; margin-bottom: 6px; }
+
+  /* -- cards: r14, 1px line, padding 20, no shadow -- */
+  :root :is(.list-card, .pipeline-card, .collapsible, .sp-section, .remix-card, .tp-result-card, .bb-nudge,
+      .al-banner, .rx-orig, .dfy-card, .nb-card, .bm-card, .sp-plan-box, .todays-post-hero, .vl-card,
+      .ic-card, .fp-panel, .remix-input-group, .vl-top-post, .paa-q, .batch-bar, .pipe-done-row, .vl-trend-panel,
+      .vl-trend-pull, .sp-tone-card, .sp-team-member, .nb-capture, .ob-tone-card, .ob-summary, .bv-scan-slot, .rv2-card,
+      .rv2-slotbox, .cs-onb-card, .paa-card, .paa-section, .ic-ref, .creator-card, .nb-note, .grp-panel,
+      .ob-voice-prompt), :root #remixQuick, :root .fn-faq-box:not(.cs-faq-link) {
+    border-radius: var(--csd-r-card) !important;   /* !important: #remixQuick and the dark-mode sweeps set radius / border with !important */
+    border: 1px solid var(--cs-line) !important;
+    box-shadow: none !important;
+  }
+  :root :is(.remix-card, .bb-nudge, .al-banner, .rx-orig, .dfy-card, .nb-card, .bm-card,
+      .sp-plan-box, .vl-card, .ic-card, .fp-panel, .remix-input-group, .vl-top-post, .paa-q, .pipe-done-row,
+      .vl-trend-panel, .vl-trend-pull, .sp-tone-card, .sp-team-member, .nb-capture, .ob-tone-card, .ob-summary, .bv-scan-slot,
+      .rv2-card, .rv2-slotbox, .paa-card, .ic-ref, .creator-card, .nb-note, .grp-panel, .ob-voice-prompt,
+      .cs-onb-card), :root #remixQuick, :root .fn-faq-box:not(.cs-faq-link) {
+    padding: var(--csd-pad-card) !important;
+  }
+  :root .batch-bar { padding: 12px 16px !important; }
+  /* list / pipeline cards keep padding 0 and pad their inner rows, so the whole summary stays clickable edge to edge */
+  :root .list-card, :root .pipeline-card { padding: 0 !important; }
+  :root .list-card-summary, :root .pipeline-card-header { padding: var(--csd-pad-card) !important; }
+  :root .list-card-detail, :root .pipeline-card-detail { padding-left: var(--csd-pad-card) !important; padding-right: var(--csd-pad-card) !important; }
+  :root .tp-result-card > :not(.tp-actions-row):not(style) { padding-left: var(--csd-pad-card); padding-right: var(--csd-pad-card); }
+  :root .list-card:hover, :root .pipeline-card:hover { transform: none !important; box-shadow: none !important; }
+  :root .list-card::before, :root .list-card::after { display: none !important; }   /* the old 3px "lift" bar on hover */
+  :root .list-card.picked { box-shadow: inset 0 0 0 1px var(--cs-text) !important; }
+  /* card titles 17/600, body 15/1.55 */
+  :root .list-card-title, :root .pipeline-card-title, :root .remix-card-title, :root .tp-result-title, :root .fp-title, :root .bm-card-name, :root .nb-card-title,
+  :root .rv2-h, :root .rv2-hook, :root .rv2-belief-top, :root .tp-shz-cap, :root .br-title, :root .cs-upgrade-title, :root .paa-q-text {
+    font-size: var(--csd-fs-section) !important; font-weight: 600 !important; line-height: 1.35 !important; letter-spacing: -0.01em !important;
+  }
+  :root .list-card-hook, :root .pipeline-card-hook, :root .detail-text, :root .cs-ih-sub, :root .al-banner-text, :root .rv2-script, :root .tp-field-content,
+  :root .nb-card-text, :root .vl-top-text { font-size: var(--csd-fs-body) !important; line-height: var(--csd-lh-body) !important; }
+  /* boxes in boxes: a text block inside a card is just text */
+  :root .list-card .detail-text, :root .pipeline-card .detail-text, :root .tp-result-card .detail-text { background: transparent !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; }
+  :root .detail-text.preview { background: transparent !important; color: var(--cs-text) !important; padding: 0 !important; }
+  :root .reel-title-row { background: transparent !important; border: 1px solid var(--cs-line) !important; border-radius: var(--csd-r-row) !important; padding: 12px 16px !important; }
+  :root .rv2-lab .rv2-card:not(.csx-dialog-body) { border: 0 !important; padding: 0 !important; background: transparent !important; }   /* the opinion card inside its own sheet: one border, not two */
+  :root .sp-section .sp-field { border: 0 !important; border-top: 1px solid var(--cs-line) !important; border-radius: 0 !important; background: transparent !important;
+    padding: 20px 0 !important; box-shadow: none !important; }
+  :root .sp-section .sp-section-body { padding: 0 20px !important; }
+  :root .sp-section-header { min-height: 56px; padding: 0 20px !important; font-size: var(--csd-fs-section) !important; font-weight: 600 !important; border-radius: 0 !important; }
+  :root .collapsible-header, :root #view-ideas.cs-ideas-has .pro-tools-section > .collapsible-header { min-height: var(--csd-h-input) !important; padding: 0 20px !important; border-radius: var(--csd-r-card) !important;
+    border: 1px solid var(--cs-line) !important; background: transparent !important; font-size: 14px !important; }
+  /* the old "selected = white border" never marks state on desktop */
+  :root .rx-orig, :root .list-card.approved, :root .list-card.filming { border-color: var(--cs-line) !important; }
+  /* option tiles (opinion angles, dismiss reasons, Settings methods) are rows: r10, padding 12 16, 15px */
+  :root .rv2-angle, :root .sp-method, :root .dismiss-popup .dp-option, :root .dismiss-popup.ap .dp-option {
+    min-height: 0 !important; padding: 12px 16px !important; border-radius: var(--csd-r-row) !important; font-size: var(--csd-fs-body) !important; line-height: 1.45 !important;
+    text-align: left; box-shadow: none !important;
+  }
+  :root .sp-method, :root .sp-method-primary { background: transparent !important; color: var(--cs-text) !important; border: 1px solid var(--cs-line) !important; }
+  :root .sp-method-primary .sp-method-t { color: var(--cs-text) !important; }
+  :root .sp-method-primary .sp-method-d { color: var(--cs-muted) !important; opacity: 1 !important; }
+  :root .fp-add-btn, :root .fp-panel.fp-add { border: 1px dashed var(--cs-line) !important; background: transparent !important; color: var(--cs-text) !important; }
+  :root .fp-add-btn { border-radius: var(--csd-r-card) !important; font-size: var(--csd-fs-btn) !important; font-weight: 500 !important; }   /* the add-creator tile is a dashed card, not a pill */
+
+  /* Remix mode chips: content-sized chips in one wrapping row (app.html lays them out as stretched tiles) */
+  :root .rx-modes .search-tag, :root .rx-modes .rx-mode-main { flex: 0 0 auto !important; flex-basis: auto !important; }
+  /* "Creators you follow": a wrapping grid instead of a sideways strip that cut the 4th panel off */
+  :root .fp-row { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); overflow: visible !important; scroll-snap-type: none !important; }
+  :root .fp-row > .fp-panel, :root .fp-row > .fp-panel.fp-editing { width: auto !important; max-width: none !important; flex: none !important; }
+  :root .fp-notebtn, :root .fp-ghost { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  /* "How this works" sits on the column's left edge like everything else */
+  :root #mainViews .fn-faq { margin-left: 0 !important; margin-right: 0 !important; }
+  /* Quick Post result card: its eight actions are one wrapping row of content-sized pills, not a 2-column grid of bars */
+  :root .tp-actions-row { display: flex !important; flex-wrap: wrap; gap: 8px !important; grid-template-columns: none !important; }   /* !important: app.html lays it out as a grid with !important */
+  :root .tp-actions-row .tp-action-btn { width: auto !important; flex: 0 0 auto !important; }
+  /* -- info rows: one quiet line, never split into columns (audit #7) -- */
+  /* app.html:3382 makes .sp-tip a flex row, so a sentence with a <strong> in it split into three columns. Block layout, the "i"
+     stays where it was (absolutely placed in the 16px + 18px + 10px gutter the flex row had), text wraps as one sentence. */
+  :root .sp-tip { display: block; position: relative; padding: 12px 16px 12px 44px; }
+  :root .sp-tip::before { position: absolute; left: 16px; top: 12px; }
+  :root .sp-tip { border: 0 !important; background: var(--cs-raise) !important; border-radius: var(--csd-r-row) !important; font-size: var(--csd-fs-meta) !important; color: var(--cs-muted) !important; }
+
+  /* -- headings: page 20/600 · section 17/600 · detail 22/600 · empty-state 20/600 -- */
+  :root .view h1, :root .view h2.view-title, :root .page-title, :root .sp-header h2, :root .nb-header h2, :root .vl-head h2, :root .cs-ih-title, :root .cs-page-title,
+  :root .empty-state-title, :root .onboarding-step h2, :root .auth-card h1, :root .bv-header h2 {
+    font-size: var(--csd-fs-page) !important; font-weight: 600 !important; line-height: 1.25 !important; letter-spacing: -0.01em !important; text-transform: none !important;
+  }
+  :root #view-ideas h2, :root .create-section h2, :root .create-section h3, :root .more-sheet h2, :root .more-sheet h3, :root .dismiss-popup h3, :root .cm-modal h3,
+  :root .conn-modal h3, :root .bv-popup h3, :root #bmOverlay h3, :root #notifOverlay h3, :root .rv2-lab h2, :root .paa-header h3, :root .sp-section-title,
+  :root .vl-section-title, :root .nb-header h3, :root .pwa-guide h3 {
+    font-size: var(--csd-fs-section) !important; font-weight: 600 !important; line-height: 1.3 !important; letter-spacing: -0.01em !important; text-transform: none !important;
+  }
+  :root #view-ideas #ideaContent h2:not(#csd-a) { font-size: var(--csd-fs-section) !important; font-weight: 600 !important; }   /* day headings carry an inline size; the extra id outweighs the inline-size map */
+  :root :is(.sp-plan-name, .bv-header-title, .dp-title, .tour-tooltip h3, .onboarding-step h3, .ob-step h3, .cs-onb-title) { font-size: var(--csd-fs-section) !important; font-weight: 600 !important; letter-spacing: -0.01em !important; }
+  /* the few remaining odd radii: chat bubbles and option boxes are cards (14), the sign-in card is a dialog (16) */
+  :root :is(.bv-msg, .logo-upload-area, .ob-voice-prompt) { border-radius: var(--csd-r-card) !important; }
+  :root .auth-card { border-radius: var(--csd-r-dialog) !important; }
+  :root #remixQuick > div:first-child, :root #remixQuick h2, :root #remixQuick h3 { font-size: var(--csd-fs-section) !important; font-weight: 600 !important; }
+  /* UPPERCASE tracking labels → sentence-case 13/600 muted (the text itself is app copy) */
+  :root .rx-step, :root .rv2-step, :root .rv2-lbl, :root .rv2-label, :root .tp-field-label, :root .tp-redo-lbl, :root .tp-shz-lbl, :root .dp-sub, :root .dp-or, :root .bm-cat, :root .cm-label, :root .ob-label, :root .qp-types-lbl,
+  :root .hook-label, :root .detail-label, :root .reel-title-label, :root .sp-fill-head, :root .mix-lbl {
+    font-size: var(--csd-fs-meta) !important; font-weight: 600 !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--cs-muted) !important;
+  }
+  /* every UPPERCASE tracking label in app.html (62 class rules + inline uppercase) reads in sentence case on desktop */
+  :root :is(.badge, .bm-bar-cat-label, .bm-cat-h, .bm-cat-title, .br-eb, .bv-home-lbl, .bv-suggestion-label, .canva-label,
+      .cm-colors-label, .creator-platform, .detail-label, .dp-custom-label, .ds-lock, .footer, .format-tag, .fq-format-tag,
+      .hook-label, .ic-result-lbl, .ic-result-tag, .list-card-status, .more-lock, .nb-note-time, .new-badge-idea, .ob-field-label,
+      .ob-voice-divider span, .paa-badge-idea, .reel-title-label, .remix-col-label, .remix-origin-tag, .remix-result-badge, .remixed-badge, .rv2-lbl,
+      .rv2-slot-k, .rv2-step, .rx-step, .sp-fill-head, .sp-voice-src, .spark-badge-idea, .stat-pill .label, .stat-sq .label,
+      .status-chip, .tp-day-badge, .tp-deliv-cap, .tp-dismiss-label, .tp-edit-hint, .tp-field-copy, .tp-field-label, .tp-primer-h,
+      .tp-redo-lbl, .tp-result-tag, .tp-shots-title, .tv-praise-label, .type-tag, .vl-edit-label, .vl-fmt, .vt-rw-title,
+      .vt-tag, .cs-upgrade-badge, .sp-plan-tag), :root [style*="text-transform:uppercase" i], :root [style*="text-transform: uppercase" i] {
+    text-transform: none !important; letter-spacing: 0 !important;   /* !important: the inline uppercase and several app rules are !important */
+  }
+  :root :is(.bm-bar-cat-label, .bm-cat-h, .bm-cat-title, .br-eb, .bv-home-lbl, .bv-suggestion-label, .canva-label, .cm-colors-label,
+      .dp-custom-label, .ic-result-lbl, .ob-field-label, .remix-col-label, .rv2-slot-k, .tp-deliv-cap, .tp-dismiss-label, .tp-primer-h,
+      .tp-shots-title, .tv-praise-label, .vl-edit-label, .vt-rw-title, .tp-edit-hint) {
+    font-size: var(--csd-fs-meta) !important; font-weight: 600 !important; color: var(--cs-muted) !important;
+  }
+  /* meta 13 */
+  :root .format-tag, :root .type-tag, :root .tp-result-tag, :root .tp-day-badge, :root .badge, :root .pipeline-card-day, :root .assign-name, :root .nb-date, :root .ds-count { font-size: var(--csd-fs-meta) !important; }
+  :root .format-tag, :root .type-tag, :root .tp-result-tag { height: 24px; padding: 0 9px !important; line-height: 24px !important; border-radius: var(--csd-r-pill) !important; }
+
+  /* -- dialogs and sheets: one look (r16, 1px line, card bg, soft shadow) -- */
+  :root :is(.dismiss-popup, .more-sheet, .brv-sheet, .br-sheet, .cm-modal, .conn-modal, .bv-popup, .cs-upgrade-card,
+      .modal, .modal-card, .sheet, .bottom-sheet, .faq-overlay .faq-content), :root #bmOverlay .bm-sheet, :root #bmOverlay > div, :root #notifOverlay > div, :root #pwaGuideOverlay > div, :root #rv2Sheet.rv2-lab:not(.csx-backdrop) {
+    border-radius: var(--csd-r-dialog) !important;   /* !important: §5 / §7 set sheet radii with !important */
+    border: 1px solid var(--cs-line) !important;
+    background: var(--cs-card) !important;
+    box-shadow: 0 16px 48px rgba(0,0,0,.28) !important;
+    max-height: 85vh;
+  }
+  /* padding only while a sheet has no head / body / foot of its own (app.html adds .csx-dialog when it opens on desktop) */
+  :root :is(.dismiss-popup, .brv-sheet, .br-sheet, .cm-modal, .conn-modal, .bv-popup, .cs-upgrade-card, .modal,
+      .modal-card, .more-sheet.angle-sheet):not(.csx-dialog), :root #bmOverlay > div:not(.csx-dialog), :root #notifOverlay > div:not(.csx-dialog) { padding: 20px 24px !important; }
+  :root .tour-tooltip { padding: 20px 24px !important; }
+  :root .csx-dialog { padding: 0 !important; }   /* !important: beats the legacy sheet paddings above and in app.html */
+  :root .csx-dialog-head .dp-title, :root .csx-dialog-head h2, :root .csx-dialog-head h3, :root .csx-dialog-head .cs-upgrade-title, :root .csx-dialog-head .br-title, :root .csx-dialog-head .brv-title {
+    margin: 0 !important; font-size: var(--csd-fs-section) !important; font-weight: 600 !important; line-height: 1.3 !important; }
+  :root #bmOverlay, :root #notifOverlay, :root .brv-overlay, :root .cm-overlay, :root .bv-popup-overlay, :root .cs-upgrade-overlay, :root .dismiss-overlay, :root .dp-backdrop, :root #pwaGuideOverlay { background: var(--cs-overlay) !important; }
+  :root .tour-tooltip { border-radius: var(--csd-r-dialog) !important; }
+
+  /* a legacy box that app.html turns into the dialog body: body padding, no card border inside the dialog */
+  :root .csx-dialog-body { padding: 20px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }   /* !important: the card rules above are */
+  :root .csx-dialog-head .sp-back { border-color: transparent !important; background: transparent !important; color: var(--cs-muted) !important; }
+  :root .csx-dialog-head .sp-back:hover { background: var(--cs-hover) !important; color: var(--cs-text) !important; }
+
+  /* -- dropdowns / popovers: r12, 1px line, --cs-raise, 6px padding, 36px items -- */
+  :root .brand-dropdown, :root .assign-popup, :root .more-menu, :root .ms-menu, :root .popover {
+    border-radius: var(--csd-r-menu) !important; border: 1px solid var(--cs-line) !important; background: var(--cs-raise) !important; padding: 6px !important;
+    box-shadow: 0 12px 32px rgba(0,0,0,.22) !important;
+  }
+  :root .brand-dropdown-item, :root .assign-popup-item, :root .more-item, :root .ms-item {
+    min-height: var(--csd-h-menu-item) !important; padding: 0 10px !important; border-radius: 8px !important; font-size: 14px !important; border: 0 !important;
+  }
+  :root .brand-dropdown-item.active, :root .brand-dropdown-item.current { background: var(--cs-chip) !important; }
+
+  /* -- toasts: bottom-right, 16px from the edges, max 380, r12 -- */
+  :root .generic-toast, :root [data-theme="dark"] .generic-toast, :root .toast {
+    left: auto !important; right: 16px !important; bottom: 16px !important; transform: translateY(12px) !important; max-width: var(--csd-toast) !important;
+    padding: 12px 16px !important; border-radius: var(--csd-r-menu) !important; text-align: left !important; font-size: 14px !important; line-height: 1.4 !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,.24) !important;
+  }
+  :root .generic-toast.visible, :root .toast.visible { transform: translateY(0) !important; }
+
+  /* -- focus ring on every interactive control (one ring: 2px --cs-muted, offset 2) -- */
+  :root :is(button, a, summary, [role="button"], [role="tab"], [tabindex]:not([tabindex="-1"]), .filter-chip, .search-tag):focus-visible { outline: var(--csd-ring) !important; outline-offset: 2px !important; }
+  :root input[type="checkbox"]:focus-visible, :root input[type="radio"]:focus-visible, :root .toggle-switch input:focus-visible + .toggle-track { outline: var(--csd-ring) !important; outline-offset: 2px !important; }
+  /* hover on things that open: rows, folds, links */
+  :root .fn-faq-box > summary:hover, :root .paa-header:hover, :root .sp-section-header:hover { background: var(--cs-hover); }
+  :root .vl-top-post a:hover, :root .fp-go:hover, :root .toast-cta:hover { color: var(--cs-text); text-decoration-thickness: 2px; }
+  :root .vl-top-post a { font-size: 14px !important; }
+
+  /* toolbar dropdowns are small controls (32), after the 40px input rule so they win it */
+  :root .csx-toolbar select, :root select.csx-btn--sm { height: var(--csd-h-sm) !important; min-height: var(--csd-h-sm) !important; font-size: var(--cs-fs-btn) !important; border-radius: var(--csd-r-pill) !important;
+    width: auto !important; min-width: 112px; max-width: 180px; padding: 0 28px 0 12px !important; text-overflow: ellipsis;
+    -webkit-appearance: none; appearance: none; background-image: var(--csd-chevron) !important; background-repeat: no-repeat !important; background-position: right 10px center !important; background-size: 12px 12px !important; }
+  /* Remix manual setup's "Try all modes" is an inline-styled text link → the same ghost sm action */
+  :root #tryAllBtn { height: var(--csd-h-sm) !important; padding: var(--csd-pad-sm) !important; border-radius: var(--csd-r-pill) !important; font-size: var(--csd-fs-btn) !important;
+    font-weight: 500 !important; text-decoration: none !important; color: var(--cs-muted) !important; border: 1px solid transparent !important; }
+  :root #tryAllBtn:hover { background: var(--cs-hover) !important; color: var(--cs-text) !important; }
+
+  /* the trial "Getting started" checklist floats bottom-left of the content (top-right sat over the toolbar / detail header) */
+  :root .cs-onb-card { top: auto !important; right: auto !important; bottom: 16px !important; left: calc(260px + 16px) !important; }   /* !important: app.html places it with !important */
+
+  /* Settings brand list (app.html .sp-brand-row): the current brand is marked by fill, not a white border; the others hover */
+  :root .sp-brand-row.is-current { border-color: var(--cs-line); background: var(--cs-chip); }
+  :root .sp-brand-row:not(.is-current):hover { background: var(--cs-hover); }
+  /* Brand brain hero chips are labels, not buttons: quiet chips (the .is-on ones a shade stronger) */
+  :root .cs-brain-chip { border: 1px solid var(--cs-line); background: transparent; color: var(--cs-muted); line-height: 1.4; }
+  :root .cs-brain-chip.is-on { border-color: transparent; background: var(--cs-chip); color: var(--cs-text); }
+  /* dismiss / approve reasons: the row's checkbox fills with the text colour when picked */
+  :root .csx-dialog .dp-option.sel::before { background: currentColor; opacity: 1; }
+
+  /* the palette's search field is a bare line, not a boxed input (beats the 40px input rule above) */
+  :root .csx-palette .csx-palette-input, :root .csx-palette .csx-palette-input:focus { height: 48px !important; min-height: 48px !important; padding: 0 12px !important; border: 0 !important;
+    border-bottom: 1px solid var(--cs-line) !important; border-radius: 0 !important; background-color: transparent !important; }
+
+  /* -- touch-only things on a mouse screen -- */
+  :root .cs-composer { display: none !important; }   /* the pinned composer: the Composer dialog replaces it on desktop (!important: §7's own position rule is !important) */
+
+  /* inputs keep 16px where the pointer is coarse (iPad landscape ≥900px), so focusing a field never zooms the page */
+  @media (pointer: coarse) {
+    :root input, :root textarea, :root select, :root .csx-toolbar select { font-size: 16px !important; }
+  }
 }

@@ -393,7 +393,7 @@ const baseCtx = (dom, extra) => Object.assign({
     ok(/Caption <button class="section-copy-btn"[^>]*copyText\('Price \\x3Cb>is\\x3C\/b> not quality'/.test(vid) && /detail-text caption">Price &lt;b&gt;is&lt;\/b&gt; not quality/.test(vid),
       '6 a video shows its Caption with a copy button (escaped)');
     const car = c.renderDetailContent({ id: 4, title: 't', format: 'carousel', script: 's', boldText: 'Slide 1: x', shots: 'x', tags: '#a', caption: 'Swipe it', status: 'filming' });
-    ok(/detail-label">Caption/.test(car) && /Tags/.test(vid), '6 ...and so does every other format; Tags stays');
+    ok(/detail-label">Caption/.test(car) && /Hashtags/.test(vid), '6 ...and so does every other format; Hashtags stays (v703: one label set)');
     c._gmIsBusy = () => true;
     const busy = c.renderDetailContent({ id: 7, title: 't', format: 'video', script: 's', shots: 'x', tags: '', status: 'pending' });
     c._gmIsBusy = () => false;

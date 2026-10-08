@@ -308,15 +308,15 @@ const baseCtx = (dom, extra) => {
     c.renderIdeas();
     const out = dom.els.ideaContent.innerHTML;
     const card = t => { const parts = out.split('<div class="list-card '); return parts.find(p => p.indexOf(t) >= 0) || ''; };
-    ok(/<span class="type-tag type-news">News<\/span>/.test(card('News idea')) && /type-tag type-tip">Tip</.test(card('Tip idea')) && /type-tag type-bts">Behind the scenes</.test(card('Bts idea')),
+    ok(/<span class="type-tag type-news" title="News">News<\/span>/.test(card('News idea')) && /type-tag type-tip" title="Tip">Tip</.test(card('Tip idea')) && /type-tag type-bts" title="Behind the scenes">Behind the scenes</.test(card('Bts idea')),
       'F each card shows its type next to the format');
     ok(card('News idea').indexOf('<a class="type-src" href="https://news.example/salt?a=1&amp;b=2" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Source: Salt prices rise</a>') >= 0,
       'F a news card links its source headline (https, new tab, rel=noopener)');
     ok(!/type-src/.test(card('Plain http news')) && !/type-src/.test(card('Script news')) && !/javascript:/.test(out), 'F an http: or javascript: source is never linked');
     ok(/>Source: paper\.example<\/a>/.test(card('Untitled source')), 'F a source with no headline shows its site name');
-    ok(card('Old idea').indexOf('Old idea') >= 0 && /type-tag type-tip">Tip</.test(card('Old idea')) && !/type-src/.test(card('Old idea')) && /Old hook/.test(card('Old idea')),
+    ok(card('Old idea').indexOf('Old idea') >= 0 && /type-tag type-tip" title="Tip">Tip</.test(card('Old idea')) && !/type-src/.test(card('Old idea')) && /Old hook/.test(card('Old idea')),
       'F an old idea without a type renders fine, labelled Tip (post_type NULL = tip)');
-    ok(/type-tag type-qna">Q&amp;A</.test(card('Old qna')), 'F an old Q&A-format idea is labelled Q&A');
+    ok(/type-tag type-qna" title="Q&amp;A">Q&amp;A</.test(card('Old qna')), 'F an old Q&A-format idea is labelled Q&A');
     ok(c.typesOf({ postType: 'news', format: 'qna' }) === 'news' && c.typesOf({ format: 'qna' }) === 'qna' && c.typesOf({ format: 'video', postType: 'junk' }) === 'tip' && c.typesOf({}) === 'tip',
       'F typesOf: own type, else qna for Q&A format, else tip');
     c.renderIdeaFilters();
@@ -325,7 +325,7 @@ const baseCtx = (dom, extra) => {
     c.setPostTypeFilter('news');
     const o2 = dom.els.ideaContent.innerHTML;
     ok(/News idea/.test(o2) && /Plain http news/.test(o2) && !/Tip idea/.test(o2) && !/Old idea/.test(o2) && !/Bts idea/.test(o2), 'F tapping News shows only news ideas');
-    ok(/filter-chip type-chip active" onclick="setPostTypeFilter\('news'\)">News</.test(dom.els.ideaFilters.innerHTML) && J(c.visiblePendingIds()) === J([0, 3, 4, 5]), 'F ...the chip is lit and "approve several" sees the same list');
+    ok(/filter-chip type-chip active" title="News" onclick="setPostTypeFilter\('news'\)">News</.test(dom.els.ideaFilters.innerHTML) && J(c.visiblePendingIds()) === J([0, 3, 4, 5]), 'F ...the chip is lit and "approve several" sees the same list');
     c.setPostTypeFilter('news');
     ok(/Old idea/.test(dom.els.ideaContent.innerHTML) && c.activePostType === 'all', 'F tapping it again clears the filter');
     c.setPostTypeFilter('tip');

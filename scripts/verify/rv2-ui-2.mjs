@@ -195,11 +195,11 @@ async function pickAndSave() { await c.rv2Pick(0); await tick(); const r = await
   // ═══ S sheet close ═══
   reset(); await c.nbDevelopV2('n1', null); await tick(); await c.rv2Pick(0); await tick();
   c.rv2CloseSheet();
-  ok(c._rv2 && /Tap again to throw this away/.test(sheet()), 'S closing a written script asks once more');
+  ok(c._rv2 && /Press again to discard/.test(sheet()), 'S closing a written script asks once more');
   c.rv2OpenSlot(0);
   ok(!/Tap again/.test(sheet()), 'S the question is dropped once the sheet changes');
   c.rv2CloseSheet();
-  ok(c._rv2Runs.rv2Sheet && /Tap again to throw this away/.test(sheet()), 'N7 closing after the change asks AGAIN (it does not close)');
+  ok(c._rv2Runs.rv2Sheet && /Press again to discard/.test(sheet()), 'N7 closing after the change asks AGAIN (it does not close)');
   c.rv2CloseSheet();
   ok(c._rv2 === null && !els.rv2Sheet, 'S the second tap closes it');
   reset(); await c.nbDevelopV2('n1', null); await tick(); c.rv2CloseSheet();

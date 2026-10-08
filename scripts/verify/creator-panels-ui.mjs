@@ -241,7 +241,7 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
   reset([{ id: 'c1', name: 'H', entries: [{ id: 'm1', name: 'Multi', links: { tt: 'https://www.tiktok.com/@a', ig: 'https://instagram.com/b' } }] }]);
   c.fpEditOpen(0); els.fpEditLink.value = 'https://instagram.com/c'; els.fpEditNote.value = '';
   ok(c.fpSaveEdit() === false && saves.length === 0 && J(ent('m1').links) === J({ tt: 'https://www.tiktok.com/@a', ig: 'https://instagram.com/b' })
-    && /This replaces your saved Instagram link \(https:\/\/instagram\.com\/b\)\. Tap Save again/.test(els.fpEditErr.textContent), '11 replacing TikTok with an Instagram link first says it replaces the saved Instagram one; nothing changes yet');
+    && /This replaces your saved Instagram link \(https:\/\/instagram\.com\/b\)\. Press Save again/.test(els.fpEditErr.textContent), '11 replacing TikTok with an Instagram link first says it replaces the saved Instagram one; nothing changes yet');
   ok(c.fpSaveEdit() === true, '11 a second Save confirms'); await tick();
   ok(J(ent('m1').links) === J({ ig: 'https://instagram.com/c' }) && saves.length === 1, '11 then the edited link replaces both, as told (' + J(ent('m1').links) + ')');
   reset([{ id: 'c1', name: 'H', entries: [{ id: 'm1', name: 'Multi', links: { tt: 'https://www.tiktok.com/@a', ig: 'https://instagram.com/b' } }] }]);

@@ -21,7 +21,7 @@
 //      a link while Remix is locked → showLockedToast only. Composer padding + safe area in CSS.
 //   7  the app opens on Ideas (CS_START_VIEW) and the ?open= deep link handler runs AFTER that switch.
 //   8  Quick Post: one primary button "Write today’s post", same id and same onclick as v698's circle;
-//      no mascot image; "or pick the angle myself" kept.
+//      no mascot image; "Pick the angle myself" kept (v703 wording).
 //   9  the phone tab bar is hidden at every width; decorative emoji / mascot art gone from main screens.
 //  10  the open drawer and its backdrop sit ABOVE the install banner (.pwa-banner) and below the tour.
 //  12  Ideas first: with pending ideas a "N ideas ready" heading + "Plan my week" pill; the plan card (same ids)
@@ -330,7 +330,7 @@ for (const unlocked of [true, false]) {
   const b2 = /id="tvGenerateBtn" onclick="([^"]+)"/.exec(off);
   ok(b2 && b2[1] === 'showLockedToast()', '8 locked brand: the same lock toast as before');
   ok(!/<img/.test(on) && !/shrimp-mascot/.test(on) && !/tp-shz-ring/.test(on), '8 no mascot image or pulsing rings');
-  ok(/onclick="openAngleSheet\(\)">or pick the angle myself/.test(on), '8 "or pick the angle myself" kept');
+  ok(/onclick="openAngleSheet\(\)">Pick the angle myself/.test(on), '8 "Pick the angle myself" kept (v703: a real button, was "or pick the angle myself")');
   ok(on.indexOf('id="tvTypeRow"') < on.indexOf('id="tvGenerateBtn"') && /id="tvShzCap"/.test(on) && /class="tp-shz-stage/.test(on) && /id="tvStatus"/.test(on), '8 the pieces generateTodayTabPost drives are still there (stage, caption, status)');
 }
 
@@ -371,25 +371,25 @@ for (const unlocked of [true, false]) {
     const c = { window: { innerWidth: w, innerHeight: 812, scrollY: 0 }, document: { querySelector: sel => els[sel] || null },
       tourOverlay: { querySelector: s => s === '.tour-highlight' ? hl : tt }, endTour: () => { ended++; }, Math };
     vm.createContext(c);
-    vm.runInContext(steps + '\n;\nvar tourStep = 0;\n' + grab('tourTargetSel') + '\n' + grab('tourTargetEl') + '\n' + grab('tourVisibleSteps') + '\n' + grab('showTourStep') + '\nthis.TOUR_STEPS = TOUR_STEPS;', c);
+    vm.runInContext(steps + '\n;\nvar tourStep = 0;\n' + grab('tourTargetSel') + '\n' + grab('tourTargetEl') + '\n' + grab('tourStepView') + '\n' + grab('tourVisibleSteps') + '\n' + grab('showTourStep') + '\nthis.TOUR_STEPS = TOUR_STEPS;', c);
     return { c, tt, ended: () => ended };
   };
   const PHONE = { '#csMenuBtn': true, '#csNewBtn': true, '#navTabs': false, '.nav-tab:nth-child(1)': false, '.nav-tab:nth-child(2)': false, '.nav-tab:nth-child(3)': false, '.nav-tab:nth-child(4)': false, '.header-actions': false };
   for (const w of [375, 768]) {
     const t = mkTour(w, PHONE);
     const vis = t.c.tourVisibleSteps();
-    ok(vis.map(s => t.c.tourTargetSel(s)).join() === '#csMenuBtn,#csNewBtn,#csMenuBtn', '11 at ' + w + 'px the tour points at ☰ / pencil / ☰ (' + vis.map(s => s.title).join(' · ') + ')');
+    ok(vis.map(s => t.c.tourTargetSel(s)).join() === '#csNewBtn,#csMenuBtn,#csPlanToggle||#ideasQuickBtn,#ideaContent .list-card,#csMenuBtn', '11 at ' + w + 'px the tour points at pencil / ☰ / Plan my week / a card / ☰ (' + vis.map(s => s.title).join(' · ') + ')');
     ok(t.c.TOUR_STEPS.every(s => { const sel = t.c.tourTargetSel(s); return !sel || !/nav-tab|navTabs|header-actions/.test(sel); }), '11 at ' + w + 'px no step targets the hidden tab bar or header icons');
     t.c.showTourStep();
-    ok(/Step 1 of 3/.test(t.tt.innerHTML) && /every screen is in this menu/.test(t.tt.innerHTML) && t.ended() === 0, '11 at ' + w + 'px step 1 of 3 shows the phone wording');
+    ok(/Step 1 of 5/.test(t.tt.innerHTML) && /The pencil opens Quick Post/.test(t.tt.innerHTML) && t.ended() === 0, '11 at ' + w + 'px step 1 of 5 shows the phone wording');
   }
   const noPencil = mkTour(375, Object.assign({}, PHONE, { '#csNewBtn': false }));
-  ok(noPencil.c.tourVisibleSteps().every(s => s.title !== 'Quick Post'), '11 a step whose target is not on screen is skipped');
+  ok(noPencil.c.tourVisibleSteps().every(s => s.title !== 'Start a post'), '11 a step whose target is not on screen is skipped');
   const none = mkTour(375, {});
   none.c.showTourStep();
   ok(none.ended() === 1 && none.tt.innerHTML === '', '11 nothing to point at → the tour ends instead of pointing at nothing');
-  const desk = mkTour(1280, { '#desktopSidebar': true, '#desktopSidebar .ds-item[data-view="today"]': true, '#desktopSidebar .ds-item[data-view="ideas"]': true, '#desktopSidebar .ds-item[data-view="pipeline"]': true, '#desktopSidebar .ds-item[data-view="create"]': true, '#desktopSidebar .ds-bottom': true, '.header-actions': false, '#navTabs': false });
-  ok(desk.c.tourVisibleSteps().length === 6, '11 at 1280px all 6 steps point at the desktop sidebar (v701: the header icons moved there)');
+  const desk = mkTour(1280, { '#csxNewPost': true, '#desktopSidebar .ds-item[data-view="ideas"]': true, '#view-ideas > .csx-toolbar': true, '#csxList-ideas': true, '#csxNewPost .csx-kbd': true, '#desktopSidebar .ds-bottom': true });
+  ok(desk.c.tourVisibleSteps().length === 6, '11 at 1280px all 6 steps point at the desktop shell (v703: New post, sidebar, toolbar, list, ⌘K, bottom)');
 }
 
 /* ═══ 12. Ideas first ═══ */
