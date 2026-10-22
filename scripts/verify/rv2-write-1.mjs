@@ -92,7 +92,9 @@ const SHAPE = JSON.stringify({ script: 'HIJACK SCRIPT', title: 'Post less, grow 
 // ═════ 1. style guide + writingCraft ═════
 {
   const sg = W.styleGuide();
-  ok(sg.length < 1200, 'styleGuide is short (' + sg.length + ' chars, must be < 1200)');
+  // no-sell (.unlazy/no-sell) — the owner's NO_SELL_RULE is the guide's second hard rule (~430 chars); the
+  // cap moved from 1,200 to 1,600 for it alone, so the guide still cannot grow back into a rulebook.
+  ok(sg.length < 1600, 'styleGuide is short (' + sg.length + ' chars, must be < 1600)');
   ok(sg.includes('[your story: <what to tell>]'), 'styleGuide carries the exact slot format');
   ok(/never invent/i.test(sg), 'styleGuide states the no-invention rule');
   ok(!/8 words/i.test(sg) && !/number beats an adjective/i.test(sg), 'styleGuide lacks the two dropped rules');

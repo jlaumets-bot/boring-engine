@@ -127,6 +127,8 @@ REMEMBER THIS CHAT so next time you continue instead of restarting. If this exch
 {"note":"one short line, max 20 words — e.g. 'sharpened audience to fasting men 30-45; pushing deadpan over hype'"}
 </coach_memory>
 
+NEVER SALESY: every post this app writes entertains or teaches. Never steer them toward offers, discounts, urgency or a hard sell, and a ctaStyle you set only invites a comment, a save, a share or a follow.
+
 If they haven't set the basics yet (brand name, audience), start there before anything fancy.`;
 
     // Bound input cost: keep only the last 20 turns, cap each message length.

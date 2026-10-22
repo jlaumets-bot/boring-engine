@@ -374,7 +374,9 @@ function fullBrandBlock(bc, opts) {
   block('Weekly content calendar (each day has a LEAD theme)', dayMapText(bc), 'Use the day\'s theme as the LEAD angle, but do NOT make every post that day the same topic — roughly 60% on the lead theme and 40% from other days\' themes or evergreen brand angles, so one day still feels varied.', 54);
   add('Competitors', bc.competitors, '', 44);
   block('Recent competitor moves (what rivals just did — products, pricing, campaigns, posts)', bc.competitorMoves, 'Differentiate from, counter, or ride the same wave better than them.', 46);
-  add('CTA style (how this brand asks for action)', bc.ctaStyle, '', 60);
+  // no-sell (.unlazy/no-sell) — ctaStyle is often crawled from the brand's own captions, so it can hold
+  // "Shop now / link in bio / use code". Only its TONE is passed on; the sales ask never is.
+  add('Sign-off tone (how this brand closes a post; borrow the TONE only)', bc.ctaStyle, 'Never copy a sales ask from it (buy, shop, order, book, link in bio, a code, a discount, urgency). A post ends, if at all, by inviting a comment, a save, a share or a follow.', 60);
   block('Origin story', bc.originStory, '', 30);
   if (v2) block('Background facts: real proof the brand has (never add to it)', bc.socialProof, BG_NOTE, 40);
   else block('Social proof (real numbers / press only — weave in for credibility)', bc.socialProof, '', 40);

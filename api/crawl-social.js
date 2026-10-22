@@ -153,7 +153,7 @@ Return ONLY a JSON object, no markdown fences:
 {
   "tones": ["2-4 tone words that match how they actually write, chosen from: sarcastic, witty, educational, provocative, deadpan, inspirational, casual, authoritative, playful, minimalist"],
   "brandVocab": "Distinctive words, phrases, and recurring expressions from these captions, one per line (the things fans would recognize)",
-  "ctaStyle": "How this brand actually asks for action — quote 1-3 real CTA patterns from the captions",
+  "ctaStyle": "How this brand closes a post and invites people to engage (comment, save, share, follow): its TONE, quoting 1-3 real engagement lines from the captions. Leave out every sales ask (shop, buy, order, book, link in bio, codes, discounts, urgency); empty string if every closing line is a sales ask",
   "exampleContent": "The 2-3 strongest captions copied VERBATIM, each followed by one line on why it works (hook style, structure, tone)"
 }
 Rules: extract, don't invent. If a field has no evidence in the captions, return an empty string for it. Never prettify their voice — if they write blunt, the extraction is blunt.`;

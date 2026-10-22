@@ -17,7 +17,7 @@ const FIELDS = {
   brandVocab: 'signature phrases / vocabulary that would fit this brand',
   productDetails: 'the kinds of products/services/offers this brand likely sells',
   exampleContent: 'content formats/ideas that would work for this brand',
-  ctaStyle: 'calls-to-action that match this brand\'s voice',
+  ctaStyle: 'engagement calls-to-action in this brand\'s voice (comment, save, share, follow), never a sales ask',
   originStory: 'origin-story angles that would fit a brand like this',
   socialProof: 'types of social proof / stats this brand could cite',
   visualStyle: 'visual-aesthetic directions that suit this brand',

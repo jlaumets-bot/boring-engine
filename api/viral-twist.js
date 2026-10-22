@@ -6,7 +6,7 @@ const { fullBrandBlock, rulePrecedence, extractJson, coerceShape, VIRAL_TWIST_SH
 // v693 — content-v2 writing rules (.unlazy/content-v2/PLAN.md change 3): the short style guide
 // (whose one hard rule is NO_INVENTION_RULE) replaces writingCraft's rulebook and the "max 8 words
 // per hook, fragments beat full sentences" rule; the brand renders through fullBrandBlock(bc,{v2:true}).
-const { styleGuide } = require('./_write');
+const { styleGuide, guardNoSell } = require('./_write');
 
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
@@ -102,13 +102,31 @@ ${rulePrecedence()}`;
     // was asked for used to go straight to the client, and its `.trim()` inside
     // the angles .forEach() threw — killing the twist panel with nothing on screen.
     const twist = coerceShape(_raw, VIRAL_TWIST_SHAPE);
+    // no-sell (.unlazy/no-sell) — a hook loses its selling sentence. An angle whose hook was nothing but a
+    // sales ask is dropped (all of them dropped: an honest "try again", nothing charged); a spicy hook
+    // that was only an ask is left as it was and flagged in noSellKept.
+    const noSellKept = [];
+    if (Array.isArray(twist.angles) && twist.angles.length) {
+      const left = [];
+      for (const a of twist.angles) {
+        const g = guardNoSell(String((a && a.hook) || ''));
+        if (!g.hits.length) left.push(a); else if (g.ok) left.push(Object.assign({}, a, { hook: g.text }));
+      }
+      if (!left.length) return res.status(502).json({ error: 'Could not build the viral twist — try again' });
+      twist.angles = left;
+    }
+    if (twist.spicy && typeof twist.spicy.hook === 'string') {
+      const g = guardNoSell(twist.spicy.hook);
+      if (g.hits.length) { if (g.ok) twist.spicy = Object.assign({}, twist.spicy, { hook: g.text }); else noSellKept.push('spicy.hook'); }
+    }
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js:
     // a check that cannot run leaves the row unattributed, never unlogged.
     const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: require('./_write').usageModel(bc) });
-    return res.status(200).json({ twist });
+    const _flag = noSellKept.length ? { noSellKept } : {};
+    return res.status(200).json({ twist, ..._flag });
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('viral-twist error:', err);

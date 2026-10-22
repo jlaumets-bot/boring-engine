@@ -6,7 +6,7 @@ const { fullBrandBlock, rulePrecedence, extractJson, coerceShape, VIRAL_REWRITE_
 // v693 — content-v2 writing rules (.unlazy/content-v2/PLAN.md change 3): the short style guide
 // (whose one hard rule is NO_INVENTION_RULE) replaces writingCraft's rulebook and the "max 8 words,
 // fragments beat sentences" hook rule; the brand renders through fullBrandBlock(bc,{v2:true}).
-const { styleGuide } = require('./_write');
+const { styleGuide, guardIdeaNoSell } = require('./_write');
 // Formats whose script is said out loud to camera (same set as sharpen.js / _brain SPOKEN_EX_FORMATS).
 const SPOKEN_FORMATS = ['video', 'micro', 'qna'];
 
@@ -132,13 +132,18 @@ ${rulePrecedence()}`;
     // was asked for used to go straight to the client, and its `.trim()` inside
     // renderIdeas' .map() threw — killing the Ideas tab for the whole session with nothing on screen.
     const rewritten = coerceShape(_raw, VIRAL_REWRITE_SHAPE);
+    // no-sell (.unlazy/no-sell): every sales sentence is taken out; a field the cut would empty is left as
+    // it was and named in noSellKept.
+    const _ns = guardIdeaNoSell(rewritten);
+    Object.assign(rewritten, _ns.idea);
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js:
     // a check that cannot run leaves the row unattributed, never unlogged.
     const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: require('./_write').usageModel(bc) });
-    return res.status(200).json({ idea: rewritten });
+    const _flag = _ns.kept.length ? { noSellKept: _ns.kept } : {};
+    return res.status(200).json({ idea: rewritten, ..._flag });
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('viral-rewrite error:', err);

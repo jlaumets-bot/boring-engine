@@ -2,6 +2,19 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-22 — v704. NEVER SALESY (owner: "the content can not be salesy never. it needs to be entertaining and educational").
+
+- api/_write.js NO_SELL_RULE in every post-writer prompt (styleGuide, angles/spoken/shape prompts, generate-ideas, remix, sharpen,
+  viral-rewrite/twist/analyze, video-beats, brand-voice-chat). TYPE_RULES.about = "ABOUT US, AS A STORY OR A LESSON" (why it exists,
+  how it's made, a myth it busts; never an offer/price/feature list). ctaStyle is shown as "Sign-off tone … borrow the TONE only".
+- guardNoSell: NARROW phrase list (SALES_RES: link in bio, use code <CODE>, buy/shop/order now, N% off + offer word, limited-time
+  offer, while stocks last, DM to buy, add to cart, sales hashtags, a few Estonian). REMOVAL ONLY — never inserts a line; never
+  empties a field (ideas → idea dropped, warning sales_dropped; runWrite → existing retry then EMPTY_RESULT; single-call writers keep
+  original + noSellKept). [your story: …] slots are their own segment, never judged. Carousel slide count kept.
+- generate-ideas regenerates (the one existing retry) only when >=2 ideas carry a sales ask. One usage row; no charge for empty.
+- Gate scripts/verify/no-sell.mjs (72 checks: 0/51 innocent cut, 31/31 sales blocked). Mutations 36/36. One review round (7 fixed).
+- NOT verified against real model output (no AI calls in tests).
+
 ## ▶▶ 2026-10-08 — v703. DESKTOP-NATIVE REWORK (owner: "truly desktop native … not adjusted and half baked and not consistent").
 
 Spec .unlazy/desktop/SPEC.md; audit (83 shots) + render harness in the cloud outputs/desktop-audit. >=900px only unless noted.

@@ -2,6 +2,7 @@ const https = require('https');
 const http = require('http');
 const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, writingCraft, rulePrecedence, extractJson } = require('./_brain');
+const { noSellRule, guardIdeaNoSell } = require('./_write');   // no-sell (.unlazy/no-sell): the shared rule + the output guard
 
 /* v690 — THE CLEAN-JSON RETRY GOT A SECOND FULL 280s. Both tries of the loop below passed
    deadlineMs: 280000, so a first reply that arrived at 250s unparseable started a second call
@@ -173,7 +174,7 @@ function buildLegacyRemixPrompt(bc, inp) {
   if (remixMode === 'series') {
     jsonFormat = '{"originalSummary":"1-2 sentences","seriesParts":[{"partNumber":1,"remixTitle":"Title","remixHook":"Hook","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","suggestedDay":"Monday"}],"remixCaption":"Caption","remixHashtags":"5 hashtags","whyItWorks":"1 sentence"}';
   } else {
-    jsonFormat = '{"originalSummary":"1-2 sentences","remixTitle":"Title","remixHook":"Hook (first 3s)","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","remixCaption":"Caption with CTA","remixHashtags":"5 hashtags","whyItWorks":"1 sentence"}';
+    jsonFormat = '{"originalSummary":"1-2 sentences","remixTitle":"Title","remixHook":"Hook (first 3s)","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","remixCaption":"Caption that ends with an engagement invite (comment, save, share or follow), never a sales ask","remixHashtags":"5 hashtags","whyItWorks":"1 sentence"}';
   }
 
   var brandSection = fullBrandBlock(bc);
@@ -196,7 +197,7 @@ function buildLegacyRemixPrompt(bc, inp) {
   // A pure re-order of existing text, plus ONE new framing line: the brand's own best posts now
   // sit directly above the output instruction, so the model must be told they are proof of how
   // the brand sounds and not the thing to remix.
-  var promptBody = 'You are a content strategist for ' + brandName + '.\n\n' + humanRules + '\n' + writingCraft({ spoken: true, precedence: false })
+  var promptBody = 'You are a content strategist for ' + brandName + '.\n\n' + humanRules + '\n' + writingCraft({ spoken: true, precedence: false }) + '\n\n' + noSellRule()
     + '\n\nORIGINAL CONTENT TO REMIX:\nCreator: @' + (creatorName || 'unknown') + ' on ' + (platform || 'social media') + '\n' + (postUrl ? 'Post URL: ' + postUrl + '\n' : '') + (postDescription ? 'Description/concept: ' + postDescription + '\n' : '') + '\nREMIX MODE: ' + (remixMode || 'remix').toUpperCase() + '\nTASK: ' + modeTask + deliveryNote
     + '\n\nSELF-CHECK before finalizing (silently; output only the final JSON): make sure the remix is unmistakably in THIS brand voice, uses the brand real facts and vocabulary (never invented facts), and would make this brand audience stop. Rewrite anything generic or off-voice.'
     + '\n\n' + brandSection
@@ -274,7 +275,11 @@ function normalizeRemix(remix) {
     }
     return out;
   })(remix, 0);
-  return remix;
+  // no-sell — every remix (the endpoint, its series parts and the blind test's baseline arm) leaves here.
+  // A field the cut would empty is left as it was and named in noSellKept (a string, like every field).
+  const _ns = guardIdeaNoSell(remix);
+  if (_ns.kept.length) _ns.idea.noSellKept = _ns.kept.join(',');
+  return _ns.idea;
 }
 
 /* v693 — THE BASELINE ARM (PLAN.md C-REMIX). Runs today's remix prompt for a content-v2 source and

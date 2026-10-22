@@ -10,7 +10,7 @@ const { fullBrandBlock, rulePrecedence, spokenV2 } = require('./_brain');
 // (whose one hard rule is NO_INVENTION_RULE) replaces clarityFlow's compression rules, the
 // spokenShape override that existed only to counter them, and the rhythm list; the brand renders
 // through fullBrandBlock(bc,{v2:true}). A draft's [your story: ...] slots survive the edit untouched.
-const { styleGuide, writerCallResilient, writerProvider, writerEffort, startBrandAttribution } = require('./_write');   // v693 r3 — provider switch + depth with headroom
+const { styleGuide, writerCallResilient, writerProvider, writerEffort, startBrandAttribution, guardIdeaNoSell } = require('./_write');   // v693 r3 — provider switch + depth with headroom
 
 // Formats whose `script` is read aloud to camera. Same set as _brain.SPOKEN_EX_FORMATS.
 const SPOKEN_FORMATS = ['video', 'micro', 'qna'];
@@ -207,6 +207,14 @@ ${rulePrecedence()}`;
       sharpened[k] = (v != null && String(v).trim()) ? String(v) : content[k];
       if (String(sharpened[k]) !== String(content[k] == null ? '' : content[k])) moved = true;
     }
+    // no-sell (.unlazy/no-sell) — every sales sentence in the rewrite is taken out; a field the cut would
+    // empty keeps the user's ORIGINAL text and is named in noSellKept (never blanked).
+    const _ns = guardIdeaNoSell(Object.assign({ format: fmt }, sharpened));
+    const noSellKept = _ns.kept.filter(k => keys.indexOf(k) >= 0);
+    if (_ns.hits.length) {
+      for (const k of keys) sharpened[k] = noSellKept.indexOf(k) >= 0 ? content[k] : String(_ns.idea[k]);
+      moved = keys.some(k => String(sharpened[k]) !== String(content[k] == null ? '' : content[k]));
+    }
 
     // v666 — SAY SO WHEN NOTHING CHANGED.
     // Every key falls back to the original when the model drops or blanks it, so this loop can
@@ -219,7 +227,7 @@ ${rulePrecedence()}`;
     if (!moved) {
       const logBrandId0 = await _brandAttr;   // v693 r3 — the access check was started before the AI work
       await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId0, action: 'sharpen', model: require('./_write').usageModel(bc) });
-      return res.status(200).json({ sharpened, unchanged: true });
+      return res.status(200).json(noSellKept.length ? { sharpened, unchanged: true, noSellKept } : { sharpened, unchanged: true });
     }
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
@@ -227,7 +235,7 @@ ${rulePrecedence()}`;
     // a check that cannot run leaves the row unattributed, never unlogged.
     const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: require('./_write').usageModel(bc) });
-    return res.status(200).json({ sharpened });
+    return res.status(200).json(noSellKept.length ? { sharpened, noSellKept } : { sharpened });
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('sharpen error:', err);

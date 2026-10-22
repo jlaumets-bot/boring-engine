@@ -4,6 +4,7 @@
 // and the HyperFrames MP4 render later — one source of truth, no second design.
 const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, extractJson } = require('./_brain');
+const { noSellRule, hasSales } = require('./_write');   // no-sell (.unlazy/no-sell)
 
 // Kinds the renderer knows how to draw. Anything else is coerced to 'statement'.
 const KINDS = ['statement', 'number', 'chips', 'contrast'];
@@ -97,6 +98,7 @@ RULES — this is on-screen text, not narration:
 - Use the script's OWN specifics: real numbers, real product facts, the actual claim. Never invent a statistic.
 - The beats must make sense muted, on their own, as a silent summary of the video.
 - No hype words, no emoji, no hashtags. Match the brand voice above.
+- ${noSellRule()}
 
 BEAT KINDS — pick the one that fits what's being said:
 - "number": a single hard figure is the star (value = "34g", "1,000mg", "3x"). headline stays empty or very short; sub explains it.
@@ -149,7 +151,10 @@ ${body.slice(0, 3000)}`;
     if (!raw) return res.status(502).json({ error: 'No response from the AI — try again' });
 
     const parsed = extractJson(raw);
-    const beats = clean(parsed && (parsed.beats || parsed));
+    // no-sell — a beat whose on-screen text sells is dropped; a selling sub-line is blanked.
+    const beats = clean(parsed && (parsed.beats || parsed))
+      .map(b => (b.sub && hasSales(b.sub)) ? Object.assign({}, b, { sub: '' }) : b)
+      .filter(b => !hasSales([b.eyebrow, b.headline, b.value || ''].concat(b.chips || []).join('. ')));
     if (!beats.length) {
       console.error('video-beats: no usable beats from model. raw head:', String(raw).slice(0, 400));
       return res.status(502).json({ error: 'Could not build the graphics track — try again.' });

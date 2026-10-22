@@ -11,7 +11,7 @@ const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, v2T
 // pipeline uses, whose one hard rule is NO_INVENTION_RULE. The brand is rendered through
 // fullBrandBlock(bc,{v2:true}): at most 3 tones (else none + warnings:['tones_over_limit']), USPs as
 // background facts, the brand's held beliefs; the story bank follows it.
-const { styleGuide, TYPE_RULES, guardIdeaFacts, userFacts } = require('./_write');
+const { styleGuide, TYPE_RULES, guardIdeaFacts, userFacts, guardIdeaNoSell, strongSales, noSellNote } = require('./_write');
 // v693 — a belief is one plain sentence (C-LIB: belief <= 140 chars, same cap as runAngles).
 const MAX_BELIEF = 140;
 // v693 — the optional structured PAA seed (the old app appends a "SEED QUESTION" block to
@@ -308,15 +308,15 @@ module.exports = async function handler(req, res) {
         _counts.map(x => '- ' + x[0] + ': ' + TYPE_RULES[x[0]]).join('\n') +
         (_slots.indexOf('qna') >= 0 ? '\nEvery qna idea uses the "qna" format.' : '') +
         (_slots.indexOf('story') >= 0 ? '\nA story idea retells one of the REAL STORIES below when one fits; otherwise the story is a [your story: <what to tell>] slot.' : '') +
-        (_anyAbout && !_allAbout ? '\nTHE "about" IDEAS ARE THE ONE EXCEPTION to the rules below that keep ideas off the product (the belief rule, "stay in the audience\'s world", "background facts"): an about idea talks about what the product does for the viewer, using only real product facts, still spoken, still a belief, never a feature tour.' : '') +
+        (_anyAbout && !_allAbout ? '\nTHE "about" IDEAS ARE THE ONE EXCEPTION to the rules below that keep ideas off the product (the belief rule, "stay in the audience\'s world", "background facts"): an about idea tells why the product exists, how it is made, the problem it was built for, or a myth it busts, as a story or a lesson, using only real product facts; still spoken, still a belief, never an offer or a feature tour.' : '') +
         (_slots.indexOf('news') >= 0 ? '\nFRESH HEADLINES (the ONLY news you may use; a news idea puts its headline\'s number in "newsIndex"):\n' + newsLines(_fresh) : '');
     }
     const beliefSubject = _allAbout
-      ? "It is about what the brand's product or service does for the viewer, using only real product facts: never a feature list."
+      ? "It is about why the brand's product or service exists, how it is made, the problem it was built for, or a myth it busts, using only real product facts: a story or a lesson, never a feature list or an offer."
       : (_anyAbout ? "It is about the viewer's problem or situation, never about the brand's product or features (except the \"about\" ideas, see POST TYPES)."
         : "It is about the viewer's problem or situation, never about the brand's product or features.");
     const stayRule = _allAbout
-      ? "ABOUT US, IN THE VIEWER'S WORDS: every idea is about what the product or service does for the viewer. Use only the real product facts in the brand profile (a missing one is a [your story: <what to tell>] slot). Not a walkthrough of how it works: a chain of \"you do this, then it does that\" is a feature tour, not content."
+      ? "ABOUT US, IN THE VIEWER'S WORDS: every idea is a story or a lesson about the product: why it exists, how it is made, the problem it was built for, or a myth it busts. It teaches or entertains; it never sells. Use only the real product facts in the brand profile (a missing one is a [your story: <what to tell>] slot). Not a walkthrough of how it works: a chain of \"you do this, then it does that\" is a feature tour, not content."
       : (_anyAbout ? "EVERY IDEA EXCEPT THE \"about\" ONES — " : '') + "STAY IN THE AUDIENCE'S WORLD, NOT THE PRODUCT'S: the belief and the script are about something the listener is living through, not a walkthrough of how the product works. A chain of \"you do this, then it does that, then you get those\" is a feature tour, not content. The brand's facts are background: at most one per script, and only where it answers the viewer's problem. If a competitor could read the script with their name swapped in, it was about the product.";
     const typeSchema = _slots
       ? '  "postType": "' + POST_TYPES.join('|') + '  (the type of this idea\'s slot)",\n' + (_slots.indexOf('news') >= 0 ? '  "newsIndex": 0,  (news ideas only: the number of the headline it reacts to; 0 for every other idea)\n' : '')
@@ -657,7 +657,7 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     const assignTypes = (clean, raws) => {
       const quota = {};
       if (_slots) for (const t of _slots) quota[t] = (quota[t] || 0) + 1;
-      let dropped = 0;
+      let dropped = 0, salesStrong = 0, salesDropped = 0;
       const list = clean.map((idea, i) => {
         const raw = (raws[i] && typeof raws[i] === 'object') ? raws[i] : {};
         let pt;
@@ -681,13 +681,19 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
         if (_slots && quota[out.postType] > 0) quota[out.postType]--;
         if (_slots && out.postType === 'qna') out.format = 'qna';
         const g = guardIdeaFacts(out, _allowedBase + (out.newsSource ? '\n' + out.newsSource.title : ''));
-        return g.idea;
+        // no-sell — every selling sentence is taken out, the way guardIdeaFacts slots inventions. An idea
+        // the cut would hollow out (an emptied hook, title, script, caption or a lost slide) is DROPPED.
+        // Ideas with a sales ask in their sentences are counted: 2+ in one batch earn the one regeneration below.
+        if (['hook', 'title', 'reelTitle', 'script', 'boldText', 'caption'].some(k => strongSales(g.idea[k]))) salesStrong++;
+        const ns = guardIdeaNoSell(g.idea);
+        if (!ns.ok) { salesDropped++; return null; }
+        return ns.idea;
       }).filter(Boolean);
-      return { list, dropped };
+      return { list, dropped, salesStrong, salesDropped };
     };
     const _a1 = assignTypes(cleanIdeas(ideas), ideas);
     ideas = _a1.list;
-    let _newsDropped = _a1.dropped;
+    let _newsDropped = _a1.dropped, _salesDropped = _a1.salesDropped;
 
     // v666 — NEVER RETURN A BLANK CARD AS A SUCCESS.
     // Every field above falls back to '' and the title to 'Untitled', so a reply the parser could
@@ -697,7 +703,9 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     const _usable = i => !!(i && (i.hook || i.script || i.caption || i.boldText || i.reelTitle ||
                                  (i.title && i.title !== 'Untitled')));
     const _kept = ideas.filter(_usable);
-    if (!_kept.length) {
+    // no-sell — a batch emptied ONLY because its pitches were dropped still gets the one regeneration below.
+    const _salesRegen = _a1.salesStrong >= 2 && _genLeft() >= 40000;
+    if (!_kept.length && !_salesRegen) {
       console.error('generate-ideas: model reply parsed but held no usable idea; returning an error rather than blank cards');
       return res.status(502).json({ error: "That came back empty — try again", raw: String(content || '').slice(0, 400) });
     }
@@ -708,19 +716,21 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     // guarded, and only keeps the retry if it's actually cleaner — so it can never break or worsen the batch.
     try {
       const _viol = outputViolations(JSON.stringify(ideas), bc);
-      if (_viol.length && _genLeft() >= 40000) {
+      if ((_viol.length || _a1.salesStrong >= 2) && _genLeft() >= 40000) {
         const _bad = Array.from(new Set(_viol.map(v => v.hit))).slice(0, 12).join(', ');
-        const _fix = prompt + imgNote + `\n\nCRITICAL FIX: your previous draft used these FORBIDDEN words/topics: ${_bad}. Regenerate ALL ideas with the SAME quality, formats and structure, but with NONE of those words or topics anywhere (not in titles, hooks, scripts, captions or tags). Return the same JSON array.`;
+        const _fix = prompt + imgNote + (_viol.length ? `\n\nCRITICAL FIX: your previous draft used these FORBIDDEN words/topics: ${_bad}. Regenerate ALL ideas with the SAME quality, formats and structure, but with NONE of those words or topics anywhere (not in titles, hooks, scripts, captions or tags). Return the same JSON array.` : '') + (_a1.salesStrong >= 2 ? '\n\n' + noSellNote() + ' Regenerate ALL ideas and return the same JSON array.' : '');
         const _c2 = await writerCallResilient({ deadlineMs: Math.min(93333, _genLeft()), timeoutMs: 90000, provider: writerProvider(), effort: writerEffort('batch'), messages: [{ role: 'user', content: _fix }], model: 'grok', max_tokens: 16000, engine: (bc.engine || 'grok'), images: refImages.length ? refImages : undefined }, { providerFromEnv: true, label: 'batch-fix' });
         let _i2 = extractJson(_c2);
         if (_i2 && !Array.isArray(_i2)) _i2 = [_i2];
         if (Array.isArray(_i2) && _i2.length) {
           const _a2 = assignTypes(cleanIdeas(_i2), _i2);
           const _clean2 = _a2.list;
-          if (_clean2.length && outputViolations(JSON.stringify(_clean2), bc).length < _viol.length) { ideas = _clean2; _newsDropped = _a2.dropped; }
+          if (_clean2.length && outputViolations(JSON.stringify(_clean2), bc).length + _a2.salesStrong < _viol.length + _a1.salesStrong) { ideas = _clean2; _newsDropped = _a2.dropped; _salesDropped = _a2.salesDropped; }
         }
       }
     } catch (e) { /* keep the original batch — guardrail is best-effort */ }
+    // no-sell — still nothing usable after the regeneration: an honest error, and nothing is charged.
+    if (!ideas.filter(_usable).length) return res.status(502).json({ error: "That came back empty — try again" });
 
     // Metered against whoever the gate was checked against (the brand owner for a seat, the
     // cron's account for the daily push) — the two MUST match, or a ceiling would be checked
@@ -728,7 +738,7 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     if (_billingUser) await _usage.logUsage({ userId: _billingUser, brandId: _meterBrand || brandId || bc.brandId || bc.brand_id || null, action: 'ideas', model: require('./_write').usageModel(bc) });
     // v693 — `warnings` is always an array (same as /api/angles and /api/write): ['tones_over_limit']
     // when the brand has more than 3 tones and none were used.
-    return res.status(200).json({ ideas, warnings: warnings.concat(_typeWarn, _newsDropped ? ['news_dropped'] : []) });
+    return res.status(200).json({ ideas, warnings: warnings.concat(_typeWarn, _newsDropped ? ['news_dropped'] : [], _salesDropped ? ['sales_dropped'] : []) });
 
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"

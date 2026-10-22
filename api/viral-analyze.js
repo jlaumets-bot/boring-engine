@@ -2,7 +2,7 @@
 // to the brand. The human supplies the live trend (transcript/description); the AI
 // extracts the durable mechanics and produces brand-true ideas + a trend takeaway.
 const { aiUnavailable } = require('./_llm');
-const { writerCallResilient, writerProvider, writerEffort, startBrandAttribution } = require('./_write');   // v693 r3 — provider switch + thinking depth with headroom (see api/_write.js)
+const { writerCallResilient, writerProvider, writerEffort, startBrandAttribution, noSellRule, guardIdeaNoSell } = require('./_write');   // v693 r3 — provider switch + thinking depth with headroom (see api/_write.js)
 const { fullBrandBlock, extractJson, coerceShape, VIRAL_ANALYZE_SHAPE, NO_INVENTION_RULE } = require('./_brain');
 // v693 — content-v2 rules (.unlazy/content-v2/PLAN.md changes 1, 3, 5): the brand renders through
 // fullBrandBlock(bc,{v2:true}); the adapted ideas carry the no-invention slot rule, argue a BELIEF
@@ -60,7 +60,9 @@ module.exports = async function handler(req, res) {
 
 Be concrete and honest. Identify the real reason it spread across all available signals: the hook (verbal AND visual), the structure/pacing, the pattern interrupt, the on-screen text, the sound/music role, the emotional or social trigger, the retention device. If a signal is missing (e.g. no visual notes given), say what you'd need to be sure rather than guessing. Do NOT invent metrics. Adapt to the brand WITHOUT copying the original's topic — translate the MECHANIC to the brand's world. Never use the brand's avoid-words. Stay in the brand voice.
 
-${NO_INVENTION_RULE} The viral video's own numbers, names and results belong to its creator: never present them as the brand's.`;
+${NO_INVENTION_RULE} The viral video's own numbers, names and results belong to its creator: never present them as the brand's.
+
+${noSellRule()}`;
 
     const user = `VIRAL VIDEO (${platform || 'unknown platform'}${sourceUrl ? ', ' + sourceUrl : ''}):
 
@@ -112,6 +114,9 @@ Exactly 3 items in "ideas".`;
     // was asked for used to go straight to the client, and its `.trim()` inside
     // the analysis renderer threw — killing the analysis panel with nothing on screen.
     const analysis = coerceShape(_raw, VIRAL_ANALYZE_SHAPE);
+    // no-sell (.unlazy/no-sell) — the brand ideas it adapts are posts: every sales ask is taken out.
+    // An idea the cut would hollow out (an emptied hook, title or script) is dropped, never shipped.
+    if (Array.isArray(analysis.ideas)) analysis.ideas = analysis.ideas.map(i => guardIdeaNoSell(i)).filter(g => g.ok).map(g => g.idea);
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js:

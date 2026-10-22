@@ -44,7 +44,7 @@ module.exports = async function handler(req, res) {
       avoidWords: 'Keep all listed words. Add commonly overused AI/marketing words that sound generic. Explain briefly why each feels off-brand.',
       productDetails: 'Add structure: product name, size/variant, price, key ingredients or features. Make it scannable so the AI can reference specific products.',
       exampleContent: 'Describe what makes each example work — tone, structure, hook style, CTA approach. This helps the AI understand the pattern, not just the example.',
-      ctaStyle: 'Expand with 3-5 variations of CTAs that match this brand\'s voice. Include soft CTAs, hard CTAs, and story-based CTAs.',
+      ctaStyle: 'Expand with 3-5 engagement calls-to-action in this brand\'s voice: invite a comment, a save, a share or a follow, or ask a question. Never a sales ask (buy, shop, order, book, link in bio, codes, discounts, urgency); drop any the user wrote.',
       originStory: 'Flesh out the narrative arc: the problem noticed, the moment of decision, early struggles, and the mission now. Keep it authentic, not polished.',
       socialProof: 'Organise the proof the user already gave: keep every real number, timeframe and source exactly as written, and NEVER invent a number, name, result or source. Where a vague claim needs a real figure, mark it as [add the real number] so the user can fill it in. Format for easy copy-paste into content.',
       visualStyle: 'Get specific: color hex codes or names, lighting style, camera angles, backgrounds, props, mood references. Think "brief for a photographer."',

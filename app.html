@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #212121 dark, #ffffff light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#212121' : '#ffffff'; } catch (e) {}
-  window.APP_VERSION = 'v703';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v704';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -24588,7 +24588,7 @@ const SP_CHIPS = {
   avoidWords: ['revolutionary','game-changing','synergy','leverage','disruptive','best-in-class','unlock your potential'],
   productDetails: ['Flagship offer — starting price','A key feature or spec','Sizes / tiers / variants','What\'s included'],
   exampleContent: ['A post that nailed the vibe','A format that performs for you','A hook style you like'],
-  ctaStyle: ['How you ask for the click','A soft, story-based CTA','Your signature closer'],
+  ctaStyle: ['How you invite a comment','A soft, story-based closer','Your signature sign-off'],
   originStory: ['Why this brand exists','The problem you noticed','The moment you decided to build it'],
   socialProof: ['A number you can cite','A rating or review count','A recognizable customer or press mention'],
   visualStyle: ['Your color palette','Lighting / mood','Backgrounds & props','Overall aesthetic'],
@@ -25473,7 +25473,7 @@ function renderSettingsPanel() {
           </div>
           <div class="sp-field"><label class="sp-label">CTA Style</label>
             ${spRenderFieldExtras('ctaStyle')}
-            <textarea class="sp-textarea" data-sp-field="ctaStyle" placeholder="How you close posts. E.g. 'Link in bio', 'DM us to start'" oninput="updateSetting('ctaStyle',this.value)">${escHtml(settings.ctaStyle)}</textarea>
+            <textarea class="sp-textarea" data-sp-field="ctaStyle" placeholder="How you close posts. E.g. 'Save this for later', 'Tell me in the comments'" oninput="updateSetting('ctaStyle',this.value)">${escHtml(settings.ctaStyle)}</textarea>
             ${spRenderFieldActions('ctaStyle')}
           </div>
           <div class="sp-field"><label class="sp-label">Origin Story</label>

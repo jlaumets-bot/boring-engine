@@ -222,13 +222,23 @@ const FORMAT_RULES = {
 // so the two can never describe a type differently. The no-invention rule applies to every type.
 const TYPE_RULES = {
   tip: 'TIP / OPINION: a practical tip or a sharp opinion about the viewer\'s own world.',
-  about: 'ABOUT US: the post is about what the brand\'s product or service does for the viewer. Use ONLY the real product facts in the brand profile; a fact you do not have becomes a [your story: <what to tell>] slot. Still spoken, still a belief the viewer does not hold yet, and never a feature tour or a pitch.',
+  about: 'ABOUT US, AS A STORY OR A LESSON: why the product or service exists, how it is made, the problem it was built for, or a myth about the category it busts. It teaches or entertains; it never sells. Use ONLY the real facts in the brand profile; a fact you do not have becomes a [your story: <what to tell>] slot. Still spoken, still a belief the viewer does not hold yet. Never an offer, a price, a feature list or a pitch.',
   news: 'NEWS IN THE CATEGORY: react to ONE of the real headlines listed, and only to those. Name the headline plainly. Say only what the headline itself says: never invent details, numbers, names or quotes from the story. The belief is your take on what it means for the viewer.',
   qna: 'Q&A: a real question this audience asks, answered on camera, in the "qna" format and its rules.',
   story: 'CUSTOMER STORY: built around ONE real story from the story bank if one fits. If none fits, the story itself is a [your story: <the customer moment to tell>] slot. Never invent a customer, a name or a result.',
   bts: 'BEHIND THE SCENES / FOUNDER: how the work actually gets done, or a moment from the founder. Real details only from the brand profile; anything else is a [your story: <what to tell>] slot.',
 };
 const normPostType = (v) => (typeof v === 'string' && POST_TYPES.indexOf(v) >= 0 ? v : '');
+
+// ── NO SELL (.unlazy/no-sell) ────────────────────────────────────────────────
+// The owner's rule: "the content can not be salesy never. it needs to be entertaining and educational."
+// ONE rule, rendered by every prompt that writes post text (styleGuide carries it, and the writers
+// without styleGuide add noSellRule() themselves). guardNoSell (below, next to guardIdeaFacts) is the
+// code half: whatever the model still writes as a sales ask is taken out after the call.
+const NO_SELL_RULE = 'NEVER SALESY: every post entertains or teaches. Never a pitch, an offer, a discount, a price push, "buy / shop / order / book now", "link in bio", "DM us to buy", "use code", "limited time", urgency, scarcity or a feature tour. The brand shows up only through its expertise, its stories and how things work. The only calls to action are engagement: save, follow, comment, share, or "tell me in the comments".';
+function noSellRule() { return NO_SELL_RULE; }
+// The one-line correction a writer's single retry adds when its first answer was a pitch at its core.
+function noSellNote() { return 'IMPORTANT: your previous answer read like a sales pitch. ' + NO_SELL_RULE + ' Write it again so it teaches or entertains.'; }
 
 // ── STYLE GUIDE ──────────────────────────────────────────────────────────────
 // v693 — SHORT ON PURPOSE (< 1,200 chars). The old writingCraft is ~6,000 chars of rules; the model
@@ -244,9 +254,10 @@ function styleGuide(opts) {
     '- One idea per sentence, with natural rhythm: some short lines, some longer ones joined by "and", "so", "because". Never a run of clipped fragments.',
     '- Start with the thing itself. Never open with "Did you know", "Have you ever wondered", "Here\'s the thing", "Let me tell you", "Imagine", "Most people don\'t realize", "Hey guys", "In this video".',
     '- Never use: delve, leverage, elevate, unlock, game-changer, seamless, robust, journey. No em dashes. No "not just X, it\'s Y". No lists of three for show.',
-    about ? '- No hype, no pitch. Say what the product does for the viewer, using only its real facts; never a feature tour.'
+    about ? '- No hype, no pitch. Tell why the product exists, how it is made or the problem it was built for, as a story or a lesson, using only its real facts; never a feature tour.'
       : '- No hype, no pitch. Talk about the viewer\'s problem, not the brand\'s features.',
     '- HARD RULE. ' + NO_INVENTION_RULE,
+    '- HARD RULE. ' + NO_SELL_RULE,
   ].join('\n');
 }
 
@@ -910,6 +921,167 @@ function guardIdeaFacts(idea, allowed) {
   return { idea: out, invented: [...new Set(invented)] };
 }
 
+// ── NO SELL: THE CODE HALF (.unlazy/no-sell) ─────────────────────────────────
+// NO_SELL_RULE in the prompt does the work; this is the last-resort net, so it is NARROW: only phrases
+// that are a sales ask in any sentence they appear in. A topic word never trips it ("Most discounts
+// train customers to wait" stays; "Use code SAVE10" goes). It only REMOVES: it never writes a line of
+// its own, never touches a [your story: ...] slot, and never ships an emptied field or a lost slide;
+// those come back as "not ok" for the caller to decide (drop the idea, retry, or keep the original).
+// No AI call, so it costs nothing and always does the same thing.
+const SALES_TAG_RE = /(^|[\s,])#(?:linkinbio|shopnow|buynow|ordernow|sale|discount|discountcode|promo|promocode|coupon|couponcode|limitedtime|limitedoffer)(?!\w)/gi;
+const CODE_TOKEN = '["\'“‘]?(?:(?=[A-Za-z]*\\d)[A-Za-z0-9]{3,}|[A-Z]{3,}\\d*)\\b';
+const SALES_RES = [
+  /\blink\s+(?:is\s+)?in\s+(?:my\s+|our\s+|the\s+)?bio\b|\bin\s+(?:my|our)\s+bio\b/i,
+  new RegExp('\\b(?:[Uu]se|USE|[Ee]nter|ENTER|[Aa]pply)\\s+(?:(?:my|our|the)\\s+)?(?:[Pp]romo\\s+|[Dd]iscount\\s+)?(?:[Cc]ode|CODE|[Cc]oupon)\\s*:?\\s+' + CODE_TOKEN),
+  /\b(?:promo|discount|coupon)\s+codes?\b/i,
+  /(?<!\bin\s)\b(?:shop|buy|order)\s+(?:(?:our|the|my|your)\s+[\w-]+\s+)?now\b(?!,?\s*(?:and\s+)?pay\s+later)/i,
+  /\b\d+\s*%\s*off\b(?=[^.!?\n]{0,30}\b(?:today|now|everything|sitewide|site-wide|your\s+first|with\s+(?:code|my|our)|this\s+week(?:end)?|until|ends)\b)|\b(?:get|take|enjoy)\s+\d+\s*%\s*off\b/i,
+  /\blimited[\s-]+time\s+(?:offer|only|deal|sale|discount)\b/i,
+  /\bwhile\s+(?:stocks?|supplies)\s+lasts?\b/i,
+  /^\W*(?:today|tonight)\s+only\s*(?:[:!.,—–-]|$)/i,
+  /\b(?:sale|offer|deal|promo)\s+ends\b/i,
+  /\b(?:dm|message)\s+(?:us|me)\s+(?:to|and)\s+(?:buy|order|book|purchase)\b/i,
+  /\bDM\s+(?:us|me)\s+(?:the\s+word\s+)?["'“‘]?[A-Z]{3,}\b/,
+  /\b[Cc]omment\s+["'“‘]?[A-Z]{3,}["'”’]?\s+(?:and|to)\s+(?:get|receive|(?:I|we)(?:['’]ll|\s+will)\s+send)\b/,
+  /\badd\s+(?:it|this|them|one)\s+to\s+(?:your\s+)?(?:cart|basket)\b/i,
+  /\bpre-?order\s+(?:yours\s+)?now\b/i,
+  /\bstart\s+your\s+free\s+trial\b/i,
+  /\bshop\s+(?:the|our)\s+(?:new\s+)?(?:collection|range|sale)\b/i,
+  /\bavailable\s+(?:now\s+)?(?:at|in|on)\s+our\s+(?:store|shop|website|site)\b/i,
+  // Estonian: the app has no language setting, but an Estonian brand profile can steer the model into it.
+  /\blink\s+bios\b/i,
+  /\b(?:osta|telli)\s+kohe(?![\wäöüõ])/i,
+  new RegExp('\\b[Kk]asuta\\s+(?:sooduskoodi|koodi)\\s+' + CODE_TOKEN),
+  /\bsooduskood/i,
+];
+function salesHitsIn(plain) {
+  const hits = [];
+  for (const re of SALES_RES) { const m = toStr(plain).match(re); if (m) hits.push(m[0].trim()); }
+  return hits;
+}
+function stripSalesTags(text, hits) {
+  return toStr(text).replace(SALES_TAG_RE, (m, lead) => { hits.push(m.trim()); return lead; });
+}
+const hasWords = (x) => /[\p{L}\p{N}]/u.test(toStr(x));
+// One line → its segments: every story slot is a segment of its own (never judged, never removed), and
+// the text between slots is split into sentences, each judged alone.
+function lineSegments(line) {
+  const segs = [];
+  const re = new RegExp(SLOT_LIKE_RE.source, 'gi');
+  let last = 0, m;
+  // a dot with no space after it ("acme.com", "v2.1") never ends a sentence
+  const pushText = (t) => { (maskDots(t).replace(/([A-Za-z0-9])\.(?=[A-Za-z0-9])/g, '$1' + DOT_MASK).match(/[^.!?]+[.!?]*|[.!?]+/g) || []).forEach(x => segs.push({ text: unmaskDots(x), slot: false })); };
+  while ((m = re.exec(line))) { if (m.index > last) pushText(line.slice(last, m.index)); segs.push({ text: m[0], slot: true }); last = m.index + m[0].length; }
+  if (last < line.length) pushText(line.slice(last));
+  return segs;
+}
+// A slide that would be emptied keeps what is left of its selling sentence once the selling CLAUSE is
+// cut ("Slide 5: the full guide, link in bio." -> "Slide 5: the full guide."), if two real words are left.
+function dropSellingClause(sentence) {
+  const end = (sentence.match(/[.!?]+\s*$/) || [''])[0].trim() || '.';
+  const parts = sentence.replace(/[.!?]+\s*$/, '').split(/(?<=[,;:])\s+|\s+[-–—]\s+/);
+  const kept = parts.filter(p => !salesHitsIn(p).length);
+  if (kept.length === parts.length) return '';
+  const t = kept.join(' ').replace(/[\s,;:–—-]+$/, '').trim();
+  return (t.match(/[\p{L}\p{N}]{2,}/gu) || []).length >= 2 ? t + end : '';
+}
+// Returns { text, hits, ok }. ok === false (with the ORIGINAL text) when the cut would empty the whole
+// field, or — opts.keepLines, a carousel's slides — empty one of its lines. Lines nothing was taken from
+// come back byte for byte; hits empty = unchanged.
+function guardNoSell(text, opts) {
+  const src = toStr(text);
+  const keepLines = !!(opts && opts.keepLines);
+  const hits = [];
+  if (!src.trim()) return { text: src, hits, ok: true };
+  const out = [];
+  for (const line of src.split('\n')) {
+    const h0 = [];
+    const tagless = stripSalesTags(line, h0);
+    let removed = [];
+    const segs = lineSegments(tagless).filter(sg => {
+      if (sg.slot || !sg.text.trim()) return true;
+      const h = salesHitsIn(sg.text);
+      if (!h.length) return true;
+      h0.push.apply(h0, h); removed.push(sg.text); return false;
+    });
+    if (!h0.length) { out.push(line); continue; }
+    hits.push.apply(hits, h0);
+    let nl = segs.map(sg => sg.text).join('').replace(/[ \t]{2,}/g, ' ').replace(/^[ \t]+|[ \t]+$/g, '');
+    if (!hasWords(nl) && hasWords(line)) {
+      if (keepLines) {
+        const rescued = removed.map(dropSellingClause).filter(Boolean).join(' ');
+        if (!rescued) return { text: src, hits: [...new Set(hits)], ok: false };
+        nl = rescued;
+      } else continue;   // a line of a script that only sold goes
+    }
+    out.push(nl);
+  }
+  const res = out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '');
+  if (!hasWords(res)) return { text: src, hits: [...new Set(hits)], ok: false };
+  return { text: res, hits: [...new Set(hits)], ok: true };
+}
+const hasSales = (text) => guardNoSell(text).hits.length > 0;
+// The sentence-level hits only (a sales hashtag alone is never a reason to retry).
+const strongSales = (text) => toStr(text).split('\n').some(l => lineSegments(l).some(sg => !sg.slot && salesHitsIn(sg.text).length));
+// "Salesy at its core" (runWrite's retry): a third or more of its sentences are sales asks.
+function noSellCore(text) {
+  const sentences = toStr(text).split('\n').flatMap(l => lineSegments(l)).filter(sg => !sg.slot && hasWords(sg.text));
+  const k = sentences.filter(sg => salesHitsIn(sg.text).length).length;
+  return k > 0 && k * 3 >= sentences.length;
+}
+const NOSELL_BODY = ['script', 'boldText', 'caption', 'remixScript', 'remixCaption'];
+const NOSELL_SHORT = ['hook', 'title', 'reelTitle', 'belief', 'angle', 'remixTitle', 'remixHook'];
+const NOSELL_LINES = ['shots', 'onScreen'];
+const NOSELL_TAGS = ['tags', 'hashtags', 'remixHashtags'];
+// The same guard over a whole idea / remix / rewrite object. Body and short fields lose their selling
+// sentences; a field the cut would empty (or a carousel slide it would lose) is LEFT AS IT WAS and named
+// in `kept`, and ok becomes false: the ideas paths drop such an idea, the single-call writers ship the
+// original field with a flag. List items (shots, overlays) and hashtags that sell are dropped.
+// Returns { idea, hits, ok, kept } — a new object; hits empty = nothing changed.
+function guardIdeaNoSell(idea) {
+  if (!idea || typeof idea !== 'object' || Array.isArray(idea)) return { idea, hits: [], ok: true, kept: [] };
+  const out = Object.assign({}, idea);
+  const hits = [], kept = [];
+  const carousel = /^carousel$/i.test(toStr(out.format || out.remixFormat).trim());
+  for (const k of NOSELL_BODY.concat(NOSELL_SHORT)) {
+    if (typeof out[k] !== 'string' || !out[k].trim()) continue;
+    const g = guardNoSell(out[k], { keepLines: carousel && NOSELL_BODY.indexOf(k) >= 0 });
+    if (!g.hits.length) continue;
+    hits.push.apply(hits, g.hits);
+    if (g.ok) out[k] = g.text; else kept.push(k);
+  }
+  for (const k of NOSELL_LINES) {
+    const v = out[k];
+    if (Array.isArray(v)) {
+      const left = v.filter(x => { const h = []; stripSalesTags(x, h); h.push.apply(h, salesHitsIn(x)); hits.push.apply(hits, h); return !h.length; });
+      if (left.length !== v.length) out[k] = left;
+    } else if (typeof v === 'string' && v.trim()) {
+      const g = guardNoSell(v);
+      if (g.hits.length) { hits.push.apply(hits, g.hits); out[k] = g.ok ? g.text : ''; }
+    }
+  }
+  for (const k of NOSELL_TAGS) {
+    const v = out[k];
+    if (Array.isArray(v)) {
+      const left = v.filter(x => { const h = []; stripSalesTags('#' + toStr(x).trim().replace(/^#/, ''), h); hits.push.apply(hits, h); return !h.length; });
+      if (left.length !== v.length) out[k] = left;
+    } else if (typeof v === 'string' && v.trim()) {
+      const h = [];
+      const t = stripSalesTags(v, h);
+      if (h.length) { hits.push.apply(hits, h); out[k] = t.replace(/[ \t]{2,}/g, ' ').trim(); }
+    }
+  }
+  if (Array.isArray(out.seriesParts)) {
+    out.seriesParts = out.seriesParts.map((p, i) => { const g = guardIdeaNoSell(p); hits.push.apply(hits, g.hits); g.kept.forEach(k => kept.push('seriesParts.' + i + '.' + k)); return g.idea; });
+  }
+  // Teleprompter stress marks must still be words the script says.
+  if (hits.length && Array.isArray(out.emphasis) && typeof out.script === 'string') {
+    const low = out.script.toLowerCase();
+    out.emphasis = out.emphasis.filter(p => low.indexOf(toStr(p).toLowerCase()) >= 0);
+  }
+  return { idea: out, hits: [...new Set(hits)], ok: !kept.length, kept };
+}
+
 function listOf(v, max, each) {
   const arr = Array.isArray(v) ? v : (v == null || v === '' ? [] : toStr(v).split('\n'));
   return arr.map(x => clip(x, each)).filter(Boolean).slice(0, max);
@@ -976,7 +1148,7 @@ function buildIdea(script, shaped, angle, format, allowedExtra) {
   // v693 r2 — a field is refused when it looks like a slot in ANY spelling or brings a fact (number,
   // money, name) the script does not have. The brand's own name is always allowed.
   const allowed = script + '\n' + toStr(allowedExtra);
-  const bad = (x) => { SLOT_LIKE_RE.lastIndex = 0; const hit = SLOT_LIKE_RE.test(x || ''); SLOT_LIKE_RE.lastIndex = 0; return !x || hit || /your\s+story\s*[:：]/i.test(x) || inventedFacts(x, allowed).length > 0; };
+  const bad = (x) => { SLOT_LIKE_RE.lastIndex = 0; const hit = SLOT_LIKE_RE.test(x || ''); SLOT_LIKE_RE.lastIndex = 0; return !x || hit || /your\s+story\s*[:：]/i.test(x) || inventedFacts(x, allowed).length > 0 || hasSales(x); };
   const first = firstSpokenLine(script);
   let hook = clip(sh.hook, 200); if (bad(hook)) hook = first;
   let title = clip(sh.title, 90); if (bad(title)) title = clip(angle.belief, 60);
@@ -1020,13 +1192,14 @@ function anglesPrompt(bc, src, count, type, news) {
     'STEP 1 (silently): find the underlying idea or principle in the source. Never reuse the creator\'s wording, examples or structure.',
     'STEP 2: write ' + count + ' beliefs ' + name + ' could hold about that idea that most of its audience does NOT share yet. Each belief:',
     '- is contrarian but defensible: the person could argue it on camera and be right;',
-    about ? '- is about what ' + name + '\'s product or service does for the viewer, using only real product facts from the brand profile (never a feature list);'
+    about ? '- is about why ' + name + '\'s product or service exists, how it is made, the problem it was built for, or a myth it busts, using only real product facts from the brand profile (a story or a lesson, never a feature list or an offer);'
       : '- is about the viewer\'s problem or situation, never about the brand\'s product or features;',
     '- is one plain sentence, at most ' + MAX_BELIEF + ' characters;',
     '- has a "why": at most ' + MAX_WHY + ' characters on why most people believe the opposite;',
     '- may have a "hookSeed": a first spoken line that could open a video on it.',
     'Make them genuinely different beliefs, not one belief reworded. Stay consistent with the beliefs the brand already holds and do not repeat them.',
     NO_INVENTION_RULE,
+    NO_SELL_RULE,
   ];
   // types — only when a post type was asked for; an untyped call sends the prompt it always sent.
   if (typed) P.push('', 'EVERY BELIEF IS FOR THIS KIND OF POST. ' + TYPE_RULES[type]);
@@ -1087,6 +1260,7 @@ function spokenPrompt(bc, draft, samples, format) {
     said ? '- First person. Short lines, one thought per line, and a few natural pauses where a person would breathe. Contractions.'
       : '- First person, plain words, contractions. Keep the paragraphs exactly as they are: the same number, in the same order' + (format === 'carousel' ? ' (each paragraph is one slide).' : '.'),
     '- Keep it about the same length.',
+    '- ' + NO_SELL_RULE,
   ];
   if (samples.length) {
     P.push('',
@@ -1117,6 +1291,7 @@ function shapePrompt(script, format) {
     'Reply with ONLY this JSON, no prose, no code fences:',
     '{"title":"a plain 4-8 word working title","hook":"the first spoken line of the script, or a tighter version with the same meaning","onScreen":["2-5 short text overlays taken from the script"],"caption":"1-3 sentences for the post caption, same voice","shots":["3-6 simple shots one person can film on a phone"],"emphasis":["up to 6 phrases copied EXACTLY from the script: the words to stress when saying it"]}',
     'Never invent numbers, names or results. Keep [your story: ...] slots out of every field.',
+    NO_SELL_RULE,
   ].join('\n');
 }
 
@@ -1196,6 +1371,10 @@ async function runAngles(opts) {
       if (inventedFacts(a.belief, allowedA).length) { rejected.push(a.belief); continue; }
       if (a.why && inventedFacts(a.why, allowedA).length) a.why = dropInventedSentences(a.why, allowedA);
       if (a.hookSeed && inventedFacts(a.hookSeed, allowedA).length) delete a.hookSeed;
+      // no-sell — a belief that is a sales ask is dropped; a selling `why` sentence or hookSeed goes.
+      if (hasSales(a.belief)) continue;
+      if (a.why && hasSales(a.why)) { const gw = guardNoSell(a.why); a.why = gw.ok ? gw.text : ''; }
+      if (a.hookSeed && hasSales(a.hookSeed)) delete a.hookSeed;
       if (angles.length < count && !angles.some(x => x.belief.toLowerCase() === a.belief.toLowerCase())) angles.push(a);
     }
   }
@@ -1249,14 +1428,20 @@ async function runWrite(opts) {
   // retry with the exact correction, then every sentence still carrying one becomes a story slot.
   const allowed = allowedMaterial(bc, src, angle, stories) + (news ? '\n' + news.title : '');
   let invented = inventedFacts(draft.script, allowed);
-  if (invented.length && !retried && retryRoom() >= MIN_SPOKEN_MS) {
+  // no-sell — a draft that is a pitch at its core shares the SAME one retry (never a second one, so
+  // CLAUDE_CALL_PLAN and the single usage row stay true); its stray sales lines are guarded below.
+  const salesy = noSellCore(draft.script) || !guardNoSell(draft.script, { keepLines: format === 'carousel' }).ok;
+  if ((invented.length || salesy) && !retried && retryRoom() >= MIN_SPOKEN_MS) {
     retried = true;
+    // the reasons are listed (computed BEFORE the retry): retried_facts, retried_sales or retried_facts_sales
+    passes.retryReasons = [invented.length ? 'facts' : '', salesy ? 'sales' : ''].filter(Boolean);
     try {
-      const r2 = await draftCall(basePrompt + '\n\n' + correctionNote(draft.script, invented), DRAFT_MAX_TOKENS, retryRoom());
+      const note = [invented.length ? correctionNote(draft.script, invented) : '', salesy ? noSellNote() : ''].filter(Boolean).join('\n\n');
+      const r2 = await draftCall(basePrompt + '\n\n' + note, DRAFT_MAX_TOKENS, retryRoom());
       const d2 = r2.truncated ? null : parseDraft(r2.text, stories);
       if (d2 && d2.script) { draft = d2; invented = inventedFacts(draft.script, allowed); }
     } catch (e) { /* the first draft is slotted below instead */ }
-    passes.draft = 'retried_facts';
+    passes.draft = 'retried_' + passes.retryReasons.join('_');
   }
   if (invented.length) {
     draft.script = slotifyInvented(draft.script, allowed);
@@ -1301,8 +1486,17 @@ async function runWrite(opts) {
     } catch (e) { passes.shape = 'failed'; }
   }
 
-  const idea = buildIdea(script, shaped, angle, format, bc.brandName);
-  idea.hashtags = hashtagsFor(bc, idea);   // fix7 — the brand's own themes + name, never the model's
+  // no-sell — every sales ask left in the finished script is taken out (the last one becomes an
+  // engagement ask) BEFORE buildIdea, so slides, slots and stress marks are built from the clean text.
+  const sold = guardNoSell(script, { keepLines: format === 'carousel' });
+  if (!sold.ok) throw emptyResult('The draft was only a sales pitch');
+  script = sold.text;
+  // buildIdea refuses a selling shape field (title, hook, caption, overlay, shot) like an inventing one,
+  // so it falls back to the script's own first line: never a line the guard wrote (it writes none).
+  const built = guardIdeaNoSell(buildIdea(script, shaped, angle, format, bc.brandName));
+  const idea = built.idea;
+  passes.salesRemoved = sold.hits.concat(built.hits).slice(0, 20);
+  idea.hashtags = guardIdeaNoSell({ hashtags: hashtagsFor(bc, idea) }).idea.hashtags;   // fix7 — the brand's own themes + name, never the model's
   idea.postType = type || 'tip';           // types — every written idea says what it is about
   if (news) idea.newsSource = { title: news.title, url: news.url };   // from the stored headline, never the model
   // fix7 — also at the top level (the contract names runWrite's `hashtags: string[]`); same array.
@@ -1310,7 +1504,7 @@ async function runWrite(opts) {
 }
 
 module.exports = {
-  styleGuide, runAngles, runWrite, FORMATS, SOURCE_KINDS, TYPE_RULES, normPostType, guardIdeaFacts, userFacts,
+  styleGuide, runAngles, runWrite, NO_SELL_RULE, noSellRule, noSellNote, guardNoSell, guardIdeaNoSell, noSellCore, hasSales, strongSales, FORMATS, SOURCE_KINDS, TYPE_RULES, normPostType, guardIdeaFacts, userFacts,
   usageModel, writerCall, writerCallResilient, CLAUDE_CALL_PLAN, CLAUDE_THINKING_HEADROOM, LOWER_EFFORT, DRAFT_MAX_TOKENS, SPOKEN_MAX_TOKENS, ANGLES_MAX_TOKENS, SHAPE_MAX_TOKENS, writerEffort, writerProvider, WRITER_EFFORT, startBrandAttribution,
   _internals: {
     normSource, normAngle, slotsOf, inventedFacts, hashtagsFor, numberTokens, nameTokens, claimTokens, slotifyInvented, slotNeighbourNovelty, spokenRejects, parseDraft, buildIdea, cleanScript,
