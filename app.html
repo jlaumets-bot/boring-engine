@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#212121"><!-- v699: set to the resolved theme by the first script below -->
+<meta name="theme-color" content="#1a1a1a"><!-- v699: set to the resolved theme by the first script below -->
 <meta name="robots" content="noindex, nofollow">
 <meta name="description" content="Content Shrimp app — AI-powered content engine that learns your brand voice and generates ready-to-film scripts.">
 <title>Content Shrimp</title>
@@ -33,9 +33,9 @@
     return pick === 'light' ? 'light' : 'dark';
   }
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
-  // the status bar matches from the first paint: #212121 dark, #ffffff light (toggleDarkMode keeps it in step)
-  try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#212121' : '#ffffff'; } catch (e) {}
-  window.APP_VERSION = 'v704';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
+  try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
+  window.APP_VERSION = 'v705';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6051,14 +6051,14 @@ body, body * {
    Colours are var(--cs-*) tokens; /clean.css (agent T) owns the look and loads after this sheet.
    The token defaults below are the PLAN.md values, so the shell is complete even before clean.css arrives. */
 :root, [data-theme="light"] {
-  --cs-bg: #ffffff; --cs-card: #ffffff; --cs-raise: #f7f7f7; --cs-text: #0d0d0d; --cs-muted: #5d5d5d;
-  --cs-line: #e6e6e6; --cs-chip: #f2f2f2; --cs-input: #f2f2f2; --cs-primary: #0d0d0d; --cs-on-primary: #ffffff;
-  --cs-danger: #dc2626; --cs-ok: #16a34a; --cs-overlay: rgba(0,0,0,.35);
+  --cs-bg: #fbfbfa; --cs-card: #ffffff; --cs-raise: #f7f7f6; --cs-text: #1a1a1a; --cs-muted: #6b6b6b;
+  --cs-line: #ebebea; --cs-chip: #efefee; --cs-input: #f4f4f3; --cs-primary: #1a1a1a; --cs-on-primary: #ffffff;
+  --cs-danger: #dc2626; --cs-ok: #16a34a; --cs-overlay: rgba(0,0,0,.35); --cs-hover: #f2f2f1; --cs-line-strong: #e0e0df;
 }
 [data-theme="dark"] {
-  --cs-bg: #212121; --cs-card: #212121; --cs-raise: #2a2a2a; --cs-text: #ececec; --cs-muted: #b4b4b4;
-  --cs-line: #3d3d3d; --cs-chip: #333333; --cs-input: #303030; --cs-primary: #ececec; --cs-on-primary: #0d0d0d;
-  --cs-danger: #f87171; --cs-ok: #4ade80; --cs-overlay: rgba(0,0,0,.6);
+  --cs-bg: #1a1a1a; --cs-card: #1a1a1a; --cs-raise: #202020; --cs-text: #e8e8e8; --cs-muted: #8f8f8f;
+  --cs-line: #262626; --cs-chip: #242424; --cs-input: #212121; --cs-primary: #e8e8e8; --cs-on-primary: #111111;
+  --cs-danger: #f87171; --cs-ok: #4ade80; --cs-overlay: rgba(0,0,0,.6); --cs-hover: #1f1f1f; --cs-line-strong: #2e2e2e;
 }
 /* the bottom tab bar is gone at every width: phones/tablets use the drawer, desktop the sidebar.
    renderNav still fills #navTabs (the tour and the counters read it), it is just never shown. */
@@ -24412,7 +24412,7 @@ function renderPromptRefGrid() {
 // ===== SETTINGS =====
 function toggleDarkMode(on) {
   document.documentElement.dataset.theme = on ? 'dark' : 'light';
-  document.querySelector('meta[name="theme-color"]').content = on ? '#212121' : '#ffffff';   // v699: clean theme bg
+  document.querySelector('meta[name="theme-color"]').content = on ? '#1a1a1a' : '#fbfbfa';   // v699: clean theme bg
   try { localStorage.setItem(CS_THEME_KEY, on ? 'dark' : 'light'); } catch (e) {}   // v702: the new key (bn-dark-mode is retired)
 }
 // Restore dark mode on load
@@ -24421,7 +24421,7 @@ function toggleDarkMode(on) {
     // v702: same resolver as <head> (cs-theme, else CS_DEFAULT_THEME) — applied both ways
     var _t = csResolveTheme();
     document.documentElement.dataset.theme = _t;
-    var mc = document.querySelector('meta[name="theme-color"]'); if (mc) mc.content = _t === 'dark' ? '#212121' : '#ffffff';
+    var mc = document.querySelector('meta[name="theme-color"]'); if (mc) mc.content = _t === 'dark' ? '#1a1a1a' : '#fbfbfa';
   } catch (e) {}
 })();
 

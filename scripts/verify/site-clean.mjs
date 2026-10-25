@@ -9,8 +9,8 @@
 //   H  the set of <a href> targets unchanged
 //   M  <title>, every <meta>, canonical/icon/manifest links, JSON-LD (parsed) and external <script src> unchanged
 //   S  no shrimp-mascot reference anywhere in the file
-//   K  the dark tokens are declared with the app's values (--cs-bg #212121, --cs-raise #2a2a2a, --cs-text #ececec,
-//      --cs-muted #b4b4b4, --cs-line #3d3d3d, --cs-chip #333333, --cs-primary #ececec, --cs-on-primary #0d0d0d),
+//   K  the dark tokens are declared with the app's values (v705 Calm: --cs-bg #1a1a1a, --cs-raise #202020, --cs-text #e8e8e8,
+//      --cs-muted #8f8f8f, --cs-line #262626, --cs-chip #242424, --cs-primary #e8e8e8, --cs-on-primary #111111),
 //      and no declaration of those names carries another value
 //   G  no gradient(
 //   F  the only external stylesheet is fonts.googleapis.com, and Geist is linked from it
@@ -34,8 +34,8 @@ const pages = argPages.length ? argPages : envPages.length ? envPages : ALL;
 for (const p of pages) if (!ALL.includes(p)) { console.error('site-clean: unknown page ' + p + ' (expected one of ' + ALL.join(', ') + ')'); process.exit(2); }
 const baseRepo = process.env.SITE_BASE_REPO ? path.resolve(process.env.SITE_BASE_REPO) : root;
 
-const TOKENS = { 'cs-bg': '#212121', 'cs-raise': '#2a2a2a', 'cs-text': '#ececec', 'cs-muted': '#b4b4b4',
-  'cs-line': '#3d3d3d', 'cs-chip': '#333333', 'cs-primary': '#ececec', 'cs-on-primary': '#0d0d0d' };
+const TOKENS = { 'cs-bg': '#1a1a1a', 'cs-raise': '#202020', 'cs-text': '#e8e8e8', 'cs-muted': '#8f8f8f',
+  'cs-line': '#262626', 'cs-chip': '#242424', 'cs-primary': '#e8e8e8', 'cs-on-primary': '#111111' };
 const OLD_PALETTE = ['#F9F6EA', '#16130F', '#E7DAF9', '#CDB8F2', '#F5F1E3', '#DDD7C3', '#8A8270', '#5C564A', '#9A6420', '#3E7A52', '#3A3427', '#221E17'];
 const EMOJI = /[\p{Extended_Pictographic}\u{FE0F}\u{FE0E}\u{200D}\u{20E3}\u{1F3FB}-\u{1F3FF}]/gu;
 const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', mdash: '—', ndash: '–', hellip: '…', middot: '·',

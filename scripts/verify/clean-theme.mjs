@@ -46,10 +46,11 @@ const notes = [];
 
 /* contract tokens — PLAN.md "Tokens" */
 const TOKENS = {
-  light: { bg: '#ffffff', card: '#ffffff', raise: '#f7f7f7', text: '#0d0d0d', muted: '#5d5d5d', line: '#e6e6e6', chip: '#f2f2f2',
-    input: '#f2f2f2', primary: '#0d0d0d', 'on-primary': '#ffffff', danger: '#dc2626', ok: '#16a34a', overlay: 'rgba(0,0,0,.35)' },
-  dark: { bg: '#212121', card: '#212121', raise: '#2a2a2a', text: '#ececec', muted: '#b4b4b4', line: '#3d3d3d', chip: '#333333',
-    input: '#303030', primary: '#ececec', 'on-primary': '#0d0d0d', danger: '#f87171', ok: '#4ade80', overlay: 'rgba(0,0,0,.6)' },
+  // v705 "Calm" palette (Granola-like grey on grey)
+  light: { bg: '#fbfbfa', card: '#ffffff', raise: '#f7f7f6', text: '#1a1a1a', muted: '#6b6b6b', line: '#ebebea', 'line-strong': '#e0e0df', chip: '#efefee',
+    input: '#f4f4f3', hover: '#f2f2f1', primary: '#1a1a1a', 'on-primary': '#ffffff', danger: '#dc2626', ok: '#16a34a', overlay: 'rgba(0,0,0,.35)' },
+  dark: { bg: '#1a1a1a', card: '#1a1a1a', raise: '#202020', text: '#e8e8e8', muted: '#8f8f8f', line: '#262626', 'line-strong': '#2e2e2e', chip: '#242424',
+    input: '#212121', hover: '#1f1f1f', primary: '#e8e8e8', 'on-primary': '#111111', danger: '#f87171', ok: '#4ade80', overlay: 'rgba(0,0,0,.6)' },
 };
 /* variables that are not palette: motion curves, the code font, and the per-render b-roll palette JS sets inline */
 const EXEMPT = new Set(['--ease-out', '--ease-in-out', '--transition', '--mono']);
@@ -307,6 +308,7 @@ function resolve(cls, theme) {
     let best = null;
     RULES.forEach((r, order) => {
       if (r.media.some(m => /keyframes/.test(m))) return;
+      if (DESKTOP_MEDIA(r.media)) return;   // v705: judge the base (phone) look; §8's desktop restyle must not mask a broken base state
       for (const one of splitSel(r.sel)) {
         if (!matches(one.trim(), cls, theme)) continue;
         for (const d of r.decls) {
@@ -329,7 +331,7 @@ for (const m of appCss.matchAll(pairRe)) addPair(m[1], m[2]);
 let statePairs = 0;
 for (const [, [base, state]] of pairs) {
   // only classes whose base look clean.css forces with !important can have their state eaten
-  const forced = RULES.some(r => r.decls.some(d => d.imp && Object.values(LOOK).flat().includes(d.prop)) && splitSel(r.sel).some(s => matches(s.trim(), [base], 'light') || matches(s.trim(), [base], 'dark')));
+  const forced = RULES.some(r => !DESKTOP_MEDIA(r.media) && r.decls.some(d => d.imp && Object.values(LOOK).flat().includes(d.prop)) && splitSel(r.sel).some(s => matches(s.trim(), [base], 'light') || matches(s.trim(), [base], 'dark')));
   if (!forced) continue;
   const stateCls = state.startsWith('.') ? [base, ...state.match(/\.[\w-]+/g)] : [base, state];
   for (const theme of ['light', 'dark']) {

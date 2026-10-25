@@ -2,6 +2,15 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-25 — v705. GRANOLA-LIKE COLOURS (owner: "lets stay as we are right now but just use granola colorschema").
+
+Layout unchanged. Palette only ("Calm" sample; Granola's exact hexes aren't public):
+dark bg #1a1a1a / sidebar #161616 / raise #202020 / chip #242424 / input #212121 / text #e8e8e8 / muted #8f8f8f / line #262626 /
+line-strong #2e2e2e / hover #1f1f1f / primary #e8e8e8 on #111111 / ok #4ade80 (sparingly). Light: bg #fbfbfa, sidebar #f5f5f4,
+text #1a1a1a, muted #6b6b6b, line #ebebea. New tokens --cs-hover (solid), --cs-line-strong. Menus hover on --cs-chip.
+theme-color/manifest #1a1a1a. Site pages carry the dark values. Muted contrast >=4.6:1 on every surface, both themes.
+Docs PLAN.md / SPEC.md / PLAN-site.md updated. Mutations D1 22/22, T 22/22, S 58/58, site 13/13.
+
 ## ▶▶ 2026-10-22 — v704. NEVER SALESY (owner: "the content can not be salesy never. it needs to be entertaining and educational").
 
 - api/_write.js NO_SELL_RULE in every post-writer prompt (styleGuide, angles/spoken/shape prompts, generate-ideas, remix, sharpen,

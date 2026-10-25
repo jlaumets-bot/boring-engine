@@ -18,20 +18,22 @@
 /* ============ 1. tokens ============ */
 :root,
 :root[data-theme="light"] {
-  --cs-bg: #ffffff;
+  /* v705 "Calm" palette (owner, Granola-like): low-chroma grey on grey, quiet lines, flat; green only for small live/new signals */
+  --cs-bg: #fbfbfa;
   --cs-card: #ffffff;
-  --cs-raise: #f7f7f7;
-  --cs-text: #0d0d0d;
-  --cs-muted: #5d5d5d;
-  --cs-line: #e6e6e6;
-  --cs-chip: #f2f2f2;
-  --cs-input: #f2f2f2;
-  --cs-primary: #0d0d0d;
+  --cs-raise: #f7f7f6;
+  --cs-text: #1a1a1a;
+  --cs-muted: #6b6b6b;
+  --cs-line: #ebebea;
+  --cs-chip: #efefee;
+  --cs-input: #f4f4f3;
+  --cs-primary: #1a1a1a;
   --cs-on-primary: #ffffff;
   --cs-danger: #dc2626;
   --cs-ok: #16a34a;
   --cs-overlay: rgba(0,0,0,.35);
-  --cs-hover: rgba(0,0,0,.04);
+  --cs-hover: #f2f2f1;
+  --cs-line-strong: #e0e0df;
   --cs-font: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
   /* type scale (v700, owner: bigger text). Same in both themes. Floor: nothing visible under 13px; inputs ≥ 16px. */
   --cs-fs-body: 17px;     /* body, idea hooks, paragraphs, drawer items, inputs */
@@ -42,20 +44,21 @@
   color-scheme: light;
 }
 :root[data-theme="dark"] {
-  --cs-bg: #212121;
-  --cs-card: #212121;
-  --cs-raise: #2a2a2a;
-  --cs-text: #ececec;
-  --cs-muted: #b4b4b4;
-  --cs-line: #3d3d3d;
-  --cs-chip: #333333;
-  --cs-input: #303030;
-  --cs-primary: #ececec;
-  --cs-on-primary: #0d0d0d;
+  --cs-bg: #1a1a1a;
+  --cs-card: #1a1a1a;
+  --cs-raise: #202020;
+  --cs-text: #e8e8e8;
+  --cs-muted: #8f8f8f;
+  --cs-line: #262626;
+  --cs-chip: #242424;
+  --cs-input: #212121;
+  --cs-primary: #e8e8e8;
+  --cs-on-primary: #111111;
   --cs-danger: #f87171;
   --cs-ok: #4ade80;
   --cs-overlay: rgba(0,0,0,.6);
-  --cs-hover: rgba(255,255,255,.05);
+  --cs-hover: #1f1f1f;
+  --cs-line-strong: #2e2e2e;
   color-scheme: dark;
 }
 
@@ -1582,7 +1585,7 @@ h1, h2, h3, h4 { font-family: var(--cs-font); letter-spacing: -0.01em; }
 .header-btn:hover, .icon-btn:hover, .cs-hdr-btn:hover { background: var(--cs-hover) !important; }
 .brand-dropdown { background: var(--cs-card); border: 1px solid var(--cs-line); border-radius: 14px; box-shadow: none; }
 .brand-dropdown-item { border-radius: 10px; color: var(--cs-text); }
-.brand-dropdown-item:hover { background: var(--cs-hover); }
+.brand-dropdown-item:hover { background: var(--cs-chip); }   /* menus sit on --cs-raise: the hover tone would vanish there */
 
 /* ---- install banner ---- */
 .pwa-banner { background: var(--cs-raise); color: var(--cs-text); border-bottom: 1px solid var(--cs-line); box-shadow: none; }
@@ -1640,7 +1643,7 @@ h1, h2, h3, h4 { font-family: var(--cs-font); letter-spacing: -0.01em; }
 .sp-fill-btn, .sp-ask-btn, .logo-upload-btn, .cs-upgrade-alt, .sp-plan-btn, .cs-onb-go, .dismiss-popup .dp-cancel, .tour-btn {
   background: transparent !important;   /* !important: same v275 sweep (`background:#fff !important`) */
   color: var(--cs-text) !important;
-  border: 1px solid var(--cs-line) !important;
+  border: 1px solid var(--cs-line-strong) !important;
   box-shadow: none !important;
   font-weight: 500;
 }
@@ -1676,7 +1679,7 @@ h1, h2, h3, h4 { font-family: var(--cs-font); letter-spacing: -0.01em; }
 .tp-deliv-chip, .tp-dismiss-chip, .cm-aspect-btn, .mode-chip {
   background: transparent !important;  /* !important: the v274 sweep + several dark-mode !important fills */
   color: var(--cs-text) !important;
-  border: 1px solid var(--cs-line) !important;
+  border: 1px solid var(--cs-line-strong) !important;
   border-radius: 999px !important;
   box-shadow: none !important;
   font-weight: 500;
@@ -1716,7 +1719,7 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
 .dismiss-popup, .more-sheet, .brv-sheet, .br-sheet, .bottom-sheet, .sheet { border-radius: 20px 20px 0 0; }
 .cm-modal, .conn-modal, .bv-popup, .cs-upgrade-card, .modal, .modal-card { border-radius: 20px; }
 .assign-popup { border-radius: 14px; }
-.assign-popup-item:hover, .more-item:hover, .ms-item:hover { background: var(--cs-hover); }
+.assign-popup-item:hover, .more-item:hover, .ms-item:hover { background: var(--cs-chip); }
 .brv-overlay, .bv-popup-overlay, .cm-overlay, .cs-upgrade-overlay, .dismiss-overlay, .sheet-overlay, .modal-overlay { background: var(--cs-overlay) !important; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .dismiss-popup .dp-option, .dismiss-popup.ap .dp-option {
   background: transparent !important; color: var(--cs-text) !important; border: 1px solid var(--cs-line) !important; border-radius: 12px; box-shadow: none !important;
@@ -1823,8 +1826,8 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
 .tp-font-btn, .tp-play-btn, .tp-voice-btn, .tp-adv-toggle, .teleprompter-close {
   background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.18); box-shadow: none;
 }
-.teleprompter-done { background: #ececec; color: #0d0d0d; border: 0; border-radius: 999px; box-shadow: none; }
-.tp-record-main { box-shadow: none; background: #ececec; color: #0d0d0d; }
+.teleprompter-done { background: #e8e8e8; color: #111111; border: 0; border-radius: 999px; box-shadow: none; }
+.tp-record-main { box-shadow: none; background: #e8e8e8; color: #111111; }
 
 /* ---- misc ---- */
 /* Help tour: §4 maps the spotlight's dim to --cs-line (an opaque grey wall over the screen being explained); dim with the overlay
@@ -1928,7 +1931,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   #ideaContent .list-actions { justify-content: flex-start; gap: 8px; }
   #ideaContent .list-actions .action-circle.approve, #ideaContent .list-actions .action-circle.dismiss {
     width: auto !important; height: 36px !important; min-height: 36px !important; padding: 0 14px !important; border-radius: 999px !important; gap: 6px; font-size: var(--cs-fs-btn); font-weight: 500; }
-  #ideaContent .list-actions .action-circle.dismiss { background: transparent !important; border: 1px solid var(--cs-line) !important; color: var(--cs-text) !important; }
+  #ideaContent .list-actions .action-circle.dismiss { background: transparent !important; border: 1px solid var(--cs-line-strong) !important; color: var(--cs-text) !important; }
   #ideaContent .list-actions .action-circle .cs-act-lbl { display: inline; }
   #ideaContent .list-actions .action-circle svg { width: 16px; height: 16px; }
   .format-tag:empty { display: none; }
@@ -1939,7 +1942,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   .pipeline-stage-tab svg { display: none; }
   .pipeline-stage-tab .stage-count { order: 2; }
   .pipeline-card .pipe-btn.cs-read-btn { display: inline-flex !important; background: var(--cs-primary) !important; color: var(--cs-on-primary) !important; border: 1px solid var(--cs-primary) !important; }
-  .pipeline-card-actions:has(.cs-read-btn) .pipe-btn.next { background: transparent !important; color: var(--cs-text) !important; border: 1px solid var(--cs-line) !important; }
+  .pipeline-card-actions:has(.cs-read-btn) .pipe-btn.next { background: transparent !important; color: var(--cs-text) !important; border: 1px solid var(--cs-line-strong) !important; }
   .pipeline-card-actions { gap: 8px; }
 
   /* ---- Quick Post: a left-aligned 760 column ---- */
@@ -1996,16 +1999,16 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     --csd-doc: 760px; --csd-dialog-sm: 560px; --csd-dialog-lg: 720px; --csd-toast: 380px;
     --csd-ring: 2px solid var(--cs-muted);
     --csd-primary-hover: color-mix(in srgb, var(--cs-primary) 90%, var(--cs-bg));
-    --csd-side: #f9f9f9;
-    --csd-side-on: #ebebeb;   /* selected row / nav item: --cs-chip (#f2f2f2) is too faint on the light sidebar and on white */
+    --csd-side: #f5f5f4;
+    --csd-side-on: var(--cs-chip);   /* selected row / nav item / active segment track item */
     --csd-seg-on: #ffffff;
     /* the app's type tokens follow the desktop scale (every §4/§5 rule that reads them follows too) */
     --cs-fs-body: 15px; --cs-fs-title: 17px; --cs-fs-screen: 20px; --cs-fs-meta: 13px; --cs-fs-btn: 14px;
   }
-  :root[data-theme="dark"] { --csd-side: #181818; --csd-seg-on: #474747; --csd-side-on: var(--cs-chip); }
+  :root[data-theme="dark"] { --csd-side: #161616; --csd-seg-on: #2e2e2e; --csd-side-on: var(--cs-chip); }
   /* the select chevron (a 12px stroke icon in the muted colour of each theme) */
-  :root, :root[data-theme="light"] { --csd-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%235d5d5d' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-  :root[data-theme="dark"] { --csd-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%23b4b4b4' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  :root, :root[data-theme="light"] { --csd-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%236b6b6b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  :root[data-theme="dark"] { --csd-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%238f8f8f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
   body { font-size: var(--csd-fs-body); line-height: var(--csd-lh-body); }
 
   /* ---- 8.1 shell + sidebar ---- */
@@ -2018,7 +2021,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   #desktopSidebar .ds-foot :is(a, button, span) { white-space: nowrap; }
   #desktopSidebar .ds-item:focus-visible, #desktopSidebar .ds-brand:focus-visible { outline: var(--csd-ring); outline-offset: -2px; }
   .csx-shell { background: var(--cs-bg); color: var(--cs-text); }
-  .csx-newpost { min-height: var(--csd-h-md); padding: var(--csd-pad-md); border: 1px solid var(--cs-line);
+  .csx-newpost { min-height: var(--csd-h-md); padding: var(--csd-pad-md); border: 1px solid var(--cs-line-strong);
     background: transparent; color: var(--cs-text); font: 500 var(--csd-fs-btn)/1 var(--cs-font); cursor: pointer; }
   .csx-newpost .csx-kbd { margin-left: auto; }
   #desktopSidebar .csx-newpost { margin-bottom: 8px; }
@@ -2057,7 +2060,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   #csxDetail .list-actions .action-circle.approve, #csxDetail .list-actions .action-circle.dismiss {
     width: auto !important; height: var(--csd-h-md) !important; min-height: var(--csd-h-md) !important; padding: var(--csd-pad-md) !important; border-radius: var(--csd-r-pill) !important;
     gap: 6px; font-size: var(--csd-fs-btn); font-weight: 500; }   /* !important: app.html's icon-circle rule sizes them with !important */
-  #csxDetail .list-actions .action-circle.dismiss { background: transparent !important; border: 1px solid var(--cs-line) !important; color: var(--cs-text) !important; }
+  #csxDetail .list-actions .action-circle.dismiss { background: transparent !important; border: 1px solid var(--cs-line-strong) !important; color: var(--cs-text) !important; }
   #csxDetail .list-actions .action-circle .cs-act-lbl { display: inline; }
   #csxDetail .list-actions .action-circle svg { width: 16px; height: 16px; }
   /* Pipeline: the assignee row moved into the detail head keeps its old card offsets (top 18 / right 20) — line it up with the content */
@@ -2106,11 +2109,11 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   .csx-panel { padding: 24px var(--csd-pad-page) 48px; max-width: calc(720px + 2 * var(--csd-pad-page)); box-sizing: border-box; }
 
   /* ---- 8.5 buttons ---- */
-  .csx-btn { height: var(--csd-h-md); min-height: var(--csd-h-md); padding: var(--csd-pad-md); border: 1px solid var(--cs-line); border-radius: var(--csd-r-pill);
+  .csx-btn { height: var(--csd-h-md); min-height: var(--csd-h-md); padding: var(--csd-pad-md); border: 1px solid var(--cs-line-strong); border-radius: var(--csd-r-pill);
     background: transparent; color: var(--cs-text); font: 500 var(--csd-fs-btn)/1 var(--cs-font); white-space: nowrap; cursor: pointer; box-shadow: none;
     transition: background-color .12s ease, color .12s ease, border-color .12s ease; }
   .csx-btn--primary { background: var(--cs-primary); border-color: var(--cs-primary); color: var(--cs-on-primary); }
-  .csx-btn--secondary { background: transparent; border-color: var(--cs-line); color: var(--cs-text); }
+  .csx-btn--secondary { background: transparent; border-color: var(--cs-line-strong); color: var(--cs-text); }
   .csx-btn--ghost { background: transparent; border-color: transparent; color: var(--cs-muted); }
   .csx-btn--danger { background: transparent; border-color: var(--cs-danger); color: var(--cs-danger-text); }
   .csx-btn--sm { height: var(--csd-h-sm); min-height: var(--csd-h-sm); padding: var(--csd-pad-sm); }
@@ -2125,7 +2128,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   .csx-btn:disabled, .csx-btn[aria-disabled="true"] { opacity: .45; cursor: default; }
 
   /* ---- 8.6 chips, segmented control, kbd ---- */
-  .csx-chip { height: var(--csd-h-chip); min-height: var(--csd-h-chip); padding: var(--csd-pad-chip); border: 1px solid var(--cs-line); border-radius: var(--csd-r-pill);
+  .csx-chip { height: var(--csd-h-chip); min-height: var(--csd-h-chip); padding: var(--csd-pad-chip); border: 1px solid var(--cs-line-strong); border-radius: var(--csd-r-pill);
     background: transparent; color: var(--cs-text); font: 500 var(--csd-fs-chip)/26px var(--cs-font); white-space: nowrap; cursor: pointer; box-sizing: border-box; }
   .csx-chip:hover { background: var(--cs-hover); }
   .csx-chip.is-selected, .csx-chip[aria-pressed="true"], .csx-chip.is-selected:hover { background: var(--cs-primary); border-color: var(--cs-primary); color: var(--cs-on-primary); }
@@ -2143,9 +2146,9 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   /* ---- 8.7 fields ---- */
   .csx-field { margin: 0 0 16px; }
   .csx-label { margin: 0 0 6px; font-size: var(--csd-fs-label); font-weight: 600; color: var(--cs-text); text-transform: none; letter-spacing: 0; }
-  .csx-input { height: var(--csd-h-input); padding: 0 12px; border: 1px solid var(--cs-line); border-radius: var(--csd-r-input); background: var(--cs-input);
+  .csx-input { height: var(--csd-h-input); padding: 0 12px; border: 1px solid var(--cs-line-strong); border-radius: var(--csd-r-input); background: var(--cs-input);
     color: var(--cs-text); font: 400 var(--cs-fs-body)/1.4 var(--cs-font); box-sizing: border-box; }
-  .csx-textarea { min-height: var(--csd-h-textarea); padding: 12px; border: 1px solid var(--cs-line); border-radius: var(--csd-r-input); background: var(--cs-input);
+  .csx-textarea { min-height: var(--csd-h-textarea); padding: 12px; border: 1px solid var(--cs-line-strong); border-radius: var(--csd-r-input); background: var(--cs-input);
     color: var(--cs-text); font: 400 var(--cs-fs-body)/1.5 var(--cs-font); box-sizing: border-box; resize: vertical; }
   .csx-input:focus, .csx-textarea:focus { outline: none; border-color: var(--cs-text); }
 
@@ -2249,7 +2252,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     background: transparent !important; border: 1px solid transparent !important; color: var(--cs-muted) !important; text-decoration: none !important;
   }
   :root #view-today .tp-shz-angle, :root #view-ideas .tp-shz-angle { padding: var(--csd-pad-sm) !important; margin-left: -12px !important; }   /* text lines up with the column */
-  :root .fp-tool { background: transparent !important; border: 1px solid var(--cs-line) !important; color: var(--cs-text) !important; }
+  :root .fp-tool { background: transparent !important; border: 1px solid var(--cs-line-strong) !important; color: var(--cs-text) !important; }
   :root .fp-tool.fp-danger { color: var(--cs-danger-text) !important; border-color: var(--cs-danger) !important; }
 
   /* icon-only (32×32, r8): close ×, copy, nav arrows, small round tools */
@@ -2282,8 +2285,8 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
       .cs-pill-btn, .nb-act, .nb-mic, .batch-cancel, .batch-all, .batch-enter, .dz-btn, .fq-done-btn,
       .vl-top-use, .vl-mic, .bv-action-btn, .brain-rule-btn, .sp-extra-btn, .sp-back, .fp-tool, .fp-add-btn,
       .tp-shz-angle, .rv2-link, .cs-upgrade-close, .fp-manage, .fp-ghost, .fp-notebtn, .tp-field-copy, .bv-manual-link,
-      .action-circle.dismiss, .sp-method, .rv2-angle, .dp-option, .stat-sq, .assign-popup button, .bm-add-row button, .brand-dropdown-item,
-      .assign-popup-item, .more-item, .sp-section-header, .collapsible-header, .paa-header, .rv2-actions button:not(.primary), .bm-cat-actions button, .cm-modal button:not([class]),
+      .action-circle.dismiss, .sp-method, .rv2-angle, .dp-option, .stat-sq, .assign-popup button, .bm-add-row button,
+      .sp-section-header, .collapsible-header, .paa-header, .rv2-actions button:not(.primary), .bm-cat-actions button, .cm-modal button:not([class]),
       .brand-dropdown-add):hover:not(:disabled):not(.sel):not(.active):not(.selected):not(.on):not(.primary), :root #settingsOverlay button:not([class]):hover:not(:disabled) {
     background: var(--cs-hover) !important;   /* !important: the §5 bases are !important */
     filter: none; transform: none;
@@ -2320,8 +2323,8 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
       .tp-deliv-chip, .tp-dismiss-chip, .cm-aspect-btn, .mode-chip, .vl-win-chip, .stmt-tpl-chip, .vl-trend-chip, .rx-mode, .ob-tone-chip):not(.active):not(.selected):not(.on):not(.sel):not(.rx-mode-main):hover {
     background: var(--cs-hover) !important;
   }
-  :root .vl-win-chip, :root .stmt-tpl-chip, :root .vl-trend-chip, :root .ob-tone-chip { border: 1px solid var(--cs-line) !important; background: transparent !important; color: var(--cs-text) !important; }
-  :root .vl-win-chip.active, :root .vl-win-chip.on, :root .stmt-tpl-chip.active, :root .stmt-tpl-chip.on, :root .stmt-tpl-chip.sel, :root .ob-tone-chip.selected {
+  :root .vl-win-chip, :root .stmt-tpl-chip, :root .vl-trend-chip, :root .ob-tone-chip { border: 1px solid var(--cs-line-strong) !important; background: transparent !important; color: var(--cs-text) !important; }
+  :root .vl-win-chip.active, :root .stmt-tpl-chip.on, :root .ob-tone-chip.selected {
     background: var(--cs-primary) !important; color: var(--cs-on-primary) !important; border-color: var(--cs-primary) !important;
   }
 
@@ -2330,8 +2333,8 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     flex-direction: row !important; gap: 6px !important; aspect-ratio: auto !important; font-size: var(--csd-fs-btn) !important; font-weight: 500 !important; background: transparent !important; border: 1px solid var(--cs-line) !important; }
   :root .stat-sq .num { font-size: var(--csd-fs-btn) !important; line-height: 1 !important; }
   :root .stat-sq .label { font-size: var(--csd-fs-btn) !important; line-height: 1 !important; margin: 0 !important; }
-  :root .stat-sq.active, :root .stat-sq.selected { background: var(--cs-chip) !important; border-color: var(--cs-text) !important; }
-  :root .stat-sq.active .num, :root .stat-sq.active .label, :root .stat-sq.selected .num, :root .stat-sq.selected .label { color: var(--cs-text) !important; }
+  :root .stat-sq.active { background: var(--cs-chip) !important; border-color: var(--cs-text) !important; }
+  :root .stat-sq.active .num, :root .stat-sq.active .label { color: var(--cs-text) !important; }
 
   /* -- one segmented style for every tab set: 32 track (--cs-chip, pill), 28 segments 13/500, selected = raised segment -- */
   :root .pipeline-stages, :root .create-sub-tabs, :root .sp-tabs, :root .source-tabs {
@@ -2359,7 +2362,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     height: var(--csd-h-input) !important;       /* !important: app.html's v274 / dark-mode sweeps size inputs with !important */
     min-height: var(--csd-h-input) !important;
     padding: 0 12px !important;
-    border: 1px solid var(--cs-line) !important;
+    border: 1px solid var(--cs-line-strong) !important;
     border-radius: var(--csd-r-input) !important;
     background-color: var(--cs-input) !important;
     color: var(--cs-text);
@@ -2372,7 +2375,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   :root :is(textarea, .gen-textarea, .sp-textarea, .cm-textarea, .vl-paste, .nb-input, .dp-custom-input) {
     min-height: var(--csd-h-textarea) !important;
     padding: 12px !important;
-    border: 1px solid var(--cs-line) !important;
+    border: 1px solid var(--cs-line-strong) !important;
     border-radius: var(--csd-r-input) !important;
     background-color: var(--cs-input) !important;
     color: var(--cs-text);
@@ -2538,6 +2541,7 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     min-height: var(--csd-h-menu-item) !important; padding: 0 10px !important; border-radius: 8px !important; font-size: 14px !important; border: 0 !important;
   }
   :root .brand-dropdown-item.active, :root .brand-dropdown-item.current { background: var(--cs-chip) !important; }
+  :root :is(.brand-dropdown-item, .assign-popup-item, .more-item, .ms-item):hover { background: var(--cs-chip) !important; }   /* menus sit on --cs-raise, where the --cs-hover tone would vanish */
 
   /* -- toasts: bottom-right, 16px from the edges, max 380, r12 -- */
   :root .generic-toast, :root [data-theme="dark"] .generic-toast, :root .toast {

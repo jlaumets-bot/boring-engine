@@ -17,7 +17,7 @@
 //   8  .sp-tip (app.html:3382, a flex row that split sentences into columns) is block layout — on desktop AND top-level
 //      for phones / tablets, with the icon kept in the same gutter (padding-left = padding + 18 + 10).
 //   9  the pinned composer is hidden on desktop.
-//  10  contrast ≥ 4.5:1 for text / muted on the desktop-only surfaces (sidebar #181818, raised segment) in both themes.
+//  10  contrast ≥ 4.5:1 for text / muted on the desktop-only surfaces (sidebar #161616 dark / #f5f5f4 light, raised segment, selected row) and muted ≥ 4.5:1 on bg / raise / chip / sidebar in both themes.
 //  11  the rendered computed-style pass (Playwright harness, recorded in .unlazy/desktop/D1-measure.json when present):
 //      button heights only on the spec values, single-line text inputs one height, card radii only on spec radii.
 // RUN: node scripts/verify/desktop-system.mjs      EXPECT: prints "DESKTOP SYSTEM OK", exit 0.
@@ -68,7 +68,7 @@ const WANT = { '--csd-h-sm': '32px', '--csd-h-md': '36px', '--csd-h-lg': '44px',
 const badTok = Object.entries(WANT).filter(([k, v]) => T[k] !== v).map(([k, v]) => k + '=' + T[k] + ' (want ' + v + ')');
 ok(tok && badTok.length === 0, '2 desktop tokens carry the spec sizes' + (badTok.length ? ' — ' + badTok.join(', ') : ''));
 const darkTok = RULES.find(r => r.sel === ':root[data-theme="dark"]');
-ok(darkTok && (darkTok.decls['--csd-side'] || [])[0] === '#181818' && T['--csd-side'], '2 sidebar surface #181818 in dark (and a light value)');
+ok(darkTok && (darkTok.decls['--csd-side'] || [])[0] === '#161616' && T['--csd-side'] === '#f5f5f4', '2 sidebar surface #161616 in dark, #f5f5f4 in light (v705 Calm palette)');
 ok(has(/#desktopSidebar/, 'background', /var\(--csd-side\)/) && has(/#desktopSidebar/, 'border-right', /1px solid var\(--cs-line\)/), '2 the sidebar uses it, with a 1px line');
 
 /* ═══ 3. every D1 .csx-* class from SPEC.md is styled ═══ */
@@ -83,7 +83,7 @@ const csx = CSX;
 ok(csx.length >= 40, '3 ' + csx.length + ' .csx-* classes to check');
 const unstyled = csx.filter(c => !RULES.some(r => new RegExp('\\' + c + '(?![\\w-])').test(r.sel) && Object.keys(r.decls).some(p => VISUAL.test(p))));
 ok(unstyled.length === 0, '3 every .csx-* class has a visual rule in §8' + (unstyled.length ? ' — missing ' + unstyled.join(' ') : ''));
-ok(has(/\.csx-row\.is-selected/, 'box-shadow', /inset 2px 0 0 var\(--cs-text\)/) && has(/\.csx-row\.is-selected/, 'background', /var\(--csd-side-on\)/) && darkTok && (darkTok.decls['--csd-side-on'] || [])[0] === 'var(--cs-chip)', '3 selected row: --cs-chip (dark; a stronger #ebebeb in light) + 2px left inset');
+ok(has(/\.csx-row\.is-selected/, 'box-shadow', /inset 2px 0 0 var\(--cs-text\)/) && has(/\.csx-row\.is-selected/, 'background', /var\(--csd-side-on\)/) && darkTok && (darkTok.decls['--csd-side-on'] || [])[0] === 'var(--cs-chip)' && T['--csd-side-on'] === 'var(--cs-chip)', '3 selected row: --cs-chip (both themes) + 2px left inset');
 ok(decl(/^\.csx-detail-title$/, 'font-size') === 'var(--csd-fs-detail)' && decl(/^\.csx-toolbar-title$/, 'font-size') === 'var(--csd-fs-page)' && decl(/^\.csx-row$/, 'min-height') === 'var(--csd-h-row)', '3 detail title 22, toolbar title 20, rows 64');
 
 /* ═══ 4. buttons ═══ */
@@ -106,7 +106,7 @@ ok(has(/^:root \.pipeline-stages, :root \.create-sub-tabs, :root \.sp-tabs, :roo
 /* ═══ 5. inputs ═══ */
 ok(decl(/^\.csx-input$/, 'height') === 'var(--csd-h-input)' && decl(/^\.csx-input$/, 'border-radius') === 'var(--csd-r-input)' && decl(/^\.csx-textarea$/, 'min-height') === 'var(--csd-h-textarea)', '5 .csx-input 40 r10, .csx-textarea min 120');
 const inp = RULES.find(r => /:root :is\(input\[type="text"\]/.test(r.sel));
-ok(inp && /var\(--csd-h-input\)/.test(inp.decls.height[0]) && /1px solid var\(--cs-line\)/.test(inp.decls.border[0]) && ['select', '.sp-input', '.creator-input', 'input:not([type])'].every(c => inp.sel.includes(c)), '5 every legacy single-line input / select → 40, 1px line');
+ok(inp && /var\(--csd-h-input\)/.test(inp.decls.height[0]) && /1px solid var\(--cs-line(-strong)?\)/.test(inp.decls.border[0]) && ['select', '.sp-input', '.creator-input', 'input:not([type])'].every(c => inp.sel.includes(c)), '5 every legacy single-line input / select → 40, 1px line');
 const ta = RULES.find(r => /:root :is\(textarea, \.gen-textarea/.test(r.sel));
 ok(ta && /var\(--csd-h-textarea\)/.test(ta.decls['min-height'][0]) && /^12px/.test(ta.decls.padding[0]), '5 textareas min 120, padding 12');
 ok(has(/:focus/, 'border-color', /var\(--cs-text\)/), '5 input focus → --cs-text border');
@@ -153,15 +153,16 @@ ok(has(/:root \.cs-composer$/, 'display', /none !important/), '9 the pinned comp
   const ratio = (a, b) => { const x = L(a), y = L(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   const darkD = (darkTok && Object.fromEntries(Object.entries(darkTok.decls).map(([k, v]) => [k, v[0]]))) || {};
   const pairs = [];
-  for (const [name, blk, side, seg, on] of [['light', light, T['--csd-side'], T['--csd-seg-on'], T['--csd-side-on']], ['dark', dark, darkD['--csd-side'], darkD['--csd-seg-on'], null]]) {
-    const text = val(blk, '--cs-text'), muted = val(blk, '--cs-muted'), chip = val(blk, '--cs-chip');
-    if (name === 'light' && !/^#[0-9a-f]{6}$/i.test(on || '')) { pairs.push('light --csd-side-on missing'); continue; }
+  for (let [name, blk, side, seg, on] of [['light', light, T['--csd-side'], T['--csd-seg-on'], T['--csd-side-on']], ['dark', dark, darkD['--csd-side'], darkD['--csd-seg-on'], null]]) {
+    const text = val(blk, '--cs-text'), muted = val(blk, '--cs-muted'), chip = val(blk, '--cs-chip'), bg = val(blk, '--cs-bg'), raise = val(blk, '--cs-raise');
+    if (on === 'var(--cs-chip)') on = chip;
+    if (!bg || !raise) { pairs.push(name + ': bg / raise missing'); continue; }
     if (!text || !muted || !side || !seg || !chip) { pairs.push(name + ': tokens missing'); continue; }
-    for (const [f, b, lbl] of [[text, side, 'text/sidebar'], [muted, side, 'muted/sidebar'], [text, seg, 'text/segment'], [muted, chip, 'muted/segment track']].concat(on ? [[text, on, 'text/selected row'], [muted, on, 'muted/selected row']] : [])) {
+    for (const [f, b, lbl] of [[text, side, 'text/sidebar'], [muted, side, 'muted/sidebar'], [text, seg, 'text/segment'], [muted, chip, 'muted/segment track'], [muted, bg, 'muted/bg'], [muted, raise, 'muted/raise'], [text, bg, 'text/bg']].concat(on ? [[text, on, 'text/selected row'], [muted, on, 'muted/selected row']] : [])) {
       const r = ratio(f, b); if (r < 4.5) pairs.push(name + ' ' + lbl + ' ' + r.toFixed(2));
     }
   }
-  ok(pairs.length === 0, '10 text and muted ≥ 4.5:1 on the sidebar, the selected row / nav item and the segmented control, light and dark' + (pairs.length ? ' — ' + pairs.join(', ') : ''));
+  ok(pairs.length === 0, '10 text and muted ≥ 4.5:1 on bg, raise, chip, the sidebar, the selected row / nav item and the segmented control, light and dark' + (pairs.length ? ' — ' + pairs.join(', ') : ''));
 }
 
 /* ═══ 11. recorded computed-style pass ═══ */

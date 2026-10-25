@@ -114,7 +114,7 @@ function freshDom() {
     vm.createContext(c2); vm.runInContext(restore, c2);
     const c3 = { csResolveTheme: () => 'dark', document: { documentElement: { dataset: {} }, querySelector: () => ({ content: '' }) } };
     vm.createContext(c3); vm.runInContext(restore, c3);
-    ok(de2.dataset.theme === 'light' && meta2.content === '#ffffff' && c3.document.documentElement.dataset.theme === 'dark', '1 the on-load restore applies the resolved theme both ways');
+    ok(de2.dataset.theme === 'light' && meta2.content === '#fbfbfa' && c3.document.documentElement.dataset.theme === 'dark', '1 the on-load restore applies the resolved theme both ways');
   }
   ok(/<input type="checkbox" \$\{csResolveTheme\(\)==='dark'\?'checked':''\} onchange="toggleDarkMode\(this\.checked\)">/.test(html), '1 the Settings switch shows the theme on screen (default included)');
 }
@@ -493,15 +493,15 @@ await (async () => {
 // (b) status-bar colour + manifest
 {
   const headTop = html.slice(0, html.indexOf('<script>'));
-  ok(/<meta name="theme-color" content="#212121">/.test(headTop), '15 the theme-color meta is dark and comes BEFORE the first script');
-  const seg = between('var CS_DEFAULT_THEME', "if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#212121' : '#ffffff'; } catch (e) {}");
+  ok(/<meta name="theme-color" content="#1a1a1a">/.test(headTop), '15 the theme-color meta is dark and comes BEFORE the first script');
+  const seg = between('var CS_DEFAULT_THEME', "if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}");
   const run = (saved, old) => { const st = saved == null ? {} : { 'cs-theme': saved }; if (old != null) st['bn-dark-mode'] = old; const meta = { content: 'x' };
     const c = { window: {}, localStorage: { getItem: k => (k in st ? st[k] : null), removeItem: k => { delete st[k]; } }, document: { documentElement: { dataset: {} }, querySelector: q => (/theme-color/.test(q) ? meta : null) } };
     vm.createContext(c); vm.runInContext(seg, c); return meta.content; };
-  ok(run(null) === '#212121' && run('light') === '#ffffff' && run('dark') === '#212121' && run(null, '0') === '#212121', '15 the early script sets it from the resolved theme (#212121 / #ffffff; an old bn-dark-mode=0 stays dark)');
-  ok(/content = on \? '#212121' : '#ffffff';/.test(grab('toggleDarkMode')), '15 the Dark Mode switch keeps it in step');
+  ok(run(null) === '#1a1a1a' && run('light') === '#fbfbfa' && run('dark') === '#1a1a1a' && run(null, '0') === '#1a1a1a', '15 the early script sets it from the resolved theme (#1a1a1a / #fbfbfa; an old bn-dark-mode=0 stays dark)');
+  ok(/content = on \? '#1a1a1a' : '#fbfbfa';/.test(grab('toggleDarkMode')), '15 the Dark Mode switch keeps it in step');
   const man = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
-  ok(man.background_color === '#212121' && man.theme_color === '#212121', '15 manifest background_color + theme_color are #212121');
+  ok(man.background_color === '#1a1a1a' && man.theme_color === '#1a1a1a', '15 manifest background_color + theme_color are #1a1a1a');
 }
 // (c) Assistant press-and-hold on the drawer row = the old tab's handlers
 {
