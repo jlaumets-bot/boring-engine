@@ -200,6 +200,9 @@
     },
     "api/content-metrics.js": {
       "maxDuration": 60
+    },
+    "api/fact-pack.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -210,6 +213,10 @@
     {
       "path": "/api/pull-trends-cron",
       "schedule": "35 5 * * *"
+    },
+    {
+      "path": "/api/fact-pack",
+      "schedule": "20 3 * * *"
     }
   ]
 }

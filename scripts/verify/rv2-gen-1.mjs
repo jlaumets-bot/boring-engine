@@ -151,11 +151,11 @@ const sameKeys = (o, keys) => JSON.stringify(Object.keys(o || {}).sort()) === JS
   ok(droppedIn(P).length === 0, 'ideas: the dropped rules are gone (found: ' + droppedIn(P).join(', ') + ')');
   ok(!P.includes(brain.rulePrecedence()), 'ideas: the legacy precedence block is gone (the v2 heading carries precedence)');
   // belief first: stated before the idea is written, and the first schema key
-  ok(/BELIEF FIRST/.test(P) && /does NOT share yet/.test(P) && /never about the brand's product or features/.test(P), 'ideas: the belief-first instruction is present');
+  ok(/THE POINT FIRST/.test(P) && /does NOT share yet/.test(P) && /never about the brand's product or features/.test(P), 'ideas: the belief-first instruction is present');
   const schema = P.slice(P.indexOf('Each idea:'));
   const firstKey = (schema.match(/\{\s*\n\s*"([a-zA-Z]+)"/) || [])[1];
   ok(firstKey === 'belief', 'ideas: "belief" is the FIRST key of the schema (committed before the hook) — got ' + firstKey);
-  ok(P.indexOf('BELIEF FIRST') < P.indexOf('CONTENT FORMATS'), 'ideas: the belief step comes before the format rules');
+  ok(P.indexOf('THE POINT FIRST') < P.indexOf('CONTENT FORMATS'), 'ideas: the belief step comes before the format rules');
   // USPs as background facts, beliefs, stories, 3 tones rendered
   const iBg = P.indexOf(BG), iUsp = P.indexOf('ZUSP_MARK');
   ok(iBg > -1 && iUsp > iBg && /mention at most one/i.test(P.slice(iUsp, iUsp + 400)), 'ideas: USPs are framed as background facts (at most one mention)');
@@ -175,7 +175,8 @@ const sameKeys = (o, keys) => JSON.stringify(Object.keys(o || {}).sort()) === JS
 
 // ═════ 2. the belief field: missing / overlong / odd shapes vs a fitting one ═════
 {
-  const long = 'Most people think posting every single day is what grows an account, but the thing that actually grows it is posting fewer videos that each say one thing well';
+  // v706 — the cap is 300 now (was 140): the long belief is doubled so it is still cut.
+  const long = 'Most people think posting every single day is what grows an account, but the thing that actually grows it is posting fewer videos that each say one thing well, and the people who post less but say more are the ones whose followers actually remember what they said a week later and come back for the next one without being asked to';
   const exact = 'x'.repeat(140);
   const res = await run('ideas', { brandContext: BC, count: 5 }, () => JSON.stringify([
     IDEA({ title: 'a', belief: long }), IDEA({ title: 'b' }), IDEA({ title: 'c', belief: ['Less is', 'more'] }),
@@ -184,7 +185,7 @@ const sameKeys = (o, keys) => JSON.stringify(Object.keys(o || {}).sort()) === JS
   const I = (res.body && res.body.ideas) || [];
   const [a, bb, c, d, e] = I;
   ok(I.length === 5 && I.every(i => typeof i.belief === 'string'), 'belief: every idea returns a string belief');
-  ok(a && a.belief.length <= 140 && long.startsWith(a.belief) && long[a.belief.length] === ' ' && !/[,;:\-]$/.test(a.belief), 'belief: an overlong one is cut to <= 140 on a word boundary (got ' + (a && a.belief.length) + ')');
+  ok(a && a.belief.length <= 300 && long.startsWith(a.belief) && long[a.belief.length] === ' ' && !/[,;:\-]$/.test(a.belief), 'belief: an overlong one is cut to <= 300 on a word boundary (got ' + (a && a.belief.length) + ')');
   ok(bb && bb.belief === '', 'belief: a missing one is "" (never derived from the hook)');
   ok(c && c.belief === 'Less is more', 'belief: a list is coerced to one line');
   ok(d && d.belief === 'Quoted belief here', 'belief: surrounding quotes are dropped');
@@ -221,7 +222,7 @@ const sameKeys = (o, keys) => JSON.stringify(Object.keys(o || {}).sort()) === JS
   ok(calls[0] && !calls[0].prompt.includes('THE SEED IS A SEARCH QUESTION'), 'PAA (opposite): an ordinary batch gets no question instruction');
   await run('ideas', { brandContext: BC, count: 1, seedIdea: 'ZSEED_MARK posting less made me grow' }, () => JSON.stringify([IDEA({ belief: 'b' })]));
   const P3 = calls[0] ? calls[0].prompt : '';
-  ok(P3.includes('ZSEED_MARK') && /find the belief inside it/.test(P3) && !P3.includes('THE SEED IS A SEARCH QUESTION'), 'Idea Catcher: a dropped idea is developed from the belief inside it');
+  ok(P3.includes('ZSEED_MARK') && /find the point inside it/.test(P3) && !P3.includes('THE SEED IS A SEARCH QUESTION'), 'Idea Catcher: a dropped idea is developed from the belief inside it');
 }
 
 // ═════ 5. empty brand, hydrated brand, 424, guardrail regeneration ═════

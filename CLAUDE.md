@@ -2,6 +2,23 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-10-25 — v706. CONTENT QUALITY: FACT PACK + POST SHAPES + LIFTED CUTS (owner: "go").
+
+Plan .unlazy/quality/PLAN.md. Gates fact-pack (119), post-shapes (102), no-sell; mutations F 44/44, P 42/42; 1 review round (6 fixed).
+- api/fact-pack.js: weekly per brand (cron 03:20 UTC, <=12 brands/run, claimSearch lock), Grok web_search → facts verified
+  server-side (https/443 only, public IPs pinned per hop incl. IPv6 forms, 6 s, 1.5 MB, linear stripTags, >=70% key words +
+  every number on one ~400-word stretch). No brand/competitor/product-health/salesy facts. brands.fact_pack {rev,updatedAt,
+  lastSearchAt,facts[F1..]} SERVER-ONLY (trigger brands_pin_fact_pack; sql/fact-pack.sql). Manual refresh owner-only, 6 h.
+  Remove = conditional on rev (409 on conflict). Settings → Brand Voice "Fact pack" UI.
+- bc.facts (<=12, <=30 days) + factsBlock/factSources in _brain. NO_INVENTION_RULE + "a CHECKED FACT … use it as written".
+  A fact's numbers are allowed ONLY in a sentence that uses that fact (factMatchesText >=60% key words); auto-cite same rule.
+  Client-sent facts are stripped everywhere. Caption gets "Source:/Sources:" (max 2, never doubled; news keeps its own).
+- TYPE_SHAPES per type (tip how-to or opinion; qna answer-first; story arc; news what/why/what-to-do; bts moment). "Belief"
+  framing → "the ONE point"; angles carry kind opinion|point; UI copy neutral ("Which of these do you want to post?").
+- Caps: caption 2200, point 300, why 400. brand_memory belief stays 140 until sql/brand-memory-belief-300.sql runs.
+- health: fact-pack-cron heartbeat 26 h, first-run grace 36 h via a first-missing marker row.
+- SQL TO RUN: sql/fact-pack.sql → re-run sql/v658-revoke-security-health.sql → sql/brand-memory-belief-300.sql (then raise CAPS.belief).
+
 ## ▶▶ 2026-10-25 — v705. GRANOLA-LIKE COLOURS (owner: "lets stay as we are right now but just use granola colorschema").
 
 Layout unchanged. Palette only ("Calm" sample; Granola's exact hexes aren't public):

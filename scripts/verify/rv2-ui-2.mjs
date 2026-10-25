@@ -258,7 +258,7 @@ async function pickAndSave() { await c.rv2Pick(0); await tick(); const r = await
   // ═══ G gen_flow rule ═══
   ok(c.rv2TagFlow({ title: 't', belief: '  A take  ' }).genFlow === 'v2-batch' && c.rv2TagFlow({ title: 't', belief: 'A take' }).belief === 'A take', 'G an idea with a belief is tagged v2-batch (the panel alone is v2)');
   ok(!('genFlow' in c.rv2TagFlow({ title: 't', genFlow: 'v2' })) && !('genFlow' in c.rv2TagFlow({ title: 't', belief: '' })), 'G without a belief it is NOT tagged, even if the reply says v2');
-  ok(c.rv2TagFlow({ belief: 'x'.repeat(300) }).belief.length === 140, 'G the belief is capped at 140');
+  ok(c.rv2TagFlow({ belief: 'x'.repeat(400) }).belief.length === 300, 'G the belief is capped at 300 (v706, was 140)');
   ok(!('genFlow' in c.rv2TagFlow({ title: 't', belief: '   \n  ' })), 'G a whitespace-only belief is no belief');
   { // through the real nbDevelop intake + the real row builder
     const answers = [{ ideas: [{ title: 'New server idea', hook: 'h', script: 's', format: 'video', belief: 'Beliefs first' }] },

@@ -35,6 +35,8 @@ module.exports = async function handler(req, res) {
     if (body.postType != null && body.postType !== '' && !postType) return res.status(400).json({ error: 'Unknown post type.', code: 'bad_input' });
     if (!source.text && postType !== 'news') return res.status(400).json({ error: 'Give me something to work from: a transcript, a question, a trend or a note.', code: 'bad_input' });
     let bc = (brandContext && typeof brandContext === 'object' && !Array.isArray(brandContext)) ? brandContext : {};
+    // v706 r2 — CHECKED FACTS come only from the server-loaded brand (_brandctx), never from the request.
+    if (Object.prototype.hasOwnProperty.call(bc, 'facts')) { bc = Object.assign({}, bc); delete bc.facts; }
     if (!brandId && !Object.keys(bc).length) return res.status(400).json({ error: 'Pick a brand first.', code: 'bad_input' });
 
     // Brand hydration — the same lean-request contract as remix.js / generate-ideas.js: never write

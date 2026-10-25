@@ -144,10 +144,10 @@ vm.runInContext(between('/* v693 — REMIX, REBUILT', '\nfunction removeRemix(id
 const SRC = 'Transcript: a creator says everyone should post daily or the algorithm buries you.';
 const XSS = '<img src=x onerror=alert(1)>';
 const ANGLES = [
-  { id: 'a1', belief: 'Posting daily is how small brands stay invisible', why: 'Everyone was told volume wins.' },
+  { id: 'a1', belief: 'Posting daily is how small brands stay invisible', why: 'Everyone was told volume wins.', kind: 'opinion' },   // v706 kinds
   { id: 'a2', belief: 'Your worst post teaches more than your best ' + XSS, why: 'People hide flops ' + XSS },
-  { id: 'a3', belief: 'Three posts a week beat seven', why: 'Feels lazy.' },
-  { id: 'a4', belief: 'The algorithm rewards replies, not reach', why: 'Reach is what dashboards show.' },
+  { id: 'a3', belief: 'Three posts a week beat seven', why: 'Feels lazy.', kind: 'point' },
+  { id: 'a4', belief: 'Algorithms reward replies, not reach. ' + 'Replies tell it a real person cared enough to type, '.repeat(5).trim(), why: 'Reach is what dashboards show. ' + 'Replies are slower to read and harder to fake, so they get ignored. '.repeat(5).trim() },   // v706 — a ~290-char point, ~370-char why
   { id: 'a5', belief: 'Stop batching content', why: 'Batching is sold as discipline.' },
   { id: 'a6', belief: 'A boring post filmed beats a clever one planned', why: 'Clever feels safer.' },
 ];
@@ -186,6 +186,10 @@ const belAdds = () => callsTo('/api/brand-memory', 'add').filter(x => x.body.kin
   ok(ab && ab.brandId === 'brand-1' && ab.count === 6 && ab.source && ab.source.kind === 'remix' && ab.source.text.startsWith('Transcript:')
     && ab.source.url.includes('tiktok') && ab.source.creator === 'creator' && ab.bcFields === 2, 'the angles request carries brandId, bcFields and the contract source shape (' + J(ab && ab.source).slice(0, 90) + ')');
   ok((panel().match(/class="rv2-angle[ "]/g) || []).length === 6 && panel().includes('Why most disagree: Everyone was told volume wins.'), 'six belief cards render, each with its "why most disagree" line');
+  // v706 — "Why most disagree" only for an opinion; a point (or no kind) says "Why it matters"; neutral heading
+  ok(c._rv2.angles[3].belief === ANGLES[3].belief && c._rv2.angles[3].why === ANGLES[3].why && ANGLES[3].belief.length > 280 && ANGLES[3].why.length > 360, 'v706: a ~290-char point and a ~370-char why are kept whole (300 / 400)');
+  ok(panel().includes('Why it matters: Feels lazy.') && !panel().includes('Why most disagree: Feels lazy.') && (panel().match(/Why most disagree:/g) || []).length === 1, 'v706: only the opinion card says "Why most disagree"; points say "Why it matters"');
+  ok(panel().includes('Which of these do you want to post?') && !/actually believe/.test(panel()), 'v706: the neutral heading');
   ok(!panel().includes(XSS) && panel().includes('&lt;img src=x onerror=alert(1)&gt;'), 'G1 a belief / why containing <img onerror> renders escaped');
   ok(c._rv2.stage === 'angles' && store.has('rv2_draft::brand-1'), 'the opinions are kept as a draft (a reload does not lose them)');
   vm.runInContext('rv2SetRun("rv2Panel", null)', c); c.rv2Restore();
@@ -199,7 +203,7 @@ const belAdds = () => callsTo('/api/brand-memory', 'add').filter(x => x.body.kin
   await c.rv2Pick(0); await tick();
   ok(belAdds().length === 0, 'picking an opinion does NOT keep it as a brand belief (only saving does)');
   const wr = callsTo('/api/write');
-  ok(wr.length === 1 && wr[0].body.angle.belief === ANGLES[0].belief && wr[0].body.angle.why === ANGLES[0].why && wr[0].body.format === 'talking' && wr[0].body.source.text.startsWith('Transcript:'),
+  ok(wr.length === 1 && wr[0].body.angle.belief === ANGLES[0].belief && wr[0].body.angle.why === ANGLES[0].why && wr[0].body.angle.kind === 'opinion' && wr[0].body.format === 'talking' && wr[0].body.source.text.startsWith('Transcript:'),
     '/api/write gets that angle and the source');
   ok(c._rv2.stage === 'script' && (panel().match(/class="rv2-slot"/g) || []).length === 2, 'the script renders with both [your story: …] slots as tappable chips');
   ok(panel().includes('Everyone says post every day &lt;img src=x onerror=alert(1)&gt;.<br>I did that for a year.<br>') && !/\[your story:/.test(panel()), 'M2 the script between slots is escaped; line breaks kept; no raw slot marker');
@@ -290,7 +294,7 @@ const belAdds = () => callsTo('/api/brand-memory', 'add').filter(x => x.body.kin
   ok((await c.rv2Save()) === false && c.state.length === 0, '#1 not while that brand\'s ideas are still loading');
   vm.runInContext('window._ideasSwitching = false', c);
   c.rv2BackToAngles(); await c.rv2Pick(2); await tick();
-  ok(c._rv2.stage === 'script' && callsTo('/api/write').length === 2, '#1 back on the brand, "Pick another opinion" and a new pick still work');
+  ok(c._rv2.stage === 'script' && callsTo('/api/write').length === 2, '#1 back on the brand, "Pick another" and a new pick still work');
   ok((await c.rv2Save()) && c.state.length === 1, '#1 and the script saves (A→B→A no longer locks it)');
   // ── #2 statements / carousels are built from the FINAL script and refuse an open slot ──
   const ST_SCRIPT = 'Cheap is not worse.\n\n[your story: the day a customer switched]\n\nPrice is not quality.';
@@ -390,7 +394,7 @@ const belAdds = () => callsTo('/api/brand-memory', 'add').filter(x => x.body.kin
     await toScript(); let rel; c.__saves = 0; c.saveGeneratedIdeas = () => { c.__saves++; return new Promise(r => rel = r); };
     const sp = c.rv2Save(); await tick();
     c.rv2BackToAngles(); c.rv2ToggleEdit(); c.rv2EditInput('WIPED');
-    ok(c._rv2.stage === 'script' && !c._rv2.editing && /post every day/.test(c._rv2.script), 'R2 "Pick another opinion" and Edit do nothing while it saves');
+    ok(c._rv2.stage === 'script' && !c._rv2.editing && /post every day/.test(c._rv2.script), 'R2 "Pick another" and Edit do nothing while it saves');
     await c.rv2FillSlot(0, 'Late story during the save.', false, ASK0); await tick();
     ok(/as soon as the save finishes/.test(panel()) && c.rv2Slots(c._rv2.script).length === 2, 'R2 a story told during the save waits');
     rel({ ok: true }); await tick(); rel({ ok: true }); const saved = await sp; await tick();
@@ -499,7 +503,7 @@ const belAdds = () => callsTo('/api/brand-memory', 'add').filter(x => x.body.kin
   ok(c._rv2.stage === 'angles' && /came back empty/.test(panel()), 'an empty script is refused, the opinions stay');
   reset(); route = (u) => u === '/api/angles' ? { status: 200, body: { angles: [{ belief: '  ' }, {}] } } : { status: 200, body: {} };
   await c.remixContent(); await tick();
-  ok(c._rv2.stage === 'error' && /without any opinions/.test(panel()), 'an answer with no usable belief is an error, not an empty list');
+  ok(c._rv2.stage === 'error' && /came back with nothing to pick from/.test(panel()), 'an answer with no usable belief is an error, not an empty list');
   reset(); els.remixDescription.value = ''; await c.remixContent(); await tick();
   ok(callsTo('/api/angles').length === 0 && toasts.some(t => /needs the words/.test(t)), 'no source text → no call, and says why');
   // belief memory full on save

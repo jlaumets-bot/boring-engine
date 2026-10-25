@@ -227,7 +227,54 @@ function contextFromBrandRow(b) {
 const MEMORY_KEYS = new Set(['beliefs', 'stories', 'speechSamples', 'memoryUnavailable']);
 // types — typeMix (always set: the default when none is saved) and freshNews (derived from the
 // nightly pull) are not fields the client counts either.
-const DERIVED_KEYS = new Set(['typeMix', 'freshNews']);
+const DERIVED_KEYS = new Set(['typeMix', 'freshNews', 'facts']);   // v706: facts are fetched, not a brand field
+
+// v706 — THE FACT PACK (api/fact-pack.js writes brands.fact_pack). The contract writers rely on:
+// bc.facts = [{id, text, url, title}], at most FACTS_MAX, none older than FACTS_FRESH_MS, newest first,
+// with the facts that share a word with today's theme ahead of the rest. Anything malformed is dropped
+// here (the column is client-writable for owners and members, like every other brand field).
+const FACTS_MAX = 12;
+const FACTS_FRESH_MS = 30 * 24 * 3600 * 1000;
+const _themeWords = (s) => String(s || '').toLowerCase().split(/[^a-z0-9\u00c0-\u024f]+/).filter(w => w.length >= 4);
+function factsFromPack(pack, now, theme) {
+  const t = Number(now) || Date.now();
+  const p = pack && typeof pack === 'object' && !Array.isArray(pack) ? pack : null;
+  if (!p || !Array.isArray(p.facts)) return [];
+  const tw = new Set(_themeWords(theme));
+  const out = [], seen = new Set();
+  for (const f of p.facts) {
+    if (!f || typeof f !== 'object') continue;
+    const id = String(f.id == null ? '' : f.id).trim();
+    const text = String(f.text == null ? '' : f.text).replace(/\s+/g, ' ').trim().slice(0, 400);
+    const url = String(f.url == null ? '' : f.url).trim();
+    const at = Number(f.fetchedAt) || Number(p.updatedAt) || 0;
+    if (!/^F\d{1,2}$/.test(id) || seen.has(id) || text.length < 12) continue;
+    if (!/^https:\/\/[^\s<>"']+$/i.test(url) || url.length > 500) continue;
+    if (!(at > 0) || t - at > FACTS_FRESH_MS || at - t > 24 * 3600 * 1000) continue;
+    seen.add(id);
+    const hit = tw.size ? _themeWords(text + ' ' + (f.topic || '')).some(w => tw.has(w)) : false;
+    out.push({ f: { id, text, url, title: String(f.title == null ? '' : f.title).replace(/\s+/g, ' ').trim().slice(0, 140) }, at, hit: hit ? 1 : 0 });
+  }
+  out.sort((a, b) => (b.hit - a.hit) || (b.at - a.at));
+  return out.slice(0, FACTS_MAX).map(x => x.f);
+}
+// Today's theme = today's community in the brand's day rotation (UTC weekday); '' for the placeholders.
+function todayTheme(dayRotation, now) {
+  const d = new Date(Number(now) || Date.now()).getUTCDay();          // 0 = Sunday
+  const name = DAYS[(d + 6) % 7];
+  const v = dayRotation && typeof dayRotation === 'object' ? String(dayRotation[name] || '') : '';
+  return /^(general|all)$/i.test(v.trim()) ? '' : v;
+}
+// A SEPARATE, tolerant read. Until sql/fact-pack.sql runs the column does not exist and PostgREST answers
+// 400 — that must cost the writer nothing (no pack), never the whole brand context, which is why
+// fact_pack is NOT in BRAND_ROW_COLUMNS. Never rejects.
+async function loadFactPack(brandId) {
+  try {
+    const r = await store.rest('GET', '/brands?id=eq.' + encodeURIComponent(brandId) + '&select=fact_pack');
+    if (!r || r.status < 200 || r.status >= 300 || !Array.isArray(r.data) || !r.data[0]) return null;
+    return r.data[0].fact_pack || null;
+  } catch (e) { return null; }
+}
 
 function populatedFieldCount(bc) {
   let n = 0;
@@ -463,13 +510,13 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
         '&order=created_at.desc&limit=8')
     : null;
 
-  let brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory;
+  let brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory, factPack;
   // v693 — user_id rides along so memory can put the OWNER's speech samples first; it is not a
   // brand field and contextFromBrandRow never reads it.
   const brandP = store.rest('GET', '/brands?id=eq.' + encodeURIComponent(brandId) + '&select=' + BRAND_ROW_COLUMNS + ',user_id');
   brandP.catch(() => {});   // answered by the Promise.all below
   try {
-    [brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory] = await Promise.all([
+    [brandRes, sameRows, otherRows, editedRows, upRows, downRows, avoidRows, memory, factPack] = await Promise.all([
       brandP,
       getRows(sameQ),
       otherQ ? getRows(otherQ) : Promise.resolve([]),
@@ -478,6 +525,7 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
       getRows(ideasPath(brandId, 'status=eq.dismissed&select=title&order=created_at.desc&limit=6')),
       getRows(ideasPath(brandId, 'select=title&order=created_at.desc&limit=40')),
       loadMemory(brandId, brandP.then(b => (b && Array.isArray(b.data) && b.data[0] && b.data[0].user_id) || null)),   // v693 — never rejects
+      loadFactPack(brandId),   // v706 — never rejects; null without the column
     ]);
   } catch (e) {
     return { ok: false, reason: 'db_error' };
@@ -535,6 +583,7 @@ async function loadBrandContext(brandId, opts = {}, fmt = '') {
   bc.stories = mem.stories;
   bc.speechSamples = mem.speechSamples;
   bc.memoryUnavailable = mem.memoryUnavailable;
+  bc.facts = factsFromPack(factPack, Date.now(), todayTheme(bc.dayRotation, Date.now()));   // v706 — the fact pack contract
 
   return { ok: true, bc, avoidTitles, fields: populatedFieldCount(bc) };
 }
@@ -550,6 +599,11 @@ module.exports = {
   dayCommunitiesFrom,
   memoryFromRows,
   loadMemory,
+  loadFactPack,
+  factsFromPack,
+  todayTheme,
+  FACTS_MAX,
+  FACTS_FRESH_MS,
   MEMORY_CAPS,
   MEMORY_READ_MS,
   MEMORY_QUERY,

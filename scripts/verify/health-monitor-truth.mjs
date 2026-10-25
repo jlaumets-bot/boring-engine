@@ -138,7 +138,8 @@ const baseAnswer = (rpc) => (p) => {
   if (p.indexOf('/job_heartbeats') !== -1) {
     const nowish = new Date().toISOString();
     return ok([{ job: 'send-daily', last_success_at: nowish, last_status: 'ok' },
-               { job: 'pull-trends-cron', last_success_at: nowish, last_status: 'ok' }]);
+               { job: 'pull-trends-cron', last_success_at: nowish, last_status: 'ok' },
+               { job: 'fact-pack-cron', last_success_at: nowish, last_status: 'ok' }]);   // v706
   }
   return ok([]);
 };
@@ -306,6 +307,45 @@ for (const [label, a] of [
     if (realUsage) require_.cache[usageKey] = realUsage; else delete require_.cache[usageKey];
     if (hadKey === undefined) delete process.env.XAI_API_KEY; else process.env.XAI_API_KEY = hadKey;
   }
+}
+
+// ── ARM 8 (v706): a NEW cron (fact-pack-cron) gets a RELATIVE first-run grace, keyed on the moment health
+// first saw it without a heartbeat (a 'first-missing:' marker row): green inside 36 h of that, red after,
+// red at once when the marker cannot be written, and the grace never covers a heartbeat that exists.
+{
+  let posts = [];
+  const hbWith = (rows, postStatus) => (p, m) => {
+    if (isRpc(p)) return ok(HEALTHY_AUDIT);
+    if (p.indexOf('/brands') !== -1) return ok([{ id: 'b1' }]);
+    if (p.indexOf('/job_heartbeats') !== -1) {
+      if (m === 'POST') { posts.push(p); return { status: postStatus || 201, body: '' }; }
+      const nowish = new Date(Date.now()).toISOString();
+      return ok([{ job: 'send-daily', last_success_at: nowish, last_status: 'ok' },
+                 { job: 'pull-trends-cron', last_success_at: nowish, last_status: 'ok' }].concat(rows || []));
+    }
+    return ok([]);
+  };
+  const realNow = Date.now;
+  const at = async (iso, rows, postStatus) => { posts = []; Date.now = () => Date.parse(iso); try { return (await run({ answer: hbWith(rows, postStatus) })).res._body; } finally { Date.now = realNow; } };
+  const fresh = (b) => get(b, 'cron_fact-pack-cron_fresh');
+  const mark = (iso) => ({ job: 'first-missing:fact-pack-cron', last_success_at: iso, last_status: 'marker' });
+  let b = await at('2026-11-02T12:00:00Z', []);
+  check(fresh(b) && fresh(b).ok === true && b.meta && b.meta.crons && b.meta.crons['fact-pack-cron'] === 'awaiting-first-run' && posts.length === 1,
+    'ARM 8: first sighting without a heartbeat records a marker and is "awaiting-first-run", not red (whatever the date)');
+  b = await at('2026-11-02T12:00:00Z', [], 500);
+  check(fresh(b) && fresh(b).ok === false && b.meta.crons['fact-pack-cron'] === 'never-run', 'ARM 8: if the marker cannot be written there is no grace — red');
+  b = await at('2026-11-03T20:00:00Z', [mark('2026-11-02T12:00:00Z')]);
+  check(fresh(b) && fresh(b).ok === true && posts.length === 0, 'ARM 8: 32 h after the first sighting it is still in grace, and the marker is not rewritten');
+  b = await at('2026-11-04T01:00:00Z', [mark('2026-11-02T12:00:00Z')]);
+  check(fresh(b) && fresh(b).ok === false && b.meta.crons['fact-pack-cron'] === 'never-run', 'ARM 8: 37 h after the first sighting a missing heartbeat is "never-run" and red');
+  b = await at('2026-10-29T12:00:00Z', [{ job: 'fact-pack-cron', last_success_at: '2026-10-28T03:20:00Z', last_status: 'ok' }]);
+  check(fresh(b) && fresh(b).ok === false, 'ARM 8: a fact-pack-cron heartbeat older than 26h is red');
+  b = await at('2026-10-29T12:00:00Z', [{ job: 'fact-pack-cron', last_success_at: '2026-10-29T03:20:00Z', last_status: 'ok' }]);
+  check(fresh(b) && fresh(b).ok === true, 'ARM 8: a fresh fact-pack-cron heartbeat is green');
+  b = await at('2026-10-26T12:00:00Z', [{ job: 'fact-pack-cron', last_success_at: '2026-10-26T03:20:00Z', last_status: 'error' }, mark('2026-10-26T11:00:00Z')]);
+  check(fresh(b) && fresh(b).ok === false, 'ARM 8: a fresh heartbeat that reported error is red (the grace covers only a missing row)');
+  b = await at('2026-11-02T12:00:00Z', []);
+  check(get(b, 'cron_send-daily_fresh') && get(b, 'cron_send-daily_fresh').ok === true, 'ARM 8: the established jobs are unaffected');
 }
 
 clearTimeout(_wall);

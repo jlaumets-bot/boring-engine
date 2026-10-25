@@ -11,9 +11,11 @@ const { fullBrandBlock, approvedWinnersBlock, extractJson, outputViolations, v2T
 // pipeline uses, whose one hard rule is NO_INVENTION_RULE. The brand is rendered through
 // fullBrandBlock(bc,{v2:true}): at most 3 tones (else none + warnings:['tones_over_limit']), USPs as
 // background facts, the brand's held beliefs; the story bank follows it.
-const { styleGuide, TYPE_RULES, guardIdeaFacts, userFacts, guardIdeaNoSell, strongSales, noSellNote } = require('./_write');
-// v693 — a belief is one plain sentence (C-LIB: belief <= 140 chars, same cap as runAngles).
-const MAX_BELIEF = 140;
+const { styleGuide, TYPE_RULES, TYPE_SHAPES, OPINION_SHAPE, guardIdeaFacts, userFacts, guardIdeaNoSell, strongSales, noSellNote,
+  factsBlockFor, factsUse, factList, citedFactIds, factIdsUsedIn, factSourcesFor, captionWithFactSources } = require('./_write');
+// v693 — the point ("belief" field) is one plain sentence, the SAME cap as runAngles
+// (v706: 300, was 140 — api/_write.js MAX_BELIEF).
+const MAX_BELIEF = require('./_write')._internals.MAX_BELIEF;
 // v693 — the optional structured PAA seed (the old app appends a "SEED QUESTION" block to
 // learningContext instead; both are recognised).
 const SEED_QUESTION_CAP = 400;
@@ -308,7 +310,7 @@ module.exports = async function handler(req, res) {
         _counts.map(x => '- ' + x[0] + ': ' + TYPE_RULES[x[0]]).join('\n') +
         (_slots.indexOf('qna') >= 0 ? '\nEvery qna idea uses the "qna" format.' : '') +
         (_slots.indexOf('story') >= 0 ? '\nA story idea retells one of the REAL STORIES below when one fits; otherwise the story is a [your story: <what to tell>] slot.' : '') +
-        (_anyAbout && !_allAbout ? '\nTHE "about" IDEAS ARE THE ONE EXCEPTION to the rules below that keep ideas off the product (the belief rule, "stay in the audience\'s world", "background facts"): an about idea tells why the product exists, how it is made, the problem it was built for, or a myth it busts, as a story or a lesson, using only real product facts; still spoken, still a belief, never an offer or a feature tour.' : '') +
+        (_anyAbout && !_allAbout ? '\nTHE "about" IDEAS ARE THE ONE EXCEPTION to the rules below that keep ideas off the product (the point rule, "stay in the audience\'s world", "background facts"): an about idea tells why the product exists, how it is made, the problem it was built for, or a myth it busts, as a story or a lesson, using only real product facts; still spoken, still ONE point, never an offer or a feature tour.' : '') +
         (_slots.indexOf('news') >= 0 ? '\nFRESH HEADLINES (the ONLY news you may use; a news idea puts its headline\'s number in "newsIndex"):\n' + newsLines(_fresh) : '');
     }
     const beliefSubject = _allAbout
@@ -317,11 +319,17 @@ module.exports = async function handler(req, res) {
         : "It is about the viewer's problem or situation, never about the brand's product or features.");
     const stayRule = _allAbout
       ? "ABOUT US, IN THE VIEWER'S WORDS: every idea is a story or a lesson about the product: why it exists, how it is made, the problem it was built for, or a myth it busts. It teaches or entertains; it never sells. Use only the real product facts in the brand profile (a missing one is a [your story: <what to tell>] slot). Not a walkthrough of how it works: a chain of \"you do this, then it does that\" is a feature tour, not content."
-      : (_anyAbout ? "EVERY IDEA EXCEPT THE \"about\" ONES — " : '') + "STAY IN THE AUDIENCE'S WORLD, NOT THE PRODUCT'S: the belief and the script are about something the listener is living through, not a walkthrough of how the product works. A chain of \"you do this, then it does that, then you get those\" is a feature tour, not content. The brand's facts are background: at most one per script, and only where it answers the viewer's problem. If a competitor could read the script with their name swapped in, it was about the product.";
+      : (_anyAbout ? "EVERY IDEA EXCEPT THE \"about\" ONES — " : '') + "STAY IN THE AUDIENCE'S WORLD, NOT THE PRODUCT'S: the point and the script are about something the listener is living through, not a walkthrough of how the product works. A chain of \"you do this, then it does that, then you get those\" is a feature tour, not content. The brand's facts are background: at most one per script, and only where it answers the viewer's problem. If a competitor could read the script with their name swapped in, it was about the product.";
     const typeSchema = _slots
       ? '  "postType": "' + POST_TYPES.join('|') + '  (the type of this idea\'s slot)",\n' + (_slots.indexOf('news') >= 0 ? '  "newsIndex": 0,  (news ideas only: the number of the headline it reacts to; 0 for every other idea)\n' : '')
       : '';
     const brandProfile = fullBrandBlock(bc, _allAbout ? { examples: false, v2: true, about: true } : { examples: false, v2: true });
+    // v706 — CHECKED FACTS (api/_write.js; agent F's fact pack). On a lean request only the SERVER-loaded
+    // brand's facts count (never a body-sent list): their ids are what an idea may cite, their urls what
+    // its caption may link to.
+    // v706 r2 — never the request body's list: no brandId and not the internal cron → no facts at all.
+    const _factsBc = { facts: _hydBc ? _hydBc.facts : (_isInternal ? bc.facts : []) };
+    const _factsBlock = factsBlockFor(_factsBc);
     const stories = storiesBlock(bc, 3000);
     const winners = approvedWinnersBlock(bc);
 
@@ -423,20 +431,22 @@ module.exports = async function handler(req, res) {
       return brandTones.find(t => t.toLowerCase() === s) || primaryTone;
     };
 
-    // v693 — BELIEF FIRST. Every idea starts from an opinion the audience does not hold yet, stated
-    // BEFORE the idea is written and returned as `belief` (the app shows it and can send it to
-    // /api/write for a full spoken rewrite). One call, one batch: the belief is the first key of each
-    // idea so the model commits to it before it writes the hook.
-    const beliefBlock = `BELIEF FIRST (do this for every idea, before writing a word of it):
-1. State the BELIEF the idea argues: one plain sentence, at most ${MAX_BELIEF} characters, that most of this brand's audience does NOT share yet. ${beliefSubject} Contrarian but defensible: the person could argue it on camera and be right.
-2. Then write the idea FROM that belief: the hook opens the argument, the script argues it (why people believe the opposite, what goes wrong because of it, then the reframe), and every other field serves it.
-Put it in the "belief" field. Every idea in the batch argues a DIFFERENT belief, not one belief reworded.`;
+    // v693 — the point is stated FIRST and returned as `belief` (the app shows it and can send it to
+    // /api/write for a full spoken rewrite); it is the first key of each idea so the model commits to it.
+    // v706 — THE POINT FIRST, not "a belief the audience does not hold yet": each idea makes ONE point in
+    // its type's shape. The opinion wording appears only when a tip (or an untyped idea) is in the batch.
+    const _opinionOk = !_slots || _slots.indexOf('tip') >= 0;
+    const beliefBlock = `THE POINT FIRST (do this for every idea, before writing a word of it):
+1. State the ONE point the idea makes: one plain sentence, at most ${MAX_BELIEF} characters. ${beliefSubject} Put it in the "belief" field.
+2. Then write the idea FROM that point, in the shape its ${_slots ? 'post type asks for (SHAPE under POST TYPES above)' : 'point needs: usually a practical how-to (' + TYPE_SHAPES.tip + '); a qna idea gives ' + TYPE_SHAPES.qna}. The hook opens the point and every other field serves it.${_opinionOk ? `
+${_slots ? 'A tip idea' : 'An idea'} may instead make a sharp opinion most of this brand's audience does NOT share yet: contrarian but defensible, argued as ${OPINION_SHAPE}.` : ''}
+Every idea in the batch makes a DIFFERENT point, not one point reworded.`;
 
     // For a dropped idea, DEVELOP it faithfully — don't treat it as vague taste feedback.
     // v693 — and find the belief INSIDE it first: the user's idea is the opinion to argue.
     let learningBlock;
     if (isSeed) {
-      learningBlock = `\n═══ DEVELOP THE USER'S DROPPED IDEA — THIS IS THE WHOLE JOB ═══\nThe user dropped ONE raw, half-baked idea below. Turn it into the single ready-to-film brief you return. First find the belief inside it: the opinion the user would argue if they filmed it. That is the "belief" of the brief. Build the brief AROUND it and keep its actual angle: sharpen it, give it a strong opening line, in the brand's voice. Do NOT swap it for a safer or more generic idea, and do NOT water it down. Pick the ONE format that best fits THIS idea — do not default to Q&A.\n\nTHE IDEA:\n"${seedIdea_}"${seedNotes_ ? `\n\nUser's notes about a reference video:\n"${seedNotes_}"` : ''}${seedTranscript_ ? `\n\nTranscript of a reference video (inspiration only — adapt to the brand, never copy, and never borrow its numbers, names or results as the brand's own):\n"${seedTranscript_.slice(0, 4000)}"` : ''}\n`;
+      learningBlock = `\n═══ DEVELOP THE USER'S DROPPED IDEA — THIS IS THE WHOLE JOB ═══\nThe user dropped ONE raw, half-baked idea below. Turn it into the single ready-to-film brief you return. First find the point inside it: what the user would say if they filmed it (a how-to, an answer, a story or an opinion). That is the "belief" of the brief. Build the brief AROUND it and keep its actual angle: sharpen it, give it a strong opening line, in the brand's voice. Do NOT swap it for a safer or more generic idea, and do NOT water it down. Pick the ONE format that best fits THIS idea — do not default to Q&A.\n\nTHE IDEA:\n"${seedIdea_}"${seedNotes_ ? `\n\nUser's notes about a reference video:\n"${seedNotes_}"` : ''}${seedTranscript_ ? `\n\nTranscript of a reference video (inspiration only — adapt to the brand, never copy, and never borrow its numbers, names or results as the brand's own):\n"${seedTranscript_.slice(0, 4000)}"` : ''}\n`;
     } else {
       learningBlock = learningContext ? `\n${learningContext}\n\nUse this feedback to shape your ideas. Lean into angles, formats, and tones the user approved. Avoid patterns they rejected.\n` : '';
     }
@@ -453,8 +463,8 @@ Put it in the "belief" field. Every idea in the batch argues a DIFFERENT belief,
       : '';
 
     const opener = isSeed
-      ? `You are a short-form content strategist. Develop the user's dropped idea (below) into ONE ready-to-film brief in the brand's voice. The user's idea is the star: find the belief inside it and stay faithful to its angle, never replace it with something safer.`
-      : `You are a short-form content strategist. Generate ${count} content ideas for this brand. Each one starts from a belief its audience does not share yet, and is written in the brand's own voice (a dry brand stays dry).`;
+      ? `You are a short-form content strategist. Develop the user's dropped idea (below) into ONE ready-to-film brief in the brand's voice. The user's idea is the star: find the point inside it and stay faithful to its angle, never replace it with something safer.`
+      : `You are a short-form content strategist. Generate ${count} content ideas for this brand. Each one makes ONE clear point in the shape its type asks for, and is written in the brand's own voice (a dry brand stays dry).`;
 
     // v640 — the brand block sits at the END, the last thing read before the task (recency).
     // v693 — the long craft rulebook that used to fill the middle is gone: the short style guide
@@ -468,10 +478,10 @@ ${qnaInstruction}${typeBlock}
 ${beliefBlock}
 
 CONTENT FORMATS:
-- video: 30-60 second vertical video (Reel/TikTok). Structure: the first 2 seconds open the belief, the middle argues it, the last 5 seconds land the reframe. Script is written to be spoken — full sentences of varied length joined by natural connectors, usually 90-180 words (90 is a FLOOR, not a target to undercut; take the words the idea needs), no headings. Shot list: 4-8 concrete shots a solo creator can film on a phone, no crew.
-- carousel: 5-8 slide Instagram carousel. Slide 1 = the belief as a claim or a question that forces the swipe (never a title). Slides 2-7 = ONE idea per slide, building a single argument (a slide reads best short, but say what the idea needs). Last slide = a takeaway worth saving or sharing. boldText = all slide texts, numbered ("1: ... 2: ..."). script = design instructions only: layout, contrast, type treatment. Every slide must earn the next swipe.
-- statement: A bold standalone claim for a text graphic, written in THIS brand's voice. NEVER a single line: minimum 2 sentences, because one line says nothing on its own. It must land for a stranger with ZERO context — the belief first, then whatever makes it hit: the reframe, the cost, the uncomfortable contrast, or a real number from the brand profile (never an invented one). Natural sentences a person would actually say, not a run of clipped commands. A dry technical brand may simply state the fact and then the consequence. Usually 2-5 sentences, roughly 15-60 words: a guide, not a limit. No explanations, no benefits list, no lecture, no CTA. BANNED: building the statement around an invented nickname or cryptic metaphor ("hangover candy", "dessert in a costume") that the reader must decode. If a metaphor appears, the very next line must say the same thing literally. boldText = the full statement text. script = 2-3 sentences of practical shooting tips for the "film it instead" option (delivery, tone, framing — e.g. "Deadpan, straight into camera. One take, no music. Hold the last line two beats."). NO design instructions — no background/typography/layout talk, the graphic is auto-generated.
-- micro: 10-15 second single-point video. ONE belief carried by one thing about how something in the WORLD works (something the brand profile or common knowledge actually supports, never an invented statistic) — never a walkthrough of how the brand's own product works, which is a feature tour, not content. Script usually 30-70 words, spoken style — full sentences someone can say out loud, never clipped fragments. The point stated plainly, then why it matters. No intro, no "did you know", no outro. 1-3 shots max.
+- video: 30-60 second vertical video (Reel/TikTok). Structure: the first 2 seconds open the point, the middle delivers it in its type's shape, the last 5 seconds land the result or the reframe. Script is written to be spoken — full sentences of varied length joined by natural connectors, usually 90-180 words (90 is a FLOOR, not a target to undercut; take the words the idea needs), no headings. Shot list: 4-8 concrete shots a solo creator can film on a phone, no crew.
+- carousel: 5-8 slide Instagram carousel. Slide 1 = the point as a claim or a question that forces the swipe (never a title). Slides 2-7 = ONE idea per slide (a step, a reason, a beat), building to that one point (a slide reads best short, but say what the idea needs). Last slide = a takeaway worth saving or sharing. boldText = all slide texts, numbered ("1: ... 2: ..."). script = design instructions only: layout, contrast, type treatment. Every slide must earn the next swipe.
+- statement: A bold standalone claim for a text graphic, written in THIS brand's voice. NEVER a single line: minimum 2 sentences, because one line says nothing on its own. It must land for a stranger with ZERO context — the point first, then whatever makes it hit: the reframe, the cost, the uncomfortable contrast, or a real number from the brand profile (never an invented one). Natural sentences a person would actually say, not a run of clipped commands. A dry technical brand may simply state the fact and then the consequence. Usually 2-5 sentences, roughly 15-60 words: a guide, not a limit. No explanations, no benefits list, no lecture, no CTA. BANNED: building the statement around an invented nickname or cryptic metaphor ("hangover candy", "dessert in a costume") that the reader must decode. If a metaphor appears, the very next line must say the same thing literally. boldText = the full statement text. script = 2-3 sentences of practical shooting tips for the "film it instead" option (delivery, tone, framing — e.g. "Deadpan, straight into camera. One take, no music. Hold the last line two beats."). NO design instructions — no background/typography/layout talk, the graphic is auto-generated.
+- micro: 10-15 second single-point video. ONE point carried by one thing about how something in the WORLD works (something the brand profile or common knowledge actually supports, never an invented statistic) — never a walkthrough of how the brand's own product works, which is a feature tour, not content. Script usually 30-70 words, spoken style — full sentences someone can say out loud, never clipped fragments. The point stated plainly, then why it matters. No intro, no "did you know", no outro. 1-3 shots max.
 
 LENGTH (v693 r3 — guidance, not caps): match the length to the format. statement/static are read at a glance; micro/qna are short spoken answers; video gets the full script. Never pad a short format into a lecture, and never cut an idea short to hit a number.
 - static: Single image post (shown to users as "Image"). The image carries the idea on its own — describe ONE concrete, photographable scene or product shot (no collages, no vague lifestyle vibes). Caption: 1-3 sentences in brand voice adding context the image cannot — this is the one format where the caption IS the writing. End with a question or quiet prompt only when natural, never a hard CTA.
@@ -480,7 +490,7 @@ LENGTH (v693 r3 — guidance, not caps): match the length to the format. stateme
   1. Every question MUST come from the BRAND CONTEXT — the customer pain points, communities, target audience fears and goals. Never invent generic, off-brand questions unrelated to what this brand actually does.
   2. Questions should sound like REAL DMs or comments from followers — casual, specific, blunt. Use the audience's actual language from the brand profile.
   3. Each Q&A MUST use a DIFFERENT question angle: myth-busting, versus/comparison, skeptic/objection, timing/usage, beginner, deep-cut, contrarian, "is X bad". Never repeat one.
-  4. The answer argues a belief. Use the brand profile's REAL facts only where they answer the question — no vague "it depends", and never an invented fact: where proof is missing, write a [your story: <what to tell>] slot.
+  4. The answer gives the direct answer first, then why. Use the brand profile's REAL facts only where they answer the question — no vague "it depends", and never an invented fact: where proof is missing, write a [your story: <what to tell>] slot.
   5. TITLE = the raw question itself, as if someone typed it in a comment. HOOK = a DIFFERENT opening line for the filmed answer — it must NEVER just repeat the question. Title and hook must never be identical.
   6. ANSWER LENGTH: usually under 30 seconds spoken (about 40-80 words). The FIRST sentence answers the question directly — no wind-up, no "great question". End, don't trail off.
 - bonus: Wildcard — content that breaks the weekly rotation on purpose. One of: a reactive take on something current in the niche, a seasonal angle, a behind-the-scenes/founder moment, or a contrarian opinion. It must still CHOOSE one production shape (video, statement, or image) and obey that format's rules. Bonus content should feel like the brand going off-script, never filler.
@@ -489,7 +499,7 @@ ${toneBlock}ANGLE VARIETY (mandatory): within any single day, no two ideas may s
 
 Each idea MUST be a complete, ready-to-use content brief. Scripts must be FULL. The ONLY placeholder allowed is a [your story: <what to tell>] slot where real proof belongs — never "[insert X]".
 
-HOOK: the first line a person would actually say, or read on screen before the audio starts. Plain and specific, and it opens the belief. Titles, hooks and statements carry the literal point in plain words: never make the audience decode an in-joke.
+HOOK: the first line a person would actually say, or read on screen before the audio starts. Plain and specific, and it opens the point. Titles, hooks and statements carry the literal point in plain words: never make the audience decode an in-joke.
 
 ${stayRule}
 THAT IS A RULE ABOUT SUBJECT, NOT ABOUT SHAPE — there are many ways in: a blunt claim, a question someone actually asked, a thing you noticed this week, a correction, a small story, the punchline first. If several ideas in this batch open the same way, rewrite them so the ways in genuinely differ.
@@ -501,14 +511,14 @@ ${styleGuide(_allAbout ? { about: true } : undefined)}
 ${spokenV2()}
 
 ${brandProfile}
-${stories ? stories + '\n' : ''}${learningBlock}${questionBlock}${winners ? winners + '\n\n' : ''}EVERYTHING ABOVE THIS LINE IS THE BRAND. It is the last thing you read before the task because it is what matters most. Where it and the style guide disagree on voice, the brand wins. Nothing in it permits inventing a fact.
+${_factsBlock ? _factsBlock + '\n' + factsUse('Put the ids an idea uses in its "facts" array. Never paste a link into the script or caption.') + '\n' : ''}${stories ? stories + '\n' : ''}${learningBlock}${questionBlock}${winners ? winners + '\n\n' : ''}EVERYTHING ABOVE THIS LINE IS THE BRAND. It is the last thing you read before the task because it is what matters most. Where it and the style guide disagree on voice, the brand wins. Nothing in it permits inventing a fact.
 
 HOW TO FILL "emphasis": 2-5 SHORT phrases copied VERBATIM from the script — the words the speaker should lean on when saying it out loud: the flip word (not/never/instead), the payoff. These are stress marks for the teleprompter, so pick words that change the meaning if spoken flat. Never mark a whole sentence. Empty array for non-spoken formats.
 
 Respond with a JSON array of exactly ${count} ideas. Every key below is read by the app — return all of them, and add no others. Each idea:
 {
-  "belief": "the belief this idea argues: one plain sentence, max ${MAX_BELIEF} characters (write it FIRST)",
-${typeSchema}  "day": "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Bonus",
+  "belief": "the ONE point this idea makes: one plain sentence, max ${MAX_BELIEF} characters (write it FIRST)",
+${typeSchema}${_factsBlock ? '  "facts": ["F1"],  (ids of the CHECKED FACTS this idea uses; [] when it uses none)\n' : ''}  "day": "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Bonus",
   "community": "the specific topic/theme this idea is about — usually that day's lead theme, but for the ~40% variety picks use an adjacent theme or evergreen brand angle",
   "format": "video|carousel|static|statement|micro|bonus|qna",
   "tone": "${toneField}",
@@ -523,7 +533,7 @@ ${typeSchema}  "day": "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|
   "boldText": "MANDATORY for statement and carousel, never omit it. For statement: the FULL statement text (this is the content people see). For carousel: all slide texts numbered. For statements, hook must be sentence 1 of boldText, and design notes in script may only reference lines that actually appear in boldText."
 }
 
-SELF-CHECK (silently, then output only the JSON): every idea argues its stated belief, in THIS brand's voice, about the viewer's world; nothing is invented (a [your story: <what to tell>] slot instead); every spoken script reads like a person talking.
+SELF-CHECK (silently, then output only the JSON): every idea makes its stated point in its type's shape, in THIS brand's voice, about the viewer's world; nothing is invented (a [your story: <what to tell>] slot instead); every spoken script reads like a person talking.
 IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanation.`;
 
     // Optional reference screenshot the user dropped in — Grok can see it.
@@ -654,6 +664,7 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     const _allowedBase = [userFacts(_factBc),
       (Array.isArray(_factBc.stories) ? _factBc.stories : []).map(x => (x && typeof x === 'object') ? String(x.text || '') : String(x || '')).join('\n'),
       seedIdea_, seedNotes_, seedQuestion_].join('\n');
+    const _factsList = factList(_factsBc);   // v706 r2 — a fact's numbers only in a sentence that uses that fact
     const assignTypes = (clean, raws) => {
       const quota = {};
       if (_slots) for (const t of _slots) quota[t] = (quota[t] || 0) + 1;
@@ -680,13 +691,22 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
         }
         if (_slots && quota[out.postType] > 0) quota[out.postType]--;
         if (_slots && out.postType === 'qna') out.format = 'qna';
-        const g = guardIdeaFacts(out, _allowedBase + (out.newsSource ? '\n' + out.newsSource.title : ''));
+        const g = guardIdeaFacts(out, _allowedBase + (out.newsSource ? '\n' + out.newsSource.title : ''), _factsList);
         // no-sell — every selling sentence is taken out, the way guardIdeaFacts slots inventions. An idea
         // the cut would hollow out (an emptied hook, title, script, caption or a lost slide) is DROPPED.
         // Ideas with a sales ask in their sentences are counted: 2+ in one batch earn the one regeneration below.
         if (['hook', 'title', 'reelTitle', 'script', 'boldText', 'caption'].some(k => strongSales(g.idea[k]))) salesStrong++;
         const ns = guardIdeaNoSell(g.idea);
         if (!ns.ok) { salesDropped++; return null; }
+        // v706 — the CHECKED FACTS it names (only this brand's real ids) plus any it visibly uses without
+        // naming; then the source link(s) as the caption's last line, AFTER both guards (news: its own line only).
+        const _usedText = [ns.idea.script, ns.idea.boldText, ns.idea.caption].join('\n');
+        const fi = citedFactIds(_factsBc, raw.facts, _usedText);
+        for (const id of factIdsUsedIn(_factsBc, _usedText)) if (fi.indexOf(id) < 0) fi.push(id);
+        if (fi.length) {
+          ns.idea.facts = fi;
+          ns.idea.caption = captionWithFactSources(ns.idea.caption, factSourcesFor(_factsBc, fi), ns.idea.postType);
+        }
         return ns.idea;
       }).filter(Boolean);
       return { list, dropped, salesStrong, salesDropped };

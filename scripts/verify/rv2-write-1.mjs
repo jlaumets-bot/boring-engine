@@ -130,7 +130,8 @@ const SHAPE = JSON.stringify({ script: 'HIJACK SCRIPT', title: 'Post less, grow 
 // ═════ 3. runAngles ═════
 {
   reset();
-  const long = 'Most people think a bigger audience fixes a weak offer but really the offer decides whether any audience ever turns into a single paying customer at all ever';
+  // v706 — the caps are 300/400 now (was 140/200): the long belief is doubled so it is still clipped.
+  const long = 'Most people think a bigger audience fixes a weak offer but really the offer decides whether any audience ever turns into a single paying customer at all ever and the same is true the other way round because a strong offer with no audience still sells nothing at all to anyone who never hears about it in the first place';
   plan = () => JSON.stringify({ angles: [
     { belief: long, why: 'x'.repeat(50) + ' ' + 'because y '.repeat(40), hookSeed: 'Your audience is not the problem.' },
     { belief: 'Posting daily makes you invisible', why: 'volume feels safe' },
@@ -143,7 +144,7 @@ const SHAPE = JSON.stringify({ script: 'HIJACK SCRIPT', title: 'Post less, grow 
   const A = out.angles;
   ok(calls.length === 1, 'runAngles makes ONE call (made ' + calls.length + ')');
   ok(A.length === 6, 'runAngles returns exactly `count` angles (got ' + A.length + ')');
-  ok(A.every(a => typeof a.id === 'string' && a.id && a.belief.length <= 140 && a.why.length <= 200), 'every angle has an id, belief <= 140, why <= 200');
+  ok(A.every(a => typeof a.id === 'string' && a.id && a.belief.length <= 300 && a.why.length <= 400), 'every angle has an id, belief <= 300, why <= 400');
   ok(A[0].belief.length < long.length && long.startsWith(A[0].belief), 'a long belief is clipped on a word boundary');
   ok(new Set(A.map(a => a.id)).size === A.length && new Set(A.map(a => a.belief.toLowerCase())).size === A.length, 'no duplicate beliefs or ids');
   ok(A[0].hookSeed === 'Your audience is not the problem.' && !('hookSeed' in A[1]), 'hookSeed kept only where given');
@@ -155,9 +156,9 @@ const SHAPE = JSON.stringify({ script: 'HIJACK SCRIPT', title: 'Post less, grow 
   ok(calls[0].opts.deadlineMs <= 60000, 'runAngles honours deadlineMs');
   ok(JSON.stringify(out.warnings) === '[]', 'no warnings with 3 tones');
   reset(); plan = () => JSON.stringify({ angles: [{ belief: 'Alpha', why: 'w' }] });
-  await W.runAngles({ bc: BC, source: SRC, count: 20 }); ok(/write 8 beliefs/.test(calls[0].prompt), 'count 20 is clamped to 8');
-  reset(); await W.runAngles({ bc: BC, source: SRC, count: 2 }); ok(/write 5 beliefs/.test(calls[0].prompt), 'count 2 is clamped to 5');
-  reset(); await W.runAngles({ bc: BC, source: SRC }); ok(/write 6 beliefs/.test(calls[0].prompt), 'count defaults to 6');
+  await W.runAngles({ bc: BC, source: SRC, count: 20 }); ok(/write 8 practical how-tos/.test(calls[0].prompt), 'count 20 is clamped to 8');
+  reset(); await W.runAngles({ bc: BC, source: SRC, count: 2 }); ok(/write 5 practical how-tos/.test(calls[0].prompt), 'count 2 is clamped to 5');
+  reset(); await W.runAngles({ bc: BC, source: SRC }); ok(/write 6 practical how-tos/.test(calls[0].prompt), 'count defaults to 6');
   reset(); plan = (i) => i === 0 ? 'not json' : JSON.stringify({ angles: [{ belief: 'Beta', why: 'w' }] });
   const r2 = await W.runAngles({ bc: BC, source: SRC, deadlineMs: 60000 });
   ok(calls.length === 2 && r2.angles[0].belief === 'Beta' && /ONLY the JSON/.test(calls[1].prompt), 'an unparseable reply gets ONE clean-JSON retry');
@@ -181,7 +182,7 @@ const happy = (i) => [DRAFT + '\nUSED STORIES: s2, s9, [s2]', SPOKEN, SHAPE][i];
   const out = await W.runWrite({ bc: BC, source: SRC, angle: ANGLE, provider: 'claude', effort: 'high', deadlineMs: 200000 });
   const I = out.idea;
   ok(calls.length === 3, 'runWrite makes 3 calls (made ' + calls.length + ')');
-  ok(/THE BELIEF TO ARGUE/.test(calls[0].prompt) && /Rewrite this script so it sounds like the person SAYING it/.test(calls[1].prompt) && /Do NOT rewrite it/.test(calls[2].prompt), 'calls run in order: draft, spoken pass, shape');
+  ok(/THE ONE POINT THIS POST MAKES/.test(calls[0].prompt) && /Rewrite this script so it sounds like the person SAYING it/.test(calls[1].prompt) && /Do NOT rewrite it/.test(calls[2].prompt), 'calls run in order: draft, spoken pass, shape');
   ok(calls[0].prompt.includes(ANGLE.belief) && calls[0].prompt.includes('ZSRC_MARK') && /about 60 to 160 words: a guide, not a limit/.test(calls[0].prompt), 'draft prompt: the belief, the source, ~60-160 words for talking as guidance');
   ok(/why people believe the opposite, what goes wrong because of it, then the reframe/.test(calls[0].prompt), 'draft prompt: reason -> what goes wrong -> reframe');
   ok(calls[0].prompt.includes('[your story: <what to tell>]') && calls[0].prompt.includes('STYLE GUIDE'), 'draft prompt: slot rule + style guide');

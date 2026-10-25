@@ -618,7 +618,53 @@ function rulePrecedence() {
 // v693 — THE ONE HARD RULE of the content-v2 rebuild, shared by writingCraft (legacy surfaces) and
 // api/_write.js (the new pipeline) so the two can never word it differently. The slot marker format
 // `[your story: <what to tell>]` is a contract: the app finds slots by it.
-const NO_INVENTION_RULE = 'NEVER INVENT FACTS: no made-up numbers, prices, names, customer cases, results or quotes. Use only facts the BRAND PROFILE or the material you were given actually contains. Where a line needs proof you do not have, write a slot exactly like [your story: <what to tell>] for the creator to fill in. Where there is no room for a slot (a one-line meme, a hook), cut the claim instead.';
+const NO_INVENTION_RULE = 'NEVER INVENT FACTS: no made-up numbers, prices, names, customer cases, results or quotes. Use only facts the BRAND PROFILE or the material you were given actually contains. Where a line needs proof you do not have, write a slot exactly like [your story: <what to tell>] for the creator to fill in. Where there is no room for a slot (a one-line meme, a hook), cut the claim instead. The one exception: a CHECKED FACT from the list you were given (use it as written, no extra numbers).';
+
+// v706 — THE FACT PACK (api/fact-pack.js). bc.facts = [{id:'F1', text, url, title}] — sentences found by a
+// web search and then CHECKED server-side against their source page (reachable, https, the key terms and
+// every number on the page). This is the only outside material a writer may state as fact besides the brand
+// profile; NO_INVENTION_RULE names it as its one exception. Writers cite the ids they used; factSources()
+// turns those ids into the caption's "Source:" line. Ids are short and stable inside one pack (F1..F20).
+const FACTS_HEADING = 'CHECKED FACTS (you may use these; cite by id)';
+const FACT_ID_RE = /^F\d{1,2}$/;
+const FACTS_MAX = 12;
+function cleanFacts(bc) {
+  const list = bc && Array.isArray(bc.facts) ? bc.facts : [];
+  const out = [], seen = new Set();
+  for (const f of list) {
+    if (!f || typeof f !== 'object') continue;
+    const id = String(f.id == null ? '' : f.id).trim();
+    const text = String(f.text == null ? '' : f.text).replace(/\s+/g, ' ').trim().slice(0, 400);
+    const url = String(f.url == null ? '' : f.url).trim();
+    if (!FACT_ID_RE.test(id) || seen.has(id) || text.length < 12 || !/^https:\/\/[^\s<>"']+$/i.test(url) || url.length > 500) continue;
+    seen.add(id);
+    out.push({ id, text, url, title: String(f.title == null ? '' : f.title).replace(/\s+/g, ' ').trim().slice(0, 140) });
+    if (out.length >= FACTS_MAX) break;
+  }
+  return out;
+}
+// The prompt block. '' when there is nothing checked, so no dangling heading ever reaches a prompt.
+function factsBlock(bc) {
+  const facts = cleanFacts(bc);
+  if (!facts.length) return '';
+  return FACTS_HEADING + '\n' +
+    'Each one was checked against its source page. Use one only where it genuinely fits the post, use it as written (no extra numbers, no rounding, no new claims stacked on it), and cite the id of every fact you used. Never present a fact as something the brand did.\n' +
+    facts.map(f => '[' + f.id + '] ' + f.text + (f.title ? ' (source: ' + f.title + ')' : '')).join('\n');
+}
+// ids the writer returned -> the sources to append to the caption: deduped by url, at most 2, unknown ids
+// (anything not in bc.facts — e.g. an id the model invented) ignored.
+function factSources(bc, ids) {
+  const byId = new Map(cleanFacts(bc).map(f => [f.id, f]));
+  const out = [], seenUrl = new Set();
+  for (const raw of (Array.isArray(ids) ? ids : [])) {
+    const f = byId.get(String(raw == null ? '' : raw).trim().toUpperCase());
+    if (!f || seenUrl.has(f.url)) continue;
+    seenUrl.add(f.url);
+    out.push({ url: f.url, title: f.title });
+    if (out.length >= 2) break;
+  }
+  return out;
+}
 
 // v693 — THE SHORT SPOKEN RULE for the single-call writers moved onto content-v2 (generate-ideas,
 // viral-rewrite, sharpen). spokenShape() stays for writingCraft's legacy callers: it exists to
@@ -858,4 +904,4 @@ const VIRAL_ANALYZE_SHAPE = {
   takeaway: 'str',
 };
 
-module.exports = { POST_TYPES, DEFAULT_TYPE_MIX, TYPE_MIX_MAX, NEWS_MAX_AGE_MS, NEWS_MAX, ABOUT_BG_NOTE, validTypeMix, scaleTypeMix, typeSlots, spreadSlots, topUpMix, freshNewsFrom, normFreshNews, newsLines, NO_INVENTION_RULE, v2Tones, spokenV2, storiesBlock, antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };
+module.exports = { FACTS_HEADING, FACT_ID_RE, factsBlock, factSources, POST_TYPES, DEFAULT_TYPE_MIX, TYPE_MIX_MAX, NEWS_MAX_AGE_MS, NEWS_MAX, ABOUT_BG_NOTE, validTypeMix, scaleTypeMix, typeSlots, spreadSlots, topUpMix, freshNewsFrom, normFreshNews, newsLines, NO_INVENTION_RULE, v2Tones, spokenV2, storiesBlock, antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };

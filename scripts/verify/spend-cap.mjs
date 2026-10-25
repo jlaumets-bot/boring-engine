@@ -212,6 +212,12 @@ if (!/gate && _cbGuard\.gate\.used\) > 0|used\) > 0/.test(cbSrc)) {
                                check: (s) => /CRON_SECRET/.test(s) },
     'send-daily.js':         { why: 'Vercel cron — authorised by CRON_SECRET, not by a user plan',
                                check: (s) => /CRON_SECRET/.test(s) },
+    // v706 — the fact pack: one Grok web search per brand per week, PLATFORM cost (no user credits, by the
+    // owner's call in .unlazy/quality/PLAN.md). Cron behind CRON_SECRET; the manual refresh is owner-only
+    // behind _requireUser, once per 6 h per brand (MANUAL_GAP_MS), claimed under an optimistic lock, and
+    // skipped for a non-paying owner over the cost fuse (overCostCap — the same rule as checkLimit).
+    'fact-pack.js':          { why: 'weekly fact search — cron by CRON_SECRET, manual refresh owner-only + 6 h rate limit + cost fuse; platform cost, no credits',
+                               check: (s) => /CRON_SECRET/.test(s) && /require\(['"]\.\/_requireUser['"]\)\s*\(/.test(s) && /MANUAL_GAP_MS/.test(s) && /overCostCap\(/.test(s) && /owner_only/.test(s) },
     'stripe-webhook.js':     { why: 'authenticated by re-fetching the event from Stripe by id with our secret key',
                                check: (s) => /stripeGet\(/.test(s) && /\/v1\/events\//.test(s) && /STRIPE_SECRET_KEY/.test(s) },
     'delete-account.js':     { why: 'account deletion behind a Bearer token — destroys data, spends nothing meterable',

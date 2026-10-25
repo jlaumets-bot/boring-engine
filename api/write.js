@@ -38,6 +38,8 @@ module.exports = async function handler(req, res) {
     if (!angle.belief) return res.status(400).json({ error: 'Pick an angle first.', code: 'bad_input' });
     if (body.format != null && W.FORMATS.indexOf(body.format) < 0) return res.status(400).json({ error: 'Unknown format.', code: 'bad_input' });
     let bc = (brandContext && typeof brandContext === 'object' && !Array.isArray(brandContext)) ? brandContext : {};
+    // v706 r2 — CHECKED FACTS come only from the server-loaded brand (_brandctx), never from the request.
+    if (Object.prototype.hasOwnProperty.call(bc, 'facts')) { bc = Object.assign({}, bc); delete bc.facts; }
     if (!brandId && !Object.keys(bc).length) return res.status(400).json({ error: 'Pick a brand first.', code: 'bad_input' });
 
     let hydratedBrandId = null, _hydNews = [];

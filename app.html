@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v705';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v706';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -8292,7 +8292,7 @@ function _buildIdeaRows(brandId) {
   // No DB column for it: kept on this device by title, like paaSource.
   try {
     const bMap = {};
-    (Array.isArray(state) ? state : []).forEach(idea => { if (idea && idea.belief && idea.title) bMap[idea.title] = String(idea.belief).slice(0, 140); });
+    (Array.isArray(state) ? state : []).forEach(idea => { if (idea && idea.belief && idea.title) bMap[idea.title] = String(idea.belief).slice(0, 300); });   // v706 — points are up to 300 (api/_write.js MAX_BELIEF)
     lsSet('belief_map', JSON.stringify(bMap));
   } catch(e) {}
   // types — a news idea's headline + link. No column: kept on this device by title (the link also
@@ -21506,7 +21506,7 @@ function remixOrigRender(){
     + '<div class="rx-orig-tools"><span id="rxOrigWords">' + rxWordsLabel(o.text) + '</span><button type="button" class="search-tag" onclick="remixOrigCopy()">Copy</button></div>'
     + '<div class="rx-step rx-step-2">Step 2 · Make it yours</div>'
     + '<div class="rx-modes">' + modes + '</div>'
-    + '<div class="rx-orig-hint">My take writes it from your own opinion. The other five rewrite the original in your voice.</div>'
+    + '<div class="rx-orig-hint">My take writes it from a point you pick. The other five rewrite the original in your voice.</div>'
     + '<details class="rx-opts" id="rxOrigOpts"' + (_rxOptsOpen ? ' open' : '') + ' ontoggle="remixOptsToggle(this)"><summary>Options · Face-on / Faceless, screenshot</summary><div class="rx-opts-body">'
     + '<div id="rxOrigDelivery"></div>'
     + '<button type="button" class="search-tag" onclick="remixOrigShot()">' + (remixRefImage ? 'Change the screenshot' : 'Add a screenshot (optional)') + '</button>'
@@ -22307,13 +22307,15 @@ async function rv2Start(btn, srcOverride, opts) {
       if (typeof tvNoNews === 'function') tvNoNews(s);
       return;
     }
-    if (!r.ok) { s.stage = 'error'; s.errCode = r.data.code || r.data.error || ''; s.err = rv2ErrText(r, "Couldn't find opinions in that — try again."); return; }
+    if (!r.ok) { s.stage = 'error'; s.errCode = r.data.code || r.data.error || ''; s.err = rv2ErrText(r, "Couldn't find points to make in that — try again."); return; }
     const angles = (Array.isArray(r.data.angles) ? r.data.angles : [])
       .filter(a => a && String(a.belief == null ? '' : a.belief).trim()).slice(0, 8)
-      .map((a, i) => ({ id: String(a.id == null ? i : a.id).slice(0, 60), belief: String(a.belief).trim().slice(0, 200),
-        why: String(a.why == null ? '' : a.why).trim().slice(0, 240),
+      .map((a, i) => ({ id: String(a.id == null ? i : a.id).slice(0, 60), belief: String(a.belief).trim().slice(0, 300),
+        why: String(a.why == null ? '' : a.why).trim().slice(0, 400),
+        // v706 — 'opinion' | 'point' (api/_write.js): picks the "why" label and goes back to /api/write
+        ...((a.kind === 'opinion' || a.kind === 'point') ? { kind: a.kind } : {}),
         ...((typeof typesNewsSource === 'function' && typesNewsSource(a.newsSource)) ? { newsSource: typesNewsSource(a.newsSource) } : {}) }));
-    if (!angles.length) { s.stage = 'error'; s.err = 'That came back without any opinions to pick from — try again, or paste more of the original.'; return; }
+    if (!angles.length) { s.stage = 'error'; s.err = 'That came back with nothing to pick from — try again, or paste more of the original.'; return; }
     s.angles = angles; s.stage = 'angles';
   } catch (e) {
     if (rv2Live(s)) { s.stage = 'error'; s.err = _leanErrMsg(e, "Couldn't reach the writer — try again."); }
@@ -22336,13 +22338,13 @@ async function rv2Pick(i) {
   if (!rv2SameBrand(s)) { try { showToast('Switch back to the brand this was written for to carry on.'); } catch (e) {} return; }
   s.picked = a; s.stage = 'writing'; s.err = ''; s.errCode = ''; s.busy = true; s.invented = 0; rv2Render();
   try {
-    const r = await rv2Post('/api/write', rv2Body(s, Object.assign({ source: s.source, angle: { belief: a.belief, why: a.why }, format: s.format || 'talking' },
+    const r = await rv2Post('/api/write', rv2Body(s, Object.assign({ source: s.source, angle: Object.assign({ belief: a.belief, why: a.why }, a.kind ? { kind: a.kind } : {}), format: s.format || 'talking' },
       s.postType ? { postType: s.postType } : {}, (a.newsSource ? { newsSource: a.newsSource } : {}))));
     if (!rv2Live(s)) return;
     const idea = r.ok ? r.data.idea : null;
     if (!idea || !String(idea.script == null ? '' : idea.script).trim()) {
       s.stage = 'angles'; s.picked = null; s.errCode = r.data.code || r.data.error || '';
-      s.err = r.ok ? 'The script came back empty — pick the opinion again.' : rv2ErrText(r, "Couldn't write that one — pick it again.");
+      s.err = r.ok ? 'The script came back empty — pick it again.' : rv2ErrText(r, "Couldn't write that one — pick it again.");
       return;
     }
     const inv = r.data.passes && Array.isArray(r.data.passes.inventedRemoved) ? r.data.passes.inventedRemoved.length : 0;
@@ -22487,7 +22489,7 @@ function rv2BuildIdea(s) {
     day: days[new Date().getDay()], format: format, community: 'All', tone: '', status: 'pending',
     dismissReason: null, assignee: '', isGenerated: true, isRemix: isRemix,
     originalCreator: isRemix ? ((s.source && s.source.creator) || '') : '', genFlow: 'v2',
-    belief: String((s.picked && s.picked.belief) || '').slice(0, 140), createdAt: Date.now(), freshAt: Date.now()
+    belief: String((s.picked && s.picked.belief) || '').slice(0, 300), createdAt: Date.now(), freshAt: Date.now()
   }, (s.origin && s.origin.extra) || {});
   if (typeof typesApplyRun === 'function') typesApplyRun(_built, s);   // types: postType + news source
   return { idea: _built };
@@ -22646,20 +22648,20 @@ function rv2CardHtml(s) {
   const errLine = s.err ? '<div class="rv2-err" role="alert">' + escapeHtml(s.err) + '</div>' : '';
   let h = '<div class="rv2-card">';
   if (s.stage === 'loading') {
-    h += '<div class="rv2-step">Step 1 of 3</div><div class="rv2-h">Finding the opinions hiding in it…</div>'
-      + '<div class="rv2-sub">You will pick the one you actually believe. Only that one gets written.</div>';
+    h += '<div class="rv2-step">Step 1 of 3</div><div class="rv2-h">Finding the points worth making…</div>'
+      + '<div class="rv2-sub">You’ll pick the one to post. Only that one gets written.</div>';
   } else if (s.stage === 'error') {
     h += '<div class="rv2-h">That didn’t work</div>' + errLine
       + (s.errCode === 'AI_UNAVAILABLE' ? '' : '<button type="button" class="gen-btn" id="rv2RetryBtn" onclick="rv2Retry()" style="width:100%;margin-top:10px;">Try again</button>')
       + '<div class="rv2-foot">' + classic + '</div>';
   } else if (s.stage === 'angles' || s.stage === 'writing') {
-    h += '<div class="rv2-step">Step 1 of 3</div><div class="rv2-h">Which of these do you actually believe?</div>'
-      + '<div class="rv2-sub">Pick one. The best posts say something most people would argue with.</div>' + errLine
+    h += '<div class="rv2-step">Step 1 of 3</div><div class="rv2-h">Which of these do you want to post?</div>'
+      + '<div class="rv2-sub">Pick the one you’d say out loud.</div>' + errLine
       + '<div class="rv2-angles">' + s.angles.map((a, i) => {
         const on = s.picked && s.picked.id === a.id;
         return '<button type="button" class="rv2-angle' + (on ? ' on' : '') + '" onclick="rv2Pick(' + i + ')"' + (s.busy ? ' disabled' : '') + '>'
           + '<span class="rv2-belief">' + escapeHtml(a.belief) + '</span>'
-          + (a.why ? '<span class="rv2-why">Why most disagree: ' + escapeHtml(a.why) + '</span>' : '')
+          + (a.why ? '<span class="rv2-why">' + (a.kind === 'opinion' ? 'Why most disagree: ' : 'Why it matters: ') + escapeHtml(a.why) + '</span>' : '')
           + (on && s.stage === 'writing' ? '<span class="rv2-why"><strong>Writing it as you’d say it…</strong></span>' : '')
           + '</button>';
       }).join('') + '</div><div class="rv2-foot">' + classic + '</div>';
@@ -22690,7 +22692,7 @@ function rv2CardHtml(s) {
     if (s.note) h += '<div class="rv2-note">' + escapeHtml(s.note) + '</div>';
     h += errLine + '<div class="rv2-actions">'
       + '<button type="button" onclick="rv2ToggleEdit()">' + (s.editing ? 'Done editing' : 'Edit script') + '</button>'
-      + '<button type="button" onclick="rv2BackToAngles()">Pick another opinion</button>'
+      + '<button type="button" onclick="rv2BackToAngles()">Pick another</button>'
       + '<button type="button" class="primary" onclick="rv2Save()"' + (s.saving ? ' disabled' : '') + '>' + (s.saving ? 'Saving…' : 'Save idea') + '</button></div>'
       + '<div class="rv2-foot">' + classic + '</div>';
   }
@@ -22787,7 +22789,7 @@ function tvGenerateV2(opts) {
 function rv2TagFlow(idea) {
   if (!idea || typeof idea !== 'object') return idea;
   const o = Object.assign({}, idea);
-  const b = typeof o.belief === 'string' ? o.belief.replace(/\s+/g, ' ').trim().slice(0, 140) : '';
+  const b = typeof o.belief === 'string' ? o.belief.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
   if (b) { o.belief = b; o.genFlow = 'v2-batch'; }
   else { delete o.belief; delete o.genFlow; }
   return o;
@@ -22831,7 +22833,7 @@ async function rv2RewriteIdea(id, btn) {
   const stopW = btnWork(btn || null, 'redo');
   try {
     const r = await rv2Post('/api/write', rv2Body({ brandId: brandId }, { source: { kind: 'idea', text: text },
-      angle: { belief: belief.slice(0, 140), why: '' }, format: RV2_FORMATS[idea.format] || 'talking',
+      angle: { belief: belief.slice(0, 300), why: '' }, format: RV2_FORMATS[idea.format] || 'talking',
       ...((idea.postType === 'news' && typeof typesNewsSource === 'function' && typesNewsSource(idea.newsSource)) ? { newsSource: typesNewsSource(idea.newsSource) } : {}),
       ...((typeof typesOf === 'function') ? { postType: typesOf(idea) } : {}) }));
     const w = r.ok ? r.data.idea : null;
@@ -24426,6 +24428,106 @@ function toggleDarkMode(on) {
 })();
 
 // Header "🧠 Brain" button — opens Settings straight to the brand/voice tab (the brain).
+/* v706 — FACT PACK (Settings > Brand brain). Checked outside facts the writers may quote (api/fact-pack.js
+   finds them weekly and checks each one against its source page). Read from currentBrand.fact_pack, which
+   arrives with the brand row (select '*'); absent until sql/fact-pack.sql runs, so the section just says
+   "No checked facts yet". Every value from the row is escaped; a source link is https-only and passes
+   safeUrl + escAttr before it reaches an href. */
+var _factPackBusy = false, _factPackMsg = '';
+function factPackAgo(ts){
+  const t = Number(ts) || 0; if (!t) return '';
+  const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (m < 2) return 'just now';
+  if (m < 60) return m + ' min ago';
+  const h = Math.round(m / 60);
+  if (h < 48) return h + ' h ago';
+  return Math.round(h / 24) + ' days ago';
+}
+function factPackOf(){
+  const b = (typeof currentBrand !== 'undefined') ? currentBrand : null;
+  const p = b && b.fact_pack;
+  return (p && typeof p === 'object' && !Array.isArray(p)) ? p : null;
+}
+function factPackHref(u){ const s = String(u == null ? '' : u).trim(); return /^https:\/\//i.test(s) ? safeUrl(s) : ''; }
+function factPackRowHtml(f){
+  const href = factPackHref(f.url);
+  let label = String(f.title == null ? '' : f.title).trim();
+  if (!label && href) { try { label = new URL(href).hostname.replace(/^www\./, ''); } catch (e) { label = 'Source'; } }
+  return '<div class="sp-voice-note"><span>' + escapeHtml(String(f.text).slice(0, 400))
+    + (href ? ' <a class="vl-cm-src" href="' + escAttr(safeUrl(href)) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(label.slice(0, 80)) + '</a>' : '')
+    + '</span> <button class="sp-voice-x" data-id="' + escAttr(String(f.id == null ? '' : f.id)) + '" onclick="factPackRemove(this)" title="Remove this fact" aria-label="Remove this fact">&times;</button></div>';
+}
+function factPackSectionHtml(){
+  const sec = (settings && settings.openSections) || {};
+  const pk = factPackOf();
+  const facts = (pk && Array.isArray(pk.facts) ? pk.facts : []).filter(f => f && typeof f === 'object' && f.text);
+  const when = pk && pk.updatedAt ? factPackAgo(pk.updatedAt) : '';
+  const status = _factPackMsg || (when ? 'Last updated ' + when : 'Not refreshed yet');
+  return `<div class="sp-section">
+        <div class="sp-section-header" onclick="toggleSection('facts')">Fact pack <span class="sp-arrow ${sec.facts?'open':''}"><svg class="cs-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></div>
+        <div class="sp-section-body ${sec.facts?'open':''}">
+          <div class="sp-tip">Facts from the web your posts may quote, each one checked against its source page. Refreshed weekly. Remove any you do not want used.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0;">
+            <button class="sp-fill-btn" id="factPackRefreshBtn" onclick="factPackRefresh()" ${_factPackBusy ? 'disabled aria-busy="true"' : ''}>${_factPackBusy ? 'Checking sources…' : 'Refresh facts'}</button>
+            <span class="sp-tip" id="factPackStatus" role="status" style="margin:0;">${escapeHtml(status)}</span>
+          </div>
+          ${facts.length ? facts.map(factPackRowHtml).join('') : '<div class="sp-tip">No checked facts yet.</div>'}
+        </div>
+      </div>`;
+}
+async function factPackCall(body){
+  const token = await connToken();
+  const ac = new AbortController();
+  const t = setTimeout(() => { try { ac.abort(); } catch (e) {} }, 130000);   // the endpoint caps itself well under this
+  try {
+    const resp = await fetch('/api/fact-pack', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (token || '') }, body: JSON.stringify(body), signal: ac.signal });
+    const data = await resp.json().catch(() => ({}));
+    return { ok: resp.ok, status: resp.status, data: data || {} };
+  } finally { clearTimeout(t); }
+}
+function factPackApply(brandId, factPack){
+  if (!factPack || typeof currentBrand === 'undefined' || !currentBrand || currentBrand.id !== brandId) return;
+  currentBrand.fact_pack = Object.assign({}, factPackOf() || {}, factPack);
+}
+async function factPackRefresh(){
+  if (_factPackBusy) return;
+  const b = (typeof currentBrand !== 'undefined') ? currentBrand : null;
+  if (!b || !b.id) { showToast('Pick a brand first.'); return; }
+  const bid = b.id;
+  _factPackBusy = true; _factPackMsg = 'Searching and checking sources. This can take a minute.';
+  try { renderSettingsPanel(); } catch (e) {}
+  try {
+    const r = await factPackCall({ brandId: bid, action: 'refresh' });
+    factPackApply(bid, r.data.factPack);
+    if (r.ok) _factPackMsg = r.data.updated ? ('Updated just now: ' + (Number(r.data.kept) || 0) + ' checked facts.') : String(r.data.message || 'Your current facts are kept.');
+    else _factPackMsg = String(r.data.error || 'Could not refresh facts just now. Try again later.');
+  } catch (e) { _factPackMsg = 'Could not refresh facts just now. Try again later.'; }
+  finally { _factPackBusy = false; try { renderSettingsPanel(); } catch (e) {} }
+}
+async function factPackRemove(btn){
+  const id = btn && btn.getAttribute('data-id');
+  const b = (typeof currentBrand !== 'undefined') ? currentBrand : null;
+  if (!id || !b || !b.id) return;
+  btn.disabled = true;
+  // The removal is conditional on the pack version this screen shows (rev). 409 = the pack changed
+  // meanwhile (a refresh saved a new one): show the latest and retry ONCE, only if the very same fact
+  // (same id AND same text) is still in it — a new pack may reuse the id for a different fact.
+  const pk0 = factPackOf();
+  const was = ((pk0 && Array.isArray(pk0.facts)) ? pk0.facts : []).find(f => f && f.id === id);
+  try {
+    let r = await factPackCall({ brandId: b.id, action: 'remove', id: id, rev: pk0 ? pk0.rev : null });
+    if (r.status === 409 && r.data.factPack) {
+      factPackApply(b.id, r.data.factPack);
+      const same = (r.data.factPack.facts || []).find(f => f && f.id === id && was && f.text === was.text);
+      if (same) r = await factPackCall({ brandId: b.id, action: 'remove', id: id, rev: r.data.factPack.rev });
+    }
+    if (r.ok && r.data.factPack) { factPackApply(b.id, r.data.factPack); _factPackMsg = ''; try { renderSettingsPanel(); } catch (e) {} return; }
+    if (r.status === 409) { _factPackMsg = 'The facts just changed. Showing the latest.'; try { renderSettingsPanel(); } catch (e) {} return; }
+    showToast(String(r.data.error || 'Could not remove that fact.'));
+  } catch (e) { showToast('Could not remove that fact.'); }
+  btn.disabled = false;
+}
+
 function openBrain(){
   try{ spActiveTab='voice'; localStorage.setItem('sp-tab','voice'); }catch(e){}
   const overlay=document.getElementById('settingsOverlay');
@@ -25539,6 +25641,7 @@ function renderSettingsPanel() {
           ${sec.tone ? bmSectionHtml() : ''}
         </div>
       </div>
+      ${factPackSectionHtml()}
         </div>
       <div style="display:${spActiveTab==='workspace'?'block':'none'}">
       ${spActiveTab==='workspace' ? rv2MetricsHtml() + clEntryHtml() : ''}

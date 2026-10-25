@@ -7,7 +7,8 @@
    one -> write only that one, with [your story: ...] slots where proof belongs -> say it out loud.
    That is this file:
 
-     runAngles  source -> 5-8 beliefs the audience does NOT share yet (one JSON call)
+     runAngles  source -> 5-8 points that fit the post type (v706: how-tos/opinions for a tip, answers
+                for a qna, story beats for a story...; was: beliefs the audience does NOT share yet)
      runWrite   one belief -> (1) a plain-text spoken draft
                              -> (2) a spoken pass in the person's own speech rhythm
                              -> (3) a small JSON call that derives title/hook/caption/etc AROUND the
@@ -144,8 +145,12 @@ const providerFromEnv = (p) => !(p === 'claude' || p === 'grok');
 const SOURCE_KINDS = ['remix', 'question', 'trend', 'note', 'idea'];
 const FORMATS = ['talking', 'statement', 'micro', 'carousel'];
 const MAX_SOURCE = 12000;
-const MAX_BELIEF = 140;
-const MAX_WHY = 200;
+// v706 — lifted from 140/200 (.unlazy/quality/PLAN.md "hard cuts"): a how-to point or a direct answer
+// needs more room than a one-line opinion. Still one sentence; the prompt asks for it, code only clips.
+const MAX_BELIEF = 300;
+const MAX_WHY = 400;
+// v706 — the caption clip (was 600): the platform maximum, so a written caption is never cut short.
+const MAX_CAPTION = 2200;
 
 // v693 — the budget split for runWrite. The draft may use up to half; the spoken pass gets what is
 // left minus a reserve for the shape call; the shape call gets the rest. A call that finishes early
@@ -212,7 +217,7 @@ const SOURCE_LABEL = {
 const FORMAT_RULES = {
   // v693 r3 — GUIDANCE, not caps: the model is told "usually", and nothing in code trims to these.
   talking:   { min: 60, max: 160, what: 'a talking video, said to camera in one take' },
-  micro:     { min: 25, max: 70,  what: 'a short video: the belief and the reason behind it' },
+  micro:     { min: 25, max: 70,  what: 'a short video: the one point and the reason behind it' },
   statement: { min: 15, max: 60,  what: 'a bold text post: a few sentences that stand alone on screen' },
   carousel:  { min: 70, max: 220, what: 'a swipe carousel: 5 to 8 slides, one slide per paragraph, slide 1 makes people swipe' },
 };
@@ -220,13 +225,25 @@ const FORMAT_RULES = {
 // ── POST TYPES (.unlazy/types/PLAN.md) ──────────────────────────────────────────
 // One rule per type, shared by the angles/write pipeline and the ideas batch (api/generate-ideas.js),
 // so the two can never describe a type differently. The no-invention rule applies to every type.
+// v706 — EVERY TYPE HAS ITS OWN SHAPE (.unlazy/quality/PLAN.md, agent P). The universal "a belief the
+// viewer does not hold yet" is gone: each post makes ONE point, in its type's shape. Only a tip may be a
+// sharp opinion instead, and only when its angle is one (see OPINION_SHAPE / framingFor below).
+const TYPE_SHAPES = {
+  tip: 'the problem, then 2 to 4 concrete steps the viewer can do, then the result they get',
+  about: 'why it exists or how it is made, told as a story or a lesson',
+  news: 'what happened, why it matters to the viewer, what to do about it',
+  qna: 'the direct answer in the first sentence, then why',
+  story: 'a story arc: the moment, the turn, the lesson',
+  bts: 'one real moment from the work: what happened, then what it shows',
+};
+const OPINION_SHAPE = 'why people believe the opposite, what goes wrong because of it, then the reframe';
 const TYPE_RULES = {
-  tip: 'TIP / OPINION: a practical tip or a sharp opinion about the viewer\'s own world.',
-  about: 'ABOUT US, AS A STORY OR A LESSON: why the product or service exists, how it is made, the problem it was built for, or a myth about the category it busts. It teaches or entertains; it never sells. Use ONLY the real facts in the brand profile; a fact you do not have becomes a [your story: <what to tell>] slot. Still spoken, still a belief the viewer does not hold yet. Never an offer, a price, a feature list or a pitch.',
-  news: 'NEWS IN THE CATEGORY: react to ONE of the real headlines listed, and only to those. Name the headline plainly. Say only what the headline itself says: never invent details, numbers, names or quotes from the story. The belief is your take on what it means for the viewer.',
-  qna: 'Q&A: a real question this audience asks, answered on camera, in the "qna" format and its rules.',
-  story: 'CUSTOMER STORY: built around ONE real story from the story bank if one fits. If none fits, the story itself is a [your story: <the customer moment to tell>] slot. Never invent a customer, a name or a result.',
-  bts: 'BEHIND THE SCENES / FOUNDER: how the work actually gets done, or a moment from the founder. Real details only from the brand profile; anything else is a [your story: <what to tell>] slot.',
+  tip: 'TIP: ONE practical how-to from the viewer\'s own world. SHAPE: ' + TYPE_SHAPES.tip + '. Only when the point is an opinion: ONE sharp opinion, argued plainly.',
+  about: 'ABOUT US, AS A STORY OR A LESSON: why the product or service exists, how it is made, the problem it was built for, or a myth about the category it busts. It teaches or entertains; it never sells. Use ONLY the real facts in the brand profile; a fact you do not have becomes a [your story: <what to tell>] slot. Still spoken, still ONE point. Never an offer, a price, a feature list or a pitch.',
+  news: 'NEWS IN THE CATEGORY: react to ONE of the real headlines listed, and only to those. Name the headline plainly. Say only what the headline itself says: never invent details, numbers, names or quotes from the story. SHAPE: ' + TYPE_SHAPES.news + '.',
+  qna: 'Q&A: a real question this audience asks, answered on camera, in the "qna" format and its rules. SHAPE: ' + TYPE_SHAPES.qna + '.',
+  story: 'CUSTOMER STORY: built around ONE real story from the story bank if one fits. If none fits, the story itself is a [your story: <the customer moment to tell>] slot. Never invent a customer, a name or a result. SHAPE: ' + TYPE_SHAPES.story + '.',
+  bts: 'BEHIND THE SCENES / FOUNDER: ONE real moment from the work or from the founder. Real details only from the brand profile; anything else is a [your story: <what to tell>] slot. SHAPE: ' + TYPE_SHAPES.bts + '.',
 };
 const normPostType = (v) => (typeof v === 'string' && POST_TYPES.indexOf(v) >= 0 ? v : '');
 
@@ -240,6 +257,200 @@ function noSellRule() { return NO_SELL_RULE; }
 // The one-line correction a writer's single retry adds when its first answer was a pitch at its core.
 function noSellNote() { return 'IMPORTANT: your previous answer read like a sales pitch. ' + NO_SELL_RULE + ' Write it again so it teaches or entertains.'; }
 
+// ── v706 HOW A PICKED ANGLE IS FRAMED ────────────────────────────────────────
+// An angle is 'opinion' (argued: OPINION_SHAPE) or 'point' (taught in its type's shape). Only a tip (or
+// an untyped post, which is a tip) may be an opinion; every other type is always a point. An angle that
+// arrives without a kind (an older app build sends only belief + why) under a tip lets the writer pick
+// the shape that fits the point; under any other type it is a point.
+const ANGLE_KINDS = ['opinion', 'point'];
+const opinionAllowed = (type) => !type || type === 'tip';
+function angleKind(kind, type) {
+  if (kind === 'opinion') return opinionAllowed(type) ? 'opinion' : 'point';
+  if (kind === 'point') return 'point';
+  return opinionAllowed(type) ? '' : 'point';
+}
+// The beats a draft moves through, for the framing above.
+function beatsFor(kind, type) {
+  if (kind === 'opinion') return 'Move through three beats without labelling them: ' + OPINION_SHAPE + '.';
+  if (kind === 'point' || type) return 'Move through its beats without labelling them: ' + TYPE_SHAPES[type || 'tip'] + '.';
+  return 'If the point is a how-to, move through: ' + TYPE_SHAPES.tip + '. If it is an opinion, move through: ' + OPINION_SHAPE + '. Never label the beats.';
+}
+
+// ── v706 CHECKED FACTS (.unlazy/quality/PLAN.md CONTRACT; agent F owns api/fact-pack.js + _brain) ──────
+// bc.facts = [{id,text,url,title}]: facts a server job found AND verified against their source page. A
+// writer may use one as written and names the ids it used; the caption then ends with the source link(s).
+// _brain's factsBlock / factSources are looked up at CALL time; until they exist the local copies below
+// do the same thing (same heading, dedupe by url, max 2, unknown ids ignored).
+const FACTS_HEADING_LOCAL = 'CHECKED FACTS (you may use these; cite by id)';
+const MAX_FACT_SOURCES = 2;
+const HTTPS_URL_RE = /^https:\/\/[^\s"'<>]+$/i;
+const brainFn = (name) => { try { const B = require('./_brain'); return typeof B[name] === 'function' ? B[name] : null; } catch (e) { return null; } };
+function factList(bc) {
+  const out = [], seen = new Set();
+  for (const f of (Array.isArray(bc && bc.facts) ? bc.facts : [])) {
+    if (!f || typeof f !== 'object') continue;
+    const id = toStr(f.id).trim().slice(0, 20);
+    const text = toStr(f.text).replace(/\s+/g, ' ').trim().slice(0, 600);
+    if (!id || !text || seen.has(id.toLowerCase())) continue;
+    seen.add(id.toLowerCase());
+    out.push({ id, text, url: toStr(f.url).trim(), title: toStr(f.title).replace(/\s+/g, ' ').trim() });
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+// The facts block for a prompt ('' when the brand has none).
+function factsBlockFor(bc) {
+  if (!factList(bc).length) return '';
+  const fb = brainFn('factsBlock');
+  const b = fb ? toStr(fb(bc)) : '';
+  if (b.trim()) return b.trim();
+  return FACTS_HEADING_LOCAL + ':\n' + factList(bc).map(f => '[' + f.id + '] ' + f.text + (f.title ? ' (source: ' + f.title + ')' : '')).join('\n');
+}
+// The rule that goes with it: use as written, at most 2, name the ids.
+function factsUse(how) {
+  return 'You may use a CHECKED FACT from the list above, exactly as written: no extra numbers, no new details, at most ' + MAX_FACT_SOURCES + ' per post. ' + how;
+}
+// The material a CHECKED FACT adds to the fact guard (so a fact used as written is never slotted).
+function factsMaterial(bc) { return factList(bc).map(f => f.text).join('\n'); }
+// v706 r2 (review HIGH) — A FACT'S NUMBERS ARE ALLOWED ONLY IN A SENTENCE THAT USES THAT FACT. Putting every
+// fact's text into the allowed material let "50% of my customers reorder" pass because some fact said
+// "50% of adults…" — and then cited it. Now a sentence may use a fact's numbers, names and claims only
+// when it shares the fact's KEY WORDS (>= 60% of them, all of them for a fact with 1-2): a faithful
+// use, word for word or reworded. Everything else is checked against the brand's own material as before.
+const FACT_STOP = new Set(('about,above,after,again,also,among,around,because,been,before,being,between,both,could,does,doing,' +
+  'down,during,each,every,from,have,having,here,into,just,less,more,most,much,must,only,other,over,same,should,some,such,than,' +
+  'that,their,them,then,there,these,they,this,those,through,under,until,very,were,what,when,where,which,while,with,would,your,' +
+  'yours,ours,will,the,and,for,are,was,but,you,our,all,any,can,has,had,its,one,two,per,who,how,why,get,got,out,own,too,yet,via,' +
+  'not,nor,don,doesn,isn,aren,didn,wasn,won,cannot,may,might,almost,nearly,roughly,approximately,least,than,found,find,finds,' +
+  'show,shows,showed,shown,say,says,said,according,report,reports,reported,study,studies,survey,surveys,research,researchers,' +
+  'data,percent,percentage,year,years,new,recent,recently,people,person').split(','));
+const factStem = (w) => { let x = w.toLowerCase(); if (x.length > 4) x = x.replace(/(?:ing|ed|es|s)$/, ''); return x; };
+function factKeyWords(text) {
+  const out = new Set();
+  for (const w of (stripSlots(text).match(/\p{L}+/gu) || [])) {
+    if (w.length < 3 || FACT_STOP.has(w.toLowerCase())) continue;
+    out.add(factStem(w));
+  }
+  return out;
+}
+// Does `text` (a sentence, or a whole post for the citation check) use this fact?
+function factMatchesText(factText, text) {
+  const K = factKeyWords(factText);
+  if (!K.size) return false;
+  const S = factKeyWords(text);
+  let hits = 0;
+  for (const k of K) if (S.has(k)) hits++;
+  return hits >= (K.size <= 2 ? K.size : Math.ceil(K.size * 0.6));
+}
+// The sentences of a text (slots taken out first, as the fact guard does).
+function factSentences(text) {
+  return toStr(text).split('\n').flatMap(l => (maskDots(stripSlots(l)).match(SENTENCE_RE) || []).map(unmaskDots)).filter(x => /[\p{L}\p{N}]/u.test(x));
+}
+// allowed material for ONE sentence: the base, plus the text of each fact this sentence uses.
+function factAllowedFn(base, facts) {
+  const list = (Array.isArray(facts) ? facts : []).filter(f => f && f.text);
+  if (!list.length) return null;
+  const B = toStr(base);
+  return (sentence) => {
+    const m = list.filter(f => factMatchesText(f.text, sentence));
+    return m.length ? B + '\n' + m.map(f => f.text).join('\n') : B;
+  };
+}
+// inventedFacts with the sentence-level fact rule. No facts: exactly inventedFacts(text, base).
+function inventedFactsIn(text, base, facts) {
+  const fn = factAllowedFn(base, facts);
+  if (!fn) return inventedFacts(text, base);
+  const out = new Set();
+  for (const sent of factSentences(text)) for (const t of inventedFacts(sent, fn(sent))) out.add(t);
+  return [...out];
+}
+// The angle's own text minus the sentences that use a fact: a fact a picked point carries is checked as a
+// fact (sentence by sentence), never handed to the whole draft as free material.
+function withoutFactSentences(text, facts) {
+  const list = Array.isArray(facts) ? facts : [];
+  if (!list.length) return toStr(text);
+  return factSentences(text).filter(x => !list.some(f => factMatchesText(f.text, x))).join(' ').replace(/\s+/g, ' ').trim();
+}
+// The ids a writer returned, kept only when they are this brand's real facts (canonical spelling, once, in order).
+function knownFactIds(bc, ids) {
+  const byKey = new Map(factList(bc).map(f => [f.id.toLowerCase(), f.id]));
+  const list = Array.isArray(ids) ? ids : (ids == null || ids === '' ? [] : toStr(ids).split(/[,;\s]+/));
+  const out = [];
+  for (const x of list) {
+    const id = byKey.get(toStr(x).replace(/[\[\]()."'`]/g, '').trim().toLowerCase());
+    if (id && out.indexOf(id) < 0) out.push(id);
+  }
+  return out;
+}
+// v706 r2 — A fact the text USES without naming it still gets cited, but only when one SENTENCE uses
+// it (factMatchesText): never because a number or a year happens to appear. (`base` is no longer used.)
+function factIdsUsedIn(bc, text, base) {   // eslint-disable-line no-unused-vars
+  const sents = factSentences(text);
+  return factList(bc).filter(f => sents.some(x => factMatchesText(f.text, x))).map(f => f.id);
+}
+// The ids a writer named, kept only when they are real AND the post really uses the fact (its key words
+// are in the text). A named fact the text never uses is not cited.
+function citedFactIds(bc, ids, text) {
+  const byId = new Map(factList(bc).map(f => [f.id, f]));
+  return knownFactIds(bc, ids).filter(id => factMatchesText(byId.get(id).text, text));
+}
+function localFactSources(bc, ids) {
+  const byId = new Map(factList(bc).map(f => [f.id, f]));
+  const out = [], seen = new Set();
+  for (const id of knownFactIds(bc, ids)) {
+    const f = byId.get(id);
+    if (!f || !f.url || seen.has(f.url)) continue;
+    seen.add(f.url); out.push({ url: f.url, title: f.title });
+    if (out.length >= MAX_FACT_SOURCES) break;
+  }
+  return out;
+}
+// [{url,title}] for the ids: _brain.factSources when it exists, else the local copy. Whatever comes back,
+// only https links, once each, at most 2.
+function factSourcesFor(bc, ids) {
+  const known = knownFactIds(bc, ids);
+  if (!known.length) return [];
+  const fs = brainFn('factSources');
+  let raw = [];
+  try { raw = fs ? fs(bc, known) : localFactSources(bc, known); } catch (e) { raw = localFactSources(bc, known); }
+  const out = [], seen = new Set();
+  for (const s of (Array.isArray(raw) ? raw : [])) {
+    const url = toStr(s && s.url).trim();
+    if (!HTTPS_URL_RE.test(url) || seen.has(url)) continue;
+    seen.add(url); out.push({ url, title: toStr(s.title).trim() });
+    if (out.length >= MAX_FACT_SOURCES) break;
+  }
+  return out;
+}
+// The caption with its fact source(s) as the LAST line: "\n\nSource: <url>" or "\n\nSources: <u1> · <u2>".
+// A news post keeps only its own headline Source line (added by the app / send-daily), so it gets none
+// here: never two Source lines. A Source line the model wrote itself is replaced, never doubled, and the
+// body is shortened (word boundary) so the whole caption stays within MAX_CAPTION.
+// (buildIdea's clip joins lines, so a model-written "Source: <url>" can also sit at the end of a line)
+const SOURCE_LINE_RE = /(^|[ \t])Sources?:[ \t]*https?:\/\/\S+(?:[ \t]*·[ \t]*https?:\/\/\S+)*[ \t]*$/gim;
+function captionWithFactSources(caption, sources, postType) {
+  const c = toStr(caption);
+  if (postType === 'news') return c;
+  const urls = [];
+  for (const s of (Array.isArray(sources) ? sources : [])) {
+    const u = toStr(s && s.url).trim();
+    if (HTTPS_URL_RE.test(u) && urls.indexOf(u) < 0) urls.push(u);
+  }
+  if (!urls.length) return c;
+  let body = c.replace(SOURCE_LINE_RE, '$1').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+  const use = urls.filter(u => body.indexOf(u) < 0).slice(0, MAX_FACT_SOURCES);
+  if (!use.length) return c;
+  const line = (use.length === 1 ? 'Source: ' : 'Sources: ') + use.join(' · ');
+  const room = MAX_CAPTION - line.length - 2;
+  if (body.length > room) {
+    body = body.slice(0, Math.max(0, room));
+    const sp = body.lastIndexOf(' ');
+    if (sp > room * 0.6) body = body.slice(0, sp);
+    body = body.replace(/[\s,;:\-]+$/, '');
+  }
+  return (body ? body + '\n\n' : '') + line;
+}
+
 // ── STYLE GUIDE ──────────────────────────────────────────────────────────────
 // v693 — SHORT ON PURPOSE (< 1,200 chars). The old writingCraft is ~6,000 chars of rules; the model
 // obeyed the loudest ones (compression) and wrote telegraph fragments. This keeps the AI-tell
@@ -249,13 +460,13 @@ function noSellNote() { return 'IMPORTANT: your previous answer read like a sale
 function styleGuide(opts) {
   const about = !!(opts && opts.about === true);
   return [
-    'STYLE GUIDE (short on purpose):',
-    '- Write like one person talking to one person across a table. First person, plain words, contractions.',
-    '- One idea per sentence, with natural rhythm: some short lines, some longer ones joined by "and", "so", "because". Never a run of clipped fragments.',
+    'STYLE GUIDE:',   // v706 — header trimmed: NO_INVENTION_RULE grew (the CHECKED FACT exception) and this stays < 1600
+    '- Talk like one person to one person across a table. First person, plain words, contractions.',
+    '- One idea per sentence, natural rhythm: short lines and longer ones joined by "and", "so", "because". Never a run of clipped fragments.',
     '- Start with the thing itself. Never open with "Did you know", "Have you ever wondered", "Here\'s the thing", "Let me tell you", "Imagine", "Most people don\'t realize", "Hey guys", "In this video".',
     '- Never use: delve, leverage, elevate, unlock, game-changer, seamless, robust, journey. No em dashes. No "not just X, it\'s Y". No lists of three for show.',
     about ? '- No hype, no pitch. Tell why the product exists, how it is made or the problem it was built for, as a story or a lesson, using only its real facts; never a feature tour.'
-      : '- No hype, no pitch. Talk about the viewer\'s problem, not the brand\'s features.',
+      : '- No hype. Talk about the viewer\'s problem, not the brand\'s features.',
     '- HARD RULE. ' + NO_INVENTION_RULE,
     '- HARD RULE. ' + NO_SELL_RULE,
   ].join('\n');
@@ -297,7 +508,9 @@ function normSource(source) {
 
 function normAngle(angle) {
   const a = angle && typeof angle === 'object' && !Array.isArray(angle) ? angle : {};
-  return { belief: clip(a.belief, 300), why: clip(a.why, 400), hookSeed: clip(a.hookSeed, 200) };
+  const out = { belief: clip(a.belief, MAX_BELIEF), why: clip(a.why, MAX_WHY), hookSeed: clip(a.hookSeed, 200) };
+  if (ANGLE_KINDS.indexOf(a.kind) >= 0) out.kind = a.kind;   // v706 — 'opinion' | 'point' from the angles step
+  return out;
 }
 
 function normStories(list) {
@@ -785,7 +998,7 @@ const SENTENCE_RE = /[^.!?\n]+[.!?]*/g;
 
 // v693 r4 — for short explanatory text (an angle's `why`): keep the sentences that invent nothing.
 function dropInventedSentences(text, allowed) {
-  return (maskDots(text).match(SENTENCE_RE) || []).map(unmaskDots).filter(x => x.trim() && !inventedFacts(x, allowed).length).join(' ').replace(/\s+/g, ' ').trim();
+  return (maskDots(text).match(SENTENCE_RE) || []).map(unmaskDots).filter(x => x.trim() && !inventedFacts(x, typeof allowed === 'function' ? allowed(x) : allowed).length).join(' ').replace(/\s+/g, ' ').trim();
 }
 
 // Replace every sentence that carries an invented fact with a story slot, so nothing made up ships.
@@ -797,7 +1010,7 @@ function slotifyInvented(script, allowed) {
   let s = maskDots(script).replace(SLOT_LIKE_RE, (m) => { kept.push(m); return '\u0000' + (kept.length - 1) + '\u0000'; });
   s = s.replace(SENTENCE_RE, (sentence) => {
     const plain = unmaskDots(sentence.replace(/\u0000\d+\u0000/g, ' '));
-    if (!plain.trim() || !inventedFacts(plain, allowed).length) return sentence;
+    if (!plain.trim() || !inventedFacts(plain, typeof allowed === 'function' ? allowed(plain) : allowed).length) return sentence;
     const lead = (sentence.match(/^\s*/) || [''])[0];
     const slotsInside = (sentence.match(/\u0000\d+\u0000/g) || []).join(' ');
     const quote = clip(plain.replace(/[\[\]［］\n]/g, ' ').replace(/\s+/g, ' ').trim(), 180);
@@ -851,6 +1064,16 @@ function cleanScript(raw) {
 // in the story bank are reported; the trailer line never reaches the script.
 function parseDraft(raw, stories) {
   let text = cleanScript(raw);
+  // v706 — "USED FACTS: F1, F3" (any position among the last lines) becomes `facts`, raw ids; the caller
+  // keeps only the brand's real ones (knownFactIds). The trailer never reaches the script.
+  let facts = [];
+  const FTRAILER = /^[ \t]*(?:\*\*)?USED FACTS(?:\*\*)?[ \t]*:[ \t]*(.*)$/gim;
+  let fm, flast = null;
+  while ((fm = FTRAILER.exec(text))) flast = fm[1];
+  if (flast != null) {
+    facts = flast.split(/[,;\s]+/).map(x => x.replace(/[\[\]().]/g, '').trim()).filter(x => x && !/^none$/i.test(x));
+    text = text.replace(FTRAILER, '').trim().replace(/\n{3,}/g, '\n\n');
+  }
   const known = new Set(stories.map(s => s.id));
   let ids = [];
   const TRAILER = /^[ \t]*(?:\*\*)?USED STORIES(?:\*\*)?[ \t]*:[ \t]*(.*)$/gim;
@@ -860,7 +1083,7 @@ function parseDraft(raw, stories) {
     ids = [...new Set(last.split(/[,\s]+/).map(x => x.replace(/[\[\]().]/g, '').trim()).filter(x => known.has(x)))];
     text = text.replace(TRAILER, '').trim().replace(/\n{3,}/g, '\n\n');
   }
-  return { script: text, usedStories: ids };
+  return { script: text, usedStories: ids, facts };
 }
 
 // Why a spoken-pass rewrite must be thrown away, or '' when it is fine. The pass may change HOW
@@ -898,22 +1121,25 @@ function firstSpokenLine(script) {
 // exactly as runWrite slots its draft; a hook that invents (or carries a slot) falls back to the first
 // spoken line of the guarded script, like buildIdea. No AI call. Returns a new object; `invented`
 // lists what was removed (empty = nothing changed).
-function guardIdeaFacts(idea, allowed) {
+// v706 r2 — `facts` (optional, CHECKED FACTS): a sentence may use a fact's numbers only when it uses that
+// fact (inventedFactsIn). Without facts this is exactly the old guard.
+function guardIdeaFacts(idea, allowed, facts) {
   const out = Object.assign({}, idea);
   const invented = [];
   const A = toStr(allowed);
+  const AF = factAllowedFn(A, facts) || A;
   for (const k of ['script', 'boldText', 'caption']) {
     const v = toStr(out[k]);
     if (!v.trim()) continue;
-    const bad = inventedFacts(v, A);
+    const bad = inventedFactsIn(v, A, facts);
     if (!bad.length) continue;
     invented.push.apply(invented, bad);
-    out[k] = slotifyInvented(v, A);
+    out[k] = slotifyInvented(v, AF);
   }
   const h = toStr(out.hook);
   SLOT_LIKE_RE.lastIndex = 0;
   const slotted = SLOT_LIKE_RE.test(h); SLOT_LIKE_RE.lastIndex = 0;
-  const hb = h.trim() ? inventedFacts(h, A) : [];
+  const hb = h.trim() ? inventedFactsIn(h, A, facts) : [];
   if (hb.length || slotted) {
     invented.push.apply(invented, hb);
     out.hook = firstSpokenLine(toStr(out.script) || toStr(out.boldText));
@@ -1152,7 +1378,7 @@ function buildIdea(script, shaped, angle, format, allowedExtra) {
   const first = firstSpokenLine(script);
   let hook = clip(sh.hook, 200); if (bad(hook)) hook = first;
   let title = clip(sh.title, 90); if (bad(title)) title = clip(angle.belief, 60);
-  let caption = clip(sh.caption, 600); if (bad(caption)) caption = angle.belief;
+  let caption = clip(sh.caption, MAX_CAPTION); if (bad(caption)) caption = angle.belief;
   const onScreen = listOf(sh.onScreen, 6, 120).filter(x => !bad(x));
   const shots = listOf(sh.shots, 8, 200).filter(x => !bad(x));
   // Emphasis must be words the person actually says: keep only phrases found in the script, and
@@ -1180,34 +1406,56 @@ function buildIdea(script, shaped, angle, format, allowedExtra) {
 }
 
 // ── PROMPTS ──────────────────────────────────────────────────────────────────
+// v706 — THE ANGLES STEP OFFERS POINTS THAT FIT THE TYPE: how-tos (and some opinions) for a tip, direct
+// answers for a qna, story beats for a story, what a headline means for news, a real moment for bts.
+// The opinion wording ("does NOT share yet", "contrarian but defensible") appears only where an opinion
+// is allowed (a tip or an untyped call).
+const ANGLE_POINTS = {
+  tip: 'practical how-tos: the problem and the fix in one sentence (kind "point"); up to half may instead be a sharp opinion (kind "opinion")',
+  about: 'points about why NAME\'s product or service exists, how it is made, the problem it was built for, or a myth it busts, using only real product facts from the brand profile (a story or a lesson, never a feature list or an offer)',
+  news: 'points on what ONE of the headlines below means for the viewer',
+  qna: 'real questions this audience asks about it, each answered directly: the question, then its direct answer, in one sentence',
+  story: 'story points: the lesson a real moment teaches, with the moment and the turn in "why"',
+  bts: 'real moments from the work and what each one shows',
+};
+const ANGLE_WHY = {
+  tip: 'why it matters to the viewer (for an opinion: why most people believe the opposite)',
+  about: 'why it matters to the viewer', news: 'what the viewer should do about it', qna: 'why that is the answer',
+  story: 'the moment and the turn that lead to the lesson', bts: 'why that matters to the viewer',
+};
 function anglesPrompt(bc, src, count, type, news) {
   const name = toStr(bc.brandName).trim() || 'this brand';
   const about = type === 'about';
   const typed = !!type;
+  const t = type || 'tip';
+  const opinion = opinionAllowed(type);
   const P = [
     'You help ' + name + ' decide what to SAY before anything gets written.',
     '',
     sourceBlock(src, MAX_SOURCE),
     '',
     'STEP 1 (silently): find the underlying idea or principle in the source. Never reuse the creator\'s wording, examples or structure.',
-    'STEP 2: write ' + count + ' beliefs ' + name + ' could hold about that idea that most of its audience does NOT share yet. Each belief:',
-    '- is contrarian but defensible: the person could argue it on camera and be right;',
-    about ? '- is about why ' + name + '\'s product or service exists, how it is made, the problem it was built for, or a myth it busts, using only real product facts from the brand profile (a story or a lesson, never a feature list or an offer);'
+    'STEP 2: write ' + count + ' ' + ANGLE_POINTS[t].replace('NAME', name) + '. Each one is the ONE point a post makes. Each point:',
+    about ? '- stays a story or a lesson, never a pitch;'
       : '- is about the viewer\'s problem or situation, never about the brand\'s product or features;',
-    '- is one plain sentence, at most ' + MAX_BELIEF + ' characters;',
-    '- has a "why": at most ' + MAX_WHY + ' characters on why most people believe the opposite;',
+    '- is one plain sentence, at most ' + MAX_BELIEF + ' characters, in "belief";',
+    '- has a "why": at most ' + MAX_WHY + ' characters on ' + ANGLE_WHY[t] + ';',
     '- may have a "hookSeed": a first spoken line that could open a video on it.',
-    'Make them genuinely different beliefs, not one belief reworded. Stay consistent with the beliefs the brand already holds and do not repeat them.',
-    NO_INVENTION_RULE,
-    NO_SELL_RULE,
   ];
-  // types — only when a post type was asked for; an untyped call sends the prompt it always sent.
-  if (typed) P.push('', 'EVERY BELIEF IS FOR THIS KIND OF POST. ' + TYPE_RULES[type]);
+  if (opinion) P.push('An opinion (kind "opinion") is one most of the audience does NOT share yet: contrarian but defensible, the person could argue it on camera and be right.');
+  P.push('Make them genuinely different points, not one point reworded. Stay consistent with the beliefs the brand already holds and do not repeat them.',
+    NO_INVENTION_RULE,
+    NO_SELL_RULE);
+  // types — only when a post type was asked for; an untyped call is a tip without the type block.
+  if (typed) P.push('', 'EVERY POINT IS FOR THIS KIND OF POST. ' + TYPE_RULES[type]);
   if (type === 'news') P.push('', 'FRESH HEADLINES (the only news you may use):', newsLines(news),
-    'Each belief reacts to ONE of these headlines: put its number in "newsIndex".');
+    'Each point reacts to ONE of these headlines: put its number in "newsIndex".');
+  const facts = factsBlockFor(bc);
+  if (facts) P.push('', facts, factsUse('A point may rest on one.'));
   P.push('', brandBlockV2(bc, about), '',
     'Reply with ONLY this JSON, no prose, no code fences:',
-    type === 'news' ? '{"angles":[{"belief":"...","why":"...","hookSeed":"...","newsIndex":1}]}' : '{"angles":[{"belief":"...","why":"...","hookSeed":"..."}]}');
+    type === 'news' ? '{"angles":[{"belief":"...","why":"...","hookSeed":"...","newsIndex":1}]}'
+      : (opinion ? '{"angles":[{"kind":"point|opinion","belief":"...","why":"...","hookSeed":"..."}]}' : '{"angles":[{"belief":"...","why":"...","hookSeed":"..."}]}'));
   return P.join('\n');
 }
 
@@ -1215,33 +1463,38 @@ function draftPrompt(bc, src, angle, format, stories, type, news) {
   const name = toStr(bc.brandName).trim() || 'the brand';
   const f = FORMAT_RULES[format];
   const said = format !== 'statement' && format !== 'carousel';
+  // v706 — the opinion framing only for an opinion angle; every other post makes ONE point in its shape.
+  const kind = angleKind(angle.kind, type);
   const P = [
     said ? 'Write ONE script for ' + name + ', to be said out loud by the person behind it.'
       : 'Write ONE ' + format + ' post for ' + name + ', in the words of the person behind it.',
     '',
-    'THE BELIEF TO ARGUE (the viewer probably disagrees):',
+    kind === 'opinion' ? 'THE OPINION TO ARGUE (the viewer probably disagrees):' : 'THE ONE POINT THIS POST MAKES:',
     '"' + angle.belief + '"',
   ];
-  if (angle.why) P.push('Why most people disagree: ' + angle.why);
+  if (angle.why) P.push((kind === 'opinion' ? 'Why most people disagree: ' : (kind === 'point' ? 'Why it matters: ' : 'Context: ')) + angle.why);
   if (angle.hookSeed) P.push('A possible first line (use it, improve it, or ignore it): ' + angle.hookSeed);
   if (src.text) P.push('', sourceBlock(src, 6000), 'Use the source for the idea only. Never copy its wording.');
   // types — only when a post type was asked for; an untyped call sends the prompt it always sent.
   if (type) P.push('', 'KIND OF POST. ' + TYPE_RULES[type]);
   if (type === 'news' && news) P.push('', 'THE NEWS THIS POST REACTS TO (a real headline):', newsLines([news]), 'Link: ' + news.url);
   P.push('',
-    'SHAPE: ' + f.what + '. Usually about ' + f.min + ' to ' + f.max + ' words: a guide, not a limit. Take the words the idea needs.',
-    'Move through three beats without labelling them: why people believe the opposite, what goes wrong because of it, then the reframe.',
+    'FORMAT: ' + f.what + '. Usually about ' + f.min + ' to ' + f.max + ' words: a guide, not a limit. Take the words the idea needs.',
+    beatsFor(kind, type),
     'Where proof would help (a number, a customer, a result, a moment from real work), write a slot exactly like [your story: <what to tell>] instead of making it up. One or two slots is normal. None is fine if the argument stands on its own.');
   if (stories.length) {
     let acc = 0; const lines = [];
     for (const s of stories) { if (acc + s.text.length > 6000) break; acc += s.text.length; lines.push('[' + s.id + '] ' + s.text); }
     P.push('',
-      'REAL STORIES THIS PERSON HAS TOLD BEFORE. Use one ONLY if it genuinely fits this belief; never force one in. Retell it briefly in their words, do not paste it:',
+      'REAL STORIES THIS PERSON HAS TOLD BEFORE. Use one ONLY if it genuinely fits this point; never force one in. Retell it briefly in their words, do not paste it:',
       lines.join('\n'));
   }
+  const facts = factsBlockFor(bc);
+  if (facts) P.push('', facts, factsUse('Never paste a link into the script.'));
   P.push('', styleGuide(type === 'about' ? { about: true } : undefined), '', brandBlockV2(bc, type === 'about'), '',
     'Write ONLY the script, as plain text: no title, no labels, no stage directions, no hashtags, no markdown.' +
-    (stories.length ? ' Then, on its own last line, write USED STORIES: followed by the ids you used, or USED STORIES: none' : ''));
+    (stories.length ? ' Then, on its own last line, write USED STORIES: followed by the ids you used, or USED STORIES: none' : '') +
+    (facts ? ' Then, on its own last line, write USED FACTS: followed by the ids of the CHECKED FACTS you used, or USED FACTS: none' : ''));
   return P.join('\n');
 }
 
@@ -1296,7 +1549,7 @@ function shapePrompt(script, format) {
 }
 
 // ── runAngles ────────────────────────────────────────────────────────────────
-function anglesFrom(parsed, count, keepNews) {
+function anglesFrom(parsed, count, keepNews, type) {
   let list = [];
   if (Array.isArray(parsed)) list = parsed;
   else if (parsed && typeof parsed === 'object') {
@@ -1315,6 +1568,7 @@ function anglesFrom(parsed, count, keepNews) {
       id: 'ang_' + crypto.createHash('sha1').update(belief).digest('hex').slice(0, 10),
       belief,
       why: clip(it.why, MAX_WHY),
+      kind: angleKind(String(it.kind || '').trim().toLowerCase() === 'opinion' ? 'opinion' : 'point', type),   // v706
     };
     const hs = clip(it.hookSeed, 200);
     if (hs) a.hookSeed = hs;
@@ -1346,12 +1600,14 @@ async function runAngles(opts) {
   // hookSeed is removed, instead of losing a good belief over its explanation. Fewer than 3 survivors
   // (or an unparseable reply) → ONE re-ask, merged in, when at least 15 s remain.
   const allowedA = [src.text, src.creator, src.platform, userFacts(bc)].concat(news.map(n => n.title)).join('\n');
+  const factsA = factList(bc);   // v706 r2 — a fact's numbers only in a sentence that uses that fact
+  const allowedAFn = factAllowedFn(allowedA, factsA) || allowedA;
   let angles = [], rejected = [];
   for (let attempt = 0; attempt < 2 && angles.length < ANGLES_MIN_SURVIVORS; attempt++) {
     const left = total - (Date.now() - t0);
     if (attempt > 0 && left < RETRY_MIN_MS) break;
     const note = !attempt ? '' : (rejected.length
-      ? '\n\nIMPORTANT: these beliefs were rejected because they state numbers, names or results that are in none of the material: ' + rejected.slice(0, 6).map(b => '"' + b + '"').join('; ') + '. Write fresh beliefs that need no such facts. Reply with ONLY the JSON object described above.'
+      ? '\n\nIMPORTANT: these points were rejected because they state numbers, names or results that are in none of the material: ' + rejected.slice(0, 6).map(b => '"' + b + '"').join('; ') + '. Write fresh points that need no such facts. Reply with ONLY the JSON object described above.'
       : '\n\nIMPORTANT: reply with ONLY the JSON object described above.');
     const content = await writerCallResilient({
       messages: [{ role: 'user', content: prompt + note }],
@@ -1359,7 +1615,7 @@ async function runAngles(opts) {
       deadlineMs: Math.max(1000, left),
       provider: pickProvider(o.provider), effort: pickEffort(o.effort, 'angles'),
     }, { providerFromEnv: providerFromEnv(o.provider), label: 'angles' });
-    for (const a of anglesFrom(extractJson(content), count, type === 'news')) {
+    for (const a of anglesFrom(extractJson(content), count, type === 'news', type)) {
       if (type === 'news') {
         // The headline is attached BY INDEX from the stored list; an angle without a valid one is dropped.
         const ni = Number(a.newsIndex);
@@ -1368,9 +1624,9 @@ async function runAngles(opts) {
         a.newsSource = { title: news[ni - 1].title, url: news[ni - 1].url };
       }
       if (type) a.postType = type;
-      if (inventedFacts(a.belief, allowedA).length) { rejected.push(a.belief); continue; }
-      if (a.why && inventedFacts(a.why, allowedA).length) a.why = dropInventedSentences(a.why, allowedA);
-      if (a.hookSeed && inventedFacts(a.hookSeed, allowedA).length) delete a.hookSeed;
+      if (inventedFactsIn(a.belief, allowedA, factsA).length) { rejected.push(a.belief); continue; }
+      if (a.why && inventedFactsIn(a.why, allowedA, factsA).length) a.why = dropInventedSentences(a.why, allowedAFn);
+      if (a.hookSeed && inventedFactsIn(a.hookSeed, allowedA, factsA).length) delete a.hookSeed;
       // no-sell — a belief that is a sales ask is dropped; a selling `why` sentence or hookSeed goes.
       if (hasSales(a.belief)) continue;
       if (a.why && hasSales(a.why)) { const gw = guardNoSell(a.why); a.why = gw.ok ? gw.text : ''; }
@@ -1426,8 +1682,12 @@ async function runWrite(opts) {
   // v693 r2 — THE DRAFT'S FACTS ARE CHECKED against the material it was allowed to use: the source,
   // the brand facts actually rendered, the story bank, the belief. Anything else is invented: one
   // retry with the exact correction, then every sentence still carrying one becomes a story slot.
-  const allowed = allowedMaterial(bc, src, angle, stories) + (news ? '\n' + news.title : '');
-  let invented = inventedFacts(draft.script, allowed);
+  // v706 r2 — a CHECKED FACT is allowed only in a sentence that uses it (inventedFactsIn); the picked
+  // angle's own fact sentences are left out of the free material for the same reason.
+  const facts = factList(bc);
+  const allowed = allowedMaterial(bc, src, facts.length ? { belief: withoutFactSentences(angle.belief, facts), why: withoutFactSentences(angle.why, facts) } : angle, stories) + (news ? '\n' + news.title : '');
+  const allowedFn = factAllowedFn(allowed, facts) || allowed;
+  let invented = inventedFactsIn(draft.script, allowed, facts);
   // no-sell — a draft that is a pitch at its core shares the SAME one retry (never a second one, so
   // CLAUDE_CALL_PLAN and the single usage row stay true); its stray sales lines are guarded below.
   const salesy = noSellCore(draft.script) || !guardNoSell(draft.script, { keepLines: format === 'carousel' }).ok;
@@ -1439,12 +1699,12 @@ async function runWrite(opts) {
       const note = [invented.length ? correctionNote(draft.script, invented) : '', salesy ? noSellNote() : ''].filter(Boolean).join('\n\n');
       const r2 = await draftCall(basePrompt + '\n\n' + note, DRAFT_MAX_TOKENS, retryRoom());
       const d2 = r2.truncated ? null : parseDraft(r2.text, stories);
-      if (d2 && d2.script) { draft = d2; invented = inventedFacts(draft.script, allowed); }
+      if (d2 && d2.script) { draft = d2; invented = inventedFactsIn(draft.script, allowed, facts); }
     } catch (e) { /* the first draft is slotted below instead */ }
     passes.draft = 'retried_' + passes.retryReasons.join('_');
   }
   if (invented.length) {
-    draft.script = slotifyInvented(draft.script, allowed);
+    draft.script = slotifyInvented(draft.script, allowedFn);
     passes.draft = retried ? 'retried_then_slotted' : 'slotted';
   }
   passes.inventedRemoved = invented.slice(0, 20);
@@ -1499,16 +1759,28 @@ async function runWrite(opts) {
   idea.hashtags = guardIdeaNoSell({ hashtags: hashtagsFor(bc, idea) }).idea.hashtags;   // fix7 — the brand's own themes + name, never the model's
   idea.postType = type || 'tip';           // types — every written idea says what it is about
   if (news) idea.newsSource = { title: news.title, url: news.url };   // from the stored headline, never the model
+  // v706 — CHECKED FACTS: the ids the draft named (only this brand's real ones) plus any fact the finished
+  // text visibly uses without naming it. They ride on the idea as `facts`, and the caption ends with the
+  // source link(s) — AFTER every guard, so nothing can cut it (a news post keeps only its headline line).
+  const factBase = [src.text, src.creator, src.platform, userFacts(bc), stories.map(x => x.text).join('\n'), news ? news.title : ''].join('\n');
+  const factIds = citedFactIds(bc, draft.facts, idea.script + '\n' + idea.caption);
+  for (const id of factIdsUsedIn(bc, idea.script + '\n' + idea.caption, factBase)) if (factIds.indexOf(id) < 0) factIds.push(id);
+  if (factIds.length) {
+    idea.facts = factIds;
+    idea.caption = captionWithFactSources(idea.caption, factSourcesFor(bc, factIds), idea.postType);
+  }
   // fix7 — also at the top level (the contract names runWrite's `hashtags: string[]`); same array.
   return { idea, hashtags: idea.hashtags, usedStories: draft.usedStories, usedSpeechSamples, warnings: warningsFor(bc), passes };
 }
 
 module.exports = {
+  TYPE_SHAPES, OPINION_SHAPE, factsBlockFor, factsUse, factsMaterial, knownFactIds, factIdsUsedIn, citedFactIds, factSourcesFor, captionWithFactSources, factList, factMatchesText, inventedFactsIn,
   styleGuide, runAngles, runWrite, NO_SELL_RULE, noSellRule, noSellNote, guardNoSell, guardIdeaNoSell, noSellCore, hasSales, strongSales, FORMATS, SOURCE_KINDS, TYPE_RULES, normPostType, guardIdeaFacts, userFacts,
   usageModel, writerCall, writerCallResilient, CLAUDE_CALL_PLAN, CLAUDE_THINKING_HEADROOM, LOWER_EFFORT, DRAFT_MAX_TOKENS, SPOKEN_MAX_TOKENS, ANGLES_MAX_TOKENS, SHAPE_MAX_TOKENS, writerEffort, writerProvider, WRITER_EFFORT, startBrandAttribution,
   _internals: {
     normSource, normAngle, slotsOf, inventedFacts, hashtagsFor, numberTokens, nameTokens, claimTokens, slotifyInvented, slotNeighbourNovelty, spokenRejects, parseDraft, buildIdea, cleanScript,
     brandBlockV2, allowedMaterial, userFacts, USER_FACT_FIELDS, AI_FILLED_FIELDS, metaOf, warningsFor, speechSamplesFor, normStories, anglesFrom,
     DRAFT_SHARE, SHAPE_SHARE, MIN_SPOKEN_MS, MIN_SHAPE_MS, SHAPE_EFFORT, anglesPrompt, draftPrompt,
+    MAX_BELIEF, MAX_WHY, MAX_CAPTION, angleKind, beatsFor, factList, factsMaterial, localFactSources,
   },
 };

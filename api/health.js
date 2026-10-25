@@ -44,9 +44,21 @@ const AUDIT_ARRAY_KEYS = [
 // as "not yet observed" = pass, so an unscheduled job listed here is a check that is
 // permanently green and can never fail — the same class as the old `!!(env || true)`
 // cost-cap probe. (The auto-publish cron used to sit here; it and its endpoint are gone.)
+// v706 — fact-pack-cron (api/fact-pack.js, vercel.json "20 3 * * *" daily; each brand is searched at
+// most weekly, but the job itself runs and beats daily) → stale after 26h like pull-trends.
+// firstRunGraceMin: a NEW job has no heartbeat row until its first scheduled run. The grace is RELATIVE,
+// not a date typed into the code: the first time health sees the job without a heartbeat it records
+// that moment (a 'first-missing:<job>' row in job_heartbeats, written once, never overwritten). For
+// firstRunGraceMin after that moment a missing heartbeat is 'awaiting-first-run' and green; after it,
+// 'never-run' and red, exactly like every other job. If that marker cannot be written the job is red
+// at once (no marker = no proof the grace ever started). 36 h = one daily schedule + 12 h of slack.
+// (Vercel exposes no deploy timestamp to the function, so "the build is < 36 h old" is not knowable.)
+const FIRST_MISSING = 'first-missing:';   // job_heartbeats key prefix of the grace markers (see above)
+const MARK_WRITE_MS = 3000;
 const CRON_JOBS = [
   { job: 'send-daily',       maxAgeMin: 180 },   // hourly → stale after 3h
   { job: 'pull-trends-cron', maxAgeMin: 1560 },  // daily  → stale after 26h
+  { job: 'fact-pack-cron',   maxAgeMin: 1560, firstRunGraceMin: 36 * 60 },  // daily → stale after 26h
 ];
 
 // Live route reachability. Probed with an UNAUTHENTICATED GET against the public
@@ -254,8 +266,35 @@ module.exports = async function handler(req, res) {
     const byJob = Object.create(null);
     for (const row of hb.data) byJob[row.job] = row;
     const now = Date.now();
-    for (const { job, maxAgeMin } of CRON_JOBS) {
+    for (const { job, maxAgeMin, firstRunGraceMin } of CRON_JOBS) {
       const row = byJob[job];
+      if ((!row || !row.last_success_at) && firstRunGraceMin > 0) {
+        // v706 — a just-added job before its first scheduled run: honest, not red (see CRON_JOBS).
+        const mark = byJob[FIRST_MISSING + job];
+        let since = mark && Date.parse(mark.last_success_at);
+        if (!since) {
+          // First sighting: record it. Insert-only (ignore-duplicates), so a later call can never move
+          // the start of the grace forward. Bounded, and a failed write means no grace.
+          let _mt = null;
+          try {
+            const w = await Promise.race([
+              store.rest('POST', '/job_heartbeats', {
+                body: { job: FIRST_MISSING + job, last_success_at: new Date(now).toISOString(), last_status: 'marker',
+                        detail: { note: 'health first saw ' + job + ' without a heartbeat' } },
+                headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
+              }),
+              new Promise((r) => { _mt = setTimeout(() => r(null), MARK_WRITE_MS); }),
+            ]);
+            if (w && w.status >= 200 && w.status < 300) since = now;
+          } catch (_) { /* no marker -> no grace */ }
+          finally { if (_mt) clearTimeout(_mt); }
+        }
+        if (since && now - since < firstRunGraceMin * 60000) {
+          cronMeta[job] = 'awaiting-first-run';
+          add('cron_' + job + '_fresh', true);
+          continue;
+        }
+      }
       if (!row || !row.last_success_at) {
         // WAS A PASS. "Never observed" was treated as a fresh deploy that hasn't run yet — but a
         // heartbeat row SURVIVES deploys, so it is only ever absent if the job has never once
