@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v706';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v707';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -22154,7 +22154,7 @@ async function rv2MemAdd(brandId, kind, text, tags) {
     if (!brandId || !t) return { ok: false, status: 0 };
     // the server's caps (api/brand-memory.js CAPS): over them a belief/story is refused outright, so
     // cut at a word boundary here — the full words stay in the script either way
-    const cap = kind === 'belief' ? 140 : kind === 'speech' ? 800 : 600;
+    const cap = kind === 'belief' ? 300 : kind === 'speech' ? 800 : 600;
     let clip = t;
     if (clip.length > cap) { clip = clip.slice(0, cap); const sp = clip.lastIndexOf(' '); if (sp > cap * 0.6) clip = clip.slice(0, sp); }
     const r = await rv2Post('/api/brand-memory', { brandId: brandId, action: 'add', kind: kind,

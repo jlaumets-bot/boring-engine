@@ -17,7 +17,7 @@
 --   neither read nor write a single row. The drops below remove the policies an earlier run made.
 --
 -- LIMITS THE DATABASE ENFORCES (the API enforces the same ones first, with friendlier errors):
---   * kind is story, belief or speech; text is 1..140 (belief), 1..600 (story), 1..800 (speech);
+--   * kind is story, belief or speech; text is 1..300 (belief), 1..600 (story), 1..800 (speech);
 --   * at most 50 beliefs and 200 stories per brand — a BEFORE INSERT trigger that takes a
 --     per-brand-per-kind transaction lock BEFORE it counts, so two simultaneous adds are counted
 --     one after the other and can never both land past the cap (the app-side recount could not
@@ -68,14 +68,14 @@ begin
                   where conname = 'brand_memory_text_len' and conrelid = 'public.brand_memory'::regclass) then
     select count(*) into v_bad from public.brand_memory
      where char_length(text) < 1
-        or char_length(text) > case kind when 'belief' then 140 when 'story' then 600 else 800 end;
+        or char_length(text) > case kind when 'belief' then 300 when 'story' then 600 else 800 end;
     if v_bad = 0 then
       alter table public.brand_memory add constraint brand_memory_text_len
-        check (char_length(text) between 1 and case kind when 'belief' then 140 when 'story' then 600 else 800 end);
+        check (char_length(text) between 1 and case kind when 'belief' then 300 when 'story' then 600 else 800 end);
     else
       raise notice 'brand_memory: % row(s) break the length limits; constraint added NOT VALID, no row changed', v_bad;
       alter table public.brand_memory add constraint brand_memory_text_len
-        check (char_length(text) between 1 and case kind when 'belief' then 140 when 'story' then 600 else 800 end) not valid;
+        check (char_length(text) between 1 and case kind when 'belief' then 300 when 'story' then 600 else 800 end) not valid;
     end if;
   end if;
 end $$;

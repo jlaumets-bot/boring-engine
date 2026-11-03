@@ -21,7 +21,7 @@
 const store = require('./_publish/store');
 const requireUser = require('./_requireUser');
 
-const CAPS = { story: 600, belief: 140, speech: 800 };
+const CAPS = { story: 600, belief: 300, speech: 800 };
 const TAGS_MAX = 5, TAG_CAP = 30;
 const SPEECH_KEEP = 20;          // newest 20 per person per brand; their older ones are pruned after each add
 // v693 — how many a brand may HOLD. Speech is pruned instead (a sample is replaceable); a story or

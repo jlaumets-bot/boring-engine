@@ -2,6 +2,13 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-03 — v707. v706 SQL APPLIED + brand-memory belief cap 300.
+
+Applied live (SHA-256 verified against the files): sql/fact-pack.sql, sql/v658-revoke-security-health.sql, sql/brand-memory-belief-300.sql.
+Checked: brands.fact_pack exists; brands_pin_fact_pack_trg exists; function ACL postgres + service_role only;
+brand_memory_text_len = belief 300 / story 600 / else 800 NOT VALID. Then CAPS.belief 300 (api/brand-memory.js),
+sql/brand-memory.sql both checks 300, app.html rv2MemAdd 300, rv2-memory-1 gate updated.
+
 ## ▶▶ 2026-10-25 — v706. CONTENT QUALITY: FACT PACK + POST SHAPES + LIFTED CUTS (owner: "go").
 
 Plan .unlazy/quality/PLAN.md. Gates fact-pack (119), post-shapes (102), no-sell; mutations F 44/44, P 42/42; 1 review round (6 fixed).

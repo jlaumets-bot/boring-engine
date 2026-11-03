@@ -240,10 +240,10 @@ resetDb();
   ok(r.code === 200, 'a 600-char story is accepted, got ' + r.code);
   r = await call({ brandId: A, action: 'add', kind: 'story', text: 'x'.repeat(601) });
   ok(r.code === 400 && r.body.code === 'too_long' && r.body.max === 600 && mem(A, 'story').length === 2, 'a 601-char story is refused (400 too_long, max 600) and not stored');
-  r = await call({ brandId: A, action: 'add', kind: 'belief', text: 'b'.repeat(140) });
-  ok(r.code === 200, 'a 140-char belief is accepted, got ' + r.code);
-  r = await call({ brandId: A, action: 'add', kind: 'belief', text: 'c'.repeat(141) });
-  ok(r.code === 400 && r.body.code === 'too_long' && mem(A, 'belief').length === 1, 'a 141-char belief is refused and not stored');
+  r = await call({ brandId: A, action: 'add', kind: 'belief', text: 'b'.repeat(300) });
+  ok(r.code === 200, 'a 300-char belief is accepted, got ' + r.code);
+  r = await call({ brandId: A, action: 'add', kind: 'belief', text: 'c'.repeat(301) });
+  ok(r.code === 400 && r.body.code === 'too_long' && mem(A, 'belief').length === 1, 'a 301-char belief is refused and not stored');
   r = await call({ brandId: A, action: 'add', kind: 'speech', text: 'w'.repeat(800) });
   ok(r.code === 200 && !r.body.clipped && mem(A, 'speech')[0].text.length === 800, 'an 800-char speech sample is stored whole');
   const long = Array.from({ length: 200 }, (_, i) => 'word' + i).join(' ');   // ~1,200 chars
@@ -786,7 +786,7 @@ const CAPS_JS = handler.CAPS, KIND_MAX_JS = handler.KIND_MAX;
     ['an old policy left in place', sql.replace(/drop policy if exists "brand_memory insert member" on public\.brand_memory;/i, '')],
     ['an unguarded constraint', sql.replace(/if not exists \(select 1 from pg_constraint/i, 'if true or exists (select 1 from pg_constraint')],
     ['deleting over-length rows', sql.replace(/raise notice 'brand_memory:[^;]*;/i, "delete from public.brand_memory where char_length(text) > 800;")],
-    ['a length cap that differs', sql.replace(/when 'belief' then 140\b/gi, "when 'belief' then 1400")],
+    ['a length cap that differs', sql.replace(/when 'belief' then 300\b/gi, "when 'belief' then 1400")],
     ['a count cap that differs', sql.replace(/when 'belief' then 50/i, "when 'belief' then 500")],
     ['count before lock', sql.replace(/(\s*perform pg_advisory_xact_lock\([^;]*;)(\s*select count\(\*\)[^;]*;)/i, '$2$1')],
     ['no lock', sql.replace(/\s*perform pg_advisory_xact_lock\([^;]*;/i, '')],
