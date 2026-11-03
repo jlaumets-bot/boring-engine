@@ -231,9 +231,9 @@ const belAdds = () => callsTo('/api/brand-memory', 'add').filter(x => x.body.kin
   const st = callsTo('/api/brand-memory', 'add').filter(x => x.body.kind === 'story');
   ok(st.length === 2 && st.some(x => x.body.text === 'Our views halved in one week and I panicked.' && J(x.body.tags) === J([ASK1])), 'each story is kept via /api/brand-memory add kind story, tagged with its slot');
   ok(/Kept in your story bank/.test(panel()), 'the person is told it was kept');
-  { const before = calls.length; await c.rv2MemAdd('brand-1', 'belief', 'word '.repeat(60), []); await c.rv2MemAdd('brand-1', 'story', 'story '.repeat(200), []);
+  { const before = calls.length; await c.rv2MemAdd('brand-1', 'belief', 'word '.repeat(80), []); await c.rv2MemAdd('brand-1', 'story', 'story '.repeat(200), []);
     const [b1, s1] = calls.slice(before).map(x => x.body.text);
-    ok(b1.length <= 140 && s1.length <= 600 && !/\s$/.test(b1) && b1.endsWith('word') && s1.endsWith('story'), 'memory writes are cut to the server caps (belief 140, story 600) at a word boundary, never refused'); }
+    ok(b1.length <= 300 && b1.length > 280 && s1.length <= 600 && !/\s$/.test(b1) && b1.endsWith('word') && s1.endsWith('story'), 'memory writes are cut to the server caps (belief 300, story 600) at a word boundary, never refused'); }
   c.rv2ToggleEdit(); ok(panel().includes('id="rv2ScriptEdit"'), 'Edit script shows the script in a text box');
   c.rv2EditInput(c._rv2.script.replace('And it worked.', 'And it worked. Honestly.')); c.rv2ToggleEdit();
   ok(c._rv2.script.endsWith('Honestly.'), 'a hand edit is kept');
