@@ -418,7 +418,11 @@ module.exports = async function handler(req, res) {
       'subscription_data[metadata][plan]': plan,
       'success_url': base + '/app.html?checkout=success&session_id={CHECKOUT_SESSION_ID}',
       'cancel_url': base + '/app.html?checkout=cancel',
-      'allow_promotion_codes': 'true'
+      'allow_promotion_codes': 'true',
+      // v708 — a 100%-off promotion code (owner's comp / tester vouchers) must not demand a card for a
+      // €0 total. Stripe collects a payment method whenever anything is due, so every paid checkout
+      // still takes a card; there is no Stripe-side trial in this session (grep trial_period: none).
+      'payment_method_collection': 'if_required'
     };
     const withEmail = () => Object.assign({}, form, user.email ? { 'customer_email': user.email } : {});
 

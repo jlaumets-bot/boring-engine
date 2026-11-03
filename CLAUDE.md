@@ -2,6 +2,14 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-03 — v708. OWNER ON AGENCY + €0 PROMO CODES NEED NO CARD.
+
+- user_plans: j.laumets@gmail.com set to plan 'agency' by hand (no Stripe subscription on the row, so no webhook overwrites it).
+- api/create-checkout.js: 'payment_method_collection': 'if_required' — a 100%-off Stripe promotion code checks out without a card;
+  any paid total still collects one. Gate scripts/verify/checkout-comp.mjs (fails if a Stripe trial is ever added to the session).
+- Vouchers for others = Stripe dashboard → Product catalog → Coupons → 100% off, duration FOREVER (a "once" coupon gives a free
+  first period, then the €>0 invoice has no card → past_due → webhook downgrade).
+
 ## ▶▶ 2026-11-03 — v707. v706 SQL APPLIED + brand-memory belief cap 300.
 
 Applied live (SHA-256 verified against the files): sql/fact-pack.sql, sql/v658-revoke-security-health.sql, sql/brand-memory-belief-300.sql.
