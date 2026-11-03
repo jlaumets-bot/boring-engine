@@ -539,6 +539,16 @@ input:focus, textarea:focus, select:focus{box-shadow:0 0 0 3px var(--cs-line)}
 .tp-shz-btn{background:var(--cs-primary);border:1px solid var(--cs-line);box-shadow:none;color:var(--cs-on-primary)}
 .tp-deliv-chip:hover{border-color:var(--cs-line);color:var(--cs-text)}
 .tp-deliv-chip.active{background:var(--cs-primary);color:var(--cs-on-primary);border-color:var(--cs-text)}
+/* v709 consistency: Settings → Brand Voice "How you film" (the same chips, left-aligned) + the coach reply speaker button */
+.sp-film{margin:0 0 18px}
+.sp-film .tp-deliv.sp-deliv{margin:0;text-align:left}
+.sp-film .tp-deliv-cap{text-transform:none;letter-spacing:0;font-size:15px;font-weight:600;color:var(--cs-text);margin-bottom:10px}
+.sp-film .tp-deliv-help{color:var(--cs-muted)}
+.bv-speak-row{margin:4px 0 -6px -10px}
+.bv-speak-btn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border-radius:10px;border:0;background:transparent;color:var(--cs-muted);cursor:pointer}
+.bv-speak-btn:hover{background:var(--cs-hover);color:var(--cs-text)}
+.bv-speak-btn.on{background:var(--cs-chip);color:var(--cs-text)}
+.bv-speak-btn:focus-visible{outline:2px solid var(--cs-text);outline-offset:-2px}
 .tp-generate-btn{background:var(--cs-primary);border:1px solid var(--cs-line);color:var(--cs-on-primary);box-shadow:none}
 .tp-generate-btn:hover{box-shadow:none}
 .tp-generate-btn:disabled{box-shadow:none}
@@ -2592,3 +2602,4 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     :root input, :root textarea, :root select, :root .csx-toolbar select { font-size: 16px !important; }
   }
 }
+

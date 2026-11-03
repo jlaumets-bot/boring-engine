@@ -340,6 +340,15 @@ function aboutBrandReason(text, brand) {
   return '';
 }
 
+// v709 (consistency C9) — the brand's banned topics (brands.banned_topics, or bannedTopics on a context
+// object). Same parsing and whole-word match as the trend filter (api/_trends.js bannedTermsFrom).
+function bannedReason(text, brand) {
+  try {
+    const T = require('./_trends');
+    return T.hitsBanned([text].join(' '), T.bannedTermsFrom(brand || {})) ? 'banned_topic' : '';
+  } catch (e) { return ''; }
+}
+
 // ─────────────────────────────── candidates ───────────────────────────────
 function normCandidates(parsed) {
   const arr = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.facts) ? parsed.facts : []);
@@ -379,6 +388,8 @@ function searchPrompt(b) {
   if (!topics.length) return '';
   const audience = String((b && b.target_audience) || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   const avoid = [String((b && b.brand_name) || '').trim()].concat(competitorNames(b).map(c => c.phrase)).filter(Boolean).join(', ').slice(0, 300);
+  let banned = '';
+  try { banned = require('./_trends').bannedTermsFrom(b || {}).join(', ').slice(0, 300); } catch (e) { banned = ''; }
   return [
     'Search the web for 10 to 20 short, checkable FACTS about these topics: ' + topics.join('; ') + '.',
     audience ? 'They will be used in short educational posts for this audience: ' + audience + '.' : '',
@@ -389,6 +400,7 @@ function searchPrompt(b) {
     '- Sources: prefer government agencies, universities, peer-reviewed journals, major international organisations and major news outlets. Never social media, forums, Q&A sites, blogs, or online shops and product pages.',
     avoid ? '- Never a fact about a specific brand, company or product, and never about: ' + avoid + '.' : '- Never a fact about a specific brand, company or product.',
     '- No health or benefit claims about any product, and nothing promotional.',
+    banned ? '- Never a fact about these topics (the brand does not cover them): ' + banned + '.' : '',
     'Return ONLY a JSON array, no prose: [{"text":"the fact","url":"https://...","title":"the page title","topic":"which topic it belongs to"}]',
   ].filter(Boolean).join('\n');
 }
@@ -491,6 +503,7 @@ async function verifyCandidates(cands, brand, opts) {
     if (salesy(f.text)) { drop('salesy'); continue; }
     const ab = aboutBrandReason(f.text, brand);
     if (ab) { drop(ab); continue; }
+    if (bannedReason(f.text, brand)) { drop('banned_topic'); continue; }
     pending.push(Object.assign({}, f, { url: c.url.href, _host: c.host }));
   }
   // One fetch per distinct URL, FETCH_CONC at a time.
@@ -543,7 +556,8 @@ async function buildFacts(brand, opts) {
 }
 
 // ─────────────────────────────── storage ───────────────────────────────
-const BRAND_COLS = 'id,user_id,brand_name,website,communities,target_audience,voice_extra,competitors_text,fact_pack';
+// v709 (consistency C9) — banned_topics: a fact that names one of the brand's banned topics is dropped.
+const BRAND_COLS = 'id,user_id,brand_name,website,communities,target_audience,voice_extra,competitors_text,banned_topics,fact_pack';
 const okStatus = (r) => !!r && r.status >= 200 && r.status < 300;
 // PostgREST answers 400 "column brands.fact_pack does not exist" (42703) until sql/fact-pack.sql runs.
 const columnMissing = (r) => !!r && r.status >= 400 && r.status < 500 && /fact_pack/i.test(String(r.raw || '') + JSON.stringify(r.data || ''));
@@ -765,6 +779,6 @@ async function handler(req, res) {
 module.exports = handler;
 Object.assign(module.exports, {
   _deps: deps, C, ipIsPrivate, checkUrl, sourceBlockReason, sourceScore, canonNum, numbersIn, normText, htmlToText,
-  keyTerms, pageSupports, stripTags, ipv6Groups, aboutBrandReason, salesy, normCandidates, topicsFor, searchPrompt, fetchPage, verifyCandidates,
+  keyTerms, pageSupports, stripTags, ipv6Groups, aboutBrandReason, bannedReason, salesy, normCandidates, topicsFor, searchPrompt, fetchPage, verifyCandidates,
   packFrom, buildFacts, claimSearch, savePack, lastActivityAt, overCostCap, columnMissing,
 });

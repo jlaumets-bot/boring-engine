@@ -5,6 +5,12 @@
 const { callLLM, aiUnavailable } = require('./_llm');
 const { fullBrandBlock, extractJson } = require('./_brain');
 const { noSellRule, hasSales } = require('./_write');   // no-sell (.unlazy/no-sell)
+// v709 consistency (audit B F11 / A M9) — the script's [your story: ...] slots QUOTE the invented sentence
+// they replaced ("…version of \"We saved 40%…\""), so they are taken out before the prompt; every beat's
+// on-screen text is checked against the script itself plus the brand's own material, and a beat that brings
+// a number, name or claim neither has is dropped. The v2 brand block, like every other writer.
+const SLOT_RE = /\[\s*your\s+story\s*:[^\]]*\]/gi;
+const withoutSlots = (t) => String(t == null ? '' : t).replace(SLOT_RE, ' ').replace(/[ \t]{2,}/g, ' ').trim();
 
 // Kinds the renderer knows how to draw. Anything else is coerced to 'statement'.
 const KINDS = ['statement', 'number', 'chips', 'contrast'];
@@ -54,7 +60,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const { script, hook, title, brandContext, brandId, bcFields } = req.body || {};
-    const body = String(script || '').trim();
+    const body = withoutSlots(script);
     if (!body && !hook) return res.status(400).json({ error: 'No script provided' });
 
     let bc = brandContext || {};
@@ -90,18 +96,18 @@ module.exports = async function handler(req, res) {
 
     const sys = `You turn a spoken video script into an on-screen GRAPHICS TRACK — the text and visuals that appear beside the speaker in a split-screen video.
 
-${fullBrandBlock(bc)}
+${fullBrandBlock(bc, { v2: true })}
 
 RULES — this is on-screen text, not narration:
 - 4 beats. Each covers one moment of the script IN ORDER. Never more than 6.
 - On-screen text is SHORT. A headline is read in under 2 seconds — aim 3-9 words. Never a full sentence from the script.
-- Use the script's OWN specifics: real numbers, real product facts, the actual claim. Never invent a statistic.
+- Use only what the script itself says: its own words, its own numbers, its own claim. Never a number, name or claim the script does not contain.
 - The beats must make sense muted, on their own, as a silent summary of the video.
 - No hype words, no emoji, no hashtags. Match the brand voice above.
 - ${noSellRule()}
 
 BEAT KINDS — pick the one that fits what's being said:
-- "number": a single hard figure is the star (value = "34g", "1,000mg", "3x"). headline stays empty or very short; sub explains it.
+- "number": a single figure THE SCRIPT SAYS is the star (value = that figure, written short). Only when the script has one; headline stays empty or very short; sub explains it.
 - "chips": 2-4 short parallel items (audiences, ingredients, mistakes).
 - "contrast": a before/after or them-vs-us flip. Put the flip in headline using a line break.
 - "statement": the default — a short punchy line.
@@ -124,11 +130,11 @@ under the figure). Leave "" only when nothing concrete fits.
 Return ONLY this JSON:
 {"beats":[{"kind":"statement","eyebrow":"THE HOOK","headline":"Short punchy line","highlight":"two words","sub":"","value":"","chips":[],"cue":"first words of that sentence","imageQuery":"factory floor workers"}]}
 
-"eyebrow" = 1-3 word label above the beat (THE HOOK / WHAT'S IN IT / WHO THIS BREAKS / THE FIX).
+"eyebrow" = 1-3 word label above the beat (THE HOOK / THE POINT / WHO THIS BREAKS / THE FIX).
 "highlight" = the 1-3 words inside headline to emphasise — MUST appear verbatim in headline, or leave empty.`;
 
     const usr = `TITLE: ${title || ''}
-HOOK: ${hook || ''}
+HOOK: ${withoutSlots(hook)}
 
 SCRIPT:
 ${body.slice(0, 3000)}`;
@@ -152,9 +158,15 @@ ${body.slice(0, 3000)}`;
 
     const parsed = extractJson(raw);
     // no-sell — a beat whose on-screen text sells is dropped; a selling sub-line is blanked.
+    // v709 — the facts check: the script, title and hook (the person's own post) and the brand's material.
+    const W = require('./_write');
+    const _allowed = [body, withoutSlots(title), withoutSlots(hook),
+      typeof W.userFacts === 'function' ? W.userFacts(bc) : '', typeof W.brandProof === 'function' ? W.brandProof(bc) : ''].join('\n');
+    const invents = (t) => { try { return typeof W.inventedFactsIn === 'function' && String(t || '').trim() && W.inventedFactsIn(String(t), _allowed, []).length > 0; } catch (e) { return false; } };
     const beats = clean(parsed && (parsed.beats || parsed))
-      .map(b => (b.sub && hasSales(b.sub)) ? Object.assign({}, b, { sub: '' }) : b)
-      .filter(b => !hasSales([b.eyebrow, b.headline, b.value || ''].concat(b.chips || []).join('. ')));
+      .map(b => (b.sub && (hasSales(b.sub) || invents(b.sub))) ? Object.assign({}, b, { sub: '' }) : b)
+      .filter(b => !hasSales([b.eyebrow, b.headline, b.value || ''].concat(b.chips || []).join('. ')))
+      .filter(b => !invents([b.headline, b.value || ''].concat(b.chips || []).join('. ')));
     if (!beats.length) {
       console.error('video-beats: no usable beats from model. raw head:', String(raw).slice(0, 400));
       return res.status(502).json({ error: 'Could not build the graphics track — try again.' });

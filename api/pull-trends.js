@@ -1,7 +1,7 @@
 // On-demand: pull fresh, timely topic ideas for a brand from Google News RSS.
 // Free (no paid API) — metered at 0 credits / 0 €. Returns clean topic strings the
 // frontend merges into the brand's trend store, which flows into Ideas / Quick Post.
-const { pullAllTrends, pullCompetitorPulse, scoreTrends } = require('./_trends');
+const { pullAllTrends, pullCompetitorPulse, scoreTrends, dropBanned } = require('./_trends');
 const store = require('./_publish/store');
 const COMP_STALE_MS = 7 * 24 * 3600 * 1000; // same weekly staleness rule as the cron
 
@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
     // 5th arg = the brand brain (sent from the frontend) so Grok scopes + relevance-filters against it.
     // 6th arg (v453) = the Grok lane's OWN budget: callGrokSearch allows 90s internally, so without
     // its own 35s race cap the Grok lane regularly lost the shared 50s race and returned nothing.
-    const items = await pullAllTrends(keywords, process.env.APIFY_API_TOKEN, windowHours, 50000, brandContext, 35000);
+    let items = await pullAllTrends(keywords, process.env.APIFY_API_TOKEN, windowHours, 50000, brandContext, 35000);
 
     // Only attribute the usage row to a brand the caller actually owns.
     let logBrandId = null;
@@ -95,12 +95,16 @@ module.exports = async function handler(req, res) {
            pull does not set: competitorMoves, compAt and topPosts, all written by the nightly
            cron. One failed read on a manual "Pull trends" tap wiped the weekly competitor
            pulse. A merge onto an unknown base is not a merge; refuse it. */
-        const _brRes = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(logBrandId)}&select=auto_trends`);
+        // v709 (consistency C9) — banned_topics too: the brand's own list (not the client's copy) drops every
+        // pulled item that names a banned topic, before it is saved or shown.
+        const _brRes = await store.rest('GET', `/brands?id=eq.${encodeURIComponent(logBrandId)}&select=auto_trends,banned_topics`);
         if (!_brRes || _brRes.status < 200 || _brRes.status >= 300) {
           throw new Error('could not read the current auto_trends (' + ((_brRes && _brRes.status) || 'no response') +
                           ') — refusing to merge onto an unknown base and lose the cron\'s competitor pulse');
         }
         const _br = ((_brRes.data) || [])[0];
+        items = dropBanned(items, (_br && _br.banned_topics) || '');
+        if (!items.length) throw new Error('every pulled item named a banned topic — nothing to save');
         const _at = (_br && _br.auto_trends && typeof _br.auto_trends === 'object') ? _br.auto_trends : {};
         const _prev = (Array.isArray(_at.items) ? _at.items : []).map(i => i && i.text).filter(Boolean);
         const _scored = scoreTrends(items, _prev, []);

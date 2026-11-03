@@ -141,7 +141,8 @@ async function pickAndSave() { await c.rv2Pick(0); await tick(); const r = await
   saved = await pickAndSave();
   ok(saved && c.state[0].sparkSource === true && c.state[0].genFlow === 'v2' && els.icIdea.value === '' && els.icUrl.value === '' && c.__icCleared === 1 && /Saved to your Ideas/.test(els.icResult.innerHTML),
     'F2 saved; the form and its draft are cleared only after saving');
-  reset(); put('icIdea', { value: 'Bottled vs tap' }); put('icUrl', { value: 'https://www.tiktok.com/@x/video/9' }); put('icNotes', { value: 'short' }); put('icStatus'); put('icBtn'); put('icResult');
+  // v709: another video (the words of video/9 are already read this session, so they are not paid for again)
+  reset(); put('icIdea', { value: 'Bottled vs tap' }); put('icUrl', { value: 'https://www.tiktok.com/@x/video/10' }); put('icNotes', { value: 'short' }); put('icStatus'); put('icBtn'); put('icResult');
   route = (u, b) => u === '/api/transcribe-url' ? { status: 502, body: { error: 'private video' } } : defaultRoute(u, b);
   await c.icDevelopV2(); await tick();
   ok(callsTo('/api/angles').length === 0 && /Couldn't read that video automatically \(private video\)/.test(els.icResult.innerHTML), 'F2 an unreadable video with no notes is never written blind');
@@ -272,9 +273,10 @@ async function pickAndSave() { await c.rv2Pick(0); await tick(); const r = await
     ok(!c.state[1].genFlow && !('gen_flow' in rows[1]), 'G the old server\'s idea (no belief) stays untagged, so the metric is honest across the deploy');
   }
   const TAGLINE = "data.ideas = data.ideas.map(rv2TagFlow)";
-  for (const fn of ['autoRefillCheck', 'generateNewIdeas', 'generateTodayTabPost', 'usePAAQuestion', 'nbDevelop', 'sparkDevelop', 'ideaDevelop'])
+  // v709: autoRefillCheck was removed (owner decision 2), so there are 6 intakes
+  for (const fn of ['generateNewIdeas', 'generateTodayTabPost', 'usePAAQuestion', 'nbDevelop', 'sparkDevelop', 'ideaDevelop'])
     ok(grab(fn).includes(TAGLINE), 'G ' + fn + ' tags its /api/generate-ideas reply before using it');
-  ok(html.split(TAGLINE).length - 1 === 7, 'G and nowhere else (7 intakes)');
+  ok(html.split(TAGLINE).length - 1 === 6, 'G and nowhere else (6 intakes)');
 
   if (fail) { console.log('\n' + fail + ' check(s) failed'); process.exit(1); }
   finished = true;

@@ -401,7 +401,8 @@ check('the OLD-shape Remix request lost the full brand snapshot', !!rFull.brandC
 // Ideas' request-shaping payload must survive the move onto the shared helper.
 check('the lean Ideas request dropped `count`', iLean.count === 5);
 check('the lean Ideas request dropped the priority `gaps`', Array.isArray(iLean.gaps) && iLean.gaps.length === 21);
-check('the lean Ideas request dropped the face-on/faceless delivery choice', iLean.delivery === 'faceon');
+// v709: the request says 'face' | 'faceless' (the brand's How you film, or the switch's override)
+check('the lean Ideas request dropped the face-on/faceless delivery choice', iLean.delivery === 'face');
 check('the lean Ideas request dropped learningContext', typeof iLean.learningContext === 'string' && iLean.learningContext.length > 1000);
 check('Ideas emits Quick Post\'s avoid-list marker — the server would compose a list from ALL library rows, resurrecting the hidden ideas v600 deliberately excluded',
   iLean.learningContext.indexOf('<<CS_AVOID_LIST>>') === -1);

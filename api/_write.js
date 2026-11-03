@@ -187,9 +187,11 @@ const SHAPE_MAX_TOKENS = 1200;
 const CLAUDE_CALL_PLAN = {
   angles: [{ in: 7000, max: ANGLES_MAX_TOKENS, kind: 'angles' }, { in: 7500, max: ANGLES_MAX_TOKENS, kind: 'angles' }],
   write: [
-    { in: 9000, max: DRAFT_MAX_TOKENS, kind: 'draft' }, { in: 9000, max: DRAFT_MAX_TOKENS, kind: 'draft', lower: true },
-    { in: 10000, max: DRAFT_MAX_TOKENS * 2, kind: 'draft' }, { in: 10000, max: DRAFT_MAX_TOKENS * 2, kind: 'draft', lower: true },
-    { in: 3500, max: SPOKEN_MAX_TOKENS, kind: 'spoken' }, { in: 2500, max: SHAPE_MAX_TOKENS, kind: 'shape' },
+    // v709 — inputs re-estimated: the draft, spoken and shape prompts now carry postRules, and the spoken
+    // pass the brand's voice memory + voice sample (<= 1,500 + 700 chars).
+    { in: 9500, max: DRAFT_MAX_TOKENS, kind: 'draft' }, { in: 9500, max: DRAFT_MAX_TOKENS, kind: 'draft', lower: true },
+    { in: 10500, max: DRAFT_MAX_TOKENS * 2, kind: 'draft' }, { in: 10500, max: DRAFT_MAX_TOKENS * 2, kind: 'draft', lower: true },
+    { in: 4500, max: SPOKEN_MAX_TOKENS, kind: 'spoken' }, { in: 3500, max: SHAPE_MAX_TOKENS, kind: 'shape' },
   ],
   ideas: [{ in: 10000, max: 16000, kind: 'batch' }, { in: 10000, max: 16000, kind: 'batch', lower: true }, { in: 10500, max: 16000, kind: 'batch' }],
   sharpen: [{ in: 5000, max: 1500, kind: 'edit' }, { in: 5000, max: 1500, kind: 'edit', lower: true }, { in: 6000, max: 4000, kind: 'edit' }],
@@ -216,7 +218,7 @@ const SOURCE_LABEL = {
 
 const FORMAT_RULES = {
   // v693 r3 — GUIDANCE, not caps: the model is told "usually", and nothing in code trims to these.
-  talking:   { min: 60, max: 160, what: 'a talking video, said to camera in one take' },
+  talking:   { min: 60, max: 160, what: 'a talking video, said out loud in one take' },   // v709 — who is on screen is the DELIVERY rule's job
   micro:     { min: 25, max: 70,  what: 'a short video: the one point and the reason behind it' },
   statement: { min: 15, max: 60,  what: 'a bold text post: a few sentences that stand alone on screen' },
   carousel:  { min: 70, max: 220, what: 'a swipe carousel: 5 to 8 slides, one slide per paragraph, slide 1 makes people swipe' },
@@ -237,13 +239,35 @@ const TYPE_SHAPES = {
   bts: 'one real moment from the work: what happened, then what it shows',
 };
 const OPINION_SHAPE = 'why people believe the opposite, what goes wrong because of it, then the reframe';
+// v709 (audit A4) — THE SAME TYPES IN A SHORT FORMAT (a statement, a micro video, an image post). A 15-60 word
+// statement has no room for "2 to 4 steps" or a full arc, so each type is compressed to ONE move there.
+// postRules() picks the shape that fits the format; TYPE_RULES (the batch, which mixes formats) names both.
+const SHORT_SHAPES = {
+  tip: 'ONE concrete step and why it works (never a list of steps)',
+  about: 'one real fact about why it exists or how it is made, and what it means for the viewer',
+  news: 'the headline in plain words, and why it matters to the viewer',
+  qna: 'the direct answer, then one reason',
+  story: 'the moment, and the lesson it taught',
+  bts: 'one real moment from the work, and what it shows',
+};
+const SHORT_OPINION_SHAPE = 'the opinion in one plain sentence, then the one reason it is true';
+// The type rule WITHOUT its shape (the draft prompt adds the shape fitted to the format, via postRules).
+const TYPE_RULE_BASE = {
+  tip: 'TIP: ONE practical how-to from the viewer\'s own world. Only when the point is an opinion: ONE sharp opinion, argued plainly.',
+  about: 'ABOUT US, AS A STORY OR A LESSON: why the product or service exists, how it is made, the problem it was built for, or a myth about the category it busts. It teaches or entertains; it never sells. Use ONLY the real facts in the brand profile; a fact you do not have becomes a [your story: <what to tell>] slot in a spoken script (in on-screen text the claim is cut). Still spoken, still ONE point. Never an offer, a price, a feature list or a pitch.',
+  news: 'NEWS IN THE CATEGORY: react to ONE of the real headlines listed, and only to those. Name the headline plainly. Say only what the headline itself says: never invent details, numbers, names or quotes from the story.',
+  qna: 'Q&A: a real question this audience asks, answered directly (in an ideas batch, in the "qna" format and its rules).',
+  story: 'CUSTOMER STORY: built around ONE real story from the story bank if one fits. If none fits, the story itself is a [your story: <the customer moment to tell>] slot in a spoken script (on-screen text keeps to the lesson). Never invent a customer, a name or a result.',
+  bts: 'BEHIND THE SCENES / FOUNDER: ONE real moment from the work or from the founder. Real details only from the brand profile; anything else is a [your story: <what to tell>] slot in a spoken script (in on-screen text it is cut).',
+};
+const shortNote = (t) => ' (in a statement, micro or image post: ' + SHORT_SHAPES[t] + ')';
 const TYPE_RULES = {
-  tip: 'TIP: ONE practical how-to from the viewer\'s own world. SHAPE: ' + TYPE_SHAPES.tip + '. Only when the point is an opinion: ONE sharp opinion, argued plainly.',
-  about: 'ABOUT US, AS A STORY OR A LESSON: why the product or service exists, how it is made, the problem it was built for, or a myth about the category it busts. It teaches or entertains; it never sells. Use ONLY the real facts in the brand profile; a fact you do not have becomes a [your story: <what to tell>] slot. Still spoken, still ONE point. Never an offer, a price, a feature list or a pitch.',
-  news: 'NEWS IN THE CATEGORY: react to ONE of the real headlines listed, and only to those. Name the headline plainly. Say only what the headline itself says: never invent details, numbers, names or quotes from the story. SHAPE: ' + TYPE_SHAPES.news + '.',
-  qna: 'Q&A: a real question this audience asks, answered on camera, in the "qna" format and its rules. SHAPE: ' + TYPE_SHAPES.qna + '.',
-  story: 'CUSTOMER STORY: built around ONE real story from the story bank if one fits. If none fits, the story itself is a [your story: <the customer moment to tell>] slot. Never invent a customer, a name or a result. SHAPE: ' + TYPE_SHAPES.story + '.',
-  bts: 'BEHIND THE SCENES / FOUNDER: ONE real moment from the work or from the founder. Real details only from the brand profile; anything else is a [your story: <what to tell>] slot. SHAPE: ' + TYPE_SHAPES.bts + '.',
+  tip: 'TIP: ONE practical how-to from the viewer\'s own world. SHAPE: ' + TYPE_SHAPES.tip + shortNote('tip') + '. Only when the point is an opinion: ONE sharp opinion, argued plainly.',
+  about: 'ABOUT US, AS A STORY OR A LESSON: why the product or service exists, how it is made, the problem it was built for, or a myth about the category it busts. It teaches or entertains; it never sells. Use ONLY the real facts in the brand profile; a fact you do not have becomes a [your story: <what to tell>] slot in a spoken script (in on-screen text the claim is cut). Still spoken, still ONE point. Never an offer, a price, a feature list or a pitch.',
+  news: TYPE_RULE_BASE.news + ' SHAPE: ' + TYPE_SHAPES.news + shortNote('news') + '.',
+  qna: TYPE_RULE_BASE.qna + ' SHAPE: ' + TYPE_SHAPES.qna + '.',
+  story: TYPE_RULE_BASE.story + ' SHAPE: ' + TYPE_SHAPES.story + shortNote('story') + '.',
+  bts: TYPE_RULE_BASE.bts + ' SHAPE: ' + TYPE_SHAPES.bts + shortNote('bts') + '.',
 };
 const normPostType = (v) => (typeof v === 'string' && POST_TYPES.indexOf(v) >= 0 ? v : '');
 
@@ -252,10 +276,77 @@ const normPostType = (v) => (typeof v === 'string' && POST_TYPES.indexOf(v) >= 0
 // ONE rule, rendered by every prompt that writes post text (styleGuide carries it, and the writers
 // without styleGuide add noSellRule() themselves). guardNoSell (below, next to guardIdeaFacts) is the
 // code half: whatever the model still writes as a sales ask is taken out after the call.
-const NO_SELL_RULE = 'NEVER SALESY: every post entertains or teaches. Never a pitch, an offer, a discount, a price push, "buy / shop / order / book now", "link in bio", "DM us to buy", "use code", "limited time", urgency, scarcity or a feature tour. The brand shows up only through its expertise, its stories and how things work. The only calls to action are engagement: save, follow, comment, share, or "tell me in the comments".';
+const NO_SELL_CORE = 'NEVER SALESY: every post entertains or teaches. Never a pitch, an offer, a discount, a price push, "buy / shop / order / book now", "link in bio", "DM us to buy", "use code", "limited time", urgency, scarcity or a feature tour. The brand shows up only through its expertise, its stories and how things work.';
+const NO_SELL_RULE = NO_SELL_CORE + ' The only calls to action are engagement (a save, a follow, a comment, a share), and they are optional.';
 function noSellRule() { return NO_SELL_RULE; }
 // The one-line correction a writer's single retry adds when its first answer was a pitch at its core.
 function noSellNote() { return 'IMPORTANT: your previous answer read like a sales pitch. ' + NO_SELL_RULE + ' Write it again so it teaches or entertains.'; }
+
+// ── v709 THE ONE SET OF POST RULES (.unlazy/consistency/CONTRACT.md) ─────────────────────────────
+// Every writer appends postRules({type, format, delivery}) so the ending, the hashtags, who is on
+// camera and the shape of the post are worded ONCE, the same way, everywhere. Before this each writer
+// had its own (six ending rules, four hashtag policies, faceless ignored by the default writer).
+//   delivery  'face' | 'faceless' (also 'faceon'); anything else = 'face'. The brand setting
+//             (bc.delivery) unless the request overrides it for one post.
+//   format    the v2 ids (talking, statement, micro, carousel) and the batch ids (video, static, qna,
+//             bonus) are both understood. A short format gets the compressed shape (SHORT_SHAPES).
+//   type      tip | about | news | qna | story | bts (default tip). An optional `kind:'opinion'`
+//             (the v2 draft) argues an opinion instead, only where a tip allows it.
+const normDelivery = (d) => {
+  const s = toStr(d).trim().toLowerCase();
+  if (s === 'faceless') return 'faceless';
+  if (s === 'face' || s === 'faceon' || s === 'face-on') return 'face';
+  return '';
+};
+const FORMAT_ALIAS = { talking: 'talking', video: 'talking', reel: 'talking', micro: 'micro', qna: 'qna', statement: 'statement', static: 'static', image: 'static', carousel: 'carousel' };
+const normPostFormat = (f) => { const k = toStr(f).trim().toLowerCase(); return Object.prototype.hasOwnProperty.call(FORMAT_ALIAS, k) ? FORMAT_ALIAS[k] : ''; };
+const READ_FORMATS = ['statement', 'static', 'carousel'];
+const SHORT_FORMATS = ['statement', 'micro', 'static'];
+const FORMAT_NAME = { talking: 'talking video', micro: 'micro video', qna: 'Q&A', statement: 'statement', static: 'image post', carousel: 'carousel' };
+// The shape a post moves through, fitted to its format (A4: no step list in a 15-60 word statement).
+function shapeFor(type, format, kind, either) {
+  const t = normPostType(type);
+  const f = normPostFormat(format);
+  const short = SHORT_FORMATS.indexOf(f) >= 0;
+  if (kind === 'opinion' && opinionAllowed(t)) return short ? SHORT_OPINION_SHAPE : OPINION_SHAPE;
+  // An untyped, unframed v2 draft (an older app build) lets the writer pick how-to or opinion.
+  if (!t && !kind && either) return short ? 'If the point is a how-to: ' + SHORT_SHAPES.tip + '. If it is an opinion: ' + SHORT_OPINION_SHAPE
+    : 'If the point is a how-to: ' + TYPE_SHAPES.tip + '. If it is an opinion: ' + OPINION_SHAPE;
+  // No type at all (a batch that mixes types): each post follows its own type rule, compressed in a short format.
+  if (!t && !kind) return short ? 'each post in its type\'s shape, compressed to ONE move (a tip: ' + SHORT_SHAPES.tip + ')' : 'each post in the shape its type rule gives';
+  const k = t || 'tip';
+  if (short) return SHORT_SHAPES[k];
+  return TYPE_SHAPES[k] + (f === 'carousel' ? ', one beat per slide' : '');
+}
+// No stock closer is quoted, not even as a ban: a quoted line is a line a model can copy.
+const ENDING_RULE = 'ENDING: end on the point. An invite to save, share, follow or comment is optional; if you use one, say it in this brand\'s own words, never a generic stock closer any account could end on.';
+const ENDING_RULE_STATEMENT = 'ENDING: end on the point. No call to action of any kind.';
+// v709 r2 (review HIGH) — batch guardPost DROPS a post whose on-screen text carries a slot, so every prompt
+// that describes slots says where they may NOT go.
+const SLOT_RULE = 'SLOTS: Never put a [your story: …] slot in on-screen text (statement text, carousel slides, image text, overlays, title, hook). Where on-screen text would need proof you don\'t have, cut that claim instead. Slots belong only in the spoken script (a caption is posted as written, so it cuts the claim too).';
+const HASHTAG_RULE = 'HASHTAGS: write none, anywhere (not in the script, the caption or a title). The app adds the brand\'s own tags.';
+const FACELESS_RULE = 'DELIVERY: FACELESS. The person is never on camera. Anything spoken is a voiceover read over b-roll, screen recordings, hands at work, product or close-up shots and on-screen text. Never write "to camera", "into the lens", "talk to camera", a selfie, or any shot that shows a face.';
+function deliveryRule(delivery, format) {
+  if ((normDelivery(delivery) || 'face') === 'faceless') return FACELESS_RULE;
+  if (READ_FORMATS.indexOf(normPostFormat(format)) >= 0) return 'DELIVERY: FACE-ON. This post is read on screen; if it is filmed instead, the person says it to camera.';
+  return 'DELIVERY: FACE-ON. The person films themselves saying it to camera, in their own words.';
+}
+function postRules(opts) {
+  const o = opts && typeof opts === 'object' && !Array.isArray(opts) ? opts : {};
+  const t = normPostType(o.type);
+  const f = normPostFormat(o.format);
+  const what = (t ? 'a ' + (t === 'qna' ? 'Q&A' : t === 'bts' ? 'behind-the-scenes post' : t === 'about' ? 'about-us post' : t) : (o.either || o.kind ? 'this post' : 'each post')) + (f ? ' as a ' + FORMAT_NAME[f] : '');
+  const noList = (f === 'statement' || f === 'static') ? ' No lists, no numbered steps.' : (f === 'micro' ? ' One point, no list of steps.' : '');
+  return [
+    'POST RULES:',
+    '- ' + (f === 'statement' ? NO_SELL_CORE : NO_SELL_RULE),   // v709 r2 — a statement has no CTA at all: no "optional" one
+    '- ' + (f === 'statement' ? ENDING_RULE_STATEMENT : ENDING_RULE),
+    '- ' + HASHTAG_RULE,
+    '- ' + SLOT_RULE + (READ_FORMATS.indexOf(f) >= 0 ? ' This whole post is on-screen text, so it carries no slot at all.' : ''),
+    '- ' + deliveryRule(o.delivery, f),
+    '- SHAPE (' + what + '): ' + shapeFor(t, f, o.kind, o.either === true) + '.' + noList,
+  ].join('\n');
+}
 
 // ── v706 HOW A PICKED ANGLE IS FRAMED ────────────────────────────────────────
 // An angle is 'opinion' (argued: OPINION_SHAPE) or 'point' (taught in its type's shape). Only a tip (or
@@ -459,6 +550,7 @@ function captionWithFactSources(caption, sources, postType) {
 // features" line for the about rule. Every other caller passes nothing and gets the same text.
 function styleGuide(opts) {
   const about = !!(opts && opts.about === true);
+  const noSell = !(opts && opts.noSell === false);   // v709 — false when the caller appends postRules (which carries it)
   return [
     'STYLE GUIDE:',   // v706 — header trimmed: NO_INVENTION_RULE grew (the CHECKED FACT exception) and this stays < 1600
     '- Talk like one person to one person across a table. First person, plain words, contractions.',
@@ -468,8 +560,8 @@ function styleGuide(opts) {
     about ? '- No hype, no pitch. Tell why the product exists, how it is made or the problem it was built for, as a story or a lesson, using only its real facts; never a feature tour.'
       : '- No hype. Talk about the viewer\'s problem, not the brand\'s features.',
     '- HARD RULE. ' + NO_INVENTION_RULE,
-    '- HARD RULE. ' + NO_SELL_RULE,
-  ].join('\n');
+    noSell ? '- HARD RULE. ' + NO_SELL_RULE : '',
+  ].filter(Boolean).join('\n');
 }
 
 // ── small helpers ────────────────────────────────────────────────────────────
@@ -492,6 +584,28 @@ function clip(v, n) {
   const sp = s.lastIndexOf(' ');
   if (sp > n * 0.6) s = s.slice(0, sp);
   return s.replace(/[\s,;:\-]+$/, '');
+}
+
+// v709 (audit B9) — a caption keeps its line breaks: only runs of spaces are collapsed, then it is cut on
+// a word boundary like clip().
+function clipLines(v, n) {
+  let s = toStr(v).replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (s.length <= n) return s;
+  s = s.slice(0, n);
+  const sp = Math.max(s.lastIndexOf(' '), s.lastIndexOf('\n'));
+  if (sp > n * 0.6) s = s.slice(0, sp);
+  return s.replace(/[\s,;:\-]+$/, '');
+}
+// v709 (audit B9) — never cuts inside a word: at the last space before n (any position), else the whole
+// first word if it alone is longer than n.
+// A title from a sentence: cut on a word, without the full stop a sentence ends on ("?" stays).
+const titleFrom = (text) => clipWord(text, 90).replace(/[.!…]+$/, '').trim();
+function clipWord(v, n) {
+  const s = toStr(v).replace(/\s+/g, ' ').trim();
+  if (s.length <= n) return s;
+  const sp = s.slice(0, n + 1).lastIndexOf(' ');
+  const out = sp > 0 ? s.slice(0, sp) : s.split(' ')[0];
+  return out.replace(/[\s,;:\-]+$/, '');
 }
 
 function normSource(source) {
@@ -553,17 +667,59 @@ function warningsFor(bc) { return v2Tones(bc || {}).overLimit ? ['tones_over_lim
 // told apart from the AI's. Cost: a real proof number the user typed there is treated as unverified
 // (it becomes a story slot) until crawl-brand marks its appends. competitors and channels stay: they
 // are names the user reviews in Settings, not claims.
+// v709 (audit A2, owner contract) — BRAND PROOF IS ALLOWED MATERIAL. The prompt hands these fields to the
+// model as "real proof the brand has" (USPs, social proof, reviews, pain points, product facts, origin
+// story, the brand-memory stories), and the guard then slotted that very proof as invented: an about-us
+// post lost "stocked in 40 gyms", "4.8 stars from 600 reviews". The owner decided the brand's own profile is
+// the truth the posts are built on, so the guard now agrees with the prompt. (The crawl-brand caveat above
+// stands: AI-appended text in socialProof / painPoints is trusted too, until crawl-brand marks its appends.)
+// v709 r2 (review MEDIUM) — ONLY WHAT A PERSON TYPED IS PROOF. Two AI writers fill these fields:
+//   * crawl-brand appends Grok web-search lines to socialProof (socialProofWeb) and painPoints
+//     (customerVoice). Since v709 every appended line starts with WEB_TAG "[web] "; those lines are not proof.
+//   * reviews.js writes reviewInsights wholesale from an AI summary of web reviews: never proof.
+//   * Rows saved BEFORE the tag existed carry untagged web lines. So, to be safe, a socialProof line that
+//     states a star rating or a review count AND names a review platform (Trustpilot, Google, Amazon…) is
+//     not proof either — unless every number in it also appears in the brand's own USPs.
+//   Simple and predictable: the rule is per line; everything else the user typed stays allowed.
+const WEB_TAG = '[web] ';
+const WEB_LINE_RE = /^\s*\[web\]/i;
+const RATING_RE = /\b\d(?:[.,]\d)?\s*(?:\/\s*5\s*)?(?:stars?|★)|★|\b(?:rated|rating(?:s)?\s+of)\s+\d|\b\d[\d,.]*\s*k?\+?\s*(?:reviews?|ratings?)\b/i;
+const PLATFORM_RE = /\b(?:trustpilot|google|amazon|yelp|tripadvisor|facebook|g2|capterra|app\s*store|play\s*store|etsy|shopify|reddit|instagram|tiktok|bol\.com|zalando|feefo|reviews\.io|judge\.me|yotpo|okendo)\b/i;
+function isProofLine(line, field, usps) {
+  if (WEB_LINE_RE.test(line)) return false;
+  if (field === 'socialProof' && RATING_RE.test(line) && PLATFORM_RE.test(line)) {
+    const nums = numberTokens(line);
+    const have = new Set(numberTokens(usps));
+    return nums.length > 0 && nums.every(n => have.has(n));
+  }
+  return true;
+}
+// The user-typed lines of a field (AI-written ones left out, see above).
+function proofLines(bc, field) {
+  const b = bc || {};
+  return toStr(b[field]).split('\n').filter(l => l.trim() && isProofLine(l, field, toStr(b.usps))).join('\n');
+}
+const BRAND_PROOF_FIELDS = ['usps', 'socialProof', 'painPoints', 'productDetails', 'originStory'];
+const FILTERED_PROOF_FIELDS = ['socialProof', 'painPoints'];
 const USER_FACT_FIELDS = ['brandName', 'tagline', 'website', 'usps', 'productDetails', 'targetAudience',
   'brandVocab', 'originStory', 'communities', 'competitors', 'ctaStyle', 'exampleContent',
   'channels', 'coachNotes', 'voiceSample', 'visualStyle', 'dayMap'];
-const AI_FILLED_FIELDS = ['webMentions', 'categoryGripes', 'reviewInsights', 'competitorMoves', 'recentTrends', 'socialProof', 'painPoints'];
+const AI_FILLED_FIELDS = ['webMentions', 'categoryGripes', 'competitorMoves', 'recentTrends', 'reviewInsights'];
+// The brand's proof as one text (the fields above, AI-written lines left out, + the story bank).
+function brandProof(bc) {
+  const b = bc || {};
+  const parts = BRAND_PROOF_FIELDS.map(k => (FILTERED_PROOF_FIELDS.indexOf(k) >= 0 ? proofLines(b, k) : toStr(b[k])));
+  if (Array.isArray(b.stories)) parts.push(b.stories.map(x => toStr(x && typeof x === 'object' ? x.text : x)).join('\n'));
+  return parts.filter(x => x.trim()).join('\n');
+}
 function userFacts(bc) {
   const b = bc || {};
-  const parts = USER_FACT_FIELDS.map(k => toStr(b[k]));
+  const parts = USER_FACT_FIELDS.map(k => toStr(b[k])).concat(FILTERED_PROOF_FIELDS.map(k => proofLines(b, k)));   // v709 r2 — typed proof only
   if (Array.isArray(b.beliefs)) parts.push(b.beliefs.map(x => toStr(x && typeof x === 'object' ? x.text : x)).join('\n'));
   if (Array.isArray(b.voiceLog)) parts.push(b.voiceLog.map(n => toStr(n && n.text)).join('\n'));
   if (Array.isArray(b.speechSamples)) parts.push(b.speechSamples.map(x => toStr(x && typeof x === 'object' ? x.text : x)).join('\n'));
   if (Array.isArray(b.approvedExamples)) parts.push(b.approvedExamples.filter(e => e && e.edited === true).map(e => toStr(e.title) + '\n' + toStr(e.text)).join('\n'));
+  if (Array.isArray(b.stories)) parts.push(b.stories.map(x => toStr(x && typeof x === 'object' ? x.text : x)).join('\n'));   // v709 — brand-memory stories are proof
   return parts.filter(Boolean).join('\n');
 }
 function allowedMaterial(bc, src, angle, stories) {
@@ -1142,9 +1298,161 @@ function guardIdeaFacts(idea, allowed, facts) {
   const hb = h.trim() ? inventedFactsIn(h, A, facts) : [];
   if (hb.length || slotted) {
     invented.push.apply(invented, hb);
-    out.hook = firstSpokenLine(toStr(out.script) || toStr(out.boldText));
+    out.hook = clip(firstSentenceOf(postTextOf(out)), 200);   // v709 (B2) — from the post text, never the notes
   }
+  // v709 (audit B8) — a batch title or belief is shown on the card and later handed to "Rewrite as spoken"
+  // as trusted material, so it is checked too: an inventing title falls back to the post's first sentence,
+  // an inventing belief is cleared.
+  for (const k of ['title', 'reelTitle']) {
+    const v = toStr(out[k]);
+    const tb = v.trim() ? inventedFactsIn(v, A, facts) : [];
+    if (!tb.length && !hasSlotText(v)) continue;
+    invented.push.apply(invented, tb);
+    out[k] = titleFrom(firstSentenceOf(postTextOf(out)));
+  }
+  const bv = toStr(out.belief);
+  const bb = bv.trim() ? inventedFactsIn(bv, A, facts) : [];
+  if (bb.length) { invented.push.apply(invented, bb); out.belief = ''; }
   return { idea: out, invented: [...new Set(invented)] };
+}
+
+// ── v709 THE ONE POST GUARD (.unlazy/consistency/CONTRACT.md) ────────────────────────────────────
+// guardPost(post, bc, opts) -> { post, drop, reasons }. Every writer runs its finished post through it.
+// In this order:
+//   1. FACT GUARD against the brand's own material (its profile, its PROOF — USPs, social proof, reviews,
+//      pain points, product facts, origin story, the brand-memory stories — its checked facts, and
+//      opts.allowed: the source, the picked point, the headline). Spoken/written body text: an inventing
+//      sentence becomes a [your story: …] slot. Caption: the inventing sentence is REMOVED (a caption is
+//      copied as-is). Overlays: the item goes. Title / hook: fall back (step 4). Belief: cleared.
+//   2. NO SELL: selling sentences, slides, overlays and tags are removed; a field the cut would empty
+//      keeps nothing (title/hook fall back, caption empties). The whole post is dropped only when its
+//      body has nothing usable left.
+//   3. ON-SCREEN SAFETY: a slot in an ON-SCREEN field (statement/image boldText, carousel slides,
+//      overlays, title, hook) is never printed. Overlay items go, title/hook fall back, and a slotted
+//      boldText or slide -> drop:true in batch mode (opts.mode === 'batch': nobody fills it before it
+//      is drawn). A single-post writer keeps it (the sheet asks the creator to fill it before saving).
+//      Slots in a SPOKEN script stay: the creator fills them while filming.
+//   4. HOOK / TITLE FALLBACK: the first sentence of the post TEXT (spoken script; statement/image text;
+//      slide 1), never the shooting notes or design directions; cut on a word, never mid-word.
+// opts: { mode: 'batch'|'single', allowed: string, facts: [...] (default the brand's), textField: the
+// field that holds the post text when the caller knows it (the v2 writer: 'script') }.
+const hasSlotText = (x) => { const t = toStr(x); SLOT_LIKE_RE.lastIndex = 0; const h = SLOT_LIKE_RE.test(t); SLOT_LIKE_RE.lastIndex = 0; return h || /your\s+story\s*[:：]/i.test(t); };
+const SLIDE_MARK_RE = /^\s*(?:slide\s*)?\d{1,2}\s*[:.)\-–]\s+/i;
+// A carousel's slides: post.slides, else boldText — "1: … 2: …" inline or per line, or one per paragraph.
+function slidesOf(post) {
+  const p = post || {};
+  if (Array.isArray(p.slides) && p.slides.length) return p.slides.map(toStr);
+  const t = toStr(p.boldText).trim();
+  if (!t) return [];
+  const inline = t.split(/(?:^|\s+)(?=(?:slide\s*)?\d{1,2}\s*:\s)/i).map(x => x.trim()).filter(Boolean);
+  if (inline.length > 1) return inline;
+  const paras = t.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean);
+  return paras.length > 1 ? paras : t.split('\n').map(x => x.trim()).filter(Boolean);
+}
+// The words the audience reads or hears, never the notes around them.
+function postTextOf(post, field) {
+  const p = post || {};
+  if (field) return toStr(p[field]);
+  const f = normPostFormat(p.format);
+  if (f === 'carousel') return slidesOf(p).join('\n');
+  if (f === 'statement' || f === 'static') return toStr(p.boldText) || toStr(p.caption);
+  return toStr(p.script) || toStr(p.boldText) || toStr(p.caption);
+}
+// The first full sentence of a text: slots and slide numbers taken out, first line that says something.
+function firstSentenceOf(text) {
+  for (const raw of toStr(text).split('\n')) {
+    const line = stripSlots(raw).replace(/(?:^|\s)\.(?=\s|$)/g, ' ').replace(SLIDE_MARK_RE, '').replace(/\s+/g, ' ').trim();
+    if (!hasWords(line)) continue;
+    const m = maskDots(line).match(/^[^.!?]*[\p{L}\p{N}][^.!?]*[.!?]+/u);
+    return (m ? unmaskDots(m[0]) : line).trim();
+  }
+  return '';
+}
+// Remove the sentences that invent, keeping every line break (a caption is copied as it is).
+function dropInventedLines(text, allowedFn) {
+  return toStr(text).split('\n').map(l => {
+    if (!l.trim()) return l;
+    return (maskDots(l).match(SENTENCE_RE) || []).map(unmaskDots)
+      .filter(x => !hasWords(x) || !inventedFacts(x, typeof allowedFn === 'function' ? allowedFn(x) : allowedFn).length)
+      .join('').replace(/[ \t]{2,}/g, ' ').trim();
+  }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+function guardPost(post, bc, opts) {
+  const o = opts && typeof opts === 'object' ? opts : {};
+  const b = bc && typeof bc === 'object' ? bc : {};
+  const batch = o.mode === 'batch';
+  const p = Object.assign({}, post && typeof post === 'object' && !Array.isArray(post) ? post : {});
+  const reasons = [];
+  let drop = false;
+  const f = normPostFormat(p.format || p.remixFormat);
+  const facts = Array.isArray(o.facts) ? o.facts : factList(b);
+  const allowed = [userFacts(b), brandProof(b), toStr(o.allowed)].join('\n');
+  const AF = factAllowedFn(allowed, facts) || allowed;
+  const invents = (x) => hasWords(x) && inventedFactsIn(x, allowed, facts).length > 0;
+  const fallback = new Set();
+  const onScreenBody = f === 'statement' || f === 'static' || f === 'carousel';
+
+  // 1 — FACT GUARD
+  for (const k of ['script', 'boldText']) {
+    const v = toStr(p[k]);
+    if (!v.trim() || !invents(v)) continue;
+    p[k] = slotifyInvented(v, AF); reasons.push('facts_slotted_' + k);
+  }
+  if (toStr(p.caption).trim() && invents(p.caption)) { p.caption = dropInventedLines(p.caption, AF); reasons.push('facts_caption_trimmed'); }
+  if (Array.isArray(p.slides)) p.slides = p.slides.map(x => (invents(x) ? (reasons.push('facts_slotted_slide'), slotifyInvented(toStr(x), AF)) : toStr(x)));
+  if (f === 'carousel' && Array.isArray(p.onScreen)) p.onScreen = p.onScreen.map(x => (invents(x) ? (reasons.push('facts_slotted_slide'), slotifyInvented(toStr(x), AF)) : toStr(x)));
+  for (const k of (f === 'carousel' ? ['overlays'] : ['overlays', 'onScreen'])) {
+    if (!Array.isArray(p[k])) continue;
+    const left = p[k].filter(x => !invents(x));
+    if (left.length !== p[k].length) { p[k] = left; reasons.push('facts_' + k + '_removed'); }
+  }
+  for (const k of ['title', 'hook', 'reelTitle']) if (toStr(p[k]).trim() && invents(p[k])) { fallback.add(k); reasons.push('facts_' + k); }
+  if (toStr(p.belief).trim() && invents(p.belief)) { p.belief = ''; reasons.push('facts_belief_cleared'); }
+
+  // 2 — NO SELL
+  const ns = guardIdeaNoSell(p);
+  Object.assign(p, ns.idea);
+  if (ns.hits.length) reasons.push('sales_removed');
+  for (const k of ns.kept) {
+    if (k === 'title' || k === 'hook' || k === 'reelTitle') fallback.add(k);
+    else if (k === 'belief' || k === 'angle') p[k] = '';
+    else if (k === 'caption' || k === 'remixCaption') p[k] = '';
+    else { drop = true; reasons.push('sales_only_' + k); }
+  }
+  for (const k of ['slides', 'overlays']) {
+    if (!Array.isArray(p[k])) continue;
+    const left = [];
+    for (const x of p[k]) { const g = guardNoSell(x); if (g.ok && hasWords(g.text)) left.push(g.text); }
+    if (left.length !== p[k].length || left.some((x, i) => x !== p[k][i])) { p[k] = left; reasons.push('sales_' + k + '_removed'); }
+  }
+
+  // 3 — ON-SCREEN SAFETY
+  for (const k of ['title', 'hook', 'reelTitle']) if (hasSlotText(p[k])) fallback.add(k);
+  // A carousel's onScreen IS its slides (buildIdea): judged like slides below, never thinned out.
+  for (const k of (f === 'carousel' ? ['overlays'] : ['overlays', 'onScreen'])) {
+    if (!Array.isArray(p[k])) continue;
+    const left = p[k].filter(x => !hasSlotText(x));
+    if (left.length !== p[k].length) { p[k] = left; reasons.push('onscreen_slot_' + k + '_removed'); }
+  }
+  if (hasSlotText(p.caption)) { p.caption = toStr(p.caption).replace(SLOT_LIKE_RE, ' ').replace(/[ \t]{2,}/g, ' ').trim(); SLOT_LIKE_RE.lastIndex = 0; reasons.push('onscreen_slot_caption'); }
+  const screenSlot = (onScreenBody && hasSlotText(p.boldText)) || (Array.isArray(p.slides) && p.slides.some(hasSlotText))
+    || (f === 'carousel' && Array.isArray(p.onScreen) && p.onScreen.some(hasSlotText))
+    || (onScreenBody && o.textField && hasSlotText(p[o.textField]));
+  if (screenSlot) {
+    reasons.push('onscreen_slot');
+    if (batch) drop = true;
+  }
+
+  // 4 — HOOK / TITLE FALLBACK (from the post text)
+  const first = firstSentenceOf(postTextOf(p, o.textField));
+  for (const k of ['title', 'hook', 'reelTitle']) {
+    const v = toStr(p[k]);
+    if (!fallback.has(k) && (v.trim() || k === 'reelTitle')) continue;
+    p[k] = k === 'hook' ? clipWord(first, 200) : titleFrom(first);
+    if (fallback.has(k)) reasons.push('fallback_' + k);
+  }
+  if (!hasWords(postTextOf(p, o.textField)) && !hasWords(p.script)) { drop = true; reasons.push('nothing_usable'); }
+  return { post: p, drop, reasons: [...new Set(reasons)] };
 }
 
 // ── NO SELL: THE CODE HALF (.unlazy/no-sell) ─────────────────────────────────
@@ -1235,8 +1543,10 @@ function guardNoSell(text, opts) {
     let nl = segs.map(sg => sg.text).join('').replace(/[ \t]{2,}/g, ' ').replace(/^[ \t]+|[ \t]+$/g, '');
     if (!hasWords(nl) && hasWords(line)) {
       if (keepLines) {
+        // v709 (audit B10) — a slide that is ONLY a sales ask is removed (the rest of the carousel stays);
+        // a slide with a real point in front of the ask keeps that point.
         const rescued = removed.map(dropSellingClause).filter(Boolean).join(' ');
-        if (!rescued) return { text: src, hits: [...new Set(hits)], ok: false };
+        if (!rescued) continue;
         nl = rescued;
       } else continue;   // a line of a script that only sold goes
     }
@@ -1323,9 +1633,13 @@ function listOf(v, max, each) {
 //     "Morning routines" -> #morningroutines
 //   * the brand name, the same way: "Acme Studio" -> #acmestudio
 // Deterministic: themes are ranked by how many of their words appear in this idea, ties keep the
-// brand's own order. At most 5 themes + the brand name = 6. A brand with no themes gets [] (the app
-// shows no tags) — nothing is ever made up to reach a count.
-const HASHTAG_MAX = 6;
+// brand's own order. v709 (contract): at most 5 tags = the brand name FIRST + up to 4 themes, never a hype
+// tag (#fyp, #viral...) or a sales tag even when a theme spells one. A brand with no themes gets its brand
+// tag alone (v709 r2, as v708) — nothing is ever made up to reach a count.
+// Contract signature: hashtagsFor(bc). An idea may be passed as a second argument; it only RANKS the themes.
+const HASHTAG_MAX = 5;
+const HYPE_TAGS = new Set(('viral,fyp,fy,foryou,foryoupage,foryourpage,fypシ,4u,4you,trending,trend,explore,explorepage,reels,reel,tiktok,' +
+  'instagood,instadaily,viralvideo,viralpost,goviral,blowthisup,xyzbca,follow,followme,like,likeforlike,followforfollow,l4l,f4f').split(','));
 const TAG_MAX_LEN = 40;
 function brandThemes(bc) {
   const c = bc && bc.communities;
@@ -1346,9 +1660,14 @@ function tagOf(text) {
   const t = toStr(text).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
   return (t && t.length <= TAG_MAX_LEN) ? '#' + t : '';
 }
-function hashtagsFor(bc, idea) {
+const isHypeOrSalesTag = (tag) => { if (!tag) return true; if (HYPE_TAGS.has(tag.slice(1))) return true; SALES_TAG_RE.lastIndex = 0; const h = SALES_TAG_RE.test(tag); SALES_TAG_RE.lastIndex = 0; return h; };
+function hashtagsFor(bc) {
+  const idea = arguments.length > 1 ? arguments[1] : null;
   const themes = brandThemes(bc);
-  if (!themes.length) return [];
+  // v709 r2 (review) — the brand tag ALWAYS (as v708 did), then the themes; no themes = the brand tag alone.
+  const brandTag = tagOf(bc && bc.brandName);
+  const own = brandTag && !isHypeOrSalesTag(brandTag) ? [brandTag] : [];
+  if (!themes.length) return own;
   const i = idea && typeof idea === 'object' ? idea : {};
   const words = new Set(toStr([i.title, i.hook, i.script, i.caption, i.belief].map(toStr).join(' '))
     .toLowerCase().normalize('NFC').split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 3));
@@ -1358,11 +1677,17 @@ function hashtagsFor(bc, idea) {
   const out = [];
   for (const r of ranked) {
     const tag = tagOf(r.t);
-    if (tag && out.indexOf(tag) < 0 && out.length < HASHTAG_MAX - 1) out.push(tag);
+    if (tag && !isHypeOrSalesTag(tag) && out.indexOf(tag) < 0 && out.length < HASHTAG_MAX - 1) out.push(tag);
   }
-  const brandTag = tagOf(bc && bc.brandName);
-  if (brandTag && out.indexOf(brandTag) < 0) out.push(brandTag);
-  return out.slice(0, HASHTAG_MAX);
+  return own.concat(out.filter(t => own.indexOf(t) < 0)).slice(0, HASHTAG_MAX);
+}
+
+// v709 (contract) — the caption's last line for the CHECKED FACTS a post used: '' | '\n\nSource: <url>' |
+// '\n\nSources: <a> · <b>' (https only, deduped by url, at most 2, unknown ids ignored: factSourcesFor).
+function sourceLine(bc, factIds) {
+  const src = factSourcesFor(bc, factIds);
+  if (!src.length) return '';
+  return '\n\n' + (src.length === 1 ? 'Source: ' : 'Sources: ') + src.map(x => x.url).join(' · ');
 }
 
 // ── THE IDEA OBJECT ──────────────────────────────────────────────────────────
@@ -1377,8 +1702,19 @@ function buildIdea(script, shaped, angle, format, allowedExtra) {
   const bad = (x) => { SLOT_LIKE_RE.lastIndex = 0; const hit = SLOT_LIKE_RE.test(x || ''); SLOT_LIKE_RE.lastIndex = 0; return !x || hit || /your\s+story\s*[:：]/i.test(x) || inventedFacts(x, allowed).length > 0 || hasSales(x); };
   const first = firstSpokenLine(script);
   let hook = clip(sh.hook, 200); if (bad(hook)) hook = first;
-  let title = clip(sh.title, 90); if (bad(title)) title = clip(angle.belief, 60);
-  let caption = clip(sh.caption, MAX_CAPTION); if (bad(caption)) caption = angle.belief;
+  // v709 (audit B9) — the fallback title is the script's first full sentence, cut on a word (was the
+  // belief cut at 60 characters: "…because a grandparent did it, not").
+  let title = clip(sh.title, 90); if (bad(title)) title = titleFrom(firstSentenceOf(script)) || titleFrom(angle.belief);
+  // v709 (audit B9) — the caption keeps its line breaks, and a sales tag or a selling sentence is REMOVED
+  // from it (one "#sale" used to replace the whole caption with the belief). An inventing sentence goes
+  // too. Only a caption with nothing left (or a slot, or none at all) falls back to the point.
+  let caption = clipLines(sh.caption, MAX_CAPTION);
+  if (caption && !hasSlotText(caption)) {
+    const cs = guardNoSell(caption);
+    caption = cs.ok ? cs.text : '';
+    if (caption && inventedFacts(caption, allowed).length) caption = dropInventedLines(caption, allowed);
+  } else caption = '';
+  if (!hasWords(caption)) caption = angle.belief;
   const onScreen = listOf(sh.onScreen, 6, 120).filter(x => !bad(x));
   const shots = listOf(sh.shots, 8, 200).filter(x => !bad(x));
   // Emphasis must be words the person actually says: keep only phrases found in the script, and
@@ -1423,7 +1759,7 @@ const ANGLE_WHY = {
   about: 'why it matters to the viewer', news: 'what the viewer should do about it', qna: 'why that is the answer',
   story: 'the moment and the turn that lead to the lesson', bts: 'why that matters to the viewer',
 };
-function anglesPrompt(bc, src, count, type, news) {
+function anglesPrompt(bc, src, count, type, news, delivery, avoidTitles) {
   const name = toStr(bc.brandName).trim() || 'this brand';
   const about = type === 'about';
   const typed = !!type;
@@ -1442,24 +1778,42 @@ function anglesPrompt(bc, src, count, type, news) {
     '- has a "why": at most ' + MAX_WHY + ' characters on ' + ANGLE_WHY[t] + ';',
     '- may have a "hookSeed": a first spoken line that could open a video on it.',
   ];
-  if (opinion) P.push('An opinion (kind "opinion") is one most of the audience does NOT share yet: contrarian but defensible, the person could argue it on camera and be right.');
+  if (opinion) P.push('An opinion (kind "opinion") is one most of the audience does NOT share yet: contrarian but defensible, the person could argue it out loud and be right.');
   P.push('Make them genuinely different points, not one point reworded. Stay consistent with the beliefs the brand already holds and do not repeat them.',
     NO_INVENTION_RULE,
     NO_SELL_RULE);
-  // types — only when a post type was asked for; an untyped call is a tip without the type block.
-  if (typed) P.push('', 'EVERY POINT IS FOR THIS KIND OF POST. ' + TYPE_RULES[type]);
   if (type === 'news') P.push('', 'FRESH HEADLINES (the only news you may use):', newsLines(news),
     'Each point reacts to ONE of these headlines: put its number in "newsIndex".');
+  // v709 (audit C6) — the anti-repeat list the ideas batch has: titles already in the library / just posted.
+  const avoid = avoidList(avoidTitles);
+  if (avoid.length) P.push('', 'ALREADY POSTED OR PLANNED (never make one of these points again; find a different one):', avoid.map(x => '- ' + x).join('\n'));
   const facts = factsBlockFor(bc);
   if (facts) P.push('', facts, factsUse('A point may rest on one.'));
-  P.push('', brandBlockV2(bc, about), '',
+  P.push('', brandBlockV2(bc, about));
+  // v709 (audit A, prompt size) — what decides the KIND of post sits AFTER the long brand block, right
+  // before the answer, so a big brand profile cannot bury it. Delivery (A1): a faceless brand's points
+  // must work as a voiceover over footage.
+  P.push('', 'THIS POST:');
+  if (typed) P.push('EVERY POINT IS FOR THIS KIND OF POST. ' + TYPE_RULES[type]);
+  P.push(deliveryRule(delivery) + ' Every point must work that way.');
+  P.push('',
     'Reply with ONLY this JSON, no prose, no code fences:',
     type === 'news' ? '{"angles":[{"belief":"...","why":"...","hookSeed":"...","newsIndex":1}]}'
       : (opinion ? '{"angles":[{"kind":"point|opinion","belief":"...","why":"...","hookSeed":"..."}]}' : '{"angles":[{"belief":"...","why":"...","hookSeed":"..."}]}'));
   return P.join('\n');
 }
+// Up to 40 earlier titles, each <= 140 chars, newest last, once each.
+function avoidList(list) {
+  const out = [], seen = new Set();
+  for (const t of (Array.isArray(list) ? list : [])) {
+    const v = clipWord(t, 140);
+    if (!v || seen.has(v.toLowerCase())) continue;
+    seen.add(v.toLowerCase()); out.push(v);
+  }
+  return out.slice(-40);
+}
 
-function draftPrompt(bc, src, angle, format, stories, type, news) {
+function draftPrompt(bc, src, angle, format, stories, type, news, delivery) {
   const name = toStr(bc.brandName).trim() || 'the brand';
   const f = FORMAT_RULES[format];
   const said = format !== 'statement' && format !== 'carousel';
@@ -1475,13 +1829,7 @@ function draftPrompt(bc, src, angle, format, stories, type, news) {
   if (angle.why) P.push((kind === 'opinion' ? 'Why most people disagree: ' : (kind === 'point' ? 'Why it matters: ' : 'Context: ')) + angle.why);
   if (angle.hookSeed) P.push('A possible first line (use it, improve it, or ignore it): ' + angle.hookSeed);
   if (src.text) P.push('', sourceBlock(src, 6000), 'Use the source for the idea only. Never copy its wording.');
-  // types — only when a post type was asked for; an untyped call sends the prompt it always sent.
-  if (type) P.push('', 'KIND OF POST. ' + TYPE_RULES[type]);
   if (type === 'news' && news) P.push('', 'THE NEWS THIS POST REACTS TO (a real headline):', newsLines([news]), 'Link: ' + news.url);
-  P.push('',
-    'FORMAT: ' + f.what + '. Usually about ' + f.min + ' to ' + f.max + ' words: a guide, not a limit. Take the words the idea needs.',
-    beatsFor(kind, type),
-    'Where proof would help (a number, a customer, a result, a moment from real work), write a slot exactly like [your story: <what to tell>] instead of making it up. One or two slots is normal. None is fine if the argument stands on its own.');
   if (stories.length) {
     let acc = 0; const lines = [];
     for (const s of stories) { if (acc + s.text.length > 6000) break; acc += s.text.length; lines.push('[' + s.id + '] ' + s.text); }
@@ -1491,16 +1839,55 @@ function draftPrompt(bc, src, angle, format, stories, type, news) {
   }
   const facts = factsBlockFor(bc);
   if (facts) P.push('', facts, factsUse('Never paste a link into the script.'));
-  P.push('', styleGuide(type === 'about' ? { about: true } : undefined), '', brandBlockV2(bc, type === 'about'), '',
+  // NO_SELL lives in postRules below (styleGuide would say it twice).
+  P.push('', styleGuide(type === 'about' ? { about: true, noSell: false } : { noSell: false }), '', brandBlockV2(bc, type === 'about'));
+  // v709 (audit A, prompt size) — THE RULES THAT DECIDE THIS POST'S SHAPE COME LAST, after the long brand
+  // block (they sat in the first 5% of a 44k prompt and drifted first). One block: kind, format, shape
+  // fitted to the format, ending, hashtags, delivery.
+  P.push('', 'THIS POST:');
+  if (type) P.push('KIND OF POST. ' + TYPE_RULE_BASE[type]);
+  P.push(
+    'FORMAT: ' + f.what + '. Usually about ' + f.min + ' to ' + f.max + ' words: a guide, not a limit. Take the words the idea needs.',
+    'Move through its beats without labelling them, in the SHAPE below.',
+    said ? 'Where proof would help (a number, a customer, a result, a moment from real work), write a slot exactly like [your story: <what to tell>] instead of making it up. One or two slots is normal. None is fine if the argument stands on its own.'
+      : 'Where proof would help but the material does not have it, cut the claim or keep it general: this post is on-screen text, so it carries no [your story: …] slot.',
+    postRules({ type, format, delivery, kind, either: !type && !kind }),
+    '',
     'Write ONLY the script, as plain text: no title, no labels, no stage directions, no hashtags, no markdown.' +
-    (stories.length ? ' Then, on its own last line, write USED STORIES: followed by the ids you used, or USED STORIES: none' : '') +
-    (facts ? ' Then, on its own last line, write USED FACTS: followed by the ids of the CHECKED FACTS you used, or USED FACTS: none' : ''));
+    (stories.length && facts ? ' Then add two last lines, each on its own line: USED STORIES: followed by the ids you used (or USED STORIES: none), and USED FACTS: followed by the ids of the CHECKED FACTS you used (or USED FACTS: none).'
+      : (stories.length ? ' Then, on its own last line, write USED STORIES: followed by the ids you used, or USED STORIES: none' : '') +
+        (facts ? ' Then, on its own last line, write USED FACTS: followed by the ids of the CHECKED FACTS you used, or USED FACTS: none' : '')));
   return P.join('\n');
+}
+
+// v709 (audit A8) — the brand's voice for the LAST pass that touches the words: its voice memory (newest
+// rules first to survive the budget) and its recorded voice sample (or, without one, its newest voice
+// note). Before, this pass saw tones and avoid-words only, and reworded the voice the draft had learned.
+const SPOKEN_MEMORY_CAP = 1500;
+const SPOKEN_SAMPLE_CAP = 700;
+function voiceMemoryLines(bc) {
+  const lines = toStr(bc && bc.coachNotes).split('\n').map(l => l.trim()).filter(Boolean);
+  const keep = []; let used = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (used + lines[i].length + 1 > SPOKEN_MEMORY_CAP) break;
+    keep.unshift(lines[i]); used += lines[i].length + 1;
+  }
+  return keep;
+}
+function voiceSampleExcerpt(bc) {
+  const vs = toStr(bc && bc.voiceSample).replace(/\s+/g, ' ').trim();
+  if (vs) return clipWord(vs, SPOKEN_SAMPLE_CAP);
+  const log = Array.isArray(bc && bc.voiceLog) ? bc.voiceLog : [];
+  for (let i = log.length - 1; i >= 0; i--) {
+    const t = toStr(log[i] && log[i].text).replace(/\s+/g, ' ').trim();
+    if (t) return clipWord(t, SPOKEN_SAMPLE_CAP);
+  }
+  return '';
 }
 
 // v693 — talking and micro are SAID, so pass 2 rewrites for the ear. statement and carousel are
 // READ, so the same pass rewrites them in the person's own voice but keeps the written layout.
-function spokenPrompt(bc, draft, samples, format) {
+function spokenPrompt(bc, draft, samples, format, delivery, type) {
   const vt = v2Tones(bc);
   const said = format !== 'statement' && format !== 'carousel';
   const P = [
@@ -1508,12 +1895,12 @@ function spokenPrompt(bc, draft, samples, format) {
       : 'Rewrite this ' + format + ' so it sounds like the person wrote it themselves, not like marketing copy.',
     '',
     'RULES:',
-    '- Same meaning, same order, same argument. Do not add any fact, number, name, example or claim that is not already in the script.',
+    '- Same meaning, same order, same argument, same shape. Do not add any fact, number, name, example or claim that is not already in the script.',
     '- Keep every [your story: ...] slot exactly as written, character for character. Do not add new slots.',
-    said ? '- First person. Short lines, one thought per line, and a few natural pauses where a person would breathe. Contractions.'
+    // v709 (A8) — the SAME rhythm rule as the draft's style guide ("one thought per line" fought it).
+    said ? '- First person, contractions. Natural rhythm: short lines and longer ones joined by "and", "so", "because", with a few natural pauses where a person would breathe. Never a run of clipped fragments.'
       : '- First person, plain words, contractions. Keep the paragraphs exactly as they are: the same number, in the same order' + (format === 'carousel' ? ' (each paragraph is one slide).' : '.'),
     '- Keep it about the same length.',
-    '- ' + NO_SELL_RULE,
   ];
   if (samples.length) {
     P.push('',
@@ -1525,16 +1912,34 @@ function spokenPrompt(bc, draft, samples, format) {
     P.push('',
       'HOW SPOKEN SCRIPTS SOUND: complete sentences with a subject and a verb, the small joining words people use when talking (so, and, but, because), the point that matters said twice in different words, never bullet-point fragments.');
   }
+  const sample = voiceSampleExcerpt(bc);
+  if (sample) P.push('', 'THE BRAND\'S VOICE (from its recorded voice sample; copy how it moves, never its sentences or topic):', '"' + sample + '"');
+  const vm = voiceMemoryLines(bc);
+  if (vm.length) P.push('', 'THE BRAND\'S VOICE RULES (its voice memory; follow each one while keeping the meaning):', vm.map(l => '- ' + l).join('\n'));
   if (vt.tones.length) P.push('', 'Voice: ' + vt.tones.join(', ') + '.');
   const avoid = toStr(bc.avoidWords).trim().slice(0, 1500);
   if (avoid) P.push('', 'Never use these words or phrases: ' + avoid);
+  P.push('', postRules({ type, format, delivery }));
   P.push('', 'SCRIPT:', '<<<', draft, '>>>', '', 'Reply with ONLY the rewritten script, as plain text.');
   return P.join('\n');
 }
 
-function shapePrompt(script, format) {
-  return [
-    'Below is a finished ' + format + ' script. Do NOT rewrite it. Derive the fields around it.',
+// v709 (audit A1 / L5 / M5) — the shape pass knows the format and the delivery: a statement or carousel
+// is not filmed by "one person on a phone", a faceless brand's shots never show a face, and the caption
+// follows the same ending and hashtag rules as every other writer, in the brand's voice.
+function shapePrompt(script, format, delivery, bc, type) {
+  const b = bc || {};
+  const faceless = normDelivery(delivery) === 'faceless';
+  const f = normPostFormat(format) || 'talking';
+  const read = f === 'statement' || f === 'carousel';
+  const hook = f === 'carousel' ? 'the text of slide 1, or a tighter version with the same meaning'
+    : (f === 'statement' ? 'the first line of the post, or a tighter version with the same meaning' : 'the first spoken line of the script, or a tighter version with the same meaning');
+  const shots = faceless ? (read ? '2-4 simple visuals for it: b-roll, screen recordings, hands or product shots; never a face' : '3-6 simple shots with no face in them: b-roll, screen recordings, hands at work, product or close-up shots')
+    : (read ? '2-3 simple ways to film it instead, one person on a phone' : '3-6 simple shots one person can film on a phone');
+  const caption = read ? '1-4 sentences for the post caption, adding what the post itself does not say, same voice' : '1-3 sentences for the post caption, same voice';
+  const vt = v2Tones(b);
+  const P = [
+    'Below is a finished ' + format + (read ? ' post' : ' script') + '. Do NOT rewrite it. Derive the fields around it.',
     '',
     'SCRIPT:',
     '<<<',
@@ -1542,10 +1947,14 @@ function shapePrompt(script, format) {
     '>>>',
     '',
     'Reply with ONLY this JSON, no prose, no code fences:',
-    '{"title":"a plain 4-8 word working title","hook":"the first spoken line of the script, or a tighter version with the same meaning","onScreen":["2-5 short text overlays taken from the script"],"caption":"1-3 sentences for the post caption, same voice","shots":["3-6 simple shots one person can film on a phone"],"emphasis":["up to 6 phrases copied EXACTLY from the script: the words to stress when saying it"]}',
+    JSON.stringify({ title: 'a plain 4-8 word working title', hook, onScreen: [read ? '0-3 short text overlays taken from the post' : '2-5 short text overlays taken from the script'], caption, shots: [shots], emphasis: ['up to 6 phrases copied EXACTLY from the script: the words to stress when saying it'] }),
     'Never invent numbers, names or results. Keep [your story: ...] slots out of every field.',
-    NO_SELL_RULE,
-  ].join('\n');
+  ];
+  if (vt.tones.length) P.push('Voice for the caption: ' + vt.tones.join(', ') + '.');
+  const avoid = toStr(b.avoidWords).trim().slice(0, 600);
+  if (avoid) P.push('Never use these words or phrases: ' + avoid);
+  P.push('', postRules({ type, format: f, delivery }));
+  return P.join('\n');
 }
 
 // ── runAngles ────────────────────────────────────────────────────────────────
@@ -1594,7 +2003,9 @@ async function runAngles(opts) {
   const count = Number.isFinite(c) ? Math.max(5, Math.min(8, c)) : 6;
   const t0 = Date.now();
   const total = posNum(o.deadlineMs) || ANGLES_DEFAULT_MS;
-  const prompt = type ? anglesPrompt(bc, src, count, type, news) : anglesPrompt(bc, src, count);
+  // v709 — ONE face-on/faceless setting per brand (bc.delivery), overridable per post (opts.delivery).
+  const delivery = normDelivery(o.delivery) || normDelivery(bc.delivery) || 'face';
+  const prompt = anglesPrompt(bc, src, count, type, news, delivery, o.avoidTitles);
   // v693 r4 — an angle is dropped ONLY when its belief invents a fact (a picked belief becomes allowed
   // material for the draft). An inventing `why` loses just the offending sentence(s) and an inventing
   // hookSeed is removed, instead of losing a good belief over its explanation. Fewer than 3 survivors
@@ -1655,10 +2066,12 @@ async function runWrite(opts) {
   const left = () => total - (Date.now() - t0);
   const stories = normStories(bc.stories);
   const passes = { draft: 'done', spoken: 'skipped_deadline', shape: 'skipped_deadline' };
+  // v709 (audit A1/C1) — ONE face-on/faceless setting per brand, overridable per post; every pass gets it.
+  const delivery = normDelivery(o.delivery) || normDelivery(bc.delivery) || 'face';
 
   // 1 — the draft. Plain text only. A failure here (including an AI refusal) is the whole answer.
   // v693 r2 — wantMeta: a reply cut off at max_tokens is not a finished script.
-  const basePrompt = type ? draftPrompt(bc, src, angle, format, stories, type, news) : draftPrompt(bc, src, angle, format, stories);
+  const basePrompt = draftPrompt(bc, src, angle, format, stories, type, news, delivery);
   const draftCall = async (content, maxTokens, deadlineMs) => metaOf(await writerCallResilient({
     messages: [{ role: 'user', content }],
     model: 'grok', engine: bc.engine || 'grok', max_tokens: maxTokens, temperature: 0.8,
@@ -1685,7 +2098,14 @@ async function runWrite(opts) {
   // v706 r2 — a CHECKED FACT is allowed only in a sentence that uses it (inventedFactsIn); the picked
   // angle's own fact sentences are left out of the free material for the same reason.
   const facts = factList(bc);
-  const allowed = allowedMaterial(bc, src, facts.length ? { belief: withoutFactSentences(angle.belief, facts), why: withoutFactSentences(angle.why, facts) } : angle, stories) + (news ? '\n' + news.title : '');
+  // v709 (audit B8) — the picked point and its why are trusted material only where they invent nothing
+  // against the source, the brand's own material and the stories: a batch title or belief that invented
+  // "we cut returns 43%" (sent back by "Rewrite as spoken") can no longer license that number.
+  const pointBase = allowedMaterial(bc, src, { belief: '', why: '' }, stories) + (news ? '\n' + news.title : '');
+  const pointBaseFn = factAllowedFn(pointBase, facts) || pointBase;
+  const trustPoint = (t) => (inventedFactsIn(t, pointBase, facts).length ? dropInventedSentences(t, pointBaseFn) : t);
+  const trusted = { belief: trustPoint(angle.belief), why: trustPoint(angle.why) };
+  const allowed = allowedMaterial(bc, src, facts.length ? { belief: withoutFactSentences(trusted.belief, facts), why: withoutFactSentences(trusted.why, facts) } : trusted, stories) + (news ? '\n' + news.title : '');
   const allowedFn = factAllowedFn(allowed, facts) || allowed;
   let invented = inventedFactsIn(draft.script, allowed, facts);
   // no-sell — a draft that is a pitch at its core shares the SAME one retry (never a second one, so
@@ -1716,7 +2136,7 @@ async function runWrite(opts) {
   if (spokenBudget >= MIN_SPOKEN_MS) {
     try {
       const sp = metaOf(await writerCallResilient({
-        messages: [{ role: 'user', content: spokenPrompt(bc, draft.script, samples, format) }],
+        messages: [{ role: 'user', content: spokenPrompt(bc, draft.script, samples, format, delivery, type) }],
         model: 'grok', engine: bc.engine || 'grok', max_tokens: SPOKEN_MAX_TOKENS, temperature: 0.7,
         deadlineMs: spokenBudget,
         provider: pickProvider(o.provider), effort: pickEffort(o.effort, 'spoken'), wantMeta: true,
@@ -1735,7 +2155,7 @@ async function runWrite(opts) {
   if (shapeBudget >= MIN_SHAPE_MS) {
     try {
       const rawShape = await writerCallResilient({
-        messages: [{ role: 'user', content: shapePrompt(script, format) }],
+        messages: [{ role: 'user', content: shapePrompt(script, format, delivery, bc, type) }],
         model: 'grok', engine: bc.engine || 'grok', max_tokens: SHAPE_MAX_TOKENS, temperature: 0.4,
         deadlineMs: shapeBudget,
         provider: pickProvider(o.provider), effort: SHAPE_EFFORT,
@@ -1746,17 +2166,22 @@ async function runWrite(opts) {
     } catch (e) { passes.shape = 'failed'; }
   }
 
-  // no-sell — every sales ask left in the finished script is taken out (the last one becomes an
-  // engagement ask) BEFORE buildIdea, so slides, slots and stress marks are built from the clean text.
+  // no-sell — every sales ask left in the finished script is taken out BEFORE buildIdea (the guard only
+  // removes: it never writes a line), so slides, slots and stress marks are built from the clean text.
+  // v709 (B10) — a single selling sentence or slide goes; only a script with nothing else left fails.
   const sold = guardNoSell(script, { keepLines: format === 'carousel' });
   if (!sold.ok) throw emptyResult('The draft was only a sales pitch');
   script = sold.text;
-  // buildIdea refuses a selling shape field (title, hook, caption, overlay, shot) like an inventing one,
-  // so it falls back to the script's own first line: never a line the guard wrote (it writes none).
-  const built = guardIdeaNoSell(buildIdea(script, shaped, angle, format, bc.brandName));
-  const idea = built.idea;
-  passes.salesRemoved = sold.hits.concat(built.hits).slice(0, 20);
-  idea.hashtags = guardIdeaNoSell({ hashtags: hashtagsFor(bc, idea) }).idea.hashtags;   // fix7 — the brand's own themes + name, never the model's
+  // buildIdea refuses a selling shape field (title, hook, overlay, shot) like an inventing one, so it falls
+  // back to the script's own first sentence; a caption loses only its selling part.
+  // v709 — then THE ONE POST GUARD (guardPost, the same one every writer runs): facts (brand proof
+  // allowed), no-sell, on-screen safety, hook/title fallback from the script.
+  const guarded = guardPost(buildIdea(script, shaped, angle, format, bc.brandName), bc, { mode: 'single', allowed, facts, textField: 'script' });
+  if (guarded.drop) throw emptyResult('The draft was only a sales pitch');
+  const idea = guarded.post;
+  passes.salesRemoved = sold.hits.slice(0, 20);
+  passes.guard = guarded.reasons.slice(0, 20);
+  idea.hashtags = hashtagsFor(bc, idea);   // fix7 — the brand's own themes + name, never the model's (hype/sales tags never)
   idea.postType = type || 'tip';           // types — every written idea says what it is about
   if (news) idea.newsSource = { title: news.title, url: news.url };   // from the stored headline, never the model
   // v706 — CHECKED FACTS: the ids the draft named (only this brand's real ones) plus any fact the finished
@@ -1775,6 +2200,7 @@ async function runWrite(opts) {
 
 module.exports = {
   TYPE_SHAPES, OPINION_SHAPE, factsBlockFor, factsUse, factsMaterial, knownFactIds, factIdsUsedIn, citedFactIds, factSourcesFor, captionWithFactSources, factList, factMatchesText, inventedFactsIn,
+  postRules, hashtagsFor, guardPost, sourceLine, deliveryRule, normDelivery, SHORT_SHAPES, TYPE_RULE_BASE, brandProof, WEB_TAG, SLOT_RULE, NO_SELL_CORE,
   styleGuide, runAngles, runWrite, NO_SELL_RULE, noSellRule, noSellNote, guardNoSell, guardIdeaNoSell, noSellCore, hasSales, strongSales, FORMATS, SOURCE_KINDS, TYPE_RULES, normPostType, guardIdeaFacts, userFacts,
   usageModel, writerCall, writerCallResilient, CLAUDE_CALL_PLAN, CLAUDE_THINKING_HEADROOM, LOWER_EFFORT, DRAFT_MAX_TOKENS, SPOKEN_MAX_TOKENS, ANGLES_MAX_TOKENS, SHAPE_MAX_TOKENS, writerEffort, writerProvider, WRITER_EFFORT, startBrandAttribution,
   _internals: {
@@ -1782,5 +2208,6 @@ module.exports = {
     brandBlockV2, allowedMaterial, userFacts, USER_FACT_FIELDS, AI_FILLED_FIELDS, metaOf, warningsFor, speechSamplesFor, normStories, anglesFrom,
     DRAFT_SHARE, SHAPE_SHARE, MIN_SPOKEN_MS, MIN_SHAPE_MS, SHAPE_EFFORT, anglesPrompt, draftPrompt,
     MAX_BELIEF, MAX_WHY, MAX_CAPTION, angleKind, beatsFor, factList, factsMaterial, localFactSources,
+    spokenPrompt, shapePrompt, shapeFor, normPostFormat, firstSentenceOf, postTextOf, slidesOf, clipWord, clipLines, dropInventedLines, HYPE_TAGS, BRAND_PROOF_FIELDS,
   },
 };

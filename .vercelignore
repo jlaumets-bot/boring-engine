@@ -80,3 +80,6 @@ _render-selftest/
 .unlazy/
 .writetest
 Faceless
+
+# Local screenshots folder — never part of the site.
+Claude outputs/

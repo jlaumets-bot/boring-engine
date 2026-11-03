@@ -115,12 +115,12 @@ const SHAPE = JSON.stringify({ script: 'HIJACK SCRIPT', title: 'Post less, grow 
   ok(/Background facts about the brand[^\n]*:\nZUSP_MARK/.test(b) && /mention at most one/.test(b) && /Never as a pitch/.test(b), 'USPs are framed as background facts (at most one, never a pitch)');
   ok(/Background facts: product details[^\n]*:\nZPROD_MARK/.test(b) && /Background facts: real proof[^\n]*:\nZPROOF_MARK/.test(b), 'product details and proof are background facts too');
   ok(/Beliefs this brand already holds[^\n]*\n- ZBELIEF_MARK/.test(b), 'held beliefs rendered, stay-consistent framing');
-  ok(/never permits inventing facts/.test(b), 'v2 heading says the brand never licenses invention');
+  ok(b.includes(brain.PRIORITY_RULE) && /NEVER INVENT/.test(b.split('\n')[0]), 'v2 heading says the brand never licenses invention (v709: the ONE priority statement)');
   const legacy = brain.fullBrandBlock(BC);
-  ok(/Voice \/ tones \(NEVER contradict\)/.test(legacy) && /use ONLY these/.test(legacy) && !/Beliefs this brand/.test(legacy) && !/never permits/.test(legacy), 'opposite: the legacy renderer is unchanged');
+  ok(/Voice \/ tones \(NEVER contradict\)/.test(legacy) && /use these as background facts/.test(legacy) && !/Beliefs this brand/.test(legacy) && !/never permits/.test(legacy), 'opposite: the legacy renderer keeps its own labels (v709: USPs are background facts there too)');
   const four = Object.assign({}, BC, { tones: ['a1', 'b2', 'c3', 'd4'] });
   const b4 = W._internals.brandBlockV2(four);
-  ok(!/Voice \/ tones/.test(b4) && !/a1/.test(b4), 'tones > 3: v2 block uses none');
+  ok(/Voice \/ tones: a1, b2, c3\n/.test(b4) && !/d4/.test(b4) && /lists 4 tones; these are its first 3/.test(b4), 'tones > 3: v2 block keeps the first 3 and says so (v709, C8)');
   ok(JSON.stringify(W._internals.warningsFor(four)) === '["tones_over_limit"]' && JSON.stringify(W._internals.warningsFor(BC)) === '[]', 'tones > 3 warns tones_over_limit; 3 tones do not');
   const bare = W._internals.brandBlockV2({ brandName: 'Bare', beliefs: [], stories: [], speechSamples: [] });
   ok(/Brand: Bare/.test(bare) && !/Beliefs this brand/.test(bare) && !/Background facts/.test(bare) && !/undefined|null/.test(bare), 'empty arrays render cleanly');
@@ -151,7 +151,7 @@ const SHAPE = JSON.stringify({ script: 'HIJACK SCRIPT', title: 'Post less, grow 
   ok(A.some(a => a.belief === 'Consistency is overrated when nobody is watching'), 'a bare-string angle is kept');
   const p = calls[0].prompt;
   ok(p.includes('ZSRC_MARK') && /does NOT share/.test(p) && /Never reuse the creator/.test(p), 'angles prompt: source + not-shared beliefs + never copy the creator');
-  ok(p.includes('never permits inventing facts') && p.includes('[your story: <what to tell>]'), 'angles prompt carries the v2 brand block and the no-invention rule');
+  ok(p.includes(brain.PRIORITY_RULE) && p.includes('[your story: <what to tell>]'), 'angles prompt carries the v2 brand block and the no-invention rule');
   ok(calls[0].opts.provider === 'claude' && calls[0].opts.effort === 'high', 'runAngles passes provider/effort through');
   ok(calls[0].opts.deadlineMs <= 60000, 'runAngles honours deadlineMs');
   ok(JSON.stringify(out.warnings) === '[]', 'no warnings with 3 tones');
@@ -172,7 +172,7 @@ const SHAPE = JSON.stringify({ script: 'HIJACK SCRIPT', title: 'Post less, grow 
   const four = Object.assign({}, BC, { tones: ['a1', 'b2', 'c3', 'd4'] });
   reset(); plan = () => JSON.stringify({ angles: [{ belief: 'Alpha', why: 'w' }] });
   const r4 = await W.runAngles({ bc: four, source: SRC });
-  ok(JSON.stringify(r4.warnings) === '["tones_over_limit"]' && !/a1, b2/.test(calls[0].prompt), 'runAngles: tones > 3 -> none in the prompt + warning');
+  ok(JSON.stringify(r4.warnings) === '["tones_over_limit"]' && /a1, b2, c3/.test(calls[0].prompt) && !/d4/.test(calls[0].prompt), 'runAngles: tones > 3 -> the first 3 in the prompt + warning (v709, C8)');
 }
 
 // ═════ 4. runWrite — the happy path ═════
@@ -291,7 +291,7 @@ const happy = (i) => [DRAFT + '\nUSED STORIES: s2, s9, [s2]', SPOKEN, SHAPE][i];
   const four = Object.assign({}, BC, { tones: ['a1', 'b2', 'c3', 'd4'] });
   reset(); plan = (i) => [DRAFT, SPOKEN, SHAPE][i];
   o = await W.runWrite({ bc: four, source: SRC, angle: ANGLE, deadlineMs: 200000 });
-  ok(JSON.stringify(o.warnings) === '["tones_over_limit"]' && !/a1, b2/.test(calls[0].prompt + calls[1].prompt), 'runWrite: tones > 3 -> none in either prompt + warning');
+  ok(JSON.stringify(o.warnings) === '["tones_over_limit"]' && /a1, b2, c3/.test(calls[0].prompt) && /Voice: a1, b2, c3\./.test(calls[1].prompt) && !/d4/.test(calls[0].prompt + calls[1].prompt), 'runWrite: tones > 3 -> the first 3 in both prompts + warning (v709, C8)');
   ok(/Voice: dry, warm, blunt/.test((reset(), plan = (i) => [DRAFT, SPOKEN, SHAPE][i], await W.runWrite({ bc: BC, source: SRC, angle: ANGLE, deadlineMs: 200000 }), calls[1].prompt)), 'opposite: 3 tones reach the spoken pass');
 }
 

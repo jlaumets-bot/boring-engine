@@ -33,7 +33,7 @@
 //      can rank by recency alone, which is NOT what the client did — see approvedExamplesFrom.
 
 const store = require('./_publish/store');
-const { validTypeMix, freshNewsFrom, DEFAULT_TYPE_MIX } = require('./_brain');   // types — pure helpers
+const { validTypeMix, freshNewsFrom, DEFAULT_TYPE_MIX, NEWS_DISMISSED_MAX } = require('./_brain');   // types — pure helpers
 
 const clean = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
 
@@ -165,9 +165,34 @@ function dayCommunitiesFrom(dayRotation, communities) {
 // be shown to the model as "recent".
 const COMP_MAX_AGE_MS = 28 * 24 * 3600 * 1000;
 
+// v709 (.unlazy/consistency/CONTRACT.md) — three brand settings that used to live on one device only.
+//   delivery       voice_extra.delivery: 'face' | 'faceless' (default 'face'; the old 'faceon' spelling is 'face').
+//                  ONE face-on/faceless setting per brand, used by every writer; a request may override it.
+//   newsDismissed  voice_extra.newsDismissed: headline texts / links the user dismissed, newest 200 kept.
+//                  freshNews below already leaves them out (it used to bring them back as news posts).
+//   formatsOff     voice_extra.formatsOff: the Content Mix formats switched off ('qna', 'carousel', …).
+const KNOWN_FORMATS = ['video', 'carousel', 'static', 'statement', 'micro', 'bonus', 'qna'];
+function deliveryFrom(v) {
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  return s === 'faceless' ? 'faceless' : 'face';
+}
+function newsDismissedFrom(v) {
+  const list = (Array.isArray(v) ? v : []).map(x => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, 400)).filter(Boolean);
+  return list.slice(-(NEWS_DISMISSED_MAX || 200));
+}
+function formatsOffFrom(v) {
+  const out = [];
+  for (const x of (Array.isArray(v) ? v : [])) {
+    const f = String(x == null ? '' : x).trim().toLowerCase();
+    if (KNOWN_FORMATS.indexOf(f) >= 0 && out.indexOf(f) < 0) out.push(f);
+  }
+  return out;
+}
+
 function contextFromBrandRow(b) {
   const v = (b && b.voice_extra) || {};
   const at = (b && b.auto_trends) || {};
+  const newsDismissed = newsDismissedFrom(v.newsDismissed);
   return {
     brandName: b.brand_name || '',
     website: b.website || '',
@@ -212,7 +237,10 @@ function contextFromBrandRow(b) {
     typeMix: validTypeMix(v.typeMix) || Object.assign({}, DEFAULT_TYPE_MIX),
     // types — the stored headlines a news post may use: [{title, url, date, source?}], newest first,
     // <= 8, <= 7 days old, each with a real link (see _brain.freshNewsFrom for what auto_trends holds).
-    freshNews: freshNewsFrom(at, Date.now()),
+    freshNews: freshNewsFrom(at, Date.now(), newsDismissed),   // v709 (C3) — never a headline the user dismissed
+    delivery: deliveryFrom(v.delivery),
+    newsDismissed,
+    formatsOff: formatsOffFrom(v.formatsOff),
     // The app is Grok-only; app.html's getEngine() hard-returns this.
     engine: 'grok',
   };
@@ -227,7 +255,7 @@ function contextFromBrandRow(b) {
 const MEMORY_KEYS = new Set(['beliefs', 'stories', 'speechSamples', 'memoryUnavailable']);
 // types — typeMix (always set: the default when none is saved) and freshNews (derived from the
 // nightly pull) are not fields the client counts either.
-const DERIVED_KEYS = new Set(['typeMix', 'freshNews', 'facts']);   // v706: facts are fetched, not a brand field
+const DERIVED_KEYS = new Set(['typeMix', 'freshNews', 'facts', 'delivery', 'newsDismissed', 'formatsOff']);   // v706: facts are fetched, not a brand field; v709: settings, not content
 
 // v706 — THE FACT PACK (api/fact-pack.js writes brands.fact_pack). The contract writers rely on:
 // bc.facts = [{id, text, url, title}], at most FACTS_MAX, none older than FACTS_FRESH_MS, newest first,
@@ -315,7 +343,8 @@ function ideasPath(brandId, q) {
 // burst of new beliefs push every story out of it. All-or-nothing: if any of the three cannot be
 // read, memory is reported unavailable rather than half-present.
 const MEMORY_CAPS = { beliefs: 20, stories: 30, speechSamples: 10 };
-const MEMORY_TEXT = { belief: 140, story: 600, speech: 800 };
+// v709 (audit C5) — beliefs load at 300 (the storage cap since v707; they were cut to 140 mid-sentence here).
+const MEMORY_TEXT = { belief: 300, story: 600, speech: 800 };
 const MEMORY_READ_MS = 3000;
 // Rows fetched per kind: beliefs with slack for de-duplication, the others exactly their cap.
 const MEMORY_QUERY = { belief: 40, story: 30, speech: 10 };
@@ -592,6 +621,9 @@ module.exports = {
   loadBrandContext,
   // exported for the gate
   contextFromBrandRow,
+  deliveryFrom,
+  newsDismissedFrom,
+  formatsOffFrom,
   approvedExamplesFrom,
   learnedSignalsFrom,
   exampleFromIdea,

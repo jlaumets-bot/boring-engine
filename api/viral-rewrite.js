@@ -9,6 +9,13 @@ const { fullBrandBlock, rulePrecedence, extractJson, coerceShape, VIRAL_REWRITE_
 const { styleGuide, guardIdeaNoSell } = require('./_write');
 // Formats whose script is said out loud to camera (same set as sharpen.js / _brain SPOKEN_EX_FORMATS).
 const SPOKEN_FORMATS = ['video', 'micro', 'qna'];
+// v709 consistency (.unlazy/consistency/CONTRACT.md) — the shared POST RULES, guard (mode 'single'),
+// hashtags and Source line, looked up at CALL time from api/_write.js (guarded fallbacks).
+const _W = () => require('./_write');
+function sharedPostRules(o) { const f = _W().postRules; if (typeof f !== 'function') return ''; try { return String(f(o) || ''); } catch (e) { return ''; } }
+function normDelivery(v) { const s = String(v == null ? '' : v).trim().toLowerCase(); return s === 'faceless' ? 'faceless' : (s === 'face' || s === 'faceon' || s === 'face-on') ? 'face' : ''; }
+const POST_TYPE_IDS = ['tip', 'about', 'news', 'qna', 'story', 'bts'];
+const SOURCE_TAIL_RE = /\n*(Sources?:[ \t]*https?:\/\/\S+(?:[ \t]*·[ \t]*https?:\/\/\S+)*)[ \t]*$/i;
 
 module.exports = async function handler(req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
@@ -24,7 +31,7 @@ module.exports = async function handler(req, res) {
   if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
 
   try {
-    const { idea, angle, brandContext , brandId, bcFields } = req.body || {};
+    const { idea, angle, brandContext , brandId, bcFields, delivery } = req.body || {};
     if (!idea || !(idea.title || idea.hook || idea.script || idea.boldText)) {
       return res.status(400).json({ error: 'No idea provided' });
     }
@@ -55,6 +62,11 @@ module.exports = async function handler(req, res) {
     }
 
     const fmt = (idea.format || 'video').toString();
+    // v709 — the post's type (M6: an about/story/news post is not pushed into a hot take) and the brand's
+    // delivery (this request's override, else the brand setting).
+    const _pt = POST_TYPE_IDS.indexOf(idea.postType) >= 0 ? idea.postType : '';
+    const _delivery = normDelivery(delivery || idea.delivery) || normDelivery(bc.delivery) || 'face';
+    const _rules = sharedPostRules({ type: _pt, format: fmt, delivery: _delivery });
 
     // v693 — v2: tones <= 3 (else none), USPs / product / proof as background facts, held beliefs;
     // the story bank follows it so a real story can fill a proof slot.
@@ -69,21 +81,21 @@ module.exports = async function handler(req, res) {
     // without a render site.
     const formatGuide = {
       video: 'Vertical Reel/TikTok, 30-60s. script = spoken words (usually 90-180 words, full sentences of varied length). shots = 4-8 concrete phone shots.',
-      micro: '10-15s single-fact video. script = usually 30-70 spoken words, one surprising fact + why it matters. shots = 1-3.',
+      micro: '10-15s single-point video. script = usually 30-70 spoken words: one point (from the brand profile or the original post, never a made-up statistic) + why it matters. shots = 1-3.',
       qna: 'A real audience question + filmed answer under 30s. title = the raw question. script = the answer (first sentence answers directly, usually 40-80 words). shots = 1-3.',
       statement: 'Bold text-graphic statement. boldText = the full statement (2-5 short sentences, setup + payoff, stands alone). script = 2-3 lines of delivery tips. No design talk.',
-      carousel: 'Instagram carousel. boldText = all slide texts numbered ("1: ... 2: ..."), slide 1 forces the swipe. script = design notes only. caption = the post caption.',
+      carousel: 'Instagram carousel. boldText = all slide texts numbered ("1: ... 2: ..."), slide 1 forces the swipe. script = design notes only. caption = the post caption (1-3 sentences).',
       static: 'Single image post. script describes ONE photographable scene. caption = 1-3 sentences in brand voice (this IS the writing).',
       bonus: 'Wildcard. Choose one production shape and obey its rules.',
     };
 
-    const system = `You are a world-class viral content strategist and copywriter. You rewrite an existing post so the WHOLE thing is built around a specific, high-tension angle — not just the hook. You keep the post's FORMAT, the brand's product truth, and the brand voice intact, but you make it PUNCHY and gripping — never flat, never watered-down. A dry brand stays dry, but dry AND compelling.
+    const system = `You are a world-class viral content strategist and copywriter. You rewrite an existing post so the WHOLE thing is built around a specific, high-tension angle — not just the hook. You keep the post's FORMAT, its TYPE${_pt ? ' (' + _pt + ')' : ''}, the brand's facts, and the brand voice intact, but you make it PUNCHY and gripping — never flat, never watered-down. A dry brand stays dry, but dry AND compelling.
 
 HOOK: the first line a person would actually say, plain and specific, and it opens the angle. It must pass the thumb-stop test. Never use the brand's avoid-words.
 
 SLOTS: keep every [your story: ...] slot the original has, exactly as written. Where the new angle needs proof you do not have (a number, a customer, a result), write a new [your story: <what to tell>] slot instead of making it up.
 
-${styleGuide()}${SPOKEN_FORMATS.indexOf(fmt) >= 0 ? '\n\n' + spokenV2() : ''}`;
+${styleGuide({ about: _pt === 'about', noSell: !_rules })}${SPOKEN_FORMATS.indexOf(fmt) >= 0 ? '\n\n' + spokenV2().replace(/ to camera/g, '') : ''}${_rules ? '\n\n' + _rules : ''}`;
 
     const user = `ORIGINAL POST:
 Title: ${idea.title || ''}
@@ -109,8 +121,7 @@ Respond with EXACTLY this JSON and nothing else (omit a field with "" if the for
   "script": "full script or design/delivery notes per the format rules",
   "shots": "Shot 1: ...\\nShot 2: ...",
   "boldText": "statement text or numbered carousel slides — only if format uses it, else \\"\\"",
-  "caption": "post caption — only for static/carousel, else \\"\\"",
-  "tags": "#BrandTag #niche1 #niche2 #broad (max 5)"
+  "caption": "post caption — only for static/carousel, else \\"\\""
 }
 
 ${rulePrecedence()}`;
@@ -136,13 +147,32 @@ ${rulePrecedence()}`;
     // it was and named in noSellKept.
     const _ns = guardIdeaNoSell(rewritten);
     Object.assign(rewritten, _ns.idea);
+    // v709 — THE SHARED GUARD (mode 'single'): facts the rewrite added that are in neither the brand's
+    // material nor the original post become [your story: ...] slots; a selling or inventing title/hook falls
+    // back to the post's first sentence. Nothing usable left: an honest error, not charged.
+    const _gp = _W().guardPost;
+    let _kept = _ns.kept;
+    if (typeof _gp === 'function') {
+      const _orig = [idea.title, idea.hook, idea.script, idea.boldText, idea.caption].map(x => String(x == null ? '' : x)).join('\n');
+      const g = _gp(Object.assign({ format: fmt, postType: _pt }, rewritten), bc, { mode: 'single', allowed: _orig });
+      if (!g || g.drop || !g.post) return res.status(502).json({ error: 'Could not build a usable rewrite — try again' });
+      for (const k of ['title', 'hook', 'script', 'shots', 'boldText', 'caption']) if (typeof g.post[k] === 'string') rewritten[k] = g.post[k];
+      _kept = _kept.filter(k => String(rewritten[k]) === String(_ns.idea[k]) && k !== 'title' && k !== 'hook');
+    }
+    // The brand's own tags, never the model's (A M7); the original caption's Source line is kept.
+    const _tagsF = _W().hashtagsFor || (_W()._internals && _W()._internals.hashtagsFor);
+    let _tags = [];
+    try { _tags = typeof _tagsF === 'function' ? _tagsF(bc, rewritten) : []; } catch (e) { _tags = []; }
+    rewritten.tags = (Array.isArray(_tags) ? _tags : []).join(' ');
+    const _srcM = String(idea.caption || '').match(SOURCE_TAIL_RE);
+    if (_srcM && String(rewritten.caption || '').indexOf(_srcM[1]) < 0) rewritten.caption = (String(rewritten.caption || '').replace(SOURCE_TAIL_RE, '').replace(/\s+$/, '') + '\n\n' + _srcM[1]).replace(/^\n+/, '');
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js:
     // a check that cannot run leaves the row unattributed, never unlogged.
     const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'viral', model: require('./_write').usageModel(bc) });
-    const _flag = _ns.kept.length ? { noSellKept: _ns.kept } : {};
+    const _flag = _kept.length ? { noSellKept: _kept } : {};
     return res.status(200).json({ idea: rewritten, ..._flag });
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"

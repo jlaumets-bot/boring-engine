@@ -7,7 +7,10 @@ function trendsBlock(bc) {
   bc = bc || {};
   if (bc.recentTrends && (Array.isArray(bc.recentTrends) ? bc.recentTrends.length : bc.recentTrends)) {
     const trends = Array.isArray(bc.recentTrends) ? bc.recentTrends : [bc.recentTrends];
-    return '\nCURRENT TRENDS TO RIDE (the user flagged these as working RIGHT NOW from real viral videos — translate the MECHANIC into brand-true content, do NOT copy the original topics; weight these but do not force them):\n- ' + trends.join('\n- ');
+    // v709 (audit C7) — this list is the user's saved trends MERGED with the auto-pulled category headlines
+    // (the app cannot tell them apart here). It used to say every item was a viral video the user flagged as
+    // working "RIGHT NOW", and "do NOT copy the topics" — while the same headlines were news to react to.
+    return '\nCURRENT TRENDS AND RECENT HEADLINES IN THE CATEGORY (trends the user saved, and headlines the app pulled for this category; they may be a few weeks old). Use one only where it genuinely fits the post: borrow the idea or the format, in this brand\'s own words. Never state a detail from a headline that the headline does not say:\n- ' + trends.join('\n- ');
   }
   return '';
 }
@@ -102,7 +105,7 @@ function approvedWinnersBlock(bc) {
   // label the two separately, and only let the rewritten ones claim to outrank the description.
   const edited = ex.filter(e => e.edited), plain = ex.filter(e => !e.edited);
   const head = edited.length
-    ? "THE BRAND'S OWN WORDS — the user took our draft and rewrote it into this. This is the single best evidence of how they actually write: it beats every description of the voice above, and it outranks the general writing rules. Study how these open, how long the sentences run, where they land."
+    ? "THE BRAND'S OWN WORDS — the user took our draft and rewrote it into this. This is the single best evidence of how they actually write. Study how these open, how long the sentences run, where they land."
     : "POSTS THIS BRAND APPROVED — the brand accepted these, so they are in-bounds for voice and subject. Treat them as a floor, not a target: they were written by this same system, so matching them too closely just repeats it. The brand description above is the stronger signal.";
   const tail = (edited.length && plain.length)
     ? "\nAlso approved, but not rewritten by the user — in-bounds, weaker evidence, do not imitate closely:"
@@ -130,15 +133,17 @@ function approvedWinnersBlock(bc) {
 // they sit under a "BRAND VOICE" heading pretending to be the brand's own rule, and they actively
 // contradict brands whose real voice is deadpan, technical or blunt.
 // v693 — content-v2 tone cap. Nine tones is not a voice, it is every voice: the diagnosis found a
-// 9-tone profile averaging into nothing. The new pipeline uses at most MAX_V2_TONES; a profile with
-// MORE uses none (picking 3 of 9 for the user would be us inventing their voice) and says so via
-// overLimit, which /api/angles and /api/write return as warnings:['tones_over_limit'].
+// 9-tone profile averaging into nothing. The new pipeline uses at most MAX_V2_TONES.
+// v709 (audit C8) — a profile with MORE keeps its FIRST 3 (the order the user listed them) and the prompt
+// says so; it used to drop ALL of them silently, so a 9-tone brand had no voice at all in the default
+// writers and all 9 in the old ones. overLimit still feeds warnings:['tones_over_limit'] so the app can
+// ask the user to pick three.
 const MAX_V2_TONES = 3;
 function v2Tones(bc) {
   const raw = bc && bc.tones;
   const list = (Array.isArray(raw) ? raw : (typeof raw === 'string' ? raw.split(',') : []))
     .map(t => String(t == null ? '' : t).trim()).filter(Boolean);
-  if (list.length > MAX_V2_TONES) return { tones: [], overLimit: true, count: list.length };
+  if (list.length > MAX_V2_TONES) return { tones: list.slice(0, MAX_V2_TONES), overLimit: true, count: list.length };
   return { tones: list, overLimit: false, count: list.length };
 }
 
@@ -157,7 +162,8 @@ const DEFAULT_TYPE_MIX = Object.freeze({ tip: 3, about: 1, news: 1, qna: 1, stor
 const TYPE_MIX_MAX = 10;   // per type
 const NEWS_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const NEWS_MAX = 8;
-const ABOUT_BG_NOTE = 'These are the real facts an about-us post is built on. Use only these, never invent more (a missing fact becomes a [your story: <what to tell>] slot). Never a feature list, never a pitch.';
+const NEWS_DISMISSED_MAX = 200;   // v709 — voice_extra.newsDismissed keeps the newest 200
+const ABOUT_BG_NOTE = 'These are the real facts an about-us post is built on. Use only these, never invent more (a missing fact becomes a [your story: <what to tell>] slot in a spoken script; in on-screen text the claim is cut). Never a feature list, never a pitch.';
 // A mix is an object of known type ids -> integers 0..TYPE_MIX_MAX. A missing key is 0; unknown keys
 // are ignored; ANY present value that is not such an integer makes the whole mix invalid, and so does
 // a total of 0 or an object with no known key at all. Returns a fresh object with all six keys, or null.
@@ -214,6 +220,23 @@ function topUpMix(mix, n, dayIndex) {
   for (let i = 0; i < want; i++) out[cycle[(start + i) % total]]++;
   return out;
 }
+// v709 (audit C4/F4, contract) — THE MIX THE BRAND CAN ACTUALLY SEE. A type that forces a format (qna →
+// the "qna" format) whose format is switched off in Content Mix (bc.formatsOff, from voice_extra) would make
+// ideas the Ideas list hides — still paid for. Its slots move to tip. Tip is capped at TYPE_MIX_MAX (a mix
+// above it is not a valid mix); the app's Plan my week total is <= 10, so nothing is lost in practice.
+const TYPE_FORMAT = { qna: 'qna' };
+function effectiveTypeMix(bc) {
+  const b = bc && typeof bc === 'object' ? bc : {};
+  const mix = Object.assign({}, validTypeMix(b.typeMix) || DEFAULT_TYPE_MIX);
+  const off = new Set((Array.isArray(b.formatsOff) ? b.formatsOff : []).map(x => String(x == null ? '' : x).trim().toLowerCase()));
+  for (const t of POST_TYPES) {
+    const f = TYPE_FORMAT[t];
+    if (!f || !off.has(f) || !mix[t]) continue;
+    mix.tip = Math.min(TYPE_MIX_MAX, mix.tip + mix[t]);
+    mix[t] = 0;
+  }
+  return validTypeMix(mix) || Object.assign({}, DEFAULT_TYPE_MIX, { qna: 0, tip: DEFAULT_TYPE_MIX.tip + DEFAULT_TYPE_MIX.qna });
+}
 // The mix as an ordered slot list: ['tip','tip','tip','about','news','qna','story'].
 function typeSlots(mix) {
   const out = [];
@@ -226,7 +249,8 @@ function typeSlots(mix) {
 // (Google News pubDate / tweet time; the Grok web-search lane stamps the PULL time) or, failing that,
 // the pull time `at` — the same fallback the app's getAutoTrends uses. X/Twitter posts are posts, not
 // news, and are left out. Newest first, at most NEWS_MAX, none older than NEWS_MAX_AGE_MS.
-// `dismissed` (optional): lower-cased texts the user dismissed on their device (localStorage only).
+// `dismissed` (optional): what the user dismissed — headline texts (any case) or links. v709 (audit C3): the
+// brand row's voice_extra.newsDismissed (_brandctx → bc.newsDismissed), plus any the request still sends.
 function freshNewsFrom(autoTrends, now, dismissed) {
   const at = autoTrends && typeof autoTrends === 'object' && !Array.isArray(autoTrends) ? autoTrends : {};
   return normFreshNews((Array.isArray(at.items) ? at.items : []).map(x => x && typeof x === 'object' ? {
@@ -236,7 +260,7 @@ function freshNewsFrom(autoTrends, now, dismissed) {
 // Re-validates a list of {title, url, date} (also the one send-daily hands generate-ideas).
 function normFreshNews(list, now, dismissed) {
   const t = Number(now) || Date.now();
-  const gone = new Set((Array.isArray(dismissed) ? dismissed : []).slice(0, 200).map(d => String(d == null ? '' : d).toLowerCase().trim()).filter(Boolean));
+  const gone = new Set((Array.isArray(dismissed) ? dismissed : []).slice(-NEWS_DISMISSED_MAX).map(d => String(d == null ? '' : d).replace(/\s+/g, ' ').toLowerCase().trim()).filter(Boolean));
   const out = [], seen = new Set();
   for (const x of (Array.isArray(list) ? list : [])) {
     if (!x || typeof x !== 'object') continue;
@@ -248,7 +272,7 @@ function normFreshNews(list, now, dismissed) {
     if (/(^|·\s*)X$/.test(source)) continue;
     if (!(date > 0) || t - date > NEWS_MAX_AGE_MS || date - t > 24 * 3600 * 1000) continue;
     const k = title.toLowerCase();
-    if (seen.has(k) || gone.has(k)) continue;
+    if (seen.has(k) || gone.has(k) || gone.has(url.toLowerCase())) continue;
     seen.add(k);
     out.push(Object.assign({ title, url, date }, source ? { source } : {}));
   }
@@ -360,38 +384,43 @@ function fullBrandBlock(bc, opts) {
     : 'Background only: mention at most one of these in a script, and only if it directly answers the viewer\'s problem. Never as a pitch.';
   if (v2) {
     const vt = v2Tones(bc);
-    add('Voice / tones', vt.tones, 'Hold this voice in HOW things are said. Never describe the brand with these words.', 99);
+    add('Voice / tones', vt.tones, 'Hold this voice in HOW things are said. Never describe the brand with these words.' +
+      (vt.overLimit ? ' (The brand lists ' + vt.count + ' tones; these are its first ' + MAX_V2_TONES + '.)' : ''), 99);
     block('Background facts about the brand (true; never invent more)', bc.usps, BG_NOTE, 70);
     block('Background facts: product details', bc.productDetails, BG_NOTE, 68);
     const beliefs = (Array.isArray(bc.beliefs) ? bc.beliefs : []).map(b => clean(b && typeof b === 'object' ? b.text : b).slice(0, 300)).filter(Boolean).slice(0, 20);
     if (beliefs.length) S.push({ keep: 85, text: 'Beliefs this brand already holds (stay consistent with them; do not repeat them verbatim):\n- ' + beliefs.join('\n- ') });
   } else {
   add('Voice / tones (NEVER contradict)', bc.tones, 'Hold this voice consistently in everything you write. It is this brand\'s voice, not a style to rotate through — never soften it toward a neutral, friendly explainer.', 99);
-  block('What the brand is / key facts (use ONLY these — never invent products, prices, or ingredients)', bc.usps, '', 70);
-  block('Product details (name the real product, never "our product")', bc.productDetails, '', 68);
+  // v709 (audit A3) — background facts in every writer, never lines to pitch.
+  block('What the brand is / key facts (true; use these as background facts — never invent products, prices, or ingredients)', bc.usps, 'Background only, never a pitch.', 70);
+  block('Product details (true; use these as background facts)', bc.productDetails, 'Background only, never a pitch.', 68);
   }
   add('Content themes / communities', bc.communities, 'Every piece of content should connect to one of these.', 55);
   block('Weekly content calendar (each day has a LEAD theme)', dayMapText(bc), 'Use the day\'s theme as the LEAD angle, but do NOT make every post that day the same topic — roughly 60% on the lead theme and 40% from other days\' themes or evergreen brand angles, so one day still feels varied.', 54);
   add('Competitors', bc.competitors, '', 44);
-  block('Recent competitor moves (what rivals just did — products, pricing, campaigns, posts)', bc.competitorMoves, 'Differentiate from, counter, or ride the same wave better than them.', 46);
+  // v709 (audit A3) — context for understanding the market, never a comparison to write: "differentiate from /
+  // counter rivals", "show how this brand is different", "amplify strengths" pulled every writer toward
+  // "unlike other brands, we…" copy that NEVER SALESY forbids.
+  block('Recent competitor moves (what rivals just did — products, pricing, campaigns, posts)', bc.competitorMoves, 'Use these as background facts about the market. Never compare the brand to a rival or name one in a post.', 46);
   // no-sell (.unlazy/no-sell) — ctaStyle is often crawled from the brand's own captions, so it can hold
   // "Shop now / link in bio / use code". Only its TONE is passed on; the sales ask never is.
-  add('Sign-off tone (how this brand closes a post; borrow the TONE only)', bc.ctaStyle, 'Never copy a sales ask from it (buy, shop, order, book, link in bio, a code, a discount, urgency). A post ends, if at all, by inviting a comment, a save, a share or a follow.', 60);
+  add('Sign-off tone (how this brand closes a post; borrow the TONE only)', bc.ctaStyle, 'Never copy a sales ask from it (buy, shop, order, book, link in bio, a code, a discount, urgency). A post ends on its point; an invite to save, share, follow or comment is optional and only in this brand\'s own words (v709: the same ending rule as postRules).', 60);
   block('Origin story', bc.originStory, '', 30);
   if (v2) block('Background facts: real proof the brand has (never add to it)', bc.socialProof, BG_NOTE, 40);
-  else block('Social proof (real numbers / press only — weave in for credibility)', bc.socialProof, '', 40);
+  else block('Social proof (real numbers / press only)', bc.socialProof, 'Use these as background facts; never a boast or a pitch.', 40);
   add('Active channels (where the brand shows up — tailor content to these)', bc.channels, '', 28);
   add('Visual style', bc.visualStyle, '', 26);
   block('Customer pain points (great for hooks — they stop the scroll)', bc.painPoints, '', 66);
-  block('Market complaints — what people gripe about across this WHOLE category, not just this brand', bc.categoryGripes, 'Name the frustration, then show how this brand is different. It earns instant trust.', 50);
-  block('Customer reviews — what real customers praise, complain about, and the exact phrases they use', bc.reviewInsights, 'Echo their real language, lead with the praise, answer the complaints head on.', 64);
-  block('What the web says about this brand (reputation)', bc.webMentions, 'Amplify the real strengths, pre-empt the criticisms.', 42);
+  block('Market complaints — what people gripe about across this WHOLE category, not just this brand', bc.categoryGripes, 'Use these as background facts: they show what the audience struggles with. Never turn one into a comparison with the brand.', 50);
+  block('Customer reviews — what real customers praise, complain about, and the exact phrases they use', bc.reviewInsights, 'Use these as background facts and borrow the audience\'s own words. They are an AI summary of web reviews: never state their numbers, never quote a review as a boast or answer one in a post.', 64);
+  block('What the web says about this brand (reputation)', bc.webMentions, 'Use these as background facts only.', 42);
   add('Brand vocabulary — use these distinctive phrases/words naturally', bc.brandVocab, '', 84);
   add('Words & phrases to AVOID (never use)', bc.avoidWords, '', 94);
   add('Topics to AVOID', bc.bannedTopics, '', 93);
   const vm = packLines(bc.coachNotes, VOICE_MEMORY_CAP);
   if (vm.text) S.push({ keep: 95, text:
-    'Voice memory — durable brand rules learned from the user (obey ALL)' +
+    'Voice memory — durable brand rules learned from the user (follow each one)' +
     (vm.dropped ? ' — the ' + vm.text.split('\n').length + ' most recent of ' + vm.total + ' rules; the older ones did not fit' : '') +
     ':\n' + vm.text });
   block('Example content the brand loved (MATCH this voice and rhythm — never copy verbatim)', bc.exampleContent, '', 86);
@@ -454,7 +483,7 @@ function fullBrandBlock(bc, opts) {
   // position, and the strongest position should hold human speech.
   // Capped: ~2 minutes of talking is ~300 words / ~1,800 chars; 2,200 leaves headroom and bounds the
   // bill against a pasted essay.
-  const VOICE_RULE = '   -> THIS IS THE VOICE. It outranks every description above and every approved post. Match its sentence length, its connective words (so, and, but, because, which means), where it repeats a point in different words, what it calls things, and how it starts a thought. Do NOT copy its sentences or its topic — copy how it MOVES. If a script could not be read aloud by this person in this rhythm, it is wrong.';
+  const VOICE_RULE = '   -> THIS IS THE VOICE. Where it and a description above disagree on how to sound, follow this. Match its sentence length, its connective words (so, and, but, because, which means), where it repeats a point in different words, what it calls things, and how it starts a thought. Do NOT copy its sentences or its topic — copy how it MOVES. If a script could not be read aloud by this person in this rhythm, it is wrong.';
   const vs = clean(bc.voiceSample).slice(0, 2200);
   if (vs) body += (body ? '\n' : '') +
     'HOW THIS PERSON ACTUALLY TALKS — an unedited transcript of them speaking, recorded so you can hear the voice, not read a description of it:\n"' + vs + '"\n' + VOICE_RULE;
@@ -477,10 +506,13 @@ function fullBrandBlock(bc, opts) {
   // for brand voice, rigged so the less-maintained one wins. The brand brain is the only
   // source now. Do NOT reintroduce this.
   if (!body) return '';
-  // v693 — in v2 the brand still wins on VOICE, but it can never license inventing a fact.
-  if (v2) return BRAND_HEADING + ' — everything this brand has taught the app. It outranks the style guide on voice; it never permits inventing facts.\n' + body;
-  return BRAND_HEADING + ' — everything this brand has taught the app. This section outranks the general writing rules.\n' + body;
+  // v709 (audit A7, contract) — THE ONE PRIORITY STATEMENT. There were four ("this outranks every writing
+  // rule … including any rule stated after it", the voice sample "outranks every description", rewritten
+  // posts "outrank the general writing rules", voice memory "obey ALL") and the model settled them by
+  // position. Now one sentence, the same in every writer, and no other block claims to outrank anything.
+  return BRAND_HEADING + ' — everything this brand has taught the app. ' + PRIORITY_RULE + '\n' + body;
 }
+const PRIORITY_RULE = 'Brand facts and voice guide the post; NEVER SALESY and NEVER INVENT override everything.';
 
 // ── Clarity & flow ("write for the ear") ─────────────────────────────────────
 // The SEPARATE quality from the humanizer: not "remove AI tells" but "make it effortless to read OR
@@ -514,8 +546,8 @@ function clarityFlow() {
 // fragments. Grammar, connectives and a countable floor are checkable by the model against its own
 // draft; vibes are not.
 function spokenShape() {
-  return `SPOKEN-SCRIPT SHAPE (mandatory for any script a person reads aloud to camera — video, micro-lecture, Q&A):
-This is written to be SAID, not read. It is performed by a human looking down a lens, so it must survive being spoken at normal pace by someone who is not a presenter.
+  return `SPOKEN-SCRIPT SHAPE (mandatory for any script a person reads aloud — video, micro-lecture, Q&A, on camera or as a voiceover):
+This is written to be SAID, not read. It is performed out loud by a human, so it must survive being spoken at normal pace by someone who is not a presenter.
 - Write COMPLETE SENTENCES with a subject and a verb. "Sales follow-ups eat hours" is speakable; "Sales follow-ups eating hours." is a caption fragment and nobody talks like that. Fragments are for the HOOK and the on-screen text only — in the body they read as a robot reciting a slide.
 - Keep the CONNECTIVE TISSUE. Speech is carried by the small joining words written copy strips out: so, and, but, because, which means, that's why, the way it works is, here's what happens. Two facts side by side are notes; two facts joined by "because" is someone talking. If a line starts with a noun, check whether it needs a connector in front of it.
 - The listener cannot re-read. Name a thing before you comment on it, and say the one line that matters twice in different words. That restatement is not padding — on a page it is redundant, out loud it is the only reason the point lands.
@@ -611,14 +643,17 @@ function antiSlopRhythm() {
 // therefore false in the one generator that carries the most weight, and a model that checks the
 // claim against what it can see has no reason to trust the rest of the sentence. The rule is
 // stated positionally-neutrally instead, so it is true wherever it lands.
+// v709 (audit A7, contract) — NOT a priority claim any more ("this outranks every writing rule … including any
+// rule stated after it" licensed a brand's "link in bio" example over NEVER SALESY). The one priority
+// statement is the brand block's heading; this only says how VOICE beats a general STYLE rule.
 function rulePrecedence() {
-  return `RULE PRECEDENCE (this outranks every writing rule in this conversation, wherever it appears — including any rule stated after it): the section headed "${BRAND_HEADING}" wins any conflict with the general writing rules, wherever that section appears (it may be in an earlier message, not above this line). Those rules exist to strip generic AI slop, NOT to overwrite a voice this brand has actually earned. Where the brand's voice memory, its approved winners, or its stated style contradict a general rule — it genuinely writes in threes, uses a dash, opens a certain way, repeats a signature phrase — follow the ${BRAND_HEADING} and ignore the rule. Apply a general rule only where the brand profile says nothing.`;
+  return `VOICE OVER STYLE: the general writing rules exist to strip generic AI slop, NOT to overwrite a voice this brand has actually earned. Where the section headed "${BRAND_HEADING}" (it may be in an earlier message) shows a voice that contradicts a general style rule — it genuinely writes in threes, uses a dash, opens a certain way, repeats a signature phrase — follow the ${BRAND_HEADING} on how to sound. Apply a general style rule only where the brand profile says nothing. This never relaxes NEVER SALESY or NEVER INVENT.`;
 }
 
 // v693 — THE ONE HARD RULE of the content-v2 rebuild, shared by writingCraft (legacy surfaces) and
 // api/_write.js (the new pipeline) so the two can never word it differently. The slot marker format
 // `[your story: <what to tell>]` is a contract: the app finds slots by it.
-const NO_INVENTION_RULE = 'NEVER INVENT FACTS: no made-up numbers, prices, names, customer cases, results or quotes. Use only facts the BRAND PROFILE or the material you were given actually contains. Where a line needs proof you do not have, write a slot exactly like [your story: <what to tell>] for the creator to fill in. Where there is no room for a slot (a one-line meme, a hook), cut the claim instead. The one exception: a CHECKED FACT from the list you were given (use it as written, no extra numbers).';
+const NO_INVENTION_RULE = 'NEVER INVENT FACTS: no made-up numbers, prices, names, customer cases, results or quotes. Use only facts the BRAND PROFILE or the material you were given actually contains. Where a spoken line needs proof you lack, write a slot exactly like [your story: <what to tell>] for the creator. On-screen text (statement, slides, overlays, title, hook) and captions get no slot: cut the claim. The one exception: a CHECKED FACT from the list you were given (use it as written, no extra numbers).';
 
 // v706 — THE FACT PACK (api/fact-pack.js). bc.facts = [{id:'F1', text, url, title}] — sentences found by a
 // web search and then CHECKED server-side against their source page (reachable, https, the key terms and
@@ -672,7 +707,7 @@ function factSources(bc, ids) {
 // they get the mechanics without the override. Same mechanics as api/_write.js's spoken pass:
 // complete sentences, joining words, the point said twice, varied construction, a length floor.
 function spokenV2() {
-  return `SPOKEN SCRIPTS (video, micro, Q&A: said out loud to camera):
+  return `SPOKEN SCRIPTS (video, micro, Q&A: said out loud, on camera or as a voiceover):
 - Natural speech, not three clipped commands. Complete sentences with a subject and a verb; fragments belong in on-screen text, never in the script.
 - Keep the joining words people use when they talk: so, and, but, because, which means. They carry one thought into the next.
 - The listener cannot re-read, so say the point that matters twice, in different words.
@@ -754,7 +789,7 @@ function writingCraft(opts) {
 // Per-format length + shape spec, so nothing over- or under-writes. Shared by every generator.
 const FORMAT_SPEC = {
   video: 'Vertical reel/TikTok, ~30-60s. script = usually 90-180 SPOKEN words in full, varied-length sentences (90 is a floor, not a target). shots = 4-8 concrete phone shots. screen = 3-6 short overlays.',
-  micro: '10-15s single-fact video. script = usually 30-70 spoken words: one surprising fact + why it matters.',
+  micro: '10-15s single-point video. script = usually 30-70 spoken words: one point (a checked fact or something from the brand profile, never an invented number) + why it matters.',
   qna: 'A real audience question + filmed answer under 30s. script = the answer; first sentence answers directly (no wind-up), usually 40-80 words.',
   statement: 'Bold text graphic. boldText = the full statement (2-5 short sentences, setup + payoff, stands alone). script = 2-3 delivery-tip lines only.',
   carousel: 'Instagram carousel. boldText = numbered slide texts; slide 1 forces the swipe. caption = the post caption.',
@@ -904,4 +939,4 @@ const VIRAL_ANALYZE_SHAPE = {
   takeaway: 'str',
 };
 
-module.exports = { FACTS_HEADING, FACT_ID_RE, factsBlock, factSources, POST_TYPES, DEFAULT_TYPE_MIX, TYPE_MIX_MAX, NEWS_MAX_AGE_MS, NEWS_MAX, ABOUT_BG_NOTE, validTypeMix, scaleTypeMix, typeSlots, spreadSlots, topUpMix, freshNewsFrom, normFreshNews, newsLines, NO_INVENTION_RULE, v2Tones, spokenV2, storiesBlock, antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };
+module.exports = { PRIORITY_RULE, effectiveTypeMix, TYPE_FORMAT, NEWS_DISMISSED_MAX, MAX_V2_TONES, FACTS_HEADING, FACT_ID_RE, factsBlock, factSources, POST_TYPES, DEFAULT_TYPE_MIX, TYPE_MIX_MAX, NEWS_MAX_AGE_MS, NEWS_MAX, ABOUT_BG_NOTE, validTypeMix, scaleTypeMix, typeSlots, spreadSlots, topUpMix, freshNewsFrom, normFreshNews, newsLines, NO_INVENTION_RULE, v2Tones, spokenV2, storiesBlock, antiSlopRhythm, rulePrecedence, dayMapText, trendsBlock, painBlock, vocabBlock, avoidBlock, brainExtras, fullBrandBlock, approvedWinnersBlock, BRAND_HEADING, clarityFlow, spokenShape, spokenExample, writingCraft, formatSpec, outputViolations, extractJson, toStr, coerceShape, VIRAL_REWRITE_SHAPE, VIRAL_TWIST_SHAPE, VIRAL_ANALYZE_SHAPE };

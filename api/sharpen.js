@@ -12,8 +12,35 @@ const { fullBrandBlock, rulePrecedence, spokenV2 } = require('./_brain');
 // through fullBrandBlock(bc,{v2:true}). A draft's [your story: ...] slots survive the edit untouched.
 const { styleGuide, writerCallResilient, writerProvider, writerEffort, startBrandAttribution, guardIdeaNoSell } = require('./_write');   // v693 r3 — provider switch + depth with headroom
 
-// Formats whose `script` is read aloud to camera. Same set as _brain.SPOKEN_EX_FORMATS.
+// Formats whose `script` is read aloud. Same set as _brain.SPOKEN_EX_FORMATS.
 const SPOKEN_FORMATS = ['video', 'micro', 'qna'];
+
+// ── v709 consistency (.unlazy/consistency/CONTRACT.md, audits B F7 / D F7) ─────────────────────────
+// * The shared POST RULES, the shared guard (mode 'single') and the brand's delivery, looked up at CALL
+//   time from api/_write.js, each with a guarded fallback.
+// * NO 2000-CHARACTER CUT. Every field went to the model as slice(0, 2000) and the short version was
+//   written back, losing a long caption's last lines and its "Source:" line. Now a caption may be up to
+//   2200 characters (MAX_CAPTION) and any other field up to FIELD_MAX; a field over its cap is not sent
+//   and comes back untouched. The caption's Source line is held back and put back after the rewrite.
+// * Tags are never rewritten (the model writes no hashtags anywhere).
+// * An "already sharp" or unchanged answer IS charged (the critique ran); only a failure is not.
+// * A repeat of the SAME request while the first is still running on this instance (the button re-enabled
+//   at 65 s and was pressed again) waits for the first and returns its answer: one AI run, one charge.
+//   Instances do not share memory, so this is best-effort; the app keeps the button disabled too.
+const CAPTION_MAX = 2200;
+const FIELD_MAX = 8000;
+const TAG_KEYS = ['tags', 'hashtags'];
+const SOURCE_TAIL_RE = /\n*(Sources?:[ \t]*https?:\/\/\S+(?:[ \t]*·[ \t]*https?:\/\/\S+)*)[ \t]*$/i;
+const INFLIGHT = new Map();   // request key -> Promise<{status, body}>
+function requestKey(userId, body) {
+  try {
+    const b = body || {};
+    return require('crypto').createHash('sha256').update(JSON.stringify([userId, b.content, b.kind, b.format, b.brandId || null, b.postType || null, b.delivery || null])).digest('hex');
+  } catch (e) { return ''; }
+}
+const _W = () => require('./_write');
+function sharedPostRules(o) { const f = _W().postRules; if (typeof f !== 'function') return ''; try { return String(f(o) || ''); } catch (e) { return ''; } }
+function normDelivery(v) { const s = String(v == null ? '' : v).trim().toLowerCase(); return s === 'faceless' ? 'faceless' : (s === 'face' || s === 'faceon' || s === 'face-on') ? 'face' : ''; }
 // v693 r4 — ONE BUDGET from handler start. The critique thinks at 'medium' (WRITER_EFFORT_EDIT) and,
 // if it fails or times out, is retried once a level lower — but only with the rewrite's own share
 // (REWRITE_RESERVE_MS) still untouched. The rewrite takes what is left, capped at 140 s. With the
@@ -46,8 +73,23 @@ module.exports = async function handler(req, res) {
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
   if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
 
+  const _key = requestKey(_g.billingUserId || _g.user.id, req.body);
+  const _first = _key && INFLIGHT.get(_key);
+  if (_first) {
+    // The same request is already running here: its answer, not a second paid run (this request never
+    // logs usage, so its own reservation is handed back).
+    const r = await _first;
+    return res.status(r.status).json(Object.assign({}, r.body, { repeat: true }));
+  }
+  let _settle = () => {};
+  if (_key) INFLIGHT.set(_key, new Promise(r => { _settle = r; }));
+  let _code = 200;
+  const _status0 = res.status.bind(res), _json0 = res.json.bind(res);
+  res.status = (c) => { _code = c; _status0(c); return res; };
+  res.json = (b) => { _settle({ status: _code, body: b }); return _json0(b); };
+
   try {
-    const { content, kind, format, brandContext , brandId, bcFields } = req.body || {};
+    const { content, kind, format, brandContext , brandId, bcFields, postType, delivery } = req.body || {};
     let bc = brandContext || {};
     // v625: HYDRATE THE BRAND BRAIN SERVER-SIDE. app.html now sends a LEAN request here
     // (brandId + only what the database cannot know). Without this branch the handler received
@@ -78,14 +120,26 @@ module.exports = async function handler(req, res) {
     // Only sharpen the non-empty text fields we were given, and remember their exact keys so pass 2
     // returns the SAME shape (nothing invented, nothing dropped silently).
     const keys = (content && typeof content === 'object')
-      ? Object.keys(content).filter(k => content[k] != null && String(content[k]).trim())
+      ? Object.keys(content).filter(k => content[k] != null && String(content[k]).trim() && TAG_KEYS.indexOf(k) < 0 &&
+          String(content[k]).length <= (k === 'caption' ? CAPTION_MAX : FIELD_MAX))
       : [];
     if (!keys.length) return res.status(400).json({ error: 'Nothing to sharpen' });
 
     const kindLabel = (kind || 'post').toString();
     const fmt = (format || '').toString();
     const brandInfo = fullBrandBlock(bc, { v2: true });   // v693 — v2: tones <= 3, USPs as background facts, held beliefs
-    const serialized = keys.map(k => `${k}: ${String(content[k]).slice(0, 2000)}`).join('\n');
+    // v709 (B F7) — whole fields; the caption's Source line is held back and put back after the rewrite.
+    const _tail = {};
+    const _sent = {};
+    for (const k of keys) {
+      let v = String(content[k]);
+      if (k === 'caption') { const m = v.match(SOURCE_TAIL_RE); if (m) { _tail[k] = m[1]; v = v.slice(0, m.index).replace(/\s+$/, ''); } }
+      _sent[k] = v;
+    }
+    const serialized = keys.map(k => `${k}: ${_sent[k]}`).join('\n');
+    const _pt = ['tip', 'about', 'news', 'qna', 'story', 'bts'].indexOf(postType) >= 0 ? postType : '';
+    const _delivery = normDelivery(delivery) || normDelivery(bc.delivery) || 'face';
+    const _rules = sharedPostRules({ type: _pt, format: fmt, delivery: _delivery });
 
     // Sharpen must NOT shorten. Especially for spoken/video scripts, the natural talk-track and story
     // build-up are the whole point — compressing to bullet-y statements ruins it. Tell the model the shape.
@@ -148,9 +202,7 @@ List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voi
 
     // Already great → don't burn the second call or risk making it worse.
     if (/^\s*STRONG\b/i.test(critique)) {
-      // Only attribute the usage row to a brand the caller actually owns — this id comes from the
-      // client and went into usage_events unverified. Same pattern as pull-trends.js:
-      // a check that cannot run leaves the row unattributed, never unlogged.
+      // "Already sharp" is a real (paid) critique: charged, as at HEAD (v709 review #2).
       const logBrandId = await _brandAttr;   // v693 r3 — the access check was started before the AI work
       await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'sharpen', model: require('./_write').usageModel(bc) });
       return res.status(200).json({ sharpened: content, unchanged: true });
@@ -171,10 +223,10 @@ List 2-5 SPECIFIC weaknesses in the WRITING ONLY — a weak or AI-tell hook, voi
       : '';
 
     // ── PASS 2 · rewrite against the critique ─────────────────────────
-    const rSys = `You are the brand's line EDITOR. You make the SMALLEST changes that fix the critique — polishing, NOT re-pitching and NOT rewriting from scratch. PRESERVE the original's angle, situation, context, relatability AND LENGTH — keep the wording that already works, only fix the weak parts. CRITICAL: Sharpen does NOT mean shorten — the result must be the SAME length as the original (within ~10%); if you cut it to half or a third you have FAILED. For spoken/video scripts keep the natural, conversational, story-like talk-track and every beat; do NOT compress it into terse statements. The hook/opening must open on the READER's situation, feeling or a moment of tension — it must NOT reference the brand, its product, or "someone using our X". NEVER make it salesy, NEVER add product features / USPs / "what our brand does" lines that were not already there, NEVER turn a relatable moment into a product pitch. Same format and structure. No avoid-words, no AI-tell openers. Keep every [your story: ...] slot exactly as written: never fill one with a story you made up, never remove one. Never introduce AI-tell words (delve, leverage, enhance, foster, showcase, elevate, seamless, robust, synergy, vibrant, tapestry, testament) or em dashes.
+    const rSys = `You are the brand's line EDITOR. You make the SMALLEST changes that fix the critique — polishing, NOT re-pitching and NOT rewriting from scratch. PRESERVE the original's angle, situation, context, relatability AND LENGTH — keep the wording that already works, only fix the weak parts. CRITICAL: Sharpen does NOT mean shorten — the result must be the SAME length as the original (within ~10%); if you cut it to half or a third you have FAILED. For spoken/video scripts keep the natural, conversational, story-like talk-track and every beat; do NOT compress it into terse statements. The hook/opening must open on the READER's situation, feeling or a moment of tension — ${_pt === 'about' ? 'for this about-us post the product may be named, as a story or a lesson, never as a pitch' : 'it must NOT reference the brand, its product, or "someone using our X"'}. NEVER make it salesy, NEVER add product features / USPs / "what our brand does" lines that were not already there, NEVER turn a relatable moment into a product pitch. Same format and structure. No avoid-words, no AI-tell openers. Keep every [your story: ...] slot exactly as written: never fill one with a story you made up, never remove one. Never introduce AI-tell words (delve, leverage, enhance, foster, showcase, elevate, seamless, robust, synergy, vibrant, tapestry, testament) or em dashes.
 
-${styleGuide()}
-${spokenCounterweight}`;
+${styleGuide({ about: _pt === 'about', noSell: !_rules })}
+${spokenCounterweight}${_rules ? '\n' + _rules + '\n' : ''}`;
     const rUser = `VOICE & ACCURACY REFERENCE — use ONLY to match the voice and to avoid false claims. This is background; do NOT pull these facts in to sell or explain the product:
 ${brandInfo || '(limited context — keep it on-voice, invent nothing)'}
 
@@ -184,7 +236,7 @@ ${serialized}
 WHAT TO FIX (voice / hook / clarity only):
 ${critique && critique.trim() ? critique.trim() : '(no explicit critique — make only light touch-ups to the hook and voice; keep the situation, the length and everything that already works)'}
 
-Rewrite with the LIGHTEST touch that fixes those points, keeping the original's situation, angle, relatability AND length fully intact — the result must be the SAME length as the original (within ~10%); do NOT shorten, summarize, or compress it, and keep the spoken/story flow. Do NOT add sales or product lines, and do NOT open on the product. Return ONLY a JSON object with EXACTLY these keys and no others: ${JSON.stringify(keys)}. Keep each field the same kind/shape AND roughly the same length as the input (a hook stays a short hook, a script stays a full spoken script, tags stay hashtags, a numbered carousel stays numbered). No prose, no markdown fences.
+Rewrite with the LIGHTEST touch that fixes those points, keeping the original's situation, angle, relatability AND length fully intact — the result must be the SAME length as the original (within ~10%); do NOT shorten, summarize, or compress it, and keep the spoken/story flow. Do NOT add sales or product lines, and do NOT open on the product. Return ONLY a JSON object with EXACTLY these keys and no others: ${JSON.stringify(keys)}. Keep each field the same kind/shape AND roughly the same length as the input (a hook stays a short hook, a script stays a full spoken script, a numbered carousel stays numbered). No prose, no markdown fences.
 
 ${rulePrecedence()}`;
 
@@ -212,9 +264,28 @@ ${rulePrecedence()}`;
     const _ns = guardIdeaNoSell(Object.assign({ format: fmt }, sharpened));
     const noSellKept = _ns.kept.filter(k => keys.indexOf(k) >= 0);
     if (_ns.hits.length) {
-      for (const k of keys) sharpened[k] = noSellKept.indexOf(k) >= 0 ? content[k] : String(_ns.idea[k]);
-      moved = keys.some(k => String(sharpened[k]) !== String(content[k] == null ? '' : content[k]));
+      for (const k of keys) sharpened[k] = noSellKept.indexOf(k) >= 0 ? _sent[k] : String(_ns.idea[k]);
     }
+    // v709 — THE SHARED GUARD (mode 'single'): a number, name or claim the rewrite added that is in neither
+    // the brand's material nor the person's own draft becomes a [your story: ...] slot; a hook or title
+    // that invents falls back to the post's first sentence. Nothing usable left = the draft as it was.
+    const _gp = _W().guardPost;
+    if (typeof _gp === 'function') {
+      const _draft = keys.map(k => _sent[k]).join('\n');
+      const g = _gp(Object.assign({ format: fmt }, sharpened), bc, { mode: 'single', allowed: _draft });
+      // A request that sends no body field (only a hook, say) has no post text to judge "usable" by: that
+      // is not a failure. Any other drop puts the draft back as it was. A field the guard would empty keeps
+      // the draft's own words.
+      const _bodyless = !keys.some(k => k === 'script' || k === 'boldText' || k === 'caption');
+      const _usable = g && g.post && (!g.drop || (_bodyless && (g.reasons || []).every(x => x === 'nothing_usable' || !/^sales_only/.test(x))));
+      if (_usable) { for (const k of keys) sharpened[k] = (typeof g.post[k] === 'string' && g.post[k].trim()) ? g.post[k] : _sent[k]; }
+      else for (const k of keys) sharpened[k] = _sent[k];
+    }
+    // The caption's Source line goes back as its last line (B F7); then the change check on the whole field.
+    for (const k of Object.keys(_tail)) sharpened[k] = (String(sharpened[k] || '').replace(SOURCE_TAIL_RE, '').replace(/\s+$/, '') + '\n\n' + _tail[k]).replace(/^\n+/, '');
+    moved = keys.some(k => String(sharpened[k]) !== String(content[k] == null ? '' : content[k]));
+    // Fields that were not sent (tags, an oversize field) come back exactly as they were.
+    for (const k of Object.keys(content || {})) if (keys.indexOf(k) < 0 && content[k] != null) sharpened[k] = content[k];
 
     // v666 — SAY SO WHEN NOTHING CHANGED.
     // Every key falls back to the original when the model drops or blanks it, so this loop can
@@ -225,7 +296,8 @@ ${rulePrecedence()}`;
     // presented as work done. The flag is the difference between a light-touch editor that is
     // honest about doing nothing and one that pretends.
     if (!moved) {
-      const logBrandId0 = await _brandAttr;   // v693 r3 — the access check was started before the AI work
+      // Nothing changed, but two paid calls ran: charged, as at HEAD (v709 review #2).
+      const logBrandId0 = await _brandAttr;
       await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId0, action: 'sharpen', model: require('./_write').usageModel(bc) });
       return res.status(200).json(noSellKept.length ? { sharpened, unchanged: true, noSellKept } : { sharpened, unchanged: true });
     }
@@ -240,5 +312,8 @@ ${rulePrecedence()}`;
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
     console.error('sharpen error:', err);
     return res.status(500).json({ error: 'Sharpen failed — try again' });
+  } finally {
+    if (_key) INFLIGHT.delete(_key);
+    _settle({ status: 500, body: { error: 'Sharpen failed — try again' } });
   }
 };

@@ -11,6 +11,14 @@ const { aiUnavailable } = require('./_llm');
    vercel.json, and the usage write after it (a PATCH, then a fallback POST) is 2 x 8s. */
 const FN_BUDGET_MS = 270000;
 
+// v709 (audit C6) — the trend list the app sends (its saved trends merged with the auto headlines), at most
+// 12 short lines. A brandContext.recentTrends already in bc wins (an older app build sends it there).
+function withTrends(bc, raw) {
+  if (bc && bc.recentTrends && (Array.isArray(bc.recentTrends) ? bc.recentTrends.length : String(bc.recentTrends).trim())) return bc;
+  const list = (Array.isArray(raw) ? raw : []).map(x => String(x == null ? '' : x).replace(/\s+/g, ' ').trim().slice(0, 300)).filter(Boolean).slice(0, 12);
+  return list.length ? Object.assign({}, bc, { recentTrends: list }) : bc;
+}
+
 module.exports = async function handler(req, res) {
   const _t0 = Date.now();
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
@@ -42,7 +50,7 @@ module.exports = async function handler(req, res) {
     if (Object.prototype.hasOwnProperty.call(bc, 'facts')) { bc = Object.assign({}, bc); delete bc.facts; }
     if (!brandId && !Object.keys(bc).length) return res.status(400).json({ error: 'Pick a brand first.', code: 'bad_input' });
 
-    let hydratedBrandId = null, _hydNews = [];
+    let hydratedBrandId = null, _hydNews = [], _hydAvoid = [];
     if (brandId) {
       const _hyd = await require('./_brandctx').loadBrandContext(brandId, { userId: _g.user.id, humanEdited: body.humanEditedTitles }, '');
       const _thin = _hyd.ok && Number.isFinite(bcFields) && bcFields > 2 && _hyd.fields < Math.ceil(bcFields / 2);
@@ -53,6 +61,7 @@ module.exports = async function handler(req, res) {
         });
       }
       _hydNews = (_hyd.bc && _hyd.bc.freshNews) || [];
+      _hydAvoid = Array.isArray(_hyd.avoidTitles) ? _hyd.avoidTitles : [];
       bc = Object.assign({}, _hyd.bc, bc);
       hydratedBrandId = brandId;
     }
@@ -61,7 +70,9 @@ module.exports = async function handler(req, res) {
     // No fresh headline -> 409 no_news before any AI work, so the app can offer another type.
     let news = [];
     if (postType === 'news') {
-      news = require('./_brain').normFreshNews(hydratedBrandId ? _hydNews : [], Date.now(), body.newsDismissed);
+      // v709 (C3) — the brand's own dismissals (voice_extra.newsDismissed, already left out by _brandctx) plus any
+      // the request still sends from an older app build.
+      news = require('./_brain').normFreshNews(hydratedBrandId ? _hydNews : [], Date.now(), [].concat(Array.isArray(bc.newsDismissed) ? bc.newsDismissed : [], Array.isArray(body.newsDismissed) ? body.newsDismissed : []));
       if (!news.length) return res.status(409).json({ code: 'no_news', error: 'No fresh news in your category today — try another type.' });
     }
 
@@ -77,7 +88,10 @@ module.exports = async function handler(req, res) {
         if (!newsOne) return res.status(409).json({ code: 'no_news', error: 'That headline is no longer fresh — try another type.' });
       } else newsOne = news[0];
     }
-    const out = await W.runWrite({ bc, source, angle, format: body.format || 'talking', ...(postType ? { postType, news: newsOne } : {}), deadlineMs: Math.max(1000, FN_BUDGET_MS - (Date.now() - _t0)) });
+    // v709 — delivery: the per-post override ('face' | 'faceless'), else the brand's own setting (runWrite).
+    // Trends (C6): the request's merged trend list, rendered in the brand block like the ideas batch.
+    bc = withTrends(bc, body.recentTrends);
+    const out = await W.runWrite({ bc, source, angle, format: body.format || 'talking', delivery: W.normDelivery(body.delivery) || undefined, ...(postType ? { postType, news: newsOne } : {}), deadlineMs: Math.max(1000, FN_BUDGET_MS - (Date.now() - _t0)) });
 
     // v693 r2 — attribute the usage row ONLY to the brand loadBrandContext just authorised for this
     // user (it fails closed on userCanAccessBrand). A brand id inside a body-sent brandContext is

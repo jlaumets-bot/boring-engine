@@ -1,8 +1,57 @@
 const https = require('https');
 const http = require('http');
 const { callLLM, aiUnavailable } = require('./_llm');
-const { fullBrandBlock, writingCraft, rulePrecedence, extractJson } = require('./_brain');
-const { noSellRule, guardIdeaNoSell } = require('./_write');   // no-sell (.unlazy/no-sell): the shared rule + the output guard
+const { fullBrandBlock, rulePrecedence, extractJson, spokenV2 } = require('./_brain');
+const { noSellRule, guardIdeaNoSell, styleGuide } = require('./_write');   // no-sell (.unlazy/no-sell): the shared rule + the output guard
+// v709 (.unlazy/consistency/CONTRACT.md) — classic Remix runs on the SAME rules as every other writer:
+// the short style guide + spoken rule (the legacy writingCraft rulebook and its hook examples — "3 parts.
+// One price. Zero fluff", "30 days of X" — invited invented numbers: audit A M4), the v2 brand block, the
+// shared POST RULES (ending, hashtags, delivery, shape), the shared guard, and the brand's own hashtags.
+// The shared helpers are looked up at CALL time, each with a guarded fallback.
+const _W = () => require('./_write');
+function sharedPostRules(o) { const f = _W().postRules; if (typeof f !== 'function') return ''; try { return String(f(o) || ''); } catch (e) { return ''; } }
+function normDelivery(v) { const s = String(v == null ? '' : v).trim().toLowerCase(); return s === 'faceless' ? 'faceless' : (s === 'face' || s === 'faceon' || s === 'face-on') ? 'face' : ''; }
+function codeTags(bc, idea) {
+  const f = _W().hashtagsFor || (_W()._internals && _W()._internals.hashtagsFor);
+  let list = []; try { list = typeof f === 'function' ? f(bc || {}, idea) : []; } catch (e) { list = []; }
+  return (Array.isArray(list) ? list : []).map(t => String(t || '').trim()).filter(Boolean).slice(0, 6).join(' ');
+}
+const ON_SCREEN_FORMATS = /^(statement|carousel|static)$/i;
+// One remix (or one series part) through guardPost, mode 'single' (facts, no-sell, on-screen safety, the
+// hook/title fallback from the post text). Returns { part, drop }. An older _write.js: unchanged.
+function guardRemixPart(part, bc) {
+  const gp = _W().guardPost;
+  if (typeof gp !== 'function' || !part || typeof part !== 'object') return { part: part, drop: false };
+  const fmt = String(part.remixFormat || 'video');
+  const onScreen = ON_SCREEN_FORMATS.test(fmt);
+  const post = { title: part.remixTitle || '', hook: part.remixHook || '', script: part.remixScript || '', caption: part.remixCaption || '', format: fmt };
+  if (onScreen) post.boldText = part.remixScript || '';
+  const g = gp(post, bc || {}, { mode: 'single' });
+  if (!g || g.drop || !g.post) return { part: part, drop: true };
+  const out = Object.assign({}, part);
+  if ('remixTitle' in part || g.post.title) out.remixTitle = String(g.post.title || '');
+  if ('remixHook' in part || g.post.hook) out.remixHook = String(g.post.hook || '');
+  out.remixScript = String((onScreen ? g.post.boldText : g.post.script) || '');
+  if ('remixCaption' in part) out.remixCaption = String(g.post.caption || '');
+  if (out.noSellKept) {
+    const still = String(out.noSellKept).split(',').filter(k => k && String(out[k]) === String(part[k]));
+    if (still.length) out.noSellKept = still.join(','); else delete out.noSellKept;
+  }
+  return { part: out, drop: false };
+}
+function guardRemix(remix, bc) {
+  let r = guardRemixPart(remix, bc);
+  if (r.drop) return null;
+  const out = r.part;
+  if (Array.isArray(out.seriesParts)) {
+    const parts = out.seriesParts.map(p => guardRemixPart(p, bc)).filter(x => !x.drop).map(x => x.part);
+    if (out.seriesParts.length && !parts.length) return null;
+    out.seriesParts = parts;
+  }
+  // The brand's own tags (Content Themes + brand name), never the model's (A M7 / B F5).
+  out.remixHashtags = codeTags(bc, { title: out.remixTitle, hook: out.remixHook, script: out.remixScript, caption: out.remixCaption });
+  return out;
+}
 
 /* v690 — THE CLEAN-JSON RETRY GOT A SECOND FULL 280s. Both tries of the loop below passed
    deadlineMs: 280000, so a first reply that arrived at 250s unparseable started a second call
@@ -115,7 +164,10 @@ module.exports = async function handler(req, res) {
     if (!content) return res.status(500).json({ error: 'No content in response' });
     if (!remix) return res.status(500).json({ error: 'Failed to parse remix \u2014 try again', raw: content });
 
-    remix = normalizeRemix(remix);
+    remix = guardRemix(normalizeRemix(remix), bc);
+    // v709 — nothing usable after the guard (only a pitch, or every series part dropped): an honest error,
+    // and nothing is charged (logUsage is never reached, so the reservation is handed back).
+    if (!remix) return res.status(502).json({ error: 'That came back as a sales pitch — try again' });
     // `brandContext.brandId` was never a key getBrandContext() produced, so this row was
     // always attributed to a null brand. A lean request finally names the brand — use it.
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
@@ -152,8 +204,8 @@ function buildLegacyRemixPrompt(bc, inp) {
   var brandBanned = bc.bannedTopics || '';
 
   var modeInstructions = {
-    'remix': 'Keep the same FORMAT and HOOK STRUCTURE but adapt the message to ' + brandName + '. The remix should feel like "what if ' + brandName + ' made this exact type of content?"',
-    'simplify': 'Strip this content down to the absolute core message. Remove all fluff, hype, and filler. Rewrite it in the ' + brandName + ' voice (' + coreVoice + '): minimal words. If the original uses 100 words, use 20.',
+    'remix': 'Keep the same FORMAT and the same kind of opening move, but adapt the message to ' + brandName + ' in its own words: never the creator\'s wording, examples or numbers. The remix should feel like "what if ' + brandName + ' made this type of content?"',
+    'simplify': 'Strip this content down to the absolute core message. Remove all fluff, hype, and filler. Rewrite it in the ' + brandName + ' voice (' + coreVoice + '): as short as the format allows, but never below the format\'s usual length (a spoken script under its minimum is notes, not a script).',
     'flip': 'Take the OPPOSITE angle. If they hype, we anti-hype. If they pile on benefits, we strip to the essentials. If they use urgency, we use anti-urgency. Create a contrarian ' + brandName + ' take.',
     'format-swap': 'Change the FORMAT entirely while keeping the core message. Choose the format that would perform best for the ' + brandName + ' brand voice.',
     'series': 'Turn this into a 3-5 PART SERIES. Each part standalone but connected. Different angles, formats, or community focus. Include posting schedule.',
@@ -164,26 +216,29 @@ function buildLegacyRemixPrompt(bc, inp) {
   // Face-on vs faceless steering. Only meaningful when the remix lands on a filmable format
   // (video/micro/qna/statement); for carousel/image it is naturally ignored.
   var deliveryNote = '';
-  if (delivery === 'faceless') {
+  // v709 — ONE delivery setting per brand: this request's override, else the brand's (CONTRACT.md). The
+  // shared POST RULES carry the delivery rule; this note is only the fallback for an older _write.js.
+  var _delivery = normDelivery(delivery) || normDelivery(bc.delivery) || 'face';
+  var _rules = sharedPostRules({ type: '', format: '', delivery: _delivery });
+  if (_rules) { /* the delivery rule is in _rules */ }
+  else if (_delivery === 'faceless') {
     deliveryNote = '\n\nDELIVERY STYLE — FACELESS: if the remix format is a filmable one (video, micro-lecture, Q&A or statement), the creator is NOT on camera. Write remixScript as a VOICEOVER read over footage (it may be AI-voiced), and make every shot b-roll, stock clips, screen recordings, product or close-up shots, or text-on-screen cards — never "talk to camera" or "look into the lens". For carousel/image, ignore this.';
-  } else if (delivery === 'faceon') {
+  } else if (normDelivery(delivery) === 'face') {
     deliveryNote = '\n\nDELIVERY STYLE — FACE-ON: if the remix format is a filmable one, write it to be performed on camera by the creator, with the shot list assuming they are on screen.';
   }
 
   var jsonFormat;
   if (remixMode === 'series') {
-    jsonFormat = '{"originalSummary":"1-2 sentences","seriesParts":[{"partNumber":1,"remixTitle":"Title","remixHook":"Hook","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","suggestedDay":"Monday"}],"remixCaption":"Caption","remixHashtags":"5 hashtags","whyItWorks":"1 sentence"}';
+    jsonFormat = '{"originalSummary":"1-2 sentences","seriesParts":[{"partNumber":1,"remixTitle":"Title","remixHook":"Hook","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","suggestedDay":"Monday"}],"remixCaption":"Caption","whyItWorks":"1 sentence"}';
   } else {
-    jsonFormat = '{"originalSummary":"1-2 sentences","remixTitle":"Title","remixHook":"Hook (first 3s)","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","remixCaption":"Caption that ends with an engagement invite (comment, save, share or follow), never a sales ask","remixHashtags":"5 hashtags","whyItWorks":"1 sentence"}';
+    jsonFormat = '{"originalSummary":"1-2 sentences","remixTitle":"Title","remixHook":"Hook (first 3s)","remixScript":"Full script","remixFormat":"video|carousel|statement|micro","remixCaption":"Caption: 1-3 sentences in the brand\'s voice","whyItWorks":"1 sentence"}';
   }
 
-  var brandSection = fullBrandBlock(bc);
+  var brandSection = fullBrandBlock(bc, { v2: true });   // v709 — the v2 brand block every other writer uses (C F9)
   if (!brandSection || !brandSection.trim()) brandSection = '(No brand profile provided — do NOT invent specifics, prices, ingredients, or claims. Keep it general and on-voice.)';
 
-  // The em-dash / AI-tell-word / rule-of-three list that used to sit here is ALREADY in
-  // writingCraft() below \u2014 it was appearing twice in every remix prompt. Only the hashtag rule
-  // (which writingCraft does not cover) is kept.
-  var humanRules = 'HASHTAG RULES: hashtags obey the same rules as the copy \u2014 never use the brand avoid-words, and never use hype tags (#viral, #gamechanger, #musthave, #fyp-bait). Plain, specific, on-topic tags only.\n';
+  // v709 — the hashtag rule that sat here is gone: the model writes no hashtags (POST RULES); the code adds
+  // the brand's own (guardRemix). The AI-tell list lives in styleGuide.
 
   // v655 — THE BRAND BLOCK MOVED TO THE END, the same re-order v640 applied to generate-ideas.
   // It sat at 0.3% of the prompt: the brand's own approved winners landed at 32%, and then 9,771
@@ -197,11 +252,11 @@ function buildLegacyRemixPrompt(bc, inp) {
   // A pure re-order of existing text, plus ONE new framing line: the brand's own best posts now
   // sit directly above the output instruction, so the model must be told they are proof of how
   // the brand sounds and not the thing to remix.
-  var promptBody = 'You are a content strategist for ' + brandName + '.\n\n' + humanRules + '\n' + writingCraft({ spoken: true, precedence: false }) + '\n\n' + noSellRule()
+  var promptBody = 'You are a content strategist for ' + brandName + '.\n\n' + styleGuide({ noSell: !_rules }) + '\n\n' + spokenV2().replace(/ to camera/g, '') + '\n\n' + (_rules || (noSellRule() + '\nHASHTAGS: write none; the app adds the brand\'s own tags.'))
     + '\n\nORIGINAL CONTENT TO REMIX:\nCreator: @' + (creatorName || 'unknown') + ' on ' + (platform || 'social media') + '\n' + (postUrl ? 'Post URL: ' + postUrl + '\n' : '') + (postDescription ? 'Description/concept: ' + postDescription + '\n' : '') + '\nREMIX MODE: ' + (remixMode || 'remix').toUpperCase() + '\nTASK: ' + modeTask + deliveryNote
     + '\n\nSELF-CHECK before finalizing (silently; output only the final JSON): make sure the remix is unmistakably in THIS brand voice, uses the brand real facts and vocabulary (never invented facts), and would make this brand audience stop. Rewrite anything generic or off-voice.'
     + '\n\n' + brandSection
-    + '\n\nEVERYTHING ABOVE THIS LINE IS THE BRAND — its voice, its real facts, and its own approved posts. It is the last thing you read before the task because it is what matters most: the general writing rules exist to remove generic slop, not to overwrite a voice this brand has earned. Where they conflict, the brand wins. Those approved posts show how this brand SOUNDS — never remix them. The thing being remixed is the ORIGINAL CONTENT above.'
+    + '\n\nTHE BRAND AND ITS OWN APPROVED POSTS END HERE. Those posts show how this brand SOUNDS — never remix them. The thing being remixed is the ORIGINAL CONTENT above.'
     + '\n\nRespond in this exact JSON format:\n' + jsonFormat;
   return { promptBody: promptBody, brandName: brandName };
 }
@@ -220,10 +275,8 @@ async function legacyGenerate(g) {
     if (_try > 0 && _left < REMIX_MIN_RETRY_MS) { console.log('remix: only ' + _left + 'ms left — skipping the clean-JSON retry'); break; }
     var _opts = { deadlineMs: Math.max(1000, _left),
       // rulePrecedence() says "read this last", so it is appended HERE, at call time, after
-      // imgNote and the retry note. Appending it to the prompt body instead left it buried
-      // whenever a reference screenshot was attached or a retry fired — the two paths the old
-      // fixture never exercised, so the gate asserting "precedence is genuinely LAST" passed
-      // while production sent it mid-prompt.
+      // imgNote and the retry note. (v709: it is now a voice-over-style note that never outranks
+      // NEVER SALESY / NEVER INVENT — the brand block holds the one priority statement.)
       messages: [{ role: 'user', content: promptBody + imgNote + (_try ? '\n\nIMPORTANT: reply with ONLY the JSON object described above. No prose, no markdown code fences.' : '') + '\n\n' + rulePrecedence() }],
       model: 'grok',
       max_tokens: 4000,
@@ -307,6 +360,8 @@ async function _legacyRemix(opts) {
   var gen = await legacyGenerate({ promptBody: built.promptBody, imgNote: '', bc: bc, refImages: [], t0: t0, budgetMs: budget, provider: o.provider, effort: o.effort });
   if (!gen.content) { var ee = new Error('No content in response'); ee.code = 'EMPTY_RESULT'; throw ee; }
   if (!gen.remix) { var ep = new Error('Failed to parse remix'); ep.code = 'PARSE_FAILED'; throw ep; }
-  return normalizeRemix(gen.remix);
+  var guarded = guardRemix(normalizeRemix(gen.remix), bc);
+  if (!guarded) { var es = new Error('The remix was only a sales pitch'); es.code = 'EMPTY_RESULT'; throw es; }
+  return guarded;
 }
 module.exports._legacyRemix = _legacyRemix;

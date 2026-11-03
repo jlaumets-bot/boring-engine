@@ -265,10 +265,11 @@ section('P2 — a gateway error must read as a timeout, not as a JSON parser cra
   // STRUCTURAL: the three named handlers actually use it.
   const qp = extractFn('generateTodayTabPost');
   const gi = extractFn('generateNewIdeas');
-  const ar = extractFn('autoRefillCheck');
+  // v709 (owner decision 2): the paid auto-refill after an approve was removed, so there is no third handler
+  const arGone = !/function autoRefillCheck\(/.test(html);
   ok('[structural] Quick Post generate checks status before parsing', /readJsonOrThrow\(resp/.test(qp) && !/const data = await resp\.json\(\);/.test(qp));
   ok('[structural] Ideas generate checks status before parsing',      /readJsonOrThrow\(resp/.test(gi) && !/const data = await resp\.json\(\);/.test(gi));
-  ok('[structural] auto-refill checks status before parsing',         /if \(!resp\.ok\)/.test(ar) && !/const data = await resp\.json\(\);/.test(ar));
+  ok('[structural] v709: the auto-refill is gone (approving never buys new ideas)', arGone);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -519,11 +520,11 @@ section('P6 — a save queued for brand A must never land in brand B');
     g3({ brand: { id: 'A' }, seq: 4 }) === false);
 
   // STRUCTURAL: every generator that pushes after an await is gated.
-  for (const fn of ['autoRefillCheck', 'generateNewIdeas', 'usePAAQuestion', 'nbDevelop', 'sparkDevelop', 'ideaDevelop']) {
+  for (const fn of ['generateNewIdeas', 'usePAAQuestion', 'nbDevelop', 'sparkDevelop', 'ideaDevelop']) {   // v709: autoRefillCheck removed
     const src = extractFn(fn);
     ok(`[structural] ${fn} takes a brandGate before its fetch`, /brandGate\(\)/.test(src), fn);
   }
-  for (const fn of ['autoRefillCheck', 'generateNewIdeas', 'usePAAQuestion', 'nbDevelop', 'sparkDevelop']) {
+  for (const fn of ['generateNewIdeas', 'usePAAQuestion', 'nbDevelop', 'sparkDevelop']) {   // v709: autoRefillCheck removed
     const src = extractFn(fn);
     ok(`[structural] ${fn} re-checks the brand before pushing into state`,
       /_sameBrand\(\)|_stillSameBrand\(\)/.test(src), fn);

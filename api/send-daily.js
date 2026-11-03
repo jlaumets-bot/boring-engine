@@ -3,6 +3,60 @@ const webpush = require('web-push');
 const store = require('./_publish/store'); // heartbeat (cron liveness) + the brand access check
 const { validTypeMix, topUpMix, DEFAULT_TYPE_MIX, POST_TYPES } = require('./_brain');   // types — pure helpers
 
+// ── v709 consistency (.unlazy/consistency/CONTRACT.md): the morning batch follows the SAME rules as
+// "Plan my week" — type mix minus switched-off formats, the brand's delivery, formats off, dedupe. ──
+const FORMAT_IDS = ['video', 'carousel', 'static', 'statement', 'micro', 'bonus', 'qna'];
+function cleanFormatsOff(v) {
+  const list = Array.isArray(v) ? v.map(x => String(x == null ? '' : x).trim().toLowerCase()).filter(x => FORMAT_IDS.indexOf(x) >= 0) : [];
+  return Array.from(new Set(list));
+}
+// 'faceless' | 'face' — bc.delivery from _brandctx (voice_extra.delivery); default face-on.
+function deliveryOf(bc) {
+  const d = String((bc && bc.delivery) || '').trim().toLowerCase();
+  return d === 'faceless' ? 'faceless' : 'face';
+}
+// The brand's mix with the slots for switched-off formats taken out: _brain.effectiveTypeMix (looked up
+// at call time) when it exists, else the same rule here (a qna slot needs the qna format → a tip).
+function effectiveMix(bc, off) {
+  const B = require('./_brain');
+  const base = validTypeMix(bc && bc.typeMix) || DEFAULT_TYPE_MIX;
+  if (typeof B.effectiveTypeMix === 'function') {
+    try { const m = validTypeMix(B.effectiveTypeMix(Object.assign({}, bc, { typeMix: base, formatsOff: off }))); if (m) return m; } catch (e) { /* below */ }
+  }
+  const m = Object.assign({}, base);
+  if (cleanFormatsOff(off).indexOf('qna') >= 0 && m.qna > 0) { m.tip += m.qna; m.qna = 0; }
+  return validTypeMix(m) || base;
+}
+// Pending ideas the person can SEE: an idea in a switched-off format is hidden by the app (getVisibleIdeas),
+// so it never counts toward "N waiting" or the daily target.
+function visiblePending(act, off) {
+  const o = cleanFormatsOff(off);
+  if (!o.length || !act || !act.pendingByFormat) return act ? act.pending : 0;
+  let n = act.pendingAll != null ? act.pendingAll : act.pending;
+  for (const f of o) n -= (act.pendingByFormat[f] || 0);
+  return Math.max(0, n);
+}
+const SIDE_READ_MS = 4000;   // the two side reads below; both run in parallel with a read the unit already makes
+// voice_extra.formatsOff for one brand. [] on any failure (then every pending idea counts, as before).
+async function readFormatsOff(base, key, brandId) {
+  try {
+    const r = await sbRequest(base, key, 'GET', '/rest/v1/brands?id=eq.' + encodeURIComponent(brandId) + '&select=formatsOff:voice_extra->formatsOff', undefined, SIDE_READ_MS);
+    const row = r && r.status >= 200 && r.status < 300 && Array.isArray(r.data) ? r.data[0] : null;
+    return cleanFormatsOff(row && row.formatsOff);
+  } catch (e) { return []; }
+}
+// A live 'ideas' reservation for this brand (api/_usage.js createHold: action "hold:ideas:<token>", brand_id
+// set by generate-ideas) younger than the hold TTL = a generate is running now. Fails OPEN (false).
+const HOLD_LOOKBACK_MS = 6 * 60 * 1000;   // = _usage HOLD_TTL_MS default: an older hold counts for nothing
+async function manualGenerateInFlight(base, key, brandId) {
+  try {
+    const since = new Date(Date.now() - HOLD_LOOKBACK_MS).toISOString();
+    const r = await sbRequest(base, key, 'GET', '/rest/v1/usage_events?brand_id=eq.' + encodeURIComponent(brandId) +
+      '&action=like.' + encodeURIComponent('hold:ideas:') + '*&created_at=gte.' + encodeURIComponent(since) + '&select=created_at&limit=1', undefined, SIDE_READ_MS);
+    return !!(r && r.status >= 200 && r.status < 300 && Array.isArray(r.data) && r.data.length);
+  } catch (e) { return false; }
+}
+
 // Hourly cron: for every subscription whose chosen local hour is NOW, top the brand's Ideas list
 // up to DAILY_TARGET waiting ideas (fix7 — the same generator as the app's "Plan my week") and push
 // "N new ideas ready — pick today's post". "Friend who did the homework" — one ping per day.
@@ -220,7 +274,7 @@ module.exports = async function handler(req, res) {
     // instead of being lost inside a platform timeout.
     let sent = 0, failed = 0, skipped = 0, stampFailed = 0, brandDenied = 0, overLimit = 0, ranOut = false;
     let ideaSaved = 0, ideaWaiting = 0, ideaSaveFailed = 0;   // fix7 — heartbeat detail only
-    let genTimedOut = 0, genBlocked = 0, genNoTime = 0;       // fix7 r3 — heartbeat detail only
+    let genTimedOut = 0, genBlocked = 0, genNoTime = 0, genBusy = 0, genShort = 0;       // fix7 r3 — heartbeat detail only (v709: genBusy)
     const _left = () => RUN_BUDGET_MS - (Date.now() - _t0);
 
     // fix7 r3 — brands whose batch timed out recently (see GEN_TIMEOUT_MS). Carried in this job's own
@@ -281,7 +335,13 @@ module.exports = async function handler(req, res) {
     const _brandPlan = async (brandId, subs) => {
       // How long since they last DID something? (re-engagement signal). fix7: the cron's own
       // still-pending rows do not count — see getBrandActivity.
-      const act = await getBrandActivity(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, brandId);
+      // v709 (C4/D4) — the brand's switched-off formats are read IN PARALLEL with the activity read (short
+      // cap, never throws, so the unit's worst case is unchanged): a hidden idea never counts as "waiting".
+      const [act, _offRead] = await Promise.all([
+        getBrandActivity(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, brandId),
+        readFormatsOff(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, brandId),
+      ]);
+      act.pending = visiblePending(act, _offRead);
       const daysSince = act.lastCreated ? Math.floor((nowUtc - new Date(act.lastCreated)) / 86400000) : 999;
       const quiet = daysSince >= 2;
       const plan = { act, daysSince, quiet, payload: JSON.stringify(_genericPush) };
@@ -307,9 +367,25 @@ module.exports = async function handler(req, res) {
       // A failed brands read THROWS instead of silently writing against an empty brain. The shared
       // hydrator reads all 28 fields; `trusted` exists for exactly this caller, which has already
       // verified ownership of brandId via authorizedBrandId().
-      const _h = await require('./_brandctx').loadBrandContext(brandId, { trusted: true }, '');
+      // v709 (D F14) — and, in parallel (short cap, never throws), is a manual generate ("Plan my week",
+      // Generate more, a refill) running for this brand right now? Its usage reservation (a 'hold:ideas:'
+      // row naming the brand, api/_usage.js) says so. Then this morning batch is skipped (no charge): the
+      // person is filling the list themselves, and two batches at once would repeat each other.
+      const [_h, _busy] = await Promise.all([
+        require('./_brandctx').loadBrandContext(brandId, { trusted: true }, ''),
+        manualGenerateInFlight(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, brandId),
+      ]);
       if (!(_h && _h.ok && _h.bc)) throw new Error('brand context unavailable: ' + ((_h && _h.reason) || 'unknown'));
       const bc = _h.bc;
+      if (_busy) {
+        genBusy++;
+        console.log('send-daily: brand ' + brandId + ' has a manual generate in flight — no morning batch this run (no charge)');
+        plan.payload = _fallback();
+        return plan;
+      }
+      // The formats the brand switched off: the hydrated setting, else the parallel read above.
+      const _off = Array.isArray(bc.formatsOff) ? bc.formatsOff : _offRead;
+      act.pending = visiblePending(act, _off);
       // Cap the generation AFTER the reads above, from what is actually left, keeping room for the
       // insert, the push and the last_sent_at write. Under MIN_GEN_MS the batch is not started at
       // all: a call cut off early is still billed, and nothing would be saved.
@@ -346,10 +422,14 @@ module.exports = async function handler(req, res) {
       // offset that rotates with the subscriber's local day, so over a week small top-ups follow the mix
       // too (see _brain.topUpMix). generate-ideas turns a news slot into a tip when no fresh headline exists.
       const _dayIndex = Math.floor(_localNow.getTime() / 86400000);   // days since epoch, local: consecutive days rotate
-      const _typeMix = topUpMix(validTypeMix(bc.typeMix) || DEFAULT_TYPE_MIX, _want, _dayIndex);
+      // v709 — the SAME rules as "Plan my week": the brand's type mix with the switched-off formats taken out
+      // (_brain.effectiveTypeMix), the brand's own Face-on/Faceless setting (C2, was hard-coded 'faceon'),
+      // the switched-off formats themselves, and every library title for the batch dedupe.
+      const _typeMix = topUpMix(effectiveMix(bc, _off), _want, _dayIndex);
       const gen = await postJson(`${host}/api/generate-ideas`,
         { count: _want, typeMix: _typeMix, brandContext: _bcOut, forUserId: sub.user_id, forBrandId: brandId,
-          gaps: _days.map(d => ({ day: d })), learningContext: act.learningContext || '', delivery: 'faceon' },
+          gaps: _days.map(d => ({ day: d })), learningContext: act.learningContext || '', delivery: deliveryOf(bc),
+          formatsOff: _off, libraryTitles: act.titles },
         { Authorization: `Bearer ${cronSecret}` }, genMs);
       if (gen && gen.timedOut) {
         genTimedOut++;
@@ -363,6 +443,13 @@ module.exports = async function handler(req, res) {
           gen.plan + ' ' + gen.used + '/' + gen.limit + ') — nothing generated or saved, sending the plain push');
       }
       const ideas = (gen && Array.isArray(gen.ideas)) ? gen.ideas : [];
+      // v709 (review #1) — a SHORT top-up (generate-ideas said short:true) is saved as it is and logged. It
+      // records nothing that blocks a later run: only a TIMED-OUT batch pauses a brand (genTimeouts), and the
+      // daily target counts what is actually waiting, so tomorrow's run tops the list up again.
+      if (gen && gen.short) {
+        genShort++;
+        console.log('send-daily: brand ' + brandId + '\'s top-up came back short (' + gen.delivered + ' of ' + gen.requested + ') — saved; the next run tops up again');
+      }
       let saved = null;
       if (ideas.length) {
         saved = await saveDailyBatch(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, brandId, ideas,
@@ -503,7 +590,7 @@ module.exports = async function handler(req, res) {
       if (!isNaN(t) && (nowUtc.getTime() - t) < GEN_BLOCK_MS) genTimeouts[b] = at;
     }
     await store.heartbeat('send-daily', _health, { checked: subs.length, due: due.length, units: _units.length, sent, failed, skipped, stampFailed, brandDenied, overLimit, ranOut,
-      ideaSaved, ideaWaiting, ideaSaveFailed, genTimedOut, genBlocked, genNoTime, genTimeoutsRead: _gt.ok, genTimeouts });
+      ideaSaved, ideaWaiting, ideaSaveFailed, genTimedOut, genBlocked, genNoTime, genBusy, genShort, genTimeoutsRead: _gt.ok, genTimeouts });
     return res.status(200).json({ checked: subs.length, due: due.length, sent, failed, skipped, stampFailed, ranOut });
   } catch (e) {
     console.error('send-daily error:', e);
@@ -647,7 +734,10 @@ async function getBrandActivity(base, key, brandId) {
   const own = arr.filter(r => !(r && r.gen_flow === DAILY_FLOW && _normStatus(r.status) === 'pending'));
   const lastCreated = own.length ? own[0].created_at : null;
   const titles = arr.map(r => (r && typeof r.title === 'string') ? r.title : '').filter(Boolean);
-  const pending = arr.filter(r => _normStatus(r && r.status) === 'pending').length;
+  const pendingRows = arr.filter(r => _normStatus(r && r.status) === 'pending');
+  const pending = pendingRows.length;
+  const pendingByFormat = {};   // v709 — so the switched-off formats can be left out of "waiting"
+  for (const r of pendingRows) { const f = String((r && r.format) || 'video').toLowerCase(); pendingByFormat[f] = (pendingByFormat[f] || 0) + 1; }
   // The learning context, built as app.html generateNewIdeas builds it.
   const q2 = (t) => '"' + String(t || '').replace(/\s+/g, ' ').slice(0, 120) + '"';
   const liked = arr.filter(r => ['filming', 'done'].includes(_normStatus(r.status))).slice(0, 15).reverse();
@@ -659,7 +749,7 @@ async function getBrandActivity(base, key, brandId) {
     nope.map(i => `${q2(i.title)} (${i.format}, ${i.day})${i.dismiss_reason ? ' — reason: ' + String(i.dismiss_reason).slice(0, 120) : ''}`).join(', ');
   if (titles.length) lc += '\nTITLES ALREADY IN THE LIBRARY — do NOT repeat or lightly reword any of these; produce different angles/hooks:\n' +
     titles.slice(0, 60).reverse().map(q2).join(', ');
-  return { total: arr.length, posted, lastCreated, titles, pending, learningContext: lc };
+  return { total: arr.length, posted, lastCreated, titles, pending, pendingAll: pending, pendingByFormat, learningContext: lc };
 }
 
 // fix7 — save the morning batch into public.ideas, in the SAME row shape the app writes

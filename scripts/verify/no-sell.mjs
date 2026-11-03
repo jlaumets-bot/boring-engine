@@ -76,7 +76,7 @@ const allText = (o) => JSON.stringify(o);
 const SELLS = /link in bio|shop now|buy now|use code|SAVE10|SALT10|% off|limited time|order now|book now|#shopnow|get yours/i;
 
 // ═════ 0. the rule itself ═════
-ok(typeof RULE === 'string' && /entertains or teaches/.test(RULE) && /link in bio/.test(RULE) && /use code/.test(RULE) && /engagement: save, follow, comment, share/.test(RULE) && /feature tour/.test(RULE) && /urgency, scarcity/.test(RULE), 'NO_SELL_RULE says: entertain or teach; no pitch/offer/code/link in bio/urgency/feature tour; engagement CTAs only');
+ok(typeof RULE === 'string' && /entertains or teaches/.test(RULE) && /link in bio/.test(RULE) && /use code/.test(RULE) && /engagement \(a save, a follow, a comment, a share\), and they are optional/.test(RULE) && !/tell me in the comments/i.test(RULE) && /feature tour/.test(RULE) && /urgency, scarcity/.test(RULE), 'NO_SELL_RULE says: entertain or teach; no pitch/offer/code/link in bio/urgency/feature tour; engagement CTAs only');
 ok(W.noSellRule() === RULE && W.noSellNote().includes(RULE), 'noSellRule() / noSellNote() render the same rule');
 ok(RULE.length < 520, 'the rule stays one tight paragraph (' + RULE.length + ' chars)');
 ok(B.NO_INVENTION_RULE.startsWith('NEVER INVENT FACTS: no made-up numbers, prices, names, customer cases, results or quotes.') && /\[your story: <what to tell>\]/.test(B.NO_INVENTION_RULE), 'NO_INVENTION_RULE is unchanged');
@@ -112,7 +112,7 @@ const PROMPT_OF = {};
 {
   const r = await run('remix', { brandId: 'b1', postDescription: 'A video about cramps.' }, () => JSON.stringify({ originalSummary: 's', remixTitle: 'T', remixHook: 'H.', remixScript: 'Salt matters.', remixFormat: 'video', remixCaption: 'Salt matters.', remixHashtags: '#salt', whyItWorks: 'w' }));
   const P = (calls[0] || {}).prompt || '';
-  ok(r.statusCode === 200 && P.includes(RULE) && !/Caption with CTA/.test(P) && /engagement invite/.test(P), 'remix (the classic one-pass writer and the blind test baseline) carries the rule; its caption asks for an engagement invite, not "a CTA"');
+  ok(r.statusCode === 200 && P.includes(RULE) && !/Caption with CTA/.test(P) && !/ends with an engagement invite/.test(P) && /ENDING: end on the point/.test(P), 'remix (the classic one-pass writer and the blind test baseline) carries the rule; its caption follows the shared ending rule, never "a CTA" or a forced engagement invite (v709)');
 }
 {
   const r = await run('sharpen', { brandId: 'b1', kind: 'post', format: 'video', content: { hook: 'Salt is not the enemy.', script: 'Salt matters a lot.' } }, (i) => i === 0 ? '1. weak hook' : JSON.stringify({ hook: 'Salt is not your enemy.', script: 'Salt matters more than you think.' }));
@@ -218,7 +218,10 @@ const CLEAN = [
   const c1 = G(slides, { keepLines: true });
   ok(c1.ok && c1.text === 'Salt is what your muscles fire on.\n\nSweat takes it out.\n\nSlide three: the full guide.', 'carousel: a slide keeps its text once the selling clause is cut (' + JSON.stringify(c1.text) + ')');
   const c2 = G('Salt is what your muscles fire on.\n\nSweat takes it out.\n\nLink in bio.', { keepLines: true });
-  ok(c2.ok === false && c2.text.split('\n\n').length === 3, 'carousel: a slide that would be emptied is never lost (ok:false, the original slides)');
+  // v709 (audit B10) — a slide that is ONLY a sales ask is removed; the rest of the carousel ships.
+  ok(c2.ok === true && c2.text === 'Salt is what your muscles fire on.\n\nSweat takes it out.', 'carousel: a slide that is only a sales ask is removed, the other slides stay (' + JSON.stringify(c2.text) + ')');
+  const c4 = G('Link in bio.\n\nShop now.', { keepLines: true });
+  ok(c4.ok === false && c4.text === 'Link in bio.\n\nShop now.', 'carousel: nothing usable left = ok:false with the original text');
   const c3 = G('Salt is what your muscles fire on.\n\nSweat takes it out. Shop now.', { keepLines: true });
   ok(c3.ok && c3.text === 'Salt is what your muscles fire on.\n\nSweat takes it out.', 'carousel: a selling sentence inside a slide is removed, the slide stays');
   const tags = G('Salt matters. #running #shopnow #linkinbio');
@@ -230,7 +233,7 @@ const CLEAN = [
   const hollow = W.guardIdeaNoSell({ title: 'Shop now', hook: 'Use code SAVE10.', script: 'Salt matters.', caption: 'Get 20% off your first order.' });
   ok(!hollow.ok && hollow.kept.join() === 'caption,hook,title' && hollow.idea.hook === 'Use code SAVE10.' && hollow.idea.title === 'Shop now' && hollow.idea.caption === 'Get 20% off your first order.', 'a field the cut would empty is LEFT AS IT WAS, named in kept, ok:false; a hook never falls back to anything (' + hollow.kept.join() + ')');
   const car = W.guardIdeaNoSell({ format: 'carousel', hook: 'Salt matters.', boldText: '1: Salt matters.\n2: Link in bio.' });
-  ok(!car.ok && car.kept.join() === 'boldText', 'a carousel idea that would lose a slide is not ok');
+  ok(car.ok && car.idea.boldText === '1: Salt matters.' && !car.kept.length, 'a carousel idea loses only its selling slide (v709, B10)');
 }
 
 // ═════ 5. every writer's output runs the guard ═════
@@ -261,8 +264,9 @@ const writeOpts = (format) => ({ bc: BC, source: { kind: 'note', text: 'salt' },
   const wc = await quiet(() => W.runWrite(writeOpts('carousel')));
   ok(calls.filter(c => isDraft(c.prompt)).length === 2 && wc.passes.draft === 'retried_sales' && wc.idea.onScreen.length === 3, 'runWrite carousel: a slide the guard would lose earns the retry; 3 slides in, 3 slides out');
   calls = []; plan = (i, p) => /^Below is a finished/.test(p) ? '{}' : 'Salt is what your muscles fire on.\n\nSweat takes it out.\n\nPlain water does not put it back.\n\nLink in bio.';
-  let ec = null; try { await quiet(() => W.runWrite(writeOpts('carousel'))); } catch (e) { ec = e; }
-  ok(ec && ec.code === 'EMPTY_RESULT', 'runWrite carousel: a slide still lost after the retry is an EMPTY_RESULT, never a silent 4 of 5');
+  let ec = null, wc4 = null; try { wc4 = await quiet(() => W.runWrite(writeOpts('carousel'))); } catch (e) { ec = e; }
+  // v709 (audit B10) — one selling slide is removed, never the whole (paid) carousel.
+  ok(!ec && wc4 && wc4.idea.onScreen.length === 3 && !SELLS.test(allText(wc4.idea)) && wc4.passes.salesRemoved.length > 0, 'runWrite carousel: a slide that is only a sales ask is removed, the other 3 ship (never the whole post)');
   // runAngles — selling belief dropped, selling why sentence and hookSeed removed
   calls = []; plan = () => JSON.stringify({ angles: [
     { belief: 'Salt is not the enemy', why: 'People fear sodium. Link in bio.', hookSeed: 'Shop now.' },
@@ -275,22 +279,29 @@ const writeOpts = (format) => ({ bc: BC, source: { kind: 'note', text: 'salt' },
 }
 {
   const stray = Object.assign({}, IDEA, { title: 'Stray', script: SALES_SCRIPT, caption: 'Salt matters. Shop now.', tags: '#AcmeSalts #shopnow' });
-  const hollow = Object.assign({}, IDEA, { title: 'Hollow', hook: 'Shop now.' });
+  // v709 (consistency S2) — the batch runs the shared guardPost: a hook that was only an ask falls back to the
+  // post's first sentence (the idea stays); an idea whose SCRIPT is only a pitch has nothing usable and is dropped.
+  const hollowHook = Object.assign({}, IDEA, { title: 'Hollow hook', hook: 'Shop now.' });
+  const hollow = Object.assign({}, IDEA, { title: 'Hollow', script: 'Shop now. Link in bio.' });
   // a) one idea with a stray ask: cleaned, no regeneration, one usage row
   const r = await run('ideas', { brandId: 'b1', count: 2 }, () => JSON.stringify([stray, IDEA]));
   const I = (r.body && r.body.ideas) || [];
   const s0 = I.find(x => x.title === 'Stray') || {};
-  ok(r.statusCode === 200 && I.length === 2 && s0.script === CLEAN_SCRIPT && s0.caption === 'Salt matters.' && s0.tags === '#AcmeSalts' && calls.length === 1 && usageRows === 1, 'generate-ideas: a stray ask is removed, no regeneration for ONE selling idea, one usage row (' + calls.length + ' calls)');
+  ok(r.statusCode === 200 && I.length === 2 && s0.script === CLEAN_SCRIPT && s0.caption === 'Salt matters.' && s0.tags === (W.hashtagsFor(BC, s0) || []).join(' ') && !/#shopnow/.test(s0.tags) && calls.length === 1 && usageRows === 1, 'generate-ideas: a stray ask is removed, no regeneration for ONE selling idea, one usage row (' + calls.length + ' calls)');
+  // a2) a hook that was only an ask: replaced by the post's first sentence, the idea is kept, no regeneration
+  const rh = await run('ideas', { brandId: 'b1', count: 2 }, () => JSON.stringify([IDEA, hollowHook]));
+  const Ih = ((rh.body && rh.body.ideas) || []).find(x => x.title === 'Hollow hook') || {};
+  ok(rh.statusCode === 200 && Ih.hook === 'Salt is not the enemy.' && !(rh.body.warnings || []).includes('sales_dropped') && calls.length === 1 && usageRows === 1, 'generate-ideas: a selling hook falls back to the post\'s first sentence, the idea is kept (v709 guardPost)');
   // b) one hollow idea: dropped from the batch (warnings sales_dropped), no regeneration
   const rb = await run('ideas', { brandId: 'b1', count: 2 }, () => JSON.stringify([IDEA, hollow]));
   const Ib = (rb.body && rb.body.ideas) || [];
-  ok(rb.statusCode === 200 && Ib.length === 1 && Ib[0].title === IDEA.title && (rb.body.warnings || []).includes('sales_dropped') && calls.length === 1 && usageRows === 1, 'generate-ideas: an idea the cut would hollow out is DROPPED (sales_dropped), never shipped hollow, no regeneration');
+  ok(rb.statusCode === 200 && Ib.length === 1 && Ib[0].title === IDEA.title && (rb.body.warnings || []).includes('sales_dropped') && calls.length === 2 && usageRows === 1, 'generate-ideas: an idea the cut would hollow out is DROPPED (sales_dropped), never shipped hollow; 1 of 2 left (< 60%) earns the ONE existing regeneration (v709 review #1)');
   // c) 2+ ideas with strong asks: the ONE existing regeneration, rule restated, one usage row
   const rc = await run('ideas', { brandId: 'b1', count: 2 }, (i) => JSON.stringify(i === 0 ? [stray, Object.assign({}, stray, { title: 'Stray2' })] : [IDEA, Object.assign({}, IDEA, { title: 'Two' })]));
   ok(rc.statusCode === 200 && calls.length === 2 && calls[1].prompt.includes(W.noSellNote()) && (rc.body.ideas || []).every(x => x.script === IDEA.script) && usageRows === 1, 'generate-ideas: 2 selling ideas earn the one regeneration (rule restated), the cleaner batch is kept, one usage row (' + calls.length + ' calls, ' + usageRows + ' rows)');
   // d) a 1-idea batch that is only hollow: an honest 502, nothing charged, no regeneration
   const rd = await run('ideas', { brandId: 'b1', count: 1 }, () => JSON.stringify([hollow]));
-  ok(rd.statusCode === 502 && usageRows === 0 && calls.length === 1, 'generate-ideas: nothing usable left = 502, no usage row, no regeneration');
+  ok(rd.statusCode === 502 && usageRows === 0 && calls.length === 2, 'generate-ideas: nothing usable left after the ONE regeneration (v709 review #1) = 502, no usage row');
   // e) 2 hollow ideas, regeneration still hollow: 502, nothing charged, exactly 2 calls
   const re2 = await run('ideas', { brandId: 'b1', count: 2 }, () => JSON.stringify([hollow, Object.assign({}, hollow, { title: 'H2' })]));
   ok(re2.statusCode === 502 && usageRows === 0 && calls.length === 2, 'generate-ideas: an all-pitch batch gets ONE regeneration; still nothing usable = 502, no usage row (' + calls.length + ' calls)');
@@ -298,7 +309,7 @@ const writeOpts = (format) => ({ bc: BC, source: { kind: 'note', text: 'salt' },
 {
   const r = await run('remix', { brandId: 'b1', postDescription: 'A video about cramps.' }, () => JSON.stringify({ originalSummary: 's', remixTitle: 'Shop now', remixHook: 'Salt is not the enemy. Use code SALT10.', remixScript: SALES_SCRIPT, remixFormat: 'video', remixCaption: 'Salt matters. Link in bio.', remixHashtags: '#salt #shopnow', whyItWorks: 'w' }));
   const X = r.body.remix || {};
-  ok(r.statusCode === 200 && X.remixScript === CLEAN_SCRIPT && X.remixHook === 'Salt is not the enemy.' && X.remixCaption === 'Salt matters.' && X.remixHashtags === '#salt' && X.remixTitle === 'Shop now' && X.noSellKept === 'remixTitle', 'remix: selling sentences removed; a field the cut would empty is kept as it was and flagged (noSellKept=' + X.noSellKept + ')');
+  ok(r.statusCode === 200 && X.remixScript === CLEAN_SCRIPT && X.remixHook === 'Salt is not the enemy.' && X.remixCaption === 'Salt matters.' && String(X.remixHashtags || '').trim() === '#acmesalts' && X.remixTitle === 'Salt is not the enemy' && !X.noSellKept, 'remix: selling sentences removed; a title the cut would empty falls back to the post\'s first sentence; hashtags are the brand\'s own (its brand tag here, v709 r2), never the model\'s (v709; noSellKept=' + X.noSellKept + ')');
   const rs = await run('remix', { brandId: 'b1', postDescription: 'x', remixMode: 'series' }, () => JSON.stringify({ originalSummary: 's', seriesParts: [{ partNumber: 1, remixTitle: 'T', remixHook: 'Salt matters. Order now.', remixScript: SALES_SCRIPT, remixFormat: 'video' }], remixCaption: 'Salt matters. Shop now.', remixHashtags: '#salt' }));
   ok(rs.statusCode === 200 && !SELLS.test(allText(rs.body.remix)) && rs.body.remix.seriesParts[0].remixScript === CLEAN_SCRIPT, 'remix series: every part comes back clean');
   calls = []; plan = () => JSON.stringify({ originalSummary: 's', remixTitle: 'T', remixHook: 'H.', remixScript: SALES_SCRIPT, remixFormat: 'video', remixCaption: 'Salt. Buy now.', remixHashtags: '#a', whyItWorks: 'w' });
@@ -311,7 +322,7 @@ const writeOpts = (format) => ({ bc: BC, source: { kind: 'note', text: 'salt' },
   ok(r.statusCode === 200 && S.script === CLEAN_SCRIPT && S.caption === 'Salt.' && JSON.stringify(r.body.noSellKept) === '["caption"]', 'sharpen: selling sentences removed; a field the cut would empty keeps the user\'s original and is flagged');
   const v = await run('viralRewrite', { brandId: 'b1', idea: IDEA, angle: { angle: 'Contrarian', hook: 'Water is not enough.' } }, () => JSON.stringify({ title: 'Buy now', hook: 'Water is not enough. Link in bio.', script: SALES_SCRIPT, shots: 'Shot 1: pack\nShot 2: link in bio card', boldText: '', caption: 'Salt matters. Get 20% off your first order.', tags: '#salt #discount' }));
   const V = v.body.idea || {};
-  ok(v.statusCode === 200 && V.hook === 'Water is not enough.' && V.script === CLEAN_SCRIPT && V.shots === 'Shot 1: pack' && V.caption === 'Salt matters.' && V.tags === '#salt' && V.title === 'Buy now' && JSON.stringify(v.body.noSellKept) === '["title"]', 'viral-rewrite: selling sentences removed; an emptied field is kept and flagged');
+  ok(v.statusCode === 200 && V.hook === 'Water is not enough.' && V.script === CLEAN_SCRIPT && V.shots === 'Shot 1: pack' && V.caption === 'Salt matters.' && String(V.tags).trim() === '#acmesalts' && V.title === 'Salt is not the enemy' && !v.body.noSellKept, 'viral-rewrite: selling sentences removed; a title the cut would empty falls back to the post\'s first sentence; tags are the brand\'s own (its brand tag here, v709 r2)');
   const t = await run('viralTwist', { brandId: 'b1', idea: IDEA }, () => JSON.stringify({ angles: [{ angle: 'Urgency', hook: 'Shop now.', why: 'w' }, { angle: 'Contrarian', hook: 'Water is overrated. Use code SALT10.', why: 'w' }], spicy: { hook: 'Link in bio.', why: 'w' }, tip: 't' }));
   const tw = t.body.twist || {};
   ok(t.statusCode === 200 && tw.angles.length === 1 && tw.angles[0].hook === 'Water is overrated.' && tw.spicy.hook === 'Link in bio.' && JSON.stringify(t.body.noSellKept) === '["spicy.hook"]', 'viral-twist: a hook that was only an ask drops its angle, a selling sentence is removed, no hook is replaced by another line');

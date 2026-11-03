@@ -318,6 +318,9 @@ check(!/Weekly content calendar/i.test(noCalendar.prompt),
 const SHAPE = brain.spokenShape();
 const SPOKEN = brain.spokenV2();
 const STYLE = require(join(API, '_write.js')).styleGuide();
+// v709 (consistency S2) — a writer that appends the shared POST RULES renders styleGuide({noSell:false}).
+const STYLE_NS = require(join(API, '_write.js')).styleGuide({ noSell: false });
+const hasStyle = (t) => t.includes(STYLE) || (t.includes(STYLE_NS) && t.includes('POST RULES:'));
 const compressed = s => s.includes(brain.clarityFlow()) || /cut every word/i.test(s);
 
 const spokenSurfaces = [
@@ -326,7 +329,7 @@ const spokenSurfaces = [
   ['viral-rewrite.js', vr.prompt],
 ];
 for (const [label, text] of spokenSurfaces) {
-  check(text.includes(STYLE), `${label}: carries the short style guide (with its no-invention rule)`,
+  check(hasStyle(text), `${label}: carries the short style guide (with its no-invention rule)`,
     'the v2 writing rules did not reach this surface');
   check(text.includes(SPOKEN), `${label}: carries the spoken-script rule`,
     'a spoken script with no rule about how speech is shaped comes back as caption fragments');
@@ -338,7 +341,7 @@ for (const [label, text] of spokenSurfaces) {
 // Scoped, not sprayed: a carousel is not read to camera, and sharpen has a deliberate
 // same-length rule the spoken block must not be allowed to argue with on a written format.
 const carousel = await run('sharpen.js', SHARPEN_BODY({}, 'carousel'), [CRITIQUE, SHARP_REPLY]);
-check(!carousel.prompt.includes(SPOKEN) && carousel.prompt.includes(STYLE),
+check(!carousel.prompt.includes(SPOKEN) && hasStyle(carousel.prompt),
   'sharpen applies the spoken rule only to a spoken format (and the style guide to both)',
   'proves the check above discriminates rather than passing on everything');
 
@@ -349,8 +352,10 @@ check(!carousel.prompt.includes(SPOKEN) && carousel.prompt.includes(STYLE),
 // ═════════════════════════════════════════════════════════════════════════════
 const PRECEDENCE = brain.rulePrecedence().trim();
 const claimsLast = /read (this|me) last|the last thing you (will )?read|read last/i.test(PRECEDENCE);
-check(/outrank/i.test(PRECEDENCE) && PRECEDENCE.includes(brain.BRAND_HEADING),
-  'the precedence block still asserts precedence and names the brand section',
+// v709 — the block is now VOICE OVER STYLE (brand voice beats a general style rule), never a claim to
+// outrank everything: the ONE priority statement is the brand heading (brain.PRIORITY_RULE).
+check(/follow the/i.test(PRECEDENCE) && !/outrank/i.test(PRECEDENCE) && /NEVER SALESY/.test(PRECEDENCE) && PRECEDENCE.includes(brain.BRAND_HEADING),
+  'the precedence block still says the brand voice beats a style rule, names the brand section, and claims no general precedence',
   'gutting it would make every check below pass for the wrong reason');
 
 // v693 — generate-ideas no longer carries rulePrecedence: its brand block is rendered v2, whose
@@ -358,7 +363,7 @@ check(/outrank/i.test(PRECEDENCE) && PRECEDENCE.includes(brain.BRAND_HEADING),
 // permits inventing a fact). Asserted from the renderer's own output, not copied wording.
 {
   const v2Head = brain.fullBrandBlock({ brandName: 'x' }, { v2: true }).split('\n')[0];
-  check(/outrank/i.test(v2Head) && v2Head.startsWith(brain.BRAND_HEADING) && /invent/i.test(v2Head),
+  check(v2Head.includes(brain.PRIORITY_RULE) && v2Head.startsWith(brain.BRAND_HEADING) && /invent/i.test(v2Head),
     'the v2 brand heading still asserts the brand\'s precedence on voice and forbids inventing facts');
   check(probe.prompt.includes(v2Head), 'generate-ideas: states the brand\'s precedence through the v2 brand heading',
     'with rulePrecedence gone, this heading is the only precedence statement generate-ideas has');

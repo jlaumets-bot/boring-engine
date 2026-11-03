@@ -303,7 +303,8 @@ const main = async () => {
   const iWinners = P.indexOf('ZKEY_WINNER_ONE');
   const _sg = require(join(API, '_write.js')).styleGuide();
   const _sp = require(join(API, '_brain.js')).spokenV2();
-  const iStyle = P.indexOf(_sg);
+  // v709 (consistency S2) — generate-ideas appends the shared POST RULES, so it renders styleGuide({noSell:false}).
+  const iStyle = P.indexOf(_sg) > -1 ? P.indexOf(_sg) : P.indexOf(require(join(API, '_write.js')).styleGuide({ noSell: false }));
   const iSpoken = P.indexOf(_sp);
   const iFormats = P.indexOf('CONTENT FORMATS');
   const iOutput = P.lastIndexOf('Return ONLY the JSON array');
@@ -360,7 +361,9 @@ const main = async () => {
   has(PE, 'CONTENT FORMATS', 'empty brand profile still gets the format rules');
 
   // ── 2 · rulePrecedence is genuinely LAST in every generator that uses it ──
-  const PRECEDENCE_MARK = 'RULE PRECEDENCE';
+  // v709 — rulePrecedence() is no longer a priority claim (the brand heading holds the ONE priority
+  // statement); it is the VOICE OVER STYLE note, and must still be last and appear once.
+  const PRECEDENCE_MARK = 'VOICE OVER STYLE';
   const PRECEDENCE_TEXT = require(join(API, '_brain.js')).rulePrecedence();
   const others = [
     ['viral-twist.js', { idea: { title: 't', hook: 'h', script: 's', format: 'video' }, brandContext: BC }, [TWIST_REPLY], 0],

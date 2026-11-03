@@ -270,8 +270,11 @@ ${web.slice(0, 12000)}`;
           if (t(sj.competitors)) { brandInfo.competitors = t(sj.competitors); debugInfo.webCompetitors = true; }
           if (t(sj.channels)) brandInfo.channels = t(sj.channels);
           if (t(sj.primaryChannel) && /^https?:\/\//i.test(t(sj.primaryChannel))) brandInfo.socialUrl = t(sj.primaryChannel);
-          if (t(sj.socialProofWeb)) brandInfo.socialProof = [t(brandInfo.socialProof), t(sj.socialProofWeb)].filter(Boolean).join('\n');
-          if (t(sj.customerVoice)) brandInfo.painPoints = [t(brandInfo.painPoints), t(sj.customerVoice)].filter(Boolean).join('\n');
+          // v709 r2 — every line a web search adds starts with "[web] ", so the fact guard can tell it from what
+          // the user typed (api/_write.js brandProof: web lines are context, never proof).
+          const webLines = v => t(v).split('\n').map(l => l.trim()).filter(Boolean).map(l => (/^\[web\]/i.test(l) ? l : '[web] ' + l)).join('\n');
+          if (t(sj.socialProofWeb)) brandInfo.socialProof = [t(brandInfo.socialProof), webLines(sj.socialProofWeb)].filter(Boolean).join('\n');
+          if (t(sj.customerVoice)) brandInfo.painPoints = [t(brandInfo.painPoints), webLines(sj.customerVoice)].filter(Boolean).join('\n');
           if (t(sj.webReputation)) { brandInfo.webMentions = t(sj.webReputation); debugInfo.webMentions = true; }
           if (t(sj.categoryGripes)) { brandInfo.categoryGripes = t(sj.categoryGripes); debugInfo.categoryGripes = true; }
           if (Array.isArray(sj.trendTopics) && sj.trendTopics.length) {

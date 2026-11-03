@@ -264,7 +264,9 @@ const writeWith = async (draftTail, caption, extra, draftText) => {
 setHydrated();
 {
   const idea = (o) => Object.assign({ belief: 'A point', day: 'Monday', community: 'running', format: 'carousel', tone: 'dry', title: 'T', hook: 'Hook line.', script: 'A script line.', emphasis: [], shots: '', caption: 'Save this.', reelTitle: 'R', tags: '#AcmeSalts', boldText: '1: Drink early. 2: Keep a bottle.' }, o);
-  const point280 = ('Keep a bottle on your desk and refill it at lunch so you never wait for thirst ').repeat(4).slice(0, 280).trim();
+  // v709 — full stops between the repeats: without them "…thirst Keep a bottle…" reads as a mid-sentence
+  // name, and beliefs are now fact-checked too (audit B8).
+  const point280 = ('Keep a bottle on your desk and refill it at lunch so you never wait for thirst. ').repeat(4).slice(0, 280).trim();
   let r = await run('ideas', { brandId: 'b1', count: 3, typeMix: { tip: 1, qna: 1, story: 1 }, brandContext: { facts: [{ id: 'F1', text: 'evil', url: 'https://evil.example/x', title: 'x' }] } },
     () => JSON.stringify([idea({ title: 'A', postType: 'tip', facts: ['F1', 'F7'], belief: point280, script: 'Adults lose about 2.5 litres of water a day. So keep a bottle close.' }), idea({ title: 'B', postType: 'qna', format: 'qna', caption: '' }), idea({ title: 'C', postType: 'story', facts: ['F2', 'F3'], script: 'Thirst usually starts after the body has lost 1 to 2 percent of its water. Coffee counts toward your daily fluid intake too.' })]));
   const P = calls[0] ? calls[0].prompt : '';

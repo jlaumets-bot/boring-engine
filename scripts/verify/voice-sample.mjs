@@ -66,7 +66,9 @@ ok(iVoice > iWin && iVoice > iTrend && iVoice > iNotes, 'A2 voice sample is LAST
        'A3-control: the "nothing after the instruction line" test does not react to appended content — it is dead');
   }
 }
-ok(/outranks/i.test(out.slice(iVoice)), 'A4 label says it outranks the descriptions and approved posts');
+// v709 (A7) — the sample no longer claims to "outrank" anything (one priority statement, in the brand heading);
+// it still tells the model to follow it where a description disagrees on how to sound.
+ok(/follow this/i.test(out.slice(iVoice)) && !/outrank/i.test(out.slice(iVoice)), 'A4 label says to follow the sample over a description (no "outranks" claim)');
 ok(/moves|rhythm/i.test(out.slice(iVoice)) && /do not copy|never copy/i.test(out.slice(iVoice)), 'A5 instruction is copy-how-it-MOVES, not copy-the-sentences');
 const big = fullBrandBlock(Object.assign({}, bc, { voiceSample: 'w '.repeat(6000) }));
 const bigSeg = big.slice(big.indexOf('HOW THIS PERSON'));

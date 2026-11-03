@@ -56,7 +56,15 @@ module.exports = async function handler(req, res) {
     // the SAME defect as v612 (two renderers, each dropping what the other kept), which is exactly
     // how a brand's own data goes missing without anyone noticing. fullBrandBlock is the single
     // source of truth every generator already uses; the coach now reads from it too.
-    const brandBlock = fullBrandBlock(bc);
+    const brandBlock = fullBrandBlock(bc, { v2: true });   // v709 — the v2 brand block every writer uses (audit C F9)
+    // v709 (audit A L9) — the coach writes Voice Memory rules that "shape ALL future content", so it is told
+    // the rules every post already follows (the shared POST RULES) and never saves a rule that fights them.
+    let fixedRules = '';
+    try {
+      const pr = require('./_write').postRules;
+      const d = String(bc.delivery || '').toLowerCase() === 'faceless' ? 'faceless' : 'face';
+      if (typeof pr === 'function') fixedRules = String(pr({ type: '', format: '', delivery: d }) || '').replace(/^POST RULES:\n?/, '').replace(/\n- SHAPE[^\n]*/, '');
+    } catch (e) { fixedRules = ''; }
 
     const COACH_NAME = 'Remy'; // ← the coach's name; change this one word to rename it
     const founder = (founderName && String(founderName).trim()) ? String(founderName).trim().slice(0, 40) : '';
@@ -127,7 +135,8 @@ REMEMBER THIS CHAT so next time you continue instead of restarting. If this exch
 {"note":"one short line, max 20 words — e.g. 'sharpened audience to fasting men 30-45; pushing deadpan over hype'"}
 </coach_memory>
 
-NEVER SALESY: every post this app writes entertains or teaches. Never steer them toward offers, discounts, urgency or a hard sell, and a ctaStyle you set only invites a comment, a save, a share or a follow.
+NEVER SALESY: every post this app writes entertains or teaches. Never steer them toward offers, discounts, urgency or a hard sell, and a ctaStyle you set is a sign-off tone only, never a sales ask.
+${fixedRules ? `\nFIXED RULES EVERY POST ALREADY FOLLOWS (the app applies them; never save a Voice Memory rule, ctaStyle or setting that fights one of them, e.g. "always end with a question", "always add #tags", or a rule about being on camera that contradicts the brand's Face-on/Faceless setting):\n${fixedRules}\n` : ''}
 
 If they haven't set the basics yet (brand name, audience), start there before anything fancy.`;
 

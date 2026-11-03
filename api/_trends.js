@@ -381,7 +381,7 @@ function brainSummaryFrom(o) {
   push('Recent behavior — favor the APPROVED topics, steer clear of the DISMISSED', ve.learnedSignals || o.learnedSignals, 340, 70);
   // THE FILTER. Ranked just under the niche itself: without it this summary can only say what to
   // look for, never what to throw away — and it was the first thing the old blind slice deleted.
-  push('Avoid / off-topic for it', ve.bannedTopics || o.bannedTopics || ve.avoidWords || o.avoidWords, 180, 92);
+  push('Avoid / off-topic for it', ve.bannedTopics || o.bannedTopics || o.banned_topics || ve.avoidWords || o.avoidWords, 180, 92);
 
   const size = s => s.text.length + 3;   // + the ' | ' that joins it to the next part
   let total = parts.reduce((n, s) => n + size(s), 0);
@@ -484,6 +484,50 @@ async function pullCompetitorPulse(competitors, opts = {}) {
 // (News alone always returns, so the button never fails). Fail-open: a timed-out lane resolves [].
 // The returned array carries `out.lanes = { grok, news, x }` (per-lane raw counts, pre-dedupe) for
 // caller visibility — an extra array property, invisible to JSON.stringify of the array itself.
+// v709 (consistency C9) — BANNED TOPICS FILTER WHAT IS GATHERED, not just what is written.
+// The brand's "Topics to avoid" (brands.banned_topics; bc.bannedTopics; the client's bannedTopics) used
+// to reach only the writer prompts, so a trend, a news headline or a fact about a banned topic was still
+// stored and then handed to a news slot as "react to this". Same list parsing as _brain.outputViolations:
+// split on new lines, commas, semicolons, bars and full stops; where the user quoted the words, the
+// quoted words are the rule. Whole words, case-insensitive. No AI call.
+function bannedTermsFrom(v) {
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    const ve = (v.voice_extra && typeof v.voice_extra === 'object') ? v.voice_extra : {};
+    v = v.bannedTopics || v.banned_topics || ve.bannedTopics || '';
+  }
+  if (Array.isArray(v)) v = v.join(',');
+  const QUOTED = /(?:^|\s)["\u201c\u2018']([^"\u201c\u201d\u2018']{3,60})["\u201d\u2019'](?=$|[\s.,;:!?])/g;
+  const out = [];
+  for (const part of String(v == null ? '' : v).split(/[\n,;|.]+/)) {
+    const s = part.trim().toLowerCase();
+    if (s.length < 3) continue;
+    const quoted = [];
+    let m;
+    while ((m = QUOTED.exec(s))) { const w = m[1].trim(); if (w.length >= 3) quoted.push(w); }
+    QUOTED.lastIndex = 0;
+    if (quoted.length) out.push.apply(out, quoted); else out.push(s);
+  }
+  return Array.from(new Set(out)).slice(0, 60);
+}
+function hitsBanned(text, terms) {
+  const list = Array.isArray(terms) ? terms : bannedTermsFrom(terms);
+  if (!list.length) return '';
+  const t = ' ' + String(text == null ? '' : text).toLowerCase().replace(/\s+/g, ' ') + ' ';
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const w of list) {
+    try { if (new RegExp('(^|[^\\p{L}\\p{N}])' + esc(w) + '(?=$|[^\\p{L}\\p{N}])', 'iu').test(t)) return w; } catch (e) {}
+  }
+  return '';
+}
+// Items ({text,...} or {title,...}) minus every one that names a banned topic.
+function dropBanned(items, terms) {
+  const list = Array.isArray(terms) ? terms : bannedTermsFrom(terms);
+  if (!list.length || !Array.isArray(items)) return items;
+  const kept = items.filter(it => !hitsBanned(it && typeof it === 'object' ? [it.text, it.title].filter(Boolean).join(' ') : it, list));
+  for (const k of ['lanes', 'topPosts']) if (k in items) kept[k] = items[k];
+  return kept;
+}
+
 async function pullAllTrends(keywords, apifyToken, maxAgeHours, xTimeoutMs, brainObj, grokTimeoutMs) {
   const win = clampWindow(maxAgeHours);
   const bound = (p, ms) => (ms && ms > 0) ? Promise.race([p, new Promise(r => setTimeout(() => r([]), ms))]) : p;
@@ -495,10 +539,12 @@ async function pullAllTrends(keywords, apifyToken, maxAgeHours, xTimeoutMs, brai
     xPromise,
   ]);
   const seen = new Set(); const out = [];
+  const _banned = bannedTermsFrom(brainObj);   // v709 C9 — a banned-topic item is never kept
   const add = (arr, cap) => {
     let n = 0;
     for (const it of (arr || [])) {
       if (n >= cap) break;
+      if (_banned.length && hitsBanned(it && it.text, _banned)) continue;
       const norm = String(it.text || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
       if (!norm || seen.has(norm)) continue;
       seen.add(norm); out.push(it); n++;
@@ -510,7 +556,7 @@ async function pullAllTrends(keywords, apifyToken, maxAgeHours, xTimeoutMs, brai
   out.lanes = { grok: (grok || []).length, news: (news || []).length, x: (x || []).length };
   // v644: carry the repurposable posts through. `bound()` can resolve the X lane to a plain []
   // on timeout, which has no topPosts — hence the guard; an empty list simply hides the strip.
-  out.topPosts = (x && x.topPosts) ? x.topPosts : [];
+  out.topPosts = (x && x.topPosts) ? x.topPosts.filter(p => !(_banned.length && hitsBanned(p && p.text, _banned))) : [];
   return out;
 }
 
@@ -552,4 +598,5 @@ function scoreTrends(items, prevTexts, prefTexts) {
 module.exports = {
   pullTrends, pullXTrends, pullAllTrends, pullGrokTrends, pullCompetitorPulse, brainSummaryFrom, fetchNewsRss, parseRssItems, decodeEntities,
   clampWindow, DEFAULT_WINDOW_HOURS, ALLOWED_WINDOW_HOURS, scoreTrends, topXPosts, tweetEngagement,
+  bannedTermsFrom, hitsBanned, dropBanned,
 };

@@ -412,7 +412,8 @@ section('FIX 5 — approved examples must carry the real approved text');
   ok('getBrandContext accepts and forwards the target format',
     /function getBrandContext\(fmt\)/.test(html) && /approvedExamples: getApprovedExamples\(fmt\)/.test(html));
   ok('format-aware callers pass their format',
-    /getBrandContext\(format\)/.test(html) && /getBrandContext\(chosenFormat\)/.test(html) && /getBrandContext\(idea\.format\|\|'video'\)/.test(html));
+    // v709: getBrandContext(format) lived in the removed auto-refill; Generate more's getBrandContext(fmt) takes its place
+    /getBrandContext\(fmt\)/.test(html) && /getBrandContext\(chosenFormat\)/.test(html) && /getBrandContext\(idea\.format\|\|'video'\)/.test(html));
 }
 
 // ── P1..P8: data-loss + chain-robustness fixes ────────────────────────────────

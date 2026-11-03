@@ -99,6 +99,10 @@ async function runWith(name, body, planFn, setup) {
 
 // ── the rules, derived from the functions that produce them (copy may change freely) ──
 const STYLE = W.styleGuide();
+// v709 (consistency S2) — a writer that appends the shared POST RULES (which carry NEVER SALESY) renders the
+// style guide without its own no-sell line: either form counts, the POST RULES block then must be there.
+const STYLE_NS = W.styleGuide({ noSell: false });
+const hasStyle = (P) => String(P || '').includes(STYLE) || (String(P || '').includes(STYLE_NS) && String(P || '').includes('POST RULES:'));
 const NOINV = brain.NO_INVENTION_RULE;
 const SPOKEN = brain.spokenV2();
 const V2HEAD = brain.fullBrandBlock({ brandName: 'x' }, { v2: true }).split('\n')[0];
@@ -121,7 +125,8 @@ const droppedIn = (t) => DROPPED.filter(([, re]) => re.test(t)).map(([n]) => n);
 // Opposite: the detector itself fires on the legacy texts it exists to catch.
 ok(droppedIn('HOOK RULES (the hook...):\n- Max 8 words. Shorter = better. Fragment sentences beat full sentences.').length >= 2, 'detector: finds the old HOOK RULES clipping rule');
 ok(droppedIn(brain.clarityFlow()).includes('clarityFlow compression') && droppedIn(brain.spokenShape()).includes('spokenShape override'), 'detector: finds clarityFlow and spokenShape');
-ok(V2HEAD !== LEGACYHEAD && /invent/i.test(V2HEAD) && V2HEAD.startsWith(brain.BRAND_HEADING), 'v2 brand heading differs from the legacy one and forbids inventing facts');
+// v709 (A7) — ONE priority statement, the same in both renderers.
+ok(V2HEAD === LEGACYHEAD && V2HEAD.includes(brain.PRIORITY_RULE) && /INVENT/.test(V2HEAD) && V2HEAD.startsWith(brain.BRAND_HEADING), 'v2 and legacy brand headings carry the same ONE priority statement, which forbids inventing facts');
 ok(STYLE.includes(NOINV), 'the style guide carries the no-invention rule');
 
 const BC = {
@@ -144,10 +149,10 @@ const sameKeys = (o, keys) => JSON.stringify(Object.keys(o || {}).sort()) === JS
     () => JSON.stringify([IDEA({ belief: 'Posting every day is the slowest way to grow' })]));
   const P = calls[0] ? calls[0].prompt : '';
   ok(res.statusCode === 200 && calls.length === 1, 'ideas: one call, 200 (got ' + res.statusCode + ', ' + calls.length + ' calls)');
-  ok(P.includes(STYLE), 'ideas: the prompt carries the short style guide');
+  ok(hasStyle(P), 'ideas: the prompt carries the short style guide');
   ok(P.includes(NOINV), 'ideas: the prompt carries the no-invention slot rule');
   ok(P.includes(SPOKEN), 'ideas: the prompt carries the short spoken rule (spoken scripts breathe)');
-  ok(P.includes(V2HEAD) && !P.includes(LEGACYHEAD), 'ideas: the brand renders through the v2 block, not the legacy one');
+  ok(P.includes(V2HEAD) && !/Voice \/ tones \(NEVER contradict\)/.test(P), 'ideas: the brand renders through the v2 block, not the legacy one');
   ok(droppedIn(P).length === 0, 'ideas: the dropped rules are gone (found: ' + droppedIn(P).join(', ') + ')');
   ok(!P.includes(brain.rulePrecedence()), 'ideas: the legacy precedence block is gone (the v2 heading carries precedence)');
   // belief first: stated before the idea is written, and the first schema key
@@ -199,10 +204,11 @@ const sameKeys = (o, keys) => JSON.stringify(Object.keys(o || {}).sort()) === JS
 {
   const res = await run('ideas', { brandContext: BC4, count: 1 }, () => JSON.stringify([IDEA({ belief: 'b', tone: 'dry' })]));
   const P = calls[0] ? calls[0].prompt : '';
-  ok(!/Voice \/ tones:/.test(P) && !/BRAND VOICE — TONE/.test(P), 'tones>3: no tone is rendered anywhere in the prompt');
-  ok(!/"tone": "dry/.test(P) && /"tone": "\s*\(leave this an empty string/.test(P), 'tones>3: the schema asks for an empty tone');
+  // v709 (audit C8) — more than 3 tones keeps the FIRST 3 (it used to render none), and says so.
+  ok(/Voice \/ tones: dry, warm, blunt\n/.test(P) && !/playful/.test(P), 'tones>3: the first 3 tones are rendered, the 4th is not');
+  ok(/"tone": "dry/.test(P), 'tones>3: the schema labels ideas with the brand\'s first tone');
   ok(res.body && JSON.stringify(res.body.warnings) === '["tones_over_limit"]', 'tones>3: the response carries warnings:["tones_over_limit"]');
-  ok(res.body && res.body.ideas && res.body.ideas[0].tone === '', 'tones>3: an idea is never labelled with a tone the brand block declined');
+  ok(res.body && res.body.ideas && res.body.ideas[0].tone === 'dry', 'tones>3: an idea is labelled only with a tone the brand block rendered');
   const str = await run('ideas', { brandContext: { ...BC, tones: 'dry, warm' }, count: 1 }, () => JSON.stringify([IDEA({ belief: 'b', tone: 'nonsense' })]));
   ok(str.statusCode === 200 && str.body.ideas[0].tone === 'dry' && str.body.warnings.length === 0, 'tones as a comma string: parsed, clamped to the primary tone, no warning');
 }
@@ -213,7 +219,8 @@ const sameKeys = (o, keys) => JSON.stringify(Object.keys(o || {}).sort()) === JS
   await run('ideas', { brandContext: BC, count: 1, learningContext: PAA_LC }, () => JSON.stringify([IDEA({ belief: 'b' })]));
   const P = calls[0] ? calls[0].prompt : '';
   const iSeed = P.indexOf('ZQ_MARK'), iTurn = P.indexOf('THE SEED IS A SEARCH QUESTION');
-  ok(iTurn > -1 && /belief about the viewer's situation/.test(P) && /Do NOT simply answer it/.test(P), 'PAA: the question is turned into a belief about the viewer\'s situation');
+  // v709 (audit A6) — "Answer this" answers the question first (it used to say "Do NOT simply answer it").
+  ok(iTurn > -1 && /the first sentence of the script gives the direct answer/.test(P) && !/Do NOT simply answer it/.test(P) && !/ignore any line above/.test(P), 'PAA: the question is answered first, never "do not answer it"');
   ok(iSeed > -1 && iTurn > iSeed && iTurn > P.indexOf('The script should answer it'), 'PAA: the belief instruction comes AFTER the old "answer it" text, so it overrides it');
   await run('ideas', { brandContext: BC, count: 1, seedQuestion: 'ZQ2_MARK is  daily posting bad?' }, () => JSON.stringify([IDEA({ belief: 'b' })]));
   const P2 = calls[0] ? calls[0].prompt : '';
@@ -229,7 +236,7 @@ const sameKeys = (o, keys) => JSON.stringify(Object.keys(o || {}).sort()) === JS
 {
   const res = await run('ideas', { brandContext: {}, count: 1 }, () => JSON.stringify([IDEA({ belief: 'b' })]));
   const P = calls[0] ? calls[0].prompt : '';
-  ok(res.statusCode === 200 && !/undefined|\[object Object\]/.test(P) && P.includes(STYLE) && P.includes('#MyBrand'), 'empty brand: usable prompt, no "undefined", style guide present');
+  ok(res.statusCode === 200 && !/undefined|\[object Object\]/.test(P) && hasStyle(P) && !P.includes('#MyBrand') && /HASHTAGS: write none/.test(P), 'empty brand: usable prompt, no "undefined", style guide present, no model-written hashtags asked for (v709)');
 
   hydrate = null;
   const hyd = await runWith('ideas', { brandId: 'brand-1', count: 1 }, () => JSON.stringify([IDEA({ belief: 'b' })]),
@@ -264,7 +271,7 @@ const REWRITE = JSON.stringify({ title: 't', hook: 'h', script: 's [your story: 
   const body = (fmt) => ({ brandContext: BC, idea: { title: 't', hook: 'h', script: 'orig [your story: the client call]', format: fmt }, angle: { angle: 'Contrarian', hook: 'Posting daily is the slow way' } });
   const res = await run('rewrite', body('video'), () => REWRITE);
   const P = calls[0] ? calls[0].prompt : '';
-  ok(res.statusCode === 200 && P.includes(STYLE) && P.includes(NOINV), 'viral-rewrite: style guide + no-invention rule');
+  ok(res.statusCode === 200 && hasStyle(P) && P.includes(NOINV), 'viral-rewrite: style guide + no-invention rule');
   ok(P.includes(V2HEAD) && P.indexOf('ZUSP_MARK') > P.indexOf(BG), 'viral-rewrite: v2 brand block with USPs as background facts');
   ok(P.includes('ZSTORY1'), 'viral-rewrite: the story bank can fill proof');
   ok(droppedIn(P).length === 0, 'viral-rewrite: dropped rules gone (found: ' + droppedIn(P).join(', ') + ')');
@@ -275,9 +282,9 @@ const REWRITE = JSON.stringify({ title: 't', hook: 'h', script: 's [your story: 
   ok(res.body && sameKeys(res.body.idea, Object.keys(brain.VIRAL_REWRITE_SHAPE)), 'viral-rewrite: output shape unchanged');
   ok(usageLogs.length === 1 && usageLogs[0].action === 'viral', 'viral-rewrite: metered once as "viral"');
   await run('rewrite', body('statement'), () => REWRITE);
-  ok(calls[0] && !calls[0].prompt.includes(SPOKEN) && calls[0].prompt.includes(STYLE), 'viral-rewrite (opposite): a statement gets no spoken rule');
+  ok(calls[0] && !calls[0].prompt.includes(SPOKEN) && hasStyle(calls[0].prompt), 'viral-rewrite (opposite): a statement gets no spoken rule');
   await run('rewrite', { ...body('video'), brandContext: BC4 }, () => REWRITE);
-  ok(calls[0] && !/Voice \/ tones:/.test(calls[0].prompt), 'viral-rewrite: > 3 tones render no tone');
+  ok(calls[0] && /Voice \/ tones: dry, warm, blunt\n/.test(calls[0].prompt) && !/playful/.test(calls[0].prompt), 'viral-rewrite: > 3 tones render the first 3 (v709, C8)');
   const over = await runWith('rewrite', body('video'), () => REWRITE, () => { gateMode = 'over'; });
   ok(over.statusCode === 402 && calls.length === 0, 'viral-rewrite: over the limit -> denied, no AI call');
   const anon = await runWith('rewrite', body('video'), () => REWRITE, () => { userMode = 'none'; });
@@ -291,7 +298,7 @@ const REWRITE = JSON.stringify({ title: 't', hook: 'h', script: 's [your story: 
   const body = { brandContext: BC, idea: { title: 't', hook: 'h', script: 's', format: 'video' } };
   const res = await run('twist', body, () => JSON.stringify({ angles: [{ angle: 'a', hook: 'h', why: 'w' }], spicy: { hook: 'h', why: 'w' }, tip: 't' }));
   const P = calls[0] ? calls[0].prompt : '';
-  ok(res.statusCode === 200 && P.includes(STYLE) && P.includes(NOINV) && P.includes(V2HEAD), 'viral-twist: style guide + no-invention + v2 brand block');
+  ok(res.statusCode === 200 && hasStyle(P) && P.includes(NOINV) && P.includes(V2HEAD), 'viral-twist: style guide + no-invention + v2 brand block');
   ok(droppedIn(P).length === 0 && !/WORD-LEVEL HUMANIZER/.test(P), 'viral-twist: dropped rules gone (found: ' + droppedIn(P).join(', ') + ')');
   ok(P.indexOf('ZUSP_MARK') > P.indexOf(BG), 'viral-twist: USPs as background facts');
   ok(P.trim().endsWith(brain.rulePrecedence().trim()), 'viral-twist: precedence still last');
@@ -309,7 +316,8 @@ const REWRITE = JSON.stringify({ title: 't', hook: 'h', script: 's [your story: 
   const P = calls[0] ? calls[0].prompt : '';
   ok(res.statusCode === 200 && P.includes(NOINV) && P.includes(V2HEAD), 'viral-analyze: no-invention rule + v2 brand block');
   ok(droppedIn(P).length === 0, 'viral-analyze: "max 8 words" and friends gone (found: ' + droppedIn(P).join(', ') + ')');
-  ok(/"angle": "the belief this idea argues/.test(P) && /does not share yet/.test(P), 'viral-analyze: each adapted idea argues a belief');
+  // v709 (audit A M6) — each adapted idea makes ONE point (an opinion only where one fits), not "a belief the audience does not share".
+  ok(/"angle": "the ONE point this idea makes/.test(P) && !/does not share yet/.test(P), 'viral-analyze: each adapted idea makes ONE point');
   ok(/never present them as the brand's/.test(P), 'viral-analyze: the source\'s numbers are never borrowed as the brand\'s');
   ok(res.body && sameKeys(res.body.analysis, Object.keys(brain.VIRAL_ANALYZE_SHAPE)) && sameKeys(res.body.analysis.ideas[0], ['format', 'title', 'hook', 'angle', 'script']), 'viral-analyze: output shape unchanged');
   const ai = await run('analyze', body, () => { throw aiErr(); });
@@ -323,14 +331,14 @@ const REWRITE = JSON.stringify({ title: 't', hook: 'h', script: 's [your story: 
   const crit = calls[0] ? calls[0].prompt : '', rew = calls[1] ? calls[1].prompt : '';
   ok(res.statusCode === 200 && calls.length === 2, 'sharpen: two passes');
   ok(crit.includes(V2HEAD) && rew.includes(V2HEAD) && rew.indexOf('ZUSP_MARK') > rew.indexOf(BG), 'sharpen: both passes see the v2 brand block, USPs as background');
-  ok(rew.includes(STYLE) && rew.includes(NOINV), 'sharpen: the rewrite carries the style guide + no-invention rule');
+  ok(hasStyle(rew) && rew.includes(NOINV), 'sharpen: the rewrite carries the style guide + no-invention rule');
   ok(droppedIn(crit + '\n' + rew).length === 0, 'sharpen: dropped rules gone (found: ' + droppedIn(crit + '\n' + rew).join(', ') + ')');
   ok(/Keep every \[your story: \.\.\.\] slot exactly as written/.test(rew) && /filling a \[your story: \.\.\.\] slot/.test(crit), 'sharpen: slots are kept by the editor and never "fixed" by the critic');
   ok(rew.includes(SPOKEN), 'sharpen: a spoken draft gets the spoken rule');
   ok(rew.trim().endsWith(brain.rulePrecedence().trim()), 'sharpen: precedence still last');
   ok(res.body && sameKeys(res.body.sharpened, ['hook', 'script']) && !res.body.unchanged, 'sharpen: output shape unchanged (same keys back)');
   await run('sharpen', body('carousel'), (i) => i === 0 ? 'x' : JSON.stringify({ hook: 'a', script: 'b' }));
-  ok(calls[1] && !calls[1].prompt.includes(SPOKEN) && calls[1].prompt.includes(STYLE), 'sharpen (opposite): a carousel gets no spoken rule');
+  ok(calls[1] && !calls[1].prompt.includes(SPOKEN) && hasStyle(calls[1].prompt), 'sharpen (opposite): a carousel gets no spoken rule');
   const strong = await run('sharpen', body('video'), () => 'STRONG');
   ok(strong.body && strong.body.unchanged === true && calls.length === 1 && usageLogs.length === 1, 'sharpen: STRONG still short-circuits, metered once');
   const ai = await run('sharpen', body('video'), () => { throw aiErr(); });

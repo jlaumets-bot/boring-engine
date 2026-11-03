@@ -4,6 +4,11 @@
 const { aiUnavailable } = require('./_llm');
 const { writerCallResilient, writerProvider, writerEffort, startBrandAttribution, noSellRule, guardIdeaNoSell } = require('./_write');   // v693 r3 — provider switch + thinking depth with headroom (see api/_write.js)
 const { fullBrandBlock, extractJson, coerceShape, VIRAL_ANALYZE_SHAPE, NO_INVENTION_RULE } = require('./_brain');
+// v709 consistency (.unlazy/consistency/CONTRACT.md) — the shared POST RULES and guard (mode 'batch': an
+// idea whose on-screen text would need a [your story: ...] slot is dropped), looked up at CALL time.
+const _W = () => require('./_write');
+function sharedPostRules(o) { const f = _W().postRules; if (typeof f !== 'function') return ''; try { return String(f(o) || ''); } catch (e) { return ''; } }
+function normDelivery(v) { const s = String(v == null ? '' : v).trim().toLowerCase(); return s === 'faceless' ? 'faceless' : (s === 'face' || s === 'faceon' || s === 'face-on') ? 'face' : ''; }
 // v693 — content-v2 rules (.unlazy/content-v2/PLAN.md changes 1, 3, 5): the brand renders through
 // fullBrandBlock(bc,{v2:true}); the adapted ideas carry the no-invention slot rule, argue a BELIEF
 // (in the existing `angle` field, so the output shape is unchanged) and lose the "max 8 words" hook.
@@ -22,7 +27,7 @@ module.exports = async function handler(req, res) {
   if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
 
   try {
-    const { content, visualNotes, sourceUrl, platform, brandContext, brandId, bcFields } = req.body || {};
+    const { content, visualNotes, sourceUrl, platform, brandContext, brandId, bcFields, delivery } = req.body || {};
     if ((!content || !content.toString().trim()) && (!visualNotes || !visualNotes.toString().trim())) {
       return res.status(400).json({ error: 'Paste the transcript, or describe what you see and hear in the video.' });
     }
@@ -55,6 +60,7 @@ module.exports = async function handler(req, res) {
     }
 
     const brandInfo = fullBrandBlock(bc, { v2: true });
+    const _rules = sharedPostRules({ type: '', format: '', delivery: normDelivery(delivery) || normDelivery(bc.delivery) || 'face' });
 
     const system = `You are a world-class short-form video strategist who reverse-engineers why a video worked. Any branded ideas you suggest must be punchy and gripping AND land in the brand's own voice (a dry brand stays dry, but dry and compelling — never flat). You do NOT have the video file — you are given (a) the spoken transcript and (b) human-written notes on the VISUALS and SOUND (on-screen text, how it's shot, editing/pacing, music). Use BOTH signals together. Virality is the combination of words + visuals + sound, so weight the visual/sound notes heavily when present.
 
@@ -62,7 +68,7 @@ Be concrete and honest. Identify the real reason it spread across all available 
 
 ${NO_INVENTION_RULE} The viral video's own numbers, names and results belong to its creator: never present them as the brand's.
 
-${noSellRule()}`;
+${_rules || noSellRule()}`;
 
     const user = `VIRAL VIDEO (${platform || 'unknown platform'}${sourceUrl ? ', ' + sourceUrl : ''}):
 
@@ -81,7 +87,7 @@ ${brandInfo || '(no extra brand context — do NOT invent product specifics; kee
 
 TASK:
 1) Explain why this video works (the transferable mechanics).
-2) Adapt those mechanics into 3 brand-true content ideas (translate the mechanic, NOT the topic). Each idea argues a belief the brand's audience does not share yet, about the viewer's problem rather than the brand's features; its "angle" states that belief in one plain sentence.
+2) Adapt those mechanics into 3 brand-true content ideas (translate the mechanic, NOT the topic). Each idea makes ONE point about the viewer's problem rather than the brand's features (a how-to, an answer, or a sharp opinion where one fits); its "angle" states that point in one plain sentence.
 3) Give ONE short "trend takeaway" — a single transferable rule the brand should remember and reuse (one plain sentence).
 
 Respond with EXACTLY this JSON and nothing else:
@@ -91,7 +97,7 @@ Respond with EXACTLY this JSON and nothing else:
   "structure": "the structure/pacing in one line",
   "trigger": "the core emotional/social trigger in one line",
   "ideas": [
-    {"format": "video|statement|carousel|micro|static", "title": "short title", "hook": "the first line, as a person would say it", "angle": "the belief this idea argues, one plain sentence", "script": "2-4 line starter script or slide list, in natural sentences; a [your story: <what to tell>] slot where proof belongs"}
+    {"format": "video|statement|carousel|micro|static", "title": "short title", "hook": "the first line, as a person would say it", "angle": "the ONE point this idea makes, one plain sentence", "script": "2-4 line starter script or slide list, in natural sentences; a [your story: <what to tell>] slot where proof belongs"}
   ],
   "takeaway": "one transferable rule, one plain sentence"
 }
@@ -117,6 +123,25 @@ Exactly 3 items in "ideas".`;
     // no-sell (.unlazy/no-sell) — the brand ideas it adapts are posts: every sales ask is taken out.
     // An idea the cut would hollow out (an emptied hook, title or script) is dropped, never shipped.
     if (Array.isArray(analysis.ideas)) analysis.ideas = analysis.ideas.map(i => guardIdeaNoSell(i)).filter(g => g.ok).map(g => g.idea);
+    // v709 — then the shared guard on each idea (facts the viral video does not give the brand become
+    // slots; a hook/title that invents falls back; on-screen slots drop the idea).
+    const _gp = _W().guardPost;
+    if (typeof _gp === 'function' && Array.isArray(analysis.ideas)) {
+      analysis.ideas = analysis.ideas.map(i => {
+        // A statement / carousel / image idea's script is what goes on screen (the app saves it as boldText).
+        const onScreen = /^(statement|carousel|static)$/i.test(String(i.format || ''));
+        const g = _gp(Object.assign({}, i, { belief: i.angle }, onScreen ? { boldText: i.script } : {}), bc, { mode: 'batch' });
+        if (!g || g.drop || !g.post) return null;
+        const o = Object.assign({}, i);
+        for (const k of ['title', 'hook', 'script']) if (typeof g.post[k] === 'string') o[k] = g.post[k];
+        if (onScreen && typeof g.post.boldText === 'string') o.script = g.post.boldText;
+        if (typeof g.post.belief === 'string') o.angle = g.post.belief;
+        return o;
+      }).filter(Boolean);
+    }
+    // Nothing to show (no idea survived and no analysis): an honest error, not charged (D F15-F21).
+    const _hasWhy = Array.isArray(analysis.whyItWorks) ? analysis.whyItWorks.some(x => String(x || '').trim()) : !!String(analysis.whyItWorks || '').trim();
+    if (!(Array.isArray(analysis.ideas) && analysis.ideas.length) && !_hasWhy) return res.status(502).json({ error: 'The analysis came back empty — try again' });
 
     // Only attribute the usage row to a brand the caller actually owns — this id comes from the
     // client and went into usage_events unverified. Same pattern as pull-trends.js:

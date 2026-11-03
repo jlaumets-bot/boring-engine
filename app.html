@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v708';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v709';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -7580,6 +7580,7 @@ async function switchBrand(brandId) {
     try { localStorage.setItem('cs_last_brand', brandId); } catch(e){}   // v576: remember for next reload
     migrateLegacyLS();                 // one-time, non-destructive; seeds this brand's namespace
     settings = brandToSettings(currentBrand);
+    try { brandPrefsMigrate(); } catch(e) {}   // v709: one-time device → brand moves (delivery, dismissed news, formatsOff)
     // Reload all data for this brand
     try { const dbIdeas = await loadIdeasFromDB(); if (myToken !== _switchSeq) return; IDEAS.length = 0; const seen = new Set(); dbIdeas.forEach(i => { const k = i.title.toLowerCase().trim(); if (!seen.has(k)) { seen.add(k); IDEAS.push(i); } }); state = IDEAS.map((idea, i) => ({ ...idea, id: i })); reconcileLocalStatus(state); window._ideasLoadFailed = false; window._ideasSwitching = false; } catch(e) { IDEAS.length = 0; state = []; window._ideasLoadFailed = true; window._ideasSwitching = false; notifyIdeasLoadFailed(); }
     // v595: these six loads are INDEPENDENT — running them sequentially made a brand switch take
@@ -7639,7 +7640,8 @@ async function switchBrand(brandId) {
     // asymmetry is what showed this was an omission). Switching from a faceless B2B brand to a
     // face-on founder brand left the toggle on faceless, `renderIdeaDelivery()` re-rendered it
     // showing the PREVIOUS brand's setting, and the next batch generated in the wrong shape.
-    try { window._ideaDelivery = 'faceon'; window._remixDelivery = 'faceon'; } catch(e) {}
+    // v709: they now go back to null = "use THIS brand's How you film setting" (all three switches).
+    try { window._ideaDelivery = null; window._remixDelivery = null; window._tvDelivery = null; } catch(e) {}
     try { if (typeof loadPAAState === 'function') loadPAAState(); } catch(e) {}
     if (myToken !== _switchSeq) return;                       // a newer switch won — don't render this (older) brand
     // Update UI
@@ -7934,6 +7936,9 @@ function brandToSettings(brand) {
     founderPhoto: brand.voice_extra?.founderPhoto || def.founderPhoto,
     // types — the Plan-my-week mix. Absent = not chosen yet (typesMix() then uses DEFAULT_TYPE_MIX).
     typeMix: (brand.voice_extra && brand.voice_extra.typeMix && typeof typesNormMix === 'function') ? typesNormMix(brand.voice_extra.typeMix) : null,
+    // v709 — the brand's "How you film" (null = never chosen → face-on) and the dismissed news headlines
+    delivery: (brand.voice_extra && (brand.voice_extra.delivery === 'face' || brand.voice_extra.delivery === 'faceless')) ? brand.voice_extra.delivery : null,
+    newsDismissed: (brand.voice_extra && Array.isArray(brand.voice_extra.newsDismissed)) ? brand.voice_extra.newsDismissed.map(x => String(x == null ? '' : x)).filter(Boolean).slice(-200) : [],
   };
 }
 
@@ -7985,6 +7990,10 @@ function settingsToBrand() {
       paaKeywords: settings.paaKeywords || '',
       // types — voice_extra is replaced wholesale on every save, so the mix must travel with it
       ...(settings.typeMix && typeof settings.typeMix === 'object' ? { typeMix: settings.typeMix } : {}),
+      // v709 — same wholesale-replace rule: these three must travel with every save
+      ...((settings.delivery === 'face' || settings.delivery === 'faceless') ? { delivery: settings.delivery } : {}),
+      newsDismissed: Array.isArray(settings.newsDismissed) ? settings.newsDismissed.slice(-200) : [],
+      formatsOff: (typeof formatsOffFrom === 'function') ? formatsOffFrom(settings.formatMix) : [],
       // v640: this used to write `bvState.messages || []` unconditionally, and voice_extra is
       // REPLACED WHOLESALE on every save — while brandToSettings never reads voiceCoachMessages
       // back (it is the only voice_extra key that does not round-trip; dayScenes, paaKeywords,
@@ -8063,6 +8072,14 @@ async function _saveBrandToDBInner() {
       // voice they just filled in was on screen for an hour and gone on reload, with nothing ever
       // having said a word. Worse, `_brandSaveOk` stayed TRUE, which keeps the lean path on — so
       // every generation in between was served from the STALE row while the screen showed the new one.
+      // v709 review: merge voice_extra with what is stored now (one read; on any failure, the old wholesale write)
+      const _veMine = brandData.voice_extra;
+      try {
+        const _cur = await sb.from('brands').select('voice_extra').eq('id', currentBrand.id).maybeSingle();
+        const _fv = _cur && !_cur.error && _cur.data ? _cur.data.voice_extra : null;
+        if (_fv && typeof _fv === 'object' && !Array.isArray(_fv) && typeof mergeVoiceExtra === 'function')
+          brandData.voice_extra = mergeVoiceExtra(currentBrand.voice_extra || {}, _veMine, _fv);
+      } catch (e) { brandData.voice_extra = _veMine; }
       let { data: _wrote, error } = await sb.from('brands').update(brandData).eq('id', currentBrand.id).select('id');
       if (!error && (!_wrote || !_wrote.length)) {
         try { window._brandSaveOk = false; } catch(e) {}
@@ -8086,6 +8103,17 @@ async function _saveBrandToDBInner() {
         alert('Brand save error: ' + (error.message || JSON.stringify(error)));
       } else {
         try { window._brandSaveOk = true; window._brandSaveLastError = ''; } catch(e) {}
+        // v709 review: what is stored now is the next save's base; take the other device's delivery and
+        // dismissed headlines into this one, unless the person changed them here while this save ran
+        try {
+          const _ve = brandData.voice_extra || {};
+          currentBrand.voice_extra = _ve;
+          if (typeof settings !== 'undefined' && settings) {
+            if ((settings.delivery || null) === (_veMine.delivery || null) && (_ve.delivery === 'face' || _ve.delivery === 'faceless')) settings.delivery = _ve.delivery;
+            if (Array.isArray(_ve.newsDismissed) && typeof mergeVoiceExtra === 'function')
+              settings.newsDismissed = mergeVoiceExtra({}, { newsDismissed: settings.newsDismissed }, { newsDismissed: _ve.newsDismissed }).newsDismissed;
+          }
+        } catch(e) {}
         debugLog('Brand updated OK');
       }
     } else if (_brandLoadFailed) {
@@ -8942,6 +8970,7 @@ async function initApp() {
       migrateLegacyLS();               // one-time, non-destructive: seed this brand's namespace from legacy globals
       try { if (typeof loadPAAState === 'function') loadPAAState(); } catch(e) {}   // reload PAA for THIS brand's namespace
       settings = brandToSettings(currentBrand);
+      try { brandPrefsMigrate(); } catch(e) {}   // v709: one-time device → brand moves (delivery, dismissed news, formatsOff)
       debugLog('initApp: settings loaded, onboarding=' + settings.onboardingComplete);
 
       // Load team data
@@ -9359,19 +9388,97 @@ const ICO = {
 };
 // Formats where face-on vs faceless is a real choice (the filmable/spoken ones). Carousel/Image are faceless by nature.
 const DELIVERY_FORMATS = new Set(["video","micro","qna","statement"]);
-function deliverySegHtml(current, onclickFn){
+function deliverySegHtml(current, onclickFn, opts){
+  var o = opts || {};
   var d = current==='faceless' ? 'faceless' : 'faceon';
   var help = d==='faceless'
-    ? 'No camera. Voiceover script + b-roll, screen or text shots.'
-    : 'You on camera, talking to your audience.';
+    ? (o.facelessHelp || 'No camera. Voiceover script + b-roll, screen or text shots.')
+    : (o.faceHelp || 'You on camera, talking to your audience.');
   var faceIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>';
   var filmIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="7" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="17" y2="20"/><line x1="2" y1="12" x2="22" y2="12"/></svg>';
   function chip(v,icon,label){ return '<span class="tp-deliv-chip'+(d===v?' active':'')+'" onclick="'+onclickFn+'(\''+v+'\')">'+icon+label+'</span>'; }
-  return '<div class="tp-deliv">'
-    + '<div class="tp-deliv-cap">How you\'ll make it</div>'
+  return '<div class="tp-deliv' + (o.cls ? ' ' + o.cls : '') + '">'
+    + '<div class="tp-deliv-cap">' + (o.cap || 'How you\'ll make it') + '</div>'
     + '<div class="tp-deliv-opts">'+chip('faceon',faceIcon,'Face-on')+chip('faceless',filmIcon,'Faceless')+'</div>'
     + '<div class="tp-deliv-help">'+help+'</div>'
     + '</div>';
+}
+/* v709 consistency (owner decision 1) — ONE face-on / faceless setting per brand: Settings → Brand Voice →
+   "How you film", saved as voice_extra.delivery 'face' | 'faceless' (absent = 'face'). Every writer request
+   sends `delivery` ('face' | 'faceless'). The per-post switches (Quick Post's angle sheet, Plan my week,
+   Remix) START on the brand setting and can override it: their globals hold 'faceon' | 'faceless' for an
+   override, or null for "use the brand setting". Nothing resets them to face-on any more. */
+function brandDelivery() {
+  try { const d = (typeof settings !== 'undefined' && settings) ? settings.delivery : null; if (d === 'face' || d === 'faceless') return d; } catch (e) {}
+  return 'face';
+}
+// what a switch shows / an idea is tagged with: 'faceon' | 'faceless' (override first, else the brand setting)
+function deliveryUi(override) {
+  if (override === 'faceless') return 'faceless';
+  if (override === 'faceon' || override === 'face') return 'faceon';
+  return brandDelivery() === 'faceless' ? 'faceless' : 'faceon';
+}
+// what a request sends: 'face' | 'faceless'
+function deliveryReq(override) { return deliveryUi(override) === 'faceless' ? 'faceless' : 'face'; }
+function setBrandDelivery(d) {
+  if (typeof settings === 'undefined' || !settings) return;
+  settings.delivery = (d === 'faceless') ? 'faceless' : 'face';
+  // the per-post switches follow the new brand setting
+  try { window._tvDelivery = null; window._ideaDelivery = null; window._remixDelivery = null; } catch (e) {}
+  try { saveSettings(); } catch (e) {}
+  try { if (typeof renderSettingsPanel === 'function') renderSettingsPanel(); } catch (e) {}
+  try { if (typeof showToast === 'function') showToast(settings.delivery === 'faceless' ? 'Saved — new posts are written faceless' : 'Saved — new posts are written face-on'); } catch (e) {}
+}
+function brandFilmSettingHtml() {
+  return '<div class="sp-status sp-film" id="spFilmRow">' + deliverySegHtml(deliveryUi(null), 'setBrandDelivery', { cap: 'How you film', cls: 'sp-deliv',
+    faceHelp: 'You on camera, talking to your audience. Every writer uses this; you can still switch a single post.',
+    facelessHelp: 'No camera on you: voiceover with b-roll, screen or text shots. Every writer uses this; you can still switch a single post.' }) + '</div>';
+}
+/* v709 — headlines the person dismissed (× on the news chips), kept on the brand: voice_extra.newsDismissed,
+   lower-cased headline text, newest last, max 200. Sent as `newsDismissed` with every request that can
+   write a News post, so a dismissed headline never comes back as one. */
+const NEWS_DISMISSED_MAX = 200;
+function newsDismissedList() {
+  try {
+    const a = (typeof settings !== 'undefined' && settings && Array.isArray(settings.newsDismissed)) ? settings.newsDismissed : [];
+    return a.map(x => String(x == null ? '' : x).toLowerCase().trim()).filter(Boolean).slice(-NEWS_DISMISSED_MAX);
+  } catch (e) { return []; }
+}
+function newsDismissedAdd(list, key) {
+  const k = String(key == null ? '' : key).toLowerCase().trim();
+  const out = (Array.isArray(list) ? list : []).map(x => String(x == null ? '' : x).toLowerCase().trim()).filter(x => x && x !== k);
+  if (k) out.push(k);
+  return out.slice(-NEWS_DISMISSED_MAX);
+}
+/* v709 — Content Mix lives in brands.format_mix (settings.formatMix). It is ALSO mirrored as
+   voice_extra.formatsOff (the app/generate-ideas format ids switched to 0), the field the server's
+   brand context reads. */
+function formatOn(f) {
+  try { const m = (typeof settings !== 'undefined' && settings) ? settings.formatMix : null; return !(m && m[f] != null && Number(m[f]) <= 0); } catch (e) { return true; }
+}
+function formatsOffFrom(mix) { return FORMATS.filter(f => mix && mix[f] != null && Number(mix[f]) <= 0); }
+// One-time moves of per-device state onto the brand row, run right after a brand loads:
+// the old Quick Post 'tv_delivery' (only a saved Faceless means anything) and the old
+// 'auto_trends_dismissed' set. Each runs once per brand per device; the brand setting wins if set.
+function brandPrefsMigrate() {
+  try {
+    if (typeof settings === 'undefined' || !settings || typeof lsGet !== 'function') return false;
+    let changed = false;
+    if (settings.delivery !== 'face' && settings.delivery !== 'faceless' && lsGet('tv_delivery') === 'faceless') { settings.delivery = 'faceless'; changed = true; }
+    if (lsGet('news_dismissed_moved') !== '1') {
+      let old = []; try { old = JSON.parse(lsGet('auto_trends_dismissed') || '[]'); } catch (e) { old = []; }
+      let list = Array.isArray(settings.newsDismissed) ? settings.newsDismissed.slice() : [];
+      const had = list.length;
+      (Array.isArray(old) ? old : []).forEach(k => { if (list.indexOf(String(k == null ? '' : k).toLowerCase().trim()) < 0) list = newsDismissedAdd(list, k); });
+      if (list.length !== had) { settings.newsDismissed = list; changed = true; }
+      try { lsSet('news_dismissed_moved', '1'); } catch (e) {}
+    }
+    const cb = (typeof currentBrand !== 'undefined' && currentBrand) ? currentBrand : null;
+    const storedOff = cb && cb.voice_extra && Array.isArray(cb.voice_extra.formatsOff) ? cb.voice_extra.formatsOff.slice().sort().join(',') : null;
+    if (storedOff !== formatsOffFrom(settings.formatMix).slice().sort().join(',') && (storedOff !== null || formatsOffFrom(settings.formatMix).length)) changed = true;
+    if (changed && typeof saveSettingsDebounced === 'function') saveSettingsDebounced();
+    return changed;
+  } catch (e) { return false; }
 }
 const DISMISS_REASONS = ["Off brand","Too generic","Weak hook","Too salesy","Confusing","Too repetitive","Wrong format","Wrong audience","Not timely"];
 // v529: 16 → 8. Sixteen near-synonyms made choosing a chore and the sheet too tall.
@@ -9649,6 +9756,55 @@ function loadState() {
 // one (the QA batch-approve failure), and the id-less ideas were invisible in every
 // status filter. saveState is the single choke point after every mutation, so the
 // heal lives here. Cheap (O(n)) and idempotent.
+/* v709 (D10) — ONE title rule for every save. The loader keeps the first row per lower-cased title and
+   the save replaces rows BY TITLE, so a second idea with a title already in the library would vanish on
+   the next reload (or overwrite the first). Every path that adds an idea gives a clashing title a short
+   suffix: "Title (2)", "Title (3)"… `taken` (optional) is a Set of lower-cased titles to check and extend,
+   for a batch that must not clash with itself either. */
+function uniqueIdeaTitle(title, taken) {
+  let t = String(title == null ? '' : title).replace(/\s+/g, ' ').trim().slice(0, 140) || 'Untitled';
+  const set = taken || new Set((Array.isArray(state) ? state : []).map(i => String((i && i.title) || '').toLowerCase().trim()));
+  if (set.has(t.toLowerCase())) { let n = 2; while (set.has((t + ' (' + n + ')').toLowerCase())) n++; t = t + ' (' + n + ')'; }
+  if (taken) taken.add(t.toLowerCase());
+  return t;
+}
+/* v709 review — voice_extra is ONE jsonb, and this device used to replace it wholesale on every save. Device B
+   with stale settings then wrote back an old delivery / newsDismissed / formatsOff after device A changed them.
+   Now a save re-reads the stored voice_extra once and applies ONLY the keys this device changed since it last
+   loaded or saved (`base`); every other key keeps the stored value. newsDismissed is a union (max 200, newest
+   kept), never a replacement. If the re-read fails, the save goes ahead as it always did (wholesale). */
+function _veNorm(v) {
+  if (v === undefined || v === null || v === '') return null;
+  if (Array.isArray(v) && !v.length) return null;
+  if (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length) return null;
+  return JSON.stringify(v);
+}
+function mergeVoiceExtra(base, mine, fresh) {
+  const b = (base && typeof base === 'object') ? base : {};
+  const m = (mine && typeof mine === 'object') ? mine : {};
+  const out = Object.assign({}, (fresh && typeof fresh === 'object' && !Array.isArray(fresh)) ? fresh : {});
+  const keys = new Set(Object.keys(m).concat(Object.keys(b)));
+  keys.forEach(k => {
+    if (k === 'newsDismissed') {
+      const seen = new Set(), list = [];
+      (Array.isArray(out.newsDismissed) ? out.newsDismissed : []).concat(Array.isArray(m.newsDismissed) ? m.newsDismissed : []).forEach(x => {
+        const s = String(x == null ? '' : x).toLowerCase().trim(); if (s && !seen.has(s)) { seen.add(s); list.push(s); }
+      });
+      out.newsDismissed = list.slice(-200);
+      return;
+    }
+    if (_veNorm(m[k]) === _veNorm(b[k])) return;          // this device did not change it: the stored value stays
+    if (m[k] === undefined) delete out[k]; else out[k] = m[k];
+  });
+  return out;
+}
+// "5 asked, 3 came back — …" when /api/generate-ideas says the batch came back short (short:true + counts)
+function shortBatchNote(data) {
+  if (!data || data.short !== true) return '';
+  const asked = Math.max(0, Math.floor(Number(data.requested) || 0)), got = Math.max(0, Math.floor(Number(data.delivered) || 0));
+  if (!asked || got >= asked) return '';
+  return asked + ' asked, ' + got + ' came back \u2014 the others broke your rules and were left out.';
+}
 function reindexIdeas() {
   if (!Array.isArray(state)) return;
   for (let i = 0; i < state.length; i++) {
@@ -10119,7 +10275,7 @@ const FN_FAQ = {
     { q:'Under the hood — where do these come from?', a:"Live People-Also-Ask and autocomplete data for your niche is pulled from search, de-duplicated and ranked by relevance to your brand — real demand signals, not guesses." }
   ],
   create: [
-    { q:'What does Remix do?', a:"Paste content that's already proven to work — a TikTok, a YouTube video, an article — and it rebuilds the idea in your brand voice with your product facts baked in. You take the structure and the hook mechanics, never the words." },
+    { q:'What does Remix do?', a:"Paste content that's already proven to work — a TikTok, a YouTube video, an article — and it rebuilds the idea in your brand voice, for your audience. You take the structure and the hook mechanics, never the words." },
     { q:'What are the remix modes?', a:'Remix (same shape, your voice), Simplify, Flip It, Format Swap, Make Series, and Roast & Respond. Pick the angle you want.' },
     { q:'Is it just copying?', a:'No — it adapts the mechanic to your brand and never invents facts about your product.' },
     { q:'Under the hood — how does the rewrite work?', a:"It extracts the source's structural mechanic — hook, beats, payoff — discards the words, then rebuilds it with your product facts and voice memory. Adaptation at the structure level, not a paraphrase." }
@@ -14569,96 +14725,13 @@ function moveStage(id, newStatus) {
     else if (newStatus === 'filming') mascotReact('nod', '📹');
     else if (newStatus === 'dismissed') mascotReact('droop');
   }
-
-  // Auto-refill: when an idea moves to filming or done, check for gaps
-  if ((newStatus === 'filming' || newStatus === 'done') && prevStatus === 'pending') {
-    autoRefillCheck(idea.day, idea.format, (typeof typesOf === 'function') ? typesOf(idea) : idea.postType);
-  }
+  // v709 (owner decision 2): no auto-refill here any more — approving never buys new ideas.
 }
 
-async function autoRefillCheck(day, format, postType) {
-  const pendingForSlot = state.filter(i => i.status === 'pending' && i.day === day && i.format === format);
-  if (pendingForSlot.length >= 1) return; // still have pending ideas for this slot
-
-  // Show a subtle toast
-  showToast(`Refilling ${day} ${FORMAT_LABELS[format] || format} slot...`);
-
-  const dc = getDayCommunities();
-  const learningContext = buildLearningContext();
-  // This fires AUTOMATICALLY after every approve, so it is the likeliest write to still be
-  // in flight when the user switches brand. Capture which brand asked for these ideas and
-  // refuse to push them into a different one. (_switchSeq is the same token switchBrand
-  // uses to abandon a superseded switch.)
-  const _stillSameBrand = brandGate();
-  // No AbortController budget of its own: this is a background refill, so a slow request
-  // must not sit forever holding a stale `state` reference.
-  const _ctrl = new AbortController();
-  // 240s, not 90s: generate-ideas has maxDuration 300 and makes two 90s LLM legs, so a 90s client
-  // budget hung up on a refill that was still running — the credit was spent and the posts thrown
-  // away. Same number and same reasoning as Quick Post above.
-  const _to = setTimeout(() => { try { _ctrl.abort(); } catch(_) {} }, 240000);
-
-  try {
-    // Lean request — see leanBrandFetch. This one matters most of the whole set: it fires
-    // AUTOMATICALLY after every single approve, so it was re-uploading the ~17KB brand snapshot
-    // in the background on a link measured at 0.5 KB/s while the user was still working.
-    // communities/dayMap are the day-theme strings this function just computed, and recentTrends
-    // is the localStorage merge, so both stay on the wire; `exFormat` (NOT forceFormat, which
-    // would add a prompt instruction) tells the server to format-match the approved winners the
-    // way getBrandContext(format) did on the device.
-    const resp = await leanBrandFetch('/api/generate-ideas',
-      { count: 2, gaps: [{ day, format, count: 0 }], learningContext, exFormat: format,
-        // types — refill asks for the same kind of post the approved one was (when it had a type)
-        ...((typeof typesValid === 'function' && typesValid(postType)) ? { postType: typesValid(postType) } : {}) },
-      () => ({
-        ...getBrandContext(format),
-        communities: DAYS.map(d => `${d}: ${dc[d]}`).join(', '),
-        dayMap: DAYS.map(d => `${d} = ${dc[d]}`).join(', ')
-      }),
-      () => ({
-        communities: DAYS.map(d => `${d}: ${dc[d]}`).join(', '),
-        dayMap: DAYS.map(d => `${d} = ${dc[d]}`).join(', '),
-        recentTrends: getRecentTrends()
-      }),
-      { signal: _ctrl.signal });
-    clearTimeout(_to);
-    // Status first — a 504 returns HTML, and `await resp.json()` on that threw
-    // "Unexpected token '<'" out of this background task.
-    if (!resp.ok) { console.warn('Auto-refill: API error ' + resp.status); return; }
-    let data = null;
-    try { data = JSON.parse(await resp.text()); } catch (e) { console.warn('Auto-refill: unreadable response'); return; }
-    if (!data || !data.ideas?.length) return;
-    if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
-    if (typeof typesNormIdea === 'function') data.ideas = data.ideas.map(typesNormIdea);   // types
-    // The user may have switched brand while this was in flight. Dropping the refill is
-    // correct: pushing it would file one brand's ideas into another brand's library.
-    if (!_stillSameBrand()) { console.warn('Auto-refill discarded: brand changed while generating'); return; }
-
-    // v600: dedupe against VISIBLE ideas only. Ideas in a switched-off format are unreachable,
-    // so letting them block new ones means paying for generation you can never see or use.
-    const existingTitles = new Set(getVisibleIdeas().map(s => s.title.toLowerCase()));
-    const newIdeas = data.ideas
-      .filter(i => !existingTitles.has(i.title.toLowerCase()))
-      // v472: id/status/assignee MUST be set here — a push without them broke the
-      // state[id] === array-index invariant for every idea after this point.
-      .map((i, n) => ({ ...i, id: state.length + n, status: 'pending', assignee: '', dismissReason: null, community: (i.community && i.community.trim()) || dc[i.day] || 'All', isGenerated: true }));
-
-    if (newIdeas.length) {
-      state.push(...newIdeas);
-      saveState();
-      renderNav();
-      if (activeView === 'ideas') { renderStats(); renderIdeas(); }
-
-      showToast(`Added ${newIdeas.length} new ${FORMAT_LABELS[format] || format} idea${newIdeas.length>1?'s':''} for ${day}`);
-    }
-  } catch(e) {
-    clearTimeout(_to);
-    if (e && (e.name === 'AbortError' || /abort/i.test(e.message || ''))) console.warn('Auto-refill timed out (background task, nothing lost)');
-    else console.error('Auto-refill error:', e);
-  } finally {
-    clearTimeout(_to);
-  }
-}
+/* v709 (owner decision 2) — autoRefillCheck is GONE. Approving an idea used to buy 2 new ideas (1 credit)
+   whenever that day+format had none left, so a morning batch of 7 approved one by one cost several hidden
+   generations, and a refill's 402 opened the upgrade sheet right after a free approve. Approving is free and
+   only approves; new ideas come from the morning batch, Plan my week or Generate more — each one asked for. */
 
 /* v673 — ONE reader for "what the USER actually wrote", because five separate ones drifted.
    Sharpen, Viral twist and the viral rewrite all log an edit signal whose `after` is the
@@ -15277,7 +15350,7 @@ async function generateNewIdeas() {
   const dismissed = state.filter(i => i.status === 'dismissed');
   let learningContext = '';
   if (approved.length > 0) {
-    const sample = approved.slice(-15).map(i => `"${i.title}" (${i.format}, ${i.day})`).join(', ');
+    const sample = approved.slice(-15).map(i => `"${i.title}" (${i.format}, ${i.day})${i.approveReason ? ' — loved: ' + i.approveReason : ''}`).join(', ');   // v709: why they liked it
     learningContext += `\nIDEAS THE USER LIKED (approved — generate MORE like these):\n${sample}`;
   }
   if (dismissed.length > 0) {
@@ -15324,7 +15397,7 @@ async function generateNewIdeas() {
         count,
         gaps: gaps.slice(0, 21),
         learningContext,
-        delivery: window._ideaDelivery || 'faceon',
+        delivery: (typeof deliveryReq === 'function') ? deliveryReq(window._ideaDelivery) : (window._ideaDelivery === 'faceless' ? 'faceless' : 'face'),
         ...((typeof typesMix === 'function') ? { typeMix: typesMix() } : {})   // types: the same mix the count came from
       },
       () => ({ ...getBrandContext(), communities, dayMap }),
@@ -15343,7 +15416,7 @@ async function generateNewIdeas() {
     debugLog('generateNewIdeas: got ' + data.ideas.length + ' ideas from API');
 
     // Keep each idea's own topic (lead-theme + variety); fall back to the day's theme only if missing
-    const _batchDelivery = window._ideaDelivery === 'faceless' ? 'faceless' : 'faceon';
+    const _batchDelivery = (typeof deliveryUi === 'function') ? deliveryUi(window._ideaDelivery) : (window._ideaDelivery === 'faceless' ? 'faceless' : 'faceon');
     if (typeof typesNormIdea === 'function') data.ideas = data.ideas.map(typesNormIdea);   // types
     const newIdeas = data.ideas.map(idea => ({
       ...idea,
@@ -15357,6 +15430,9 @@ async function generateNewIdeas() {
     // so letting them block new ones means paying for generation you can never see or use.
     const existingTitles = new Set(getVisibleIdeas().map(s => s.title.toLowerCase()));
     const unique = newIdeas.filter(i => !existingTitles.has(i.title.toLowerCase()));
+    // v709 (D10): a title that clashes with a HIDDEN idea, or with another idea in this batch, gets a suffix
+    { const _taken = new Set((Array.isArray(state) ? state : []).map(x => String((x && x.title) || '').toLowerCase().trim()));
+      if (typeof uniqueIdeaTitle === 'function') unique.forEach(i => { i.title = uniqueIdeaTitle(i.title, _taken); }); }
 
     if (unique.length === 0) {
       status.textContent = 'You already have ideas for every angle here. Approve or clear a few, switch Face-on / Faceless, or pick a specific day — then generate again.';
@@ -15394,7 +15470,7 @@ async function generateNewIdeas() {
     // Save new ideas to localStorage so they persist across reloads
     saveGeneratedIdeas();
 
-    status.textContent = `Added ${unique.length} new idea${unique.length !== 1 ? 's' : ''}`;
+    status.textContent = `Added ${unique.length} new idea${unique.length !== 1 ? 's' : ''}` + ((typeof shortBatchNote === 'function' && shortBatchNote(data)) ? '. ' + shortBatchNote(data) : '');
     status.className = 'generate-status success';
     if (typeof mascotReact === 'function') mascotReact('celebrate', '🔥');
 
@@ -15474,9 +15550,12 @@ function renderTodayView() {
   const community = dc[today] || 'General';
 
   const formatKeys = FORMATS.filter(f => f !== 'bonus');
+  // v709 (D3): the big button never picks a format switched off in Content Mix (all off = all on)
+  const _mixOn = formatKeys.filter(f => (typeof formatOn === 'function') ? formatOn(f) : true);
+  const _pool = _mixOn.length ? _mixOn : formatKeys;
   const recentForToday = state.filter(i => i.day === today && ['filming','done'].includes(i.status));
   const usedFormats = new Set(recentForToday.slice(-5).map(i => i.format));
-  const availableFormats = formatKeys.filter(f => !usedFormats.has(f));
+  const availableFormats = _pool.filter(f => !usedFormats.has(f));
   // v447 FINAL (settled after 3 rounds — Jörgen: "talking head micro lecture…
   // a person can see what it actually generates with more than a few sentences"):
   // a brand-new brand's FIRST post defaults to a VIDEO talking-head script — the
@@ -15486,11 +15565,14 @@ function renderTodayView() {
   // ONE tap from a statement, so the default costs nothing. Statements (whenever
   // generated) keep BOTH outcome buttons: "Post it →" and "Film it".
   const _virginBrand = !state.some(i => ['filming','done'].includes(i.status));
-  const smartDefault = _virginBrand ? 'video' : (availableFormats.length > 0
+  const smartDefault = _virginBrand ? (_pool.includes('video') ? 'video' : _pool[0]) : (availableFormats.length > 0
     ? availableFormats[Math.floor(Math.random() * availableFormats.length)]
-    : formatKeys[Math.floor(Math.random() * formatKeys.length)]);
+    : _pool[Math.floor(Math.random() * _pool.length)]);
 
-  if (!window._tvSelectedFormat || !formatKeys.includes(window._tvSelectedFormat)) {
+  // a format the person picked themselves (Pick the angle, Redo as) stays; a drawn one is re-drawn
+  // when Content Mix has since switched it off
+  if (!window._tvSelectedFormat || !formatKeys.includes(window._tvSelectedFormat)
+      || (!window._tvFormatChosen && !_pool.includes(window._tvSelectedFormat))) {
     window._tvSelectedFormat = smartDefault;
   }
   const selectedFormat = window._tvSelectedFormat;
@@ -15499,7 +15581,7 @@ function renderTodayView() {
   // v442: per-brand remembered delivery — set once, kept (Boring = face-on, Mila = faceless).
   try {
     const _bid = currentBrand && currentBrand.id;
-    if (window._tvDelivBrand !== _bid) { window._tvDelivBrand = _bid; window._tvDelivery = (lsGet('tv_delivery') === 'faceless') ? 'faceless' : 'faceon'; }
+    if (window._tvDelivBrand !== _bid) { window._tvDelivBrand = _bid; window._tvDelivery = null; }   // v709: null = the brand's How you film
     // types — the "what is it about" pick is NOT remembered: every app open (and every other brand) starts on Surprise me
     if (window._tvTypeBrand !== _bid) { window._tvTypeBrand = _bid; window._tvPostType = 'surprise'; }
   } catch(e) {}
@@ -15529,7 +15611,7 @@ function renderTodayView() {
   `;
   if (_keepRes && _keepRes.innerHTML.trim()) { const _n = document.getElementById('tvResult'); if (_n) _n.replaceWith(_keepRes); }
 }
-function setTvDelivery(d){ window._tvDelivery = (d==='faceless'?'faceless':'faceon'); try{ lsSet('tv_delivery', window._tvDelivery); }catch(e){} renderTodayView(); }
+function setTvDelivery(d){ window._tvDelivery = (d==='faceless'?'faceless':'faceon'); renderTodayView(); }   // v709: an override for this session's posts; the brand setting lives in Settings
 // ── v442 "Pick the angle myself" sheet — the escape hatch for format + delivery ──
 function openAngleSheet(){
   if (document.getElementById('angleSheetWrap')) { closeAngleSheet(); return; }
@@ -15544,8 +15626,8 @@ function closeAngleSheet(){ const w = document.getElementById('angleSheetWrap');
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.getElementById('angleSheetWrap')) closeAngleSheet(); });
 // v603: Escape also closes the Assistant — a stuck full-screen overlay with an unclickable × traps the user.
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.querySelector('.bv-overlay') && typeof closeBrandVoice === 'function') closeBrandVoice(); });
-function angleSetFormat(f){ window._tvSelectedFormat = f; renderAngleSheet(); }
-function setTvDeliverySheet(d){ window._tvDelivery = (d==='faceless'?'faceless':'faceon'); try{ lsSet('tv_delivery', window._tvDelivery); }catch(e){} renderAngleSheet(); }
+function angleSetFormat(f){ window._tvSelectedFormat = f; window._tvFormatChosen = true; renderAngleSheet(); }
+function setTvDeliverySheet(d){ window._tvDelivery = (d==='faceless'?'faceless':'faceon'); renderAngleSheet(); }
 function angleGenerate(){ closeAngleSheet(); tvGenerateV2(); }   // v693: opinion-first
 function renderAngleSheet(){
   const el = document.getElementById('angleSheetBody'); if (!el) return;
@@ -15553,7 +15635,7 @@ function renderAngleSheet(){
   const sel = window._tvSelectedFormat;
   const chips = '<div class="tp-cats" style="justify-content:flex-start;">' + formatKeys.map(f =>
     '<span class="tp-cat' + (f === sel ? ' active' : '') + '" onclick="angleSetFormat(\'' + f + '\')">' + (FORMAT_LABELS[f] || f) + '</span>').join('') + '</div>';
-  const deliv = DELIVERY_FORMATS.has(sel) ? deliverySegHtml(window._tvDelivery || 'faceon', 'setTvDeliverySheet') : '';
+  const deliv = DELIVERY_FORMATS.has(sel) ? deliverySegHtml((typeof deliveryUi === 'function') ? deliveryUi(window._tvDelivery) : (window._tvDelivery || 'faceon'), 'setTvDeliverySheet') : '';
   el.innerHTML =
     '<div style="padding:10px 16px 16px;position:relative;">' +
       // v592: a real × — the backdrop-tap alone left users (and the QA sim) stuck in this sheet.
@@ -15565,11 +15647,11 @@ function renderAngleSheet(){
     '</div>';
 }
 // Ideas + Remix reuse the SAME deliverySegHtml component via their own slots, so all three surfaces match.
-window._ideaDelivery = window._ideaDelivery || 'faceon';
-window._remixDelivery = window._remixDelivery || 'faceon';
-function renderIdeaDelivery(){ var s=document.getElementById('ideaDeliverySlot'); if(s) s.innerHTML = deliverySegHtml(window._ideaDelivery||'faceon','setIdeaDelivery'); }
+if (window._ideaDelivery === undefined) window._ideaDelivery = null;     // v709: null = the brand's How you film
+if (window._remixDelivery === undefined) window._remixDelivery = null;
+function renderIdeaDelivery(){ var s=document.getElementById('ideaDeliverySlot'); if(s) s.innerHTML = deliverySegHtml((typeof deliveryUi === 'function') ? deliveryUi(window._ideaDelivery) : (window._ideaDelivery || 'faceon'),'setIdeaDelivery'); }
 function setIdeaDelivery(d){ window._ideaDelivery = (d==='faceless'?'faceless':'faceon'); renderIdeaDelivery(); }
-function renderRemixDelivery(){ var h = deliverySegHtml(window._remixDelivery||'faceon','setRemixDelivery'); var s=document.getElementById('remixDeliverySlot'); if(s) s.innerHTML = h; var s2=document.getElementById('rxOrigDelivery'); if(s2) s2.innerHTML = h; }
+function renderRemixDelivery(){ var h = deliverySegHtml((typeof deliveryUi === 'function') ? deliveryUi(window._remixDelivery) : (window._remixDelivery || 'faceon'),'setRemixDelivery'); var s=document.getElementById('remixDeliverySlot'); if(s) s.innerHTML = h; var s2=document.getElementById('rxOrigDelivery'); if(s2) s2.innerHTML = h; }
 function setRemixDelivery(d){ window._remixDelivery = (d==='faceless'?'faceless':'faceon'); renderRemixDelivery(); }
 
 // Open a filming-queue item in the Pipeline tab, expanded
@@ -15716,8 +15798,16 @@ async function leanBrandFetch(url, base, makeFullBc, makeThinBc, opts) {
   // An edit still sitting in the 600ms keystroke debounce must reach the database BEFORE
   // the server reads the brand row, or a field edited seconds ago is not in the output.
   if (leanId) { try { await flushBrandSave(); } catch(e) {} }
+  // v709 — every WRITER request says how the post is filmed (the caller's override, else the brand's
+  // How you film) and, where a News post can come out, which headlines were dismissed.
+  const _writer = /\/api\/(generate-ideas|remix|sharpen|viral-|video-beats)/.test(String(url));
+  let _wx = {};
+  try {
+    if (_writer) _wx = Object.assign({ delivery: deliveryReq(base && base.delivery) },
+      /\/api\/generate-ideas/.test(String(url)) ? { newsDismissed: newsDismissedList() } : {});
+  } catch (e) { _wx = {}; }
   const body = (lean) => JSON.stringify(lean
-    ? { ...base, brandId: leanId, bcFields: _tvBcFieldCount(makeFullBc()),
+    ? { ...base, ..._wx, brandId: leanId, bcFields: _tvBcFieldCount(makeFullBc()),
         // v640: which approved posts the user actually REWROTE. This belongs in the lean payload
         // by the same rule as the trends: `edit_signals` is localStorage-only, so the server
         // physically cannot know it — and without it the server-hydrated winners are all treated
@@ -15727,7 +15817,7 @@ async function leanBrandFetch(url, base, makeFullBc, makeThinBc, opts) {
         // old behaviour instead of throwing inside body() and breaking EVERY generate call.
         humanEditedTitles: (typeof _humanEditedTitles === 'function' ? _humanEditedTitles() : []),
         brandContext: (makeThinBc ? makeThinBc() : { recentTrends: getRecentTrends() }) }
-    : { ...base, brandContext: makeFullBc() });
+    : { ...base, ..._wx, brandContext: makeFullBc() });
   const send = (lean) => fetch(url, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: body(lean), signal: o.signal
@@ -15878,7 +15968,9 @@ async function generateTodayTabPost() {
       count: 1,
       gaps: forcedGaps,
       forceFormat: pickedFormat,
-      delivery: DELIVERY_FORMATS.has(pickedFormat) ? (window._tvDelivery||'faceon') : 'faceon',
+      // v709: the brand's How you film, or this post's switch; and the headlines the person dismissed
+      delivery: (typeof deliveryReq === 'function') ? deliveryReq(window._tvDelivery) : (window._tvDelivery === 'faceless' ? 'faceless' : 'face'),
+      newsDismissed: (typeof newsDismissedList === 'function') ? newsDismissedList() : [],
       // types — the chip picked (or this run's "Surprise me" draw); nothing = the server's own default
       ...((typeof tvClassicPostType === 'function' && tvClassicPostType()) ? { postType: tvClassicPostType() } : {}),
     };
@@ -15966,7 +16058,7 @@ async function generateTodayTabPost() {
     }
     const idea = (typeof typesNormIdea === 'function') ? typesNormIdea(data.ideas[0]) : data.ideas[0];   // types
     idea.community = community;
-    if (DELIVERY_FORMATS.has(idea.format)) idea.delivery = window._tvDelivery || 'faceon';
+    if (DELIVERY_FORMATS.has(idea.format)) idea.delivery = (typeof deliveryUi === 'function') ? deliveryUi(window._tvDelivery) : (window._tvDelivery || 'faceon');
     window._tvIdea = idea;   // so Sharpen knows this post's format + has a fallback
     // v448: redo-note taste signal — same shape as ideaRedoRun's ("this correction is a real voice signal").
     if (_redoNote) { try { if (typeof saveEditSignals === 'function') saveEditSignals([{ format: idea.format || pickedFormat, field: 'redo-note', before: _redoBefore, after: _redoNote.slice(0, 120) }]); } catch(e) {} }
@@ -16006,7 +16098,7 @@ async function generateTodayTabPost() {
     }
     if (idea.hook && !isStmt) fieldsHTML += tvFieldHtml('Hook', 'tvHook', idea.hook, true);
     if (idea.script) fieldsHTML += tvFieldHtml(isStmt ? 'Shooting tips' : 'Script', 'tvScript', idea.script, !isStmt && idea.format !== 'carousel');
-    if (idea.caption && (idea.format === 'static' || idea.format === 'carousel')) fieldsHTML += tvFieldHtml('Caption', 'tvCaption', idea.caption, true);
+    if (idea.caption) fieldsHTML += tvFieldHtml('Caption', 'tvCaption', idea.caption, true);   // v709 (B F17): every format
     if (idea.cta) fieldsHTML += tvFieldHtml('Call to action', 'tvCta', idea.cta);
     if (idea.tags) fieldsHTML += tvFieldHtml('Hashtags', 'tvTags', Array.isArray(idea.tags) ? idea.tags.join(' ') : idea.tags);
     if (idea.shots || idea.shotList) fieldsHTML += tvFieldHtml('Shot list', 'tvShots', idea.shots || idea.shotList);
@@ -16022,12 +16114,12 @@ async function generateTodayTabPost() {
           </div>
           <div class="tp-result-body">${fieldsHTML}</div>
           <div class="tp-actions-row">
-            <button class="tp-action-btn approve" onclick="tvApprove()">Approve</button>
+            <button class="tp-action-btn approve" onclick="tvApprove()">Save to Ideas</button>
             ${(idea.format==='statement'||idea.format==='static'||idea.format==='carousel')?'<button class="tp-action-btn teleprompter" onclick="tvPostIt()">Post it &rarr;</button>':''}
             <button class="tp-action-btn sharpen" onclick="sharpenQuickPost(this)">Sharpen</button>
             <button class="tp-action-btn" onclick="tvViralTwist(this)">Viral Twist</button>
             <button class="tp-action-btn" onclick="tvRedoNotesOpen()">Redo with notes</button>
-            ${idea.format==='carousel'?'<button class="tp-action-btn teleprompter" onclick="tvMakeSlides()">Make Slides</button>':''}
+            ${idea.format==='carousel'?'<button class="tp-action-btn teleprompter" onclick="tvMakeSlides()">Save &amp; make slides</button>':''}
             ${(idea.format==='video'||idea.format==='micro'||idea.format==='qna')?'<button class="tp-action-btn teleprompter" onclick="tvOpenTeleprompter()">Teleprompter</button><button class="tp-action-btn" onclick="tvOpenBroll()">B-roll preview</button>':''}
             ${idea.format==='statement'?'<button class="tp-action-btn teleprompter" onclick="tvOpenTeleprompter()">Film it</button>':''}
             <button class="tp-action-btn retry" onclick="generateTodayTabPost()">Try Another</button>
@@ -16092,7 +16184,7 @@ async function generateTodayTabPost() {
   }
 }
 // v442: regenerate the just-shown Quick Post as a different format (post-controls beat pre-config).
-function tvRedoAs(f){ window._tvSelectedFormat = f; generateTodayTabPost(); }
+function tvRedoAs(f){ window._tvSelectedFormat = f; window._tvFormatChosen = true; generateTodayTabPost(); }
 // v447: "Post it →" — the easiest possible posting path. Native share sheet with the
 // post text ready (statement/caption formats; video posts go via the teleprompter).
 // Reads the LIVE editable fields so the user's tweaks ship, without firing edit signals.
@@ -16142,8 +16234,8 @@ function tvPostIt(){
   }
 }
 // ── v448: the full pre-approval refine kit on the Quick Post result ──────────
-// Quick Post approve → straight to Pipeline (filming), skipping Ideas — so the
-// twisting/redo moment must happen HERE, before approval (refine-before-approve
+// Quick Post "Save to Ideas" (v709; it used to go straight to the Pipeline) — the
+// twisting/redo moment still happens HERE, before saving (refine-before-approve
 // doctrine; approved cards have no twist anywhere since v372). These mirror
 // viralTwist/viralRewrite/applyViralRewrite but operate on the in-memory
 // window._todayTabIdea (not yet in state[]) and update the card's DOM in place.
@@ -16364,13 +16456,17 @@ function tvApprove() {
   if (!idea) { tvNoIdea('approve'); return; }
   const _edits = tvCaptureEdits(idea);
   if (Array.isArray(idea.tags)) idea.tags = idea.tags.join(' ');
+  idea.title = (typeof uniqueIdeaTitle === 'function') ? uniqueIdeaTitle(idea.title) : idea.title;   // v709 (D10): the loader keeps one row per title
   const newId = state.length;
   IDEAS.push(idea);
+  // v709 (D3/D4): saved to Ideas (pending), the same place every other writer saves to — the
+  // Pipeline is for ideas approved there. Never straight to the Pipeline from here.
   state.push({
     ...idea,
     id: newId,
-    status: 'filming',
-    approvedAt: Date.now(),
+    status: 'pending',
+    isGenerated: true,
+    freshAt: Date.now(),
     assignee: ''
   });
   window._tvLastStateId = newId;
@@ -16383,16 +16479,15 @@ function tvApprove() {
   Promise.resolve(_saved).then(r => {
     if (typeof showToast !== 'function') return;
     if (r && r.ok === false) return;   // notifyIdeasSaveFailed already told them the truth
-    showToast(_edits ? 'Saved your edits \u2014 brand brain just got sharper' : 'Added to Pipeline', 4500, () => switchView('pipeline'));
+    showToast(_edits ? 'Saved to your Ideas \u2014 your edits teach your brand brain' : 'Saved to your Ideas', 4500, () => switchView('ideas'));
   });
-  if (typeof autoRefillCheck === 'function') autoRefillCheck(idea.day, idea.format, (typeof typesOf === 'function') ? typesOf(idea) : idea.postType);
   const approveBtn = document.querySelector('#tvResult .tp-action-btn.approve');
   if (approveBtn) {
-    approveBtn.textContent = 'Ready to Film & Post! →';
+    approveBtn.textContent = 'Saved \u2014 open in Ideas \u2192';
     approveBtn.style.background = 'var(--cs-primary)';
     approveBtn.style.color = 'var(--cs-on-primary)';
-    // Make it actionable: jump to the Pipeline where this approved post lives.
-    approveBtn.onclick = () => switchView('pipeline');
+    // Make it actionable: jump to Ideas, where this saved post now waits to be approved.
+    approveBtn.onclick = () => switchView('ideas');
   }
   if (typeof mascotReact === 'function') mascotReact('nod', '👍');
   // Optional, skippable: capture what made it land (no friction — ignore and move on)
@@ -16421,7 +16516,7 @@ function tvApprovePraise(reason) {
 }
 
 function tvMakeSlides() {
-  // Save the carousel first (so it's in the pipeline), then open the slide maker on it.
+  // Save the carousel first (to Ideas — free; the button says so), then open the slide maker on it.
   // v625: the guard used to sit on the CALLER (`if (window._todayTabIdea) tvApprove();`), so with
   // no current post it skipped tvApprove entirely — its warning never fired — and fell through to
   // `_tvLastStateId`, a PREVIOUSLY approved post. That is either a silent no-op or, worse, opens
@@ -16538,7 +16633,12 @@ function tvDismissWithReason(reason) {
     saveGeneratedIdeas();
   }
   window._todayTabIdea = null;
-  generateTodayTabPost();
+  // v709 (D9): skipping never writes (and pays for) a new post by itself. Say what happened and offer it.
+  const _res = document.getElementById('tvResult');
+  if (_res) _res.innerHTML = '<div class="tp-result"><div class="tp-result-card"><div class="tp-result-body">'
+    + '<div class="tp-dismiss-label">Skipped \u2014 your brand brain will steer away from posts like that.</div>'
+    + '<button type="button" class="gen-btn" id="tvWriteAnotherBtn" style="width:100%;margin-top:12px;" onclick="generateTodayTabPost()">Write another post</button>'
+    + '</div></div></div>';
 }
 
 /* v673 — a field that should be text but isn't.
@@ -16949,7 +17049,8 @@ async function usePAAQuestion(idx, chosenFormat) {
         return;
       }
 
-      // Avoid dupe titles
+      // Avoid dupe titles — v709 (D10): a clash gets a suffix; the paid idea is never thrown away
+      newIdea.title = (typeof uniqueIdeaTitle === 'function') ? uniqueIdeaTitle(newIdea.title) : newIdea.title;
       const dupeOf = state.find(s => s.title.toLowerCase() === newIdea.title.toLowerCase());
       if (dupeOf) {
         console.log('PAA DUPE BLOCKED:', newIdea.title, 'matches existing:', dupeOf.title);
@@ -17448,7 +17549,7 @@ function safeUrl(u, opts) {
 
 
 function toggleExpand(id) { if(openDismissPopup!==null)return; expandedIds.has(id)?expandedIds.delete(id):expandedIds.add(id); refreshCurrentView(); }
-function quickApprove(id) { reindexIdeas(); if(!state[id])return; state[id].status="filming"; state[id].approvedAt=Date.now(); state[id].dismissReason=null; saveState(); renderNav(); refreshCurrentView(); autoRefillCheck(state[id].day, state[id].format, (typeof typesOf === 'function') ? typesOf(state[id]) : state[id].postType); window._apJumpId = id; showApprovePopupFn(id); }
+function quickApprove(id) { reindexIdeas(); if(!state[id])return; state[id].status="filming"; state[id].approvedAt=Date.now(); state[id].dismissReason=null; saveState(); renderNav(); refreshCurrentView(); window._apJumpId = id; showApprovePopupFn(id); }   // v709: no auto-refill
 function undoStatus(id) { if(!state[id])return; state[id].status="pending"; state[id].dismissReason=null; saveState(); renderNav(); refreshCurrentView(); }
 function showDismissPopupFn(id) {
   closeDismissSheet();
@@ -18512,6 +18613,7 @@ async function nbDevelop(id, btn) {
     if (typeof rv2TagFlow === 'function') data.ideas = data.ideas.map(rv2TagFlow);   // v693: gen_flow 'v2' only with a belief
     const idea = data.ideas[0];
     if (!_sameBrand()) { if (typeof showToast === 'function') showToast('You switched brand while that was generating, so it was not added.', 6000); return; }
+    idea.title = (typeof uniqueIdeaTitle === 'function') ? uniqueIdeaTitle(idea.title) : idea.title;   // v709 (D10)
     const idx = state.length;
     IDEAS.push(idea);
     state.push({ ...idea, id: idx, status: 'pending', assignee: '', sparkSource: true });
@@ -18701,43 +18803,43 @@ function parseCarouselSlides(idea) {
   slides.forEach(sl => { sl.text = (sl.text||'').replace(/^\s*\d+\s*[:.\)\-]\s+/, '').trim(); });
   return slides.filter(sl => sl.text);
 }
+/* v709 (B3) — the batch asks for carousel slides in boldText as "1: … 2: …" (inline or one per line) and
+   puts DESIGN NOTES in script. So: boldText first, and "N:" counts as a slide marker; script is read only
+   when there is no boldText at all (older ideas kept the slides there). A numbered marker only counts as
+   part of a run 1, 2, 3… so "4.8 stars" or "Step 3." inside a sentence is never a slide break. */
+function _carouselSplitMarked(text, minRun) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+  const slideRe = /(?:^|\s)Slide\s*\d+\s*[:.\-)]+\s*/gi;
+  const sm = t.match(slideRe);
+  if (sm && sm.length >= 2) {
+    const parts = t.split(slideRe).map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 2) return parts;
+  }
+  const re = /(^|\s)(\d{1,2})\s*[:.)]\s+/g;
+  const hits = []; let m;
+  while ((m = re.exec(t))) hits.push({ n: Number(m[2]), at: m.index + m[1].length, end: re.lastIndex });
+  let run = [], want = 1;
+  for (const h of hits) { if (h.n === want) { run.push(h); want++; } }
+  if (run.length < (minRun || 2)) return null;
+  const parts = [];
+  for (let i = 0; i < run.length; i++) parts.push(t.slice(run[i].end, i + 1 < run.length ? run[i + 1].at : t.length).trim());
+  return parts.filter(Boolean).length >= 2 ? parts.filter(Boolean) : null;
+}
 function _parseCarouselSlidesRaw(idea) {
   const slides = [];
   const bt = (idea.boldText || '').trim();
   const script = (idea.script || '').trim();
   const hook = (idea.hook || '').trim();
 
-  // Check script first — that's where the AI puts per-slide content for carousels
-  // Try "Slide N:" pattern in script
-  const scriptSlidePattern = script.match(/Slide\s*\d+[\s:.\-]+/gi);
-  if (scriptSlidePattern && scriptSlidePattern.length >= 2) {
-    const parts = script.split(/Slide\s*\d+[\s:.\-]+/gi).filter(p => p.trim());
-    parts.forEach(p => slides.push({ text: p.trim() }));
-    return slides;
-  }
+  // boldText holds the slide texts ("Slide N:" or "1: … 2: …", inline or per line)
+  const btParts = _carouselSplitMarked(bt, 2);
+  if (btParts) { btParts.forEach(p => slides.push({ text: p })); return slides; }
 
-  // Try "Slide N:" pattern in boldText
-  const btSlidePattern = bt.match(/Slide\s*\d+[\s:.\-]+/gi);
-  if (btSlidePattern && btSlidePattern.length >= 2) {
-    const parts = bt.split(/Slide\s*\d+[\s:.\-]+/gi).filter(p => p.trim());
-    parts.forEach(p => slides.push({ text: p.trim() }));
-    return slides;
-  }
-
-  // Try numbered list in script
-  const scriptNumPattern = script.match(/^\d+[\.\)]\s/gm);
-  if (scriptNumPattern && scriptNumPattern.length >= 3) {
-    const parts = script.split(/^\d+[\.\)]\s/gm).filter(p => p.trim());
-    parts.forEach(p => slides.push({ text: p.trim() }));
-    return slides;
-  }
-
-  // Try numbered list in boldText
-  const btNumPattern = bt.match(/^\d+[\.\)]\s/gm);
-  if (btNumPattern && btNumPattern.length >= 2) {
-    const parts = bt.split(/^\d+[\.\)]\s/gm).filter(p => p.trim());
-    parts.forEach(p => slides.push({ text: p.trim() }));
-    return slides;
+  // older ideas without boldText kept the slides in script
+  if (!bt) {
+    const scParts = _carouselSplitMarked(script, 2);
+    if (scParts) { scParts.forEach(p => slides.push({ text: p })); return slides; }
   }
 
   // Try double newline split on boldText
@@ -18754,7 +18856,7 @@ function _parseCarouselSlidesRaw(idea) {
     return slides;
   }
 
-  // Fallback: use whatever we have
+  // Fallback: use whatever we have (script only when there is nothing else — it may be design notes)
   if (!bt && !hook && !script) {
     slides.push({ text: idea.title || 'Slide 1' });
     return slides;
@@ -19547,12 +19649,13 @@ async function generateMore(id, btn) {
     + 'Each variation gets its own new title and a different hook, and takes the idea somewhere fresh — never a copy of the original or of each other. '
     + 'Never use the word "viral" or "going viral" in the actual content.\n\nORIGINAL IDEA:\nTitle: ' + (i.title || '') + '\nHook: ' + (i.hook || '') + '\nBody/script: ' + body;
   const _ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
-  // 240s: same budget and reason as autoRefillCheck (generate-ideas can run two 90s legs)
+  // 240s: the same budget and reason as Quick Post (generate-ideas can run two 90s legs)
   const _to = setTimeout(() => { try { if (_ctrl) _ctrl.abort(); } catch (_) {} }, 240000);
   _gmBusy.add(_key);   // from here on, the finally below always releases it
   try {
     const resp = await leanBrandFetch('/api/generate-ideas',
-      { count: 3, gaps: [{ day: (i.day || getTodayName()), format: fmt, count: 0 }], learningContext: lc, exFormat: fmt },
+      { count: 3, gaps: [{ day: (i.day || getTodayName()), format: fmt, count: 0 }], learningContext: lc, exFormat: fmt,
+        delivery: i.delivery, ...((typeof typesOf === 'function') ? { postType: typesOf(i) } : {}) },   // v709 (D5)
       () => getBrandContext(fmt), null, _ctrl ? { signal: _ctrl.signal } : {});
     clearTimeout(_to);
     const txt = await resp.text(); let data = null; try { data = JSON.parse(txt); } catch (e) { data = null; }
@@ -19567,21 +19670,22 @@ async function generateMore(id, btn) {
     const dc = (typeof getDayCommunities === 'function' ? getDayCommunities() : null) || {};
     const now = Date.now();
     const fresh = [];
-    data.ideas.map(x => (typeof rv2TagFlow === 'function' ? rv2TagFlow(x) : x)).forEach(x => {
+    data.ideas.map(x => (typeof rv2TagFlow === 'function' ? rv2TagFlow(x) : x)).map(x => (typeof typesNormIdea === 'function' ? typesNormIdea(x) : x)).forEach(x => {
       const k = String((x && x.title) || '').toLowerCase().trim();
       if (!k || taken.has(k)) return;   // the save replaces rows BY TITLE: a repeat title would overwrite
       taken.add(k);
       const day = x.day || i.day || getTodayName();
       fresh.push(Object.assign({}, x, { id: state.length + fresh.length, status: 'pending', assignee: '', dismissReason: null,
         day: day, format: x.format || fmt, community: (x.community && String(x.community).trim()) || i.community || dc[day] || 'All',
-        isGenerated: true, freshAt: now }));
+        isGenerated: true, freshAt: now }, i.delivery && DELIVERY_FORMATS.has(x.format || fmt) ? { delivery: i.delivery } : {}));
     });
     if (!fresh.length) { if (typeof showToast === 'function') showToast('Those came back the same as ideas you already have — try again.'); return; }
     state.push(...fresh);
     saveState();
     try { renderNav(); } catch (e) {}
     if (typeof activeView !== 'undefined' && activeView === 'ideas') { try { renderStats(); renderIdeas(); } catch (e) {} }
-    if (typeof showToast === 'function') showToast(fresh.length === 3 ? '3 new versions added' : (fresh.length + ' new version' + (fresh.length === 1 ? '' : 's') + ' added'));
+    const _shortNote = (typeof shortBatchNote === 'function') ? shortBatchNote(data) : '';   // v709: a short batch is said plainly
+    if (typeof showToast === 'function') showToast((fresh.length === 3 ? '3 new versions added' : (fresh.length + ' new version' + (fresh.length === 1 ? '' : 's') + ' added')) + (_shortNote ? '. ' + _shortNote : ''), _shortNote ? 7000 : 3000);
   } catch (e) {
     clearTimeout(_to);
     const msg = (e && (e.name === 'AbortError' || /abort/i.test(e.message || ''))) ? 'That took too long — try again.'
@@ -19735,7 +19839,14 @@ async function sharpenNow(opts){
   const content = o.content || {};
   const _keys = Object.keys(content).filter(k => content[k]!=null && String(content[k]).trim());
   if(!_keys.length){ if(typeof showToast==='function') showToast('Nothing to sharpen here'); return; }
-  const stop = (o.btn && typeof btnWork==='function') ? btnWork(o.btn, 'redo', { maxMs: 65000 }) : null;
+  // v709 (D6): the server may work for up to 280 s; the button stays busy until it answers (or 300 s, when
+  // the request is cancelled and that is said). One sharpen at a time, so a second press never pays twice.
+  if (window._csSharpenBusy) { if(typeof showToast==='function') showToast('Still sharpening \u2014 one moment.'); return; }
+  const _shCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+  let _shTimedOut = false;
+  window._csSharpenBusy = true;
+  const stop = (o.btn && typeof btnWork==='function') ? btnWork(o.btn, 'redo', { maxMs: 300000, onTimeout: function(){ _shTimedOut = true; try { if (_shCtrl) _shCtrl.abort(); } catch(_) {} } }) : null;
+  const _shTo = (!o.btn && _shCtrl) ? setTimeout(function(){ _shTimedOut = true; try { _shCtrl.abort(); } catch(_) {} }, 300000) : null;
   // v643 — CLAUDE.md claimed v639 had guarded this; two independent audits found no such guard and
   // reading the function confirmed it. `sharpenIdea`'s apply writes into IDEAS[id], and `id` is an
   // ARRAY INDEX, so after a brand switch mid-request it overwrote whatever idea now sits at that
@@ -19752,7 +19863,7 @@ async function sharpenNow(opts){
         let _bc = (typeof getBrandContext==='function') ? getBrandContext() : {};
         try{ if(o.format && typeof getApprovedExamples==='function') _bc = { ..._bc, approvedExamples: getApprovedExamples(o.format) }; }catch(e){}
         return _bc;
-      });
+      }, null, _shCtrl ? { signal: _shCtrl.signal } : {});
     const data = await resp.json().catch(()=>({}));
     if(resp.status===402){ if(data && data.error==='limit_reached' && typeof showUpgrade==='function') showUpgrade(data); return; }
     if(!resp.ok || !data){ if(typeof showToast==='function') showToast((data && data.error) || "Couldn't sharpen — try again"); return; }
@@ -19794,8 +19905,8 @@ async function sharpenNow(opts){
     if(typeof showToast==='function') showToast('Sharpened ✨', 2500);
     try{ if(typeof mascotReact==='function') mascotReact('celebrate'); }catch(e){}
   }catch(e){
-    if(typeof showToast==='function') showToast("Couldn't sharpen — check your connection");
-  }finally{ if(stop) stop(); }
+    if(typeof showToast==='function') showToast(_shTimedOut ? 'Sharpening took too long and was stopped \u2014 nothing was changed.' : "Couldn't sharpen \u2014 check your connection");
+  }finally{ window._csSharpenBusy = false; if(_shTo) clearTimeout(_shTo); if(stop) stop(); }
 }
 
 // Ideas / Pipeline card — sharpen the post fields in place. state[] objects are CLONES of IDEAS (by
@@ -20126,7 +20237,7 @@ function addViralIdeaToList(ix, btn){
   const newId = state.length;
   const idea = {
     id:newId, status:'pending', day:'Bonus', community:'Trends',
-    format: fmt, tone:'', title: src.title || hook || 'Viral-inspired idea',
+    format: fmt, tone:'', title: (typeof uniqueIdeaTitle === 'function') ? uniqueIdeaTitle(src.title || hook || 'Viral-inspired idea') : (src.title || hook || 'Viral-inspired idea'),   // v709 (D10)
     hook, script, shots:'', screen:'', caption:'', reelTitle:'',
     tags:'', boldText: (fmt==='statement'||fmt==='carousel') ? script : '',
     isViralSourced:true, createdAt:Date.now()
@@ -20201,7 +20312,7 @@ async function connToken(){ try{ const { data:{ session } } = await sb.auth.getS
           else if (_burst) {
             if (typeof showToast === 'function') showToast('Going a bit fast — give it ' + (d.retryAfter || 60) + ' seconds and try again.', 6000);
           }
-          else if (d.error === 'limit_reached' && typeof showUpgrade === 'function') showUpgrade(d);
+          else if (d.error === 'limit_reached' && typeof showUpgrade === 'function' && (typeof _u === 'undefined' || String(_u).indexOf('/api/speak') === -1)) showUpgrade(d);   // v709: the coach voice says it in words
         }).catch(function(){});
       } else if (_resp && _resp.ok && _u.indexOf('/api/') !== -1 && _u.indexOf('/api/usage') === -1) {
         clearTimeout(window.__usageRefreshT);
@@ -20905,6 +21016,7 @@ async function ideaDevelop(){
        that has had one auto-refill, "Open in Ideas →" expanded and scrolled to a REFILL idea
        while the user's new brief sat further down: it reads as "my brief didn't save".
        nbDevelop uses state.length, which is what shows this was the mistake. */
+    out.title = (typeof uniqueIdeaTitle === 'function') ? uniqueIdeaTitle(out.title) : out.title;   // v709 (D10)
     const idx = state.length; IDEAS.push(out);
     state.push({ ...out, id: idx, status:'pending', assignee:'', sparkSource:true, paaSource:false, freshAt: Date.now(), day: (out.day && DAYS.includes(out.day)) ? out.day : getTodayName() });
     window._lastIdeaCatcherId = idx;
@@ -20978,9 +21090,14 @@ async function ideaRedoRun(id){
     // correction" block) is built from the idea on screen and must travel; the brand brain must
     // not. `exFormat` keeps the winners format-matched exactly as getBrandContext(idea.format) did,
     // without forceFormat's extra prompt instruction.
+    // v709 (D5): the same post type goes back (a News idea also names its headline), and the idea's own delivery
+    const _redoType = (typeof typesOf === 'function') ? typesOf(idea) : '';
+    const _redoNews = (_redoType === 'news' && typeof typesNewsSource === 'function') ? typesNewsSource(idea.newsSource) : null;
     const resp = await leanBrandFetch('/api/generate-ideas',
       { count:1, gaps:[{ day:(idea.day||getTodayName()), format:(idea.format||'video'), count:0 }],
-        learningContext: lc, exFormat: (idea.format||'video') },
+        learningContext: lc + (_redoNews ? '\n\nTHIS POST REACTS TO THE HEADLINE: "' + _redoNews.title + '" \u2014 keep it about that headline.' : ''),
+        exFormat: (idea.format||'video'), delivery: idea.delivery,
+        ...(_redoType ? { postType: _redoType } : {}) },
       () => getBrandContext(idea.format||'video'));
     const txt = await resp.text(); let data; try{ data=JSON.parse(txt); }catch(e){ data=null; }
     if(!resp.ok) throw new Error((data&&data.error) ? data.error : ('Generator error ('+resp.status+')'));
@@ -20991,7 +21108,17 @@ async function ideaRedoRun(id){
     if(si>=0){
       const keep = state[si];
       const oldTitle = (keep.title||'').trim();
-      state[si] = Object.assign({}, nu, { id: keep.id, status: keep.status||'pending', assignee: keep.assignee||'', sparkSource: true, paaSource:false, day: keep.day || getTodayName() });
+      // v709 (D5): the redo keeps what the idea IS — its type, its news headline + Source line, its delivery,
+      // its People-ask question — and takes only the rewritten content.
+      const _nu = (typeof typesNormIdea === 'function') ? typesNormIdea(nu) : nu;
+      const _keepNs = (typeof typesNewsSource === 'function') ? typesNewsSource(keep.newsSource) : null;
+      state[si] = Object.assign({}, _nu, { id: keep.id, status: keep.status||'pending', assignee: keep.assignee||'', sparkSource: !!keep.sparkSource, paaSource: keep.paaSource || false, day: keep.day || getTodayName() },
+        _redoType ? { postType: _redoType } : {}, keep.delivery ? { delivery: keep.delivery } : {},
+        keep.belief && !_nu.belief ? { belief: keep.belief } : {});
+      if (_keepNs) { state[si].newsSource = _keepNs; state[si].caption = typesCaptionWithSource(String(state[si].caption || '').replace(/(?:^|\n)Source: https:\/\/\S+\s*$/, '').replace(/\s+$/, ''), _keepNs); }
+      // a new title that clashes with ANOTHER idea gets a suffix (its own old title is free to reuse)
+      { const _taken = new Set(state.filter((x, j) => j !== si && x).map(x => String(x.title || '').toLowerCase().trim()));
+        if (typeof uniqueIdeaTitle === 'function') state[si].title = uniqueIdeaTitle(state[si].title, _taken); }
       // Title changed → delete the old title's DB row so it can't reappear as a duplicate on reload.
       try {
         const newTitle = (state[si].title||'').trim();
@@ -21020,7 +21147,7 @@ async function ideaRedoRun(id){
     setTimeout(()=>{ const card=document.querySelector('.list-card[data-id="'+id+'"]'); if(card&&card.scrollIntoView) card.scrollIntoView({behavior:'smooth',block:'center'}); }, 150);
   }catch(e){
     stopThinking('ideaRedoStatus-'+id);
-    if(status){ status.textContent='Could not redo ('+(e.message||'try again')+').'; status.className='vl-status warn'; }
+    if(status){ status.textContent = humanErr(_leanErrMsg(e, 'Could not redo it \u2014 try again.'), 'Could not redo it \u2014 try again.'); status.className='vl-status warn'; }   // v709 (D17)
     if(btn){ btn.disabled=false; btn.textContent='Redo this idea'; }
   }
 }
@@ -21286,7 +21413,7 @@ function refShotSet(kind, dataUrl) {
   if (!box) return;
   if (kind !== 'ic') { try { if (typeof _rxOrig !== 'undefined' && _rxOrig) remixOrigRender(); } catch (e) {} }   // remix-tt: the Step 1 card's "Options" says whether one is attached
   box.innerHTML = dataUrl
-    ? '<img src="' + dataUrl + '" style="height:54px;width:54px;object-fit:cover;border-radius:8px;border:1.5px solid var(--border);"><span style="font-size:12px;color:var(--text3);">Screenshot attached — the AI will look at it</span><button onclick="refShotClear(\'' + kind + '\')" style="margin-left:auto;background:none;border:none;color:var(--text3);font-size:22px;line-height:1;cursor:pointer;">&times;</button>'
+    ? '<img src="' + dataUrl + '" style="height:54px;width:54px;object-fit:cover;border-radius:8px;border:1.5px solid var(--border);"><span style="font-size:12px;color:var(--text3);">' + (kind === 'ic' ? 'Screenshot attached \u2014 the AI will look at it' : 'Screenshot attached \u2014 the five rewrite styles look at it') + '</span><button onclick="refShotClear(\'' + kind + '\')" style="margin-left:auto;background:none;border:none;color:var(--text3);font-size:22px;line-height:1;cursor:pointer;">&times;</button>'
     : '';
   box.style.display = dataUrl ? 'flex' : 'none';
 }
@@ -21892,10 +22019,12 @@ async function remixContent(opts) {
     // winners must stay the generic last-four — exactly what getBrandContext() returns.
     const resp = await leanBrandFetch('/api/remix',
       { postUrl, postDescription, creatorName, platform, remixMode: currentRemixMode,
-        delivery: window._remixDelivery || 'faceon', refImage: remixRefImage || undefined },
+        delivery: (typeof deliveryReq === 'function') ? deliveryReq(window._remixDelivery) : (window._remixDelivery === 'faceless' ? 'faceless' : 'face'), refImage: remixRefImage || undefined },
       () => getBrandContext());
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'API error');
+    // v709 (D17): a 504 page is not a parser crash, and an error is said in words
+    let data;
+    if (typeof readJsonOrThrow === 'function') data = await readJsonOrThrow(resp, 'Remixing that');
+    else { data = await resp.json(); if (!resp.ok) throw new Error(data.error || 'API error'); }
 
     const remix = data.remix;
     if (!remix || !((remix.remixScript||'').trim() || (remix.remixHook||'').trim() || (remix.remixTitle||'').trim() || (remix.seriesParts||[]).length)) {
@@ -21912,7 +22041,7 @@ async function remixContent(opts) {
     remix.remixMode = currentRemixMode;
     remix.createdAt = Date.now();
     // Tag the remix faceless only when it landed on a filmable format, so the Pipeline tag is accurate.
-    remix.delivery = (window._remixDelivery === 'faceless' && DELIVERY_FORMATS.has(remix.remixFormat)) ? 'faceless' : 'faceon';
+    remix.delivery = (((typeof deliveryUi === 'function') ? deliveryUi(window._remixDelivery) : window._remixDelivery) === 'faceless' && DELIVERY_FORMATS.has(remix.remixFormat)) ? 'faceless' : 'faceon';
 
     remixes.unshift(remix);
     if (remixes.length > 30) remixes = remixes.slice(0, 30);
@@ -21927,7 +22056,11 @@ async function remixContent(opts) {
     document.getElementById('articleUrl').value = '';
     document.getElementById('remixDescription').value = '';
   } catch (err) {
-    alert('Remix failed: ' + err.message);
+    // v709 (D17): plain words — a 402 says "out of posts", a timeout says so; never "limit_reached" in an alert
+    const _rxFb = "Couldn't remix that \u2014 try again.";
+    const _rxRaw = (typeof _leanErrMsg === 'function') ? _leanErrMsg(err, _rxFb) : ((err && err.message) || _rxFb);
+    const _rxMsg = (typeof humanErr === 'function') ? humanErr(_rxRaw, _rxFb) : _rxRaw;
+    if (typeof showToast === 'function') showToast(_rxMsg, 7000); else alert(_rxMsg);
   } finally {
     stopW();
   }
@@ -22126,10 +22259,20 @@ function rv2ErrText(r, fallback) {
   if (st === 401) return humanErr('unauthorized', fallback);
   return humanErr(d.error, fallback);
 }
+// v709 — how THIS run's post is filmed: Quick Post's pick (saved on the run), else Remix's switch for a
+// Remix run, else the brand's How you film. 'face' | 'faceless'.
+function rv2DeliveryOf(s) {
+  const m = (s && s.origin && s.origin.meta) || {};
+  if (m.delivery === 'faceless' || m.delivery === 'faceon') return deliveryReq(m.delivery);
+  if (s && s.origin && s.origin.name === 'remix') return deliveryReq(window._remixDelivery);
+  return deliveryReq(null);
+}
 function rv2Body(s, extra) {
   let bcFields = 0; try { bcFields = _tvBcFieldCount(getBrandContext()); } catch (e) {}
   let het = []; try { het = (typeof _humanEditedTitles === 'function') ? _humanEditedTitles() : []; } catch (e) {}
-  return Object.assign({ brandId: s.brandId, bcFields: bcFields, humanEditedTitles: het }, extra || {});
+  let dv = 'face'; try { dv = rv2DeliveryOf(s); } catch (e) {}
+  let nd = []; try { nd = newsDismissedList(); } catch (e) {}
+  return Object.assign({ brandId: s.brandId, bcFields: bcFields, humanEditedTitles: het, delivery: dv, newsDismissed: nd }, extra || {});
 }
 function rv2Source() {
   const g = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
@@ -22287,6 +22430,16 @@ async function rv2Start(btn, srcOverride, opts) {
   // v693 r4 — never replace a run while its idea is being saved: the save's ending (clear the
   // run, its draft, the Remix inputs) belongs to THAT run, and a failed save must find it still there
   if (_rv2Runs[host] && _rv2Runs[host].saving) { try { showToast('Saving your script \u2014 one moment.'); } catch (e) {} return; }
+  // v709 (D2): a written, unsaved script in this host was paid for. Starting a new run asks first:
+  // the first press says so, a second press within 20 seconds replaces it.
+  { const _prev = _rv2Runs[host];
+    if (_prev && _prev.brandId === brandId && (_prev.stage === 'script' || _prev.stage === 'writing') && String(_prev.script || '').trim() && !o.replace) {
+      if (!(_prev.replaceAskAt && Date.now() - _prev.replaceAskAt < 20000)) {
+        _prev.replaceAskAt = Date.now();
+        try { showToast('You have an unsaved script from your last take. Save it first, or press again to replace it.', 7000); } catch (e) {}
+        return;
+      }
+    } }
   const s = { seq: ++_rv2Seq, brandId: brandId, host: host,
     origin: rv2OriginFor(host === 'rv2Panel' ? 'remix' : (o.origin && o.origin.name), o.origin && o.origin.meta),
     format: o.format || 'talking', appFormat: o.appFormat || '', source: src, stage: 'loading', angles: [], picked: null,
@@ -22492,6 +22645,7 @@ function rv2BuildIdea(s) {
     belief: String((s.picked && s.picked.belief) || '').slice(0, 300), createdAt: Date.now(), freshAt: Date.now()
   }, (s.origin && s.origin.extra) || {});
   if (typeof typesApplyRun === 'function') typesApplyRun(_built, s);   // types: postType + news source
+  if (DELIVERY_FORMATS.has(format) && _built.delivery !== 'faceless' && _built.delivery !== 'faceon') { let _dv = 'face'; try { _dv = rv2DeliveryOf(s); } catch (e) {} _built.delivery = _dv === 'faceless' ? 'faceless' : 'faceon'; }   // v709
   return { idea: _built };
 }
 // v693 r3 — SAVED MEANS SAVED. The run and its draft are cleared, and "Saved" is said, only once the
@@ -22613,6 +22767,9 @@ function rv2FilmNow() {
 function rv2Classic() {
   const s = rv2Active();
   if (!s || s.saving) return;
+  // v709 (D9): a written (paid) script is never dropped on one press — the same two-press rule as Close
+  const paid = s.stage === 'script' || s.stage === 'writing';
+  if (paid && s.classicAsk !== rv2StateKey(s)) { s.classicAsk = rv2StateKey(s); rv2Render(); return; }
   rv2SetRun(s.host, null); rv2ClearDraft(s.host, s.brandId); rv2Render();
   if (s.origin && typeof s.origin.classic === 'function') return s.origin.classic();
   const d = document.getElementById('remixDescription');
@@ -22644,7 +22801,9 @@ function rv2CloseSheet() {
   try { if (typeof renderRemixResults === 'function') renderRemixResults(); } catch (e) {}   // brings back a Remix draft, if any
 }
 function rv2CardHtml(s) {
-  const classic = '<button type="button" class="rv2-link" onclick="rv2Classic()">' + escapeHtml((s.origin && s.origin.classicLabel) || 'Use the classic remix instead') + '</button>';
+  const _clAsk = s.classicAsk && s.classicAsk === rv2StateKey(s);
+  const classic = '<button type="button" class="rv2-link" onclick="rv2Classic()">' + escapeHtml(_clAsk ? 'Press again to drop this script and write a new one the classic way'
+    : ((s.origin && s.origin.classicLabel) || 'Use the classic remix instead')) + '</button>';
   const errLine = s.err ? '<div class="rv2-err" role="alert">' + escapeHtml(s.err) + '</div>' : '';
   let h = '<div class="rv2-card">';
   if (s.stage === 'loading') {
@@ -22715,14 +22874,20 @@ function nbDevelopV2(id, btn) {
   return rv2Start(btn || null, { kind: 'note', text: String(note.text).trim().slice(0, 12000) }, { host: 'rv2Sheet', origin: { name: 'note', meta: { id: id } } });
 }
 // Idea Catcher "Develop into a brief": the typed idea + notes + (if a link was given) what the video says.
+// v709 (D13): url -> words already read (and paid for) this session, so a second Develop never pays again
+const _icTranscripts = new Map();
 async function icReadVideo(url) {
+  const _k = String(url || '').trim();
+  try { if (_k && _icTranscripts.has(_k)) return { text: _icTranscripts.get(_k), err: '' }; } catch (e) {}
   try {
     const isYT = /youtu\.?be|youtube\.com/i.test(url);
     const r = await fetch(isYT ? '/api/transcribe' : '/api/transcribe-url', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(isYT ? { url: url, mode: 'youtube' } : { url: url }) });
     let d = {}; try { d = JSON.parse(await r.text()) || {}; } catch (e) { d = {}; }
     if (!r.ok) return { text: '', err: d.error || ('error ' + r.status) };
-    return { text: String((isYT ? d.text : d.transcript) || '').trim(), err: '' };
+    const _txt = String((isYT ? d.text : d.transcript) || '').trim();
+    try { if (_k && _txt) { _icTranscripts.set(_k, _txt); if (_icTranscripts.size > 20) _icTranscripts.delete(_icTranscripts.keys().next().value); } } catch (e) {}
+    return { text: _txt, err: '' };
   } catch (e) { return { text: '', err: 'network problem' }; }
 }
 async function icDevelopV2() {
@@ -22731,6 +22896,9 @@ async function icDevelopV2() {
   const status = document.getElementById('icStatus');
   const btn = document.getElementById('icBtn');
   if (!idea) { if (status) { status.textContent = 'Type or say your idea first.'; status.className = 'vl-status warn'; } return; }
+  // v709 (D8): the screen promises the AI looks at an attached screenshot. Only the classic develop sends
+  // it, so with a screenshot attached that is the develop that runs.
+  if (typeof icRefImage !== 'undefined' && icRefImage && typeof ideaDevelop === 'function') return ideaDevelop();
   let transcript = '';
   if (url) {
     if (status) { status.textContent = 'Reading the reference video…'; status.className = 'vl-status'; }
@@ -22761,7 +22929,8 @@ function paaAnswerV2(idx, chosenFormat) {
   if (!fmt) return usePAAQuestion(idx, chosenFormat);
   const text = String(q.question) + (q.keyword ? '\n(people searched this from "' + String(q.keyword) + '")' : '');
   return rv2Start(document.getElementById('paaBtn' + idx) || null, { kind: 'question', text: text.slice(0, 12000) }, { host: 'rv2Sheet', format: fmt,
-    appFormat: chosenFormat || '', origin: { name: 'paa', meta: { question: String(q.question), fmt: chosenFormat || '' } } });
+    appFormat: chosenFormat || '', postType: 'qna',   // v709 (A H6): answer the question — the Q&A shape, answer first
+    origin: { name: 'paa', meta: { question: String(q.question), fmt: chosenFormat || '' } } });
 }
 // Quick Post (Today tab). There is no seed here, so the seed is today's theme for this brand.
 function tvGenerateV2(opts) {
@@ -22769,13 +22938,16 @@ function tvGenerateV2(opts) {
   // types — what the post is about: the chip picked, or "Surprise me" drawn from the brand's mix
   const _pt = (typeof tvResolvePostType === 'function') ? tvResolvePostType(opts && opts.exclude) : { type: '', surprise: false };
   window._tvPostTypeRun = _pt.type;
-  const picked = _pt.type === 'qna' ? 'qna' : (window._tvSelectedFormat || 'video');   // a Q&A is a Q&A
+  // a Q&A is a Q&A — unless Q&A is switched off in Content Mix (v709, D3): then the type stays, the format doesn't
+  const _fOn = f => (typeof formatOn === 'function') ? formatOn(f) : true;
+  let picked = (_pt.type === 'qna' && _fOn('qna')) ? 'qna' : (window._tvSelectedFormat || 'video');
+  if (!window._tvFormatChosen && !_fOn(picked)) { const _on = FORMATS.filter(f => f !== 'bonus' && _fOn(f)); if (_on.length) picked = _on.indexOf('video') >= 0 ? 'video' : _on[0]; }
   const fmt = RV2_FORMATS[picked];
   if (!fmt) return generateTodayTabPost();          // Image / Bonus: the new writer does not do them
   const today = getTodayName();
   const community = (getDayCommunities() || {})[today] || 'General';
   // v693 r3: saved in the format picked (Q&A stays Q&A) and with the Face-on / Faceless choice
-  const delivery = DELIVERY_FORMATS.has(picked) ? (window._tvDelivery || 'faceon') : '';
+  const delivery = DELIVERY_FORMATS.has(picked) ? ((typeof deliveryUi === 'function') ? deliveryUi(window._tvDelivery) : (window._tvDelivery || 'faceon')) : '';
   return rv2Start(null, { kind: 'idea', text: "Today's content theme for this brand: " + community + '.' }, { host: 'rv2Sheet', format: fmt, appFormat: picked,
     postType: _pt.type, postTypeSurprise: _pt.surprise,
     origin: { name: 'quickpost', meta: { community: community, day: today, delivery: delivery } } });
@@ -22806,6 +22978,7 @@ function rv2BeliefLine(idea) {
 }
 function rv2CanRewrite(idea) {
   if (!idea || !(idea.format === 'video' || idea.format === 'micro' || idea.format === 'qna')) return false;
+  if (idea.status === 'done') return false;   // v709 (D20): Done is read-only — no paid rewrite there
   return !!(String(idea.belief || '').trim() || String(idea.hook || '').trim());
 }
 function rv2RwHtml(id) {
@@ -22833,7 +23006,7 @@ async function rv2RewriteIdea(id, btn) {
   const stopW = btnWork(btn || null, 'redo');
   try {
     const r = await rv2Post('/api/write', rv2Body({ brandId: brandId }, { source: { kind: 'idea', text: text },
-      angle: { belief: belief.slice(0, 300), why: '' }, format: RV2_FORMATS[idea.format] || 'talking',
+      angle: { belief: belief.slice(0, 300), why: '' }, format: RV2_FORMATS[idea.format] || 'talking', delivery: (typeof deliveryReq === 'function') ? deliveryReq(idea.delivery) : (idea.delivery === 'faceless' ? 'faceless' : 'face'),
       ...((idea.postType === 'news' && typeof typesNewsSource === 'function' && typesNewsSource(idea.newsSource)) ? { newsSource: typesNewsSource(idea.newsSource) } : {}),
       ...((typeof typesOf === 'function') ? { postType: typesOf(idea) } : {}) }));
     const w = r.ok ? r.data.idea : null;
@@ -23413,6 +23586,8 @@ function remixToIdeas(r, status){
       status: status, dismissReason: null, assignee: '', isRemix: true, originalCreator: creator,
       delivery: (r.delivery === 'faceless' && DELIVERY_FORMATS.has(format)) ? 'faceless' : 'faceon',
       postType: pt, createdAt: Date.now(), id: 0 };
+    // v709 (B4): a statement/carousel's words ARE the graphic — the detail view and the slide maker read boldText
+    if (format === 'statement' || format === 'carousel') idea.boldText = idea.script;
     if (status === 'filming') idea.approvedAt = Date.now();   // sorts to the TOP of Film & Post
     else { idea.isGenerated = true; idea.freshAt = Date.now(); }
     return idea;
@@ -23545,7 +23720,7 @@ async function tryAllModes() {
       // the brand brain six times over (~80KB) for one tap. Same helper, same guards.
       const resp = await leanBrandFetch('/api/remix',
         { postUrl, postDescription, creatorName, platform, remixMode: mode,
-          delivery: window._remixDelivery || 'faceon', refImage: remixRefImage || undefined },
+          delivery: (typeof deliveryReq === 'function') ? deliveryReq(window._remixDelivery) : (window._remixDelivery === 'faceless' ? 'faceless' : 'face'), refImage: remixRefImage || undefined },
         () => getBrandContext());
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data.error || 'API error');
@@ -23620,7 +23795,7 @@ function saveFromTryAll(mode, btnEl) {
     return;
   }
   if (!remixHasContent(card._remixData)) { if (typeof showToast==='function') showToast('That mode came back empty — nothing to save.'); return; }
-  card._remixData.delivery = (window._remixDelivery === 'faceless' && DELIVERY_FORMATS.has(card._remixData.remixFormat)) ? 'faceless' : 'faceon';
+  card._remixData.delivery = (((typeof deliveryUi === 'function') ? deliveryUi(window._remixDelivery) : window._remixDelivery) === 'faceless' && DELIVERY_FORMATS.has(card._remixData.remixFormat)) ? 'faceless' : 'faceon';
   remixes.unshift(card._remixData);
   if (remixes.length > 30) remixes = remixes.slice(0, 30);
   saveRemixes();
@@ -25405,6 +25580,7 @@ function renderSettingsPanel() {
       <div style="display:${spActiveTab==='voice'?'block':'none'}">
       ${brainCoverageHtml()}
       <div style="font-size:13px;color:var(--text3);line-height:1.6;margin:0 0 18px;">These fields steer everything the AI writes for you.</div>
+      ${(typeof brandFilmSettingHtml === 'function') ? brandFilmSettingHtml() : ''}
       ${bvComplete ? `
       <div class="sp-status-done">Every field your brand brain reads is filled.</div>
       ` : `
@@ -26091,14 +26267,21 @@ function getTrendStore(){
 // v465: auto-pulled chips are dismissible per brand — an off-topic headline (keyword
 // lanes sometimes drag in e.g. battery-electrolyte news) can be ×'d; it disappears
 // from the panel AND from getRecentTrends, so it stops shaping ideas. Local per-brand.
+// v709: the dismissed set lives on the brand (voice_extra.newsDismissed, newsDismissedList) so the
+// writers can skip those headlines too; the old per-device set is still read until it has moved.
 function _atDismissed(){
-  try { return new Set(JSON.parse(lsGet('auto_trends_dismissed') || '[]')); } catch(e){ return new Set(); }
+  let s = new Set();
+  try { s = new Set(JSON.parse(lsGet('auto_trends_dismissed') || '[]').map(x => String(x == null ? '' : x).toLowerCase().trim())); } catch(e){ s = new Set(); }
+  try { if (typeof newsDismissedList === 'function') newsDismissedList().forEach(k => s.add(k)); } catch(e) {}
+  return s;
 }
 function dismissAutoTrend(text){
   try {
     const k = String(text || '').toLowerCase().trim(); if (!k) return;
-    const arr = Array.from(_atDismissed()); arr.push(k);
-    lsSet('auto_trends_dismissed', JSON.stringify(arr.slice(-120)));
+    if (typeof settings !== 'undefined' && settings) {
+      settings.newsDismissed = newsDismissedAdd(settings.newsDismissed, k);   // newest kept, max 200
+      try { saveSettings(); } catch(e) {}
+    }
   } catch(e) {}
   try { renderTrendMemory(); } catch(e) {}
   if (typeof showToast === 'function') showToast("Gone — it won't shape your ideas.");
@@ -26224,7 +26407,7 @@ function renderTrendMemory(){
       _ageTxt = _h < 1 ? 'pulled just now' : _h < 24 ? ('pulled '+_h+'h ago') : ('pulled '+_d+' day'+(_d!==1?'s':'')+' ago');
       if(_h > 48) _stale = ' · getting stale — refreshes daily';
     }
-    body += `<div class="vl-trend-panel"><div class="vl-trend-head">${ICO.globe} Auto-pulled from the web <span class="vl-trend-sub">— ${_ageTxt} · already shaping your ideas${_hotN?`. <strong>${_hotN} rising now</strong> — shown first`:''}${_stale}</span></div><div class="vl-trend-chips">${autoTrends.map(t=>`<span class="vl-trend-chip vl-trend-chip-auto${t.hot?' vl-trend-hot':''}">${t.hot?'<span class="vl-rise"><svg class="cs-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg> rising</span> ':''}${vlEscAttr(t.text)}${safeUrl(t.link)?` <a class="vl-cm-src" href="${vlEscAttr(safeUrl(t.link))}" target="_blank" rel="noopener">source ↗</a>`:(t.source?` <span class="vl-src-name">${vlEscAttr(t.source)}</span>`:'')}<button class="vl-trend-x" onclick="dismissAutoTrend(${vlEscAttr(JSON.stringify(String(t.text||'')))})" title="Not relevant — remove">×</button></span>`).join('')}</div></div>`;
+    body += `<div class="vl-trend-panel"><div class="vl-trend-head">${ICO.globe} News headlines from the web <span class="vl-trend-sub">— ${_ageTxt} · already shaping your ideas${_hotN?`. <strong>${_hotN} rising now</strong> — shown first`:''}${_stale}</span></div><div class="vl-trend-chips">${autoTrends.map(t=>`<span class="vl-trend-chip vl-trend-chip-auto${t.hot?' vl-trend-hot':''}">${t.hot?'<span class="vl-rise"><svg class="cs-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg> rising</span> ':''}${vlEscAttr(t.text)}${safeUrl(t.link)?` <a class="vl-cm-src" href="${vlEscAttr(safeUrl(t.link))}" target="_blank" rel="noopener">source ↗</a>`:(t.source?` <span class="vl-src-name">${vlEscAttr(t.source)}</span>`:'')}<button class="vl-trend-x" onclick="dismissAutoTrend(${vlEscAttr(JSON.stringify(String(t.text||'')))})" title="Not relevant — remove">×</button></span>`).join('')}</div></div>`;
   }
   // v644 — the one ACTIONABLE thing on this screen. Everything above is a running TOPIC that feeds
   // the brain in the background; these are real posts with real numbers a user can turn into their
@@ -28848,7 +29031,7 @@ function openBrandVoice(onboardingMode) {
     }
     bvState.messages.push({ role: 'assistant', content: greeting });
     bvRenderMessages();
-    if (!window._bvSkipGreetingSpeech) bvSpeak(greeting);
+    // v709 (owner decision 3): replies are text; the speaker button on a reply plays it (one paid voice call)
     window._bvSkipGreetingSpeech = false;
   } else {
     bvRenderMessages();
@@ -28915,6 +29098,8 @@ function bvRenderMessages() {
     </div>` : '';
   container.innerHTML = startersHtml + bvState.messages.map((m, i) => {
     let html = `<div class="bv-msg ${m.role === 'user' ? 'user' : 'ai'}">${escHtml(m.content).replace(/\n/g, '<br>')}`;
+    // v709 (owner decision 3): each coach reply can be played, one at a time, only when asked
+    if (m.role !== 'user' && !m.retry && String(m.content || '').trim() && typeof bvSpeakBtnHtml === 'function') html += bvSpeakBtnHtml(i);
     // Check if there's a pending suggestion on this message
     // v668: `s.field` arrives from the model. It used to go straight into `.replace(...)`, so a
     // suggestion with no field, or a numeric or object one, threw INSIDE this `.map()` — and
@@ -29030,8 +29215,7 @@ async function bvSend(textOverride) {
     bvRenderMessages();
     bvSaveMessages();
 
-    // Speak the reply
-    bvSpeak(data.reply);
+    // v709 (owner decision 3): no automatic voice — the reply's speaker button plays it when asked
 
   } catch (err) {
     document.querySelectorAll('#bvTyping').forEach(function(el){ el.remove(); }); // remove ALL (stacked duplicates = the stuck-dots bug)
@@ -29164,12 +29348,10 @@ function bvAcceptSuggestion(msgIdx) {
   if (_next) {
     const _lbl = (typeof BRAIN_FIELD_LABELS !== 'undefined' && BRAIN_FIELD_LABELS[_next]) || _next;
     bvState.messages.push({ role: 'assistant', content: 'Saved ✓. Want to add your ' + _lbl + ' next?', nextField: _next });
-    bvSpeak('Saved. Want to add your ' + _lbl + ' next?');
   } else {
     // v634: only claim "full" when it genuinely is. bvBrainEmpty now covers every field the
     // model renders, so an empty list here really does mean nothing is left.
     bvState.messages.push({ role: 'assistant', content: 'Saved ✓ — every field your brand brain reads is now filled. Every post is written through all of it.' });
-    bvSpeak('Saved. Every field your brand brain reads is now filled.');
   }
   bvRenderMessages();
   bvSaveMessages();
@@ -29308,11 +29490,47 @@ function bvSpeakBrowser(text){
     const u = new SpeechSynthesisUtterance(String(text).slice(0, 600));
     u.rate = 1.0; u.pitch = 1.0;
     u.onstart = () => { bvState.isSpeaking = true; bvWaveSet('speaking'); };
-    u.onend = () => { bvState.isSpeaking = false; bvWaveSet(''); };
-    u.onerror = () => { bvState.isSpeaking = false; bvWaveSet(''); };
+    u.onend = () => { bvState.isSpeaking = false; bvWaveSet(''); try { bvSpeakPaint(); } catch (e) {} };
+    u.onerror = () => { bvState.isSpeaking = false; bvWaveSet(''); try { bvSpeakPaint(); } catch (e) {} };
     window.speechSynthesis.speak(u);
     return true;
   }catch(e){ return false; }
+}
+/* v709 (owner decision 3) — COACH VOICE IS OFF BY DEFAULT. Every reply (and the greeting, and each
+   "Saved" line) used to call /api/speak by itself: 1 credit per reply on top of the 0.5 chat credit,
+   with no way to turn it off, and an empty plan opened the upgrade sheet mid-chat. Now a reply is text,
+   and its speaker button plays that one reply — the only time the paid voice runs. */
+const BV_SPEAK_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+function bvSpeakBtnHtml(i) {
+  const on = bvState && bvState._speakIdx === i && bvState.isSpeaking;
+  return '<div class="bv-speak-row"><button type="button" class="bv-speak-btn' + (on ? ' on' : '') + '" id="bvSpeak-' + i + '" onclick="bvSpeakMsg(' + i + ')"'
+    + ' aria-label="' + (on ? 'Stop playing this reply' : 'Play this reply') + '" title="' + (on ? 'Stop' : 'Play this reply') + '">' + BV_SPEAK_SVG + '</button></div>';
+}
+function bvSpeakPaint() {
+  try {
+    document.querySelectorAll('.bv-speak-btn').forEach(function (b) {
+      const i = Number(String(b.id || '').replace('bvSpeak-', ''));
+      const on = bvState._speakIdx === i && bvState.isSpeaking;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-label', on ? 'Stop playing this reply' : 'Play this reply');
+    });
+  } catch (e) {}
+}
+function bvSpeakMsg(i) {
+  const m = bvState && Array.isArray(bvState.messages) ? bvState.messages[i] : null;
+  if (!m || m.role === 'user' || !String(m.content || '').trim()) return;
+  if (bvState._speakIdx === i && bvState.isSpeaking) { bvStopSpeaking(); bvSpeakPaint(); return; }
+  bvState._speakIdx = i;
+  bvSpeak(String(m.content));
+  bvSpeakPaint();
+}
+// A voice call the plan cannot pay for is said in words, here — never the upgrade sheet mid-chat.
+function bvVoiceDenied(status, text) {
+  if (status === 429) return;   // the app-wide fetch wrapper already says "Going a bit fast"
+  const device = bvSpeakBrowser(text);
+  const msg = (device ? 'You\u2019re out of credits for the natural voice this month \u2014 playing it with your device\u2019s voice.'
+      : 'You\u2019re out of credits for the voice this month. The reply is here to read.');
+  try { if (typeof showToast === 'function') showToast(msg, 6000); } catch (e) {}
 }
 async function bvSpeak(text) {
   bvStopSpeaking();
@@ -29325,6 +29543,7 @@ async function bvSpeak(text) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voice: 'nova' })
     });
+    if (resp.status === 402 || resp.status === 429) { if (mySeq !== _bvSpeakSeq) return; bvState.isSpeaking = false; bvSpeakPaint(); bvVoiceDenied(resp.status, text); return; }
     const data = await resp.json();
     if (mySeq !== _bvSpeakSeq) return; // a newer speak/stop happened while fetching — discard
     if (!resp.ok || !data.audio) { bvState.isSpeaking = false; if (!bvSpeakBrowser(text)) bvVoiceUnavailable(); return; }
@@ -29332,8 +29551,8 @@ async function bvSpeak(text) {
     const audioSrc = 'data:audio/mp3;base64,' + data.audio;
     const audio = new Audio(audioSrc);
     bvState._audio = audio;
-    audio.onended = () => { bvState.isSpeaking = false; bvState._audio = null; bvWaveSet(''); };
-    audio.onerror = () => { bvState.isSpeaking = false; bvState._audio = null; bvWaveSet(''); };
+    audio.onended = () => { bvState.isSpeaking = false; bvState._audio = null; bvWaveSet(''); bvSpeakPaint(); };
+    audio.onerror = () => { bvState.isSpeaking = false; bvState._audio = null; bvWaveSet(''); bvSpeakPaint(); };
     audio.play().then(() => bvWaveSet('speaking')).catch(() => { bvState.isSpeaking = false; bvWaveSet(''); });
   } catch (err) {
     console.error('TTS error:', err);

@@ -380,7 +380,10 @@ ok(BC.factsFromPack(null, NOW).length === 0 && BC.factsFromPack('x', NOW).length
 
 // ═════ 6. _brain ═════
 const ORIG = 'NEVER INVENT FACTS: no made-up numbers, prices, names, customer cases, results or quotes. Use only facts the BRAND PROFILE or the material you were given actually contains. Where a line needs proof you do not have, write a slot exactly like [your story: <what to tell>] for the creator to fill in. Where there is no room for a slot (a one-line meme, a hook), cut the claim instead.';
-ok(B.NO_INVENTION_RULE.startsWith(ORIG), 'NO_INVENTION_RULE keeps its existing text word for word');
+// v709 r2 (review HIGH) — slots only in a spoken line; on-screen text and captions cut the claim. The rest of
+// the rule is unchanged word for word.
+const ORIG_HEAD = ORIG.slice(0, ORIG.indexOf(' Where a line needs proof'));
+ok(B.NO_INVENTION_RULE.startsWith(ORIG_HEAD) && /Where a spoken line needs proof[^.]*\[your story: <what to tell>\]/.test(B.NO_INVENTION_RULE) && /On-screen text[^.]*get no slot: cut the claim\./.test(B.NO_INVENTION_RULE), 'NO_INVENTION_RULE keeps its text; slots only in spoken lines, on-screen text cuts the claim (v709 r2)');
 ok(B.NO_INVENTION_RULE.endsWith(' The one exception: a CHECKED FACT from the list you were given (use it as written, no extra numbers).'), 'NO_INVENTION_RULE gains the CHECKED FACT clause');
 const bcF = { facts: [
   { id: 'F1', text: 'Adults can lose 1000 mg of sodium per hour in sweat.', url: 'https://www.cdc.gov/a', title: 'CDC heat' },

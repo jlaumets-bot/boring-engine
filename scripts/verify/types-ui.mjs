@@ -152,7 +152,7 @@ const baseCtx = (dom, extra) => {
       const t = JSON.stringify(r.body || {}); return { ok: r.status >= 200 && r.status < 300, status: r.status, url, text: async () => t, json: async () => JSON.parse(t), clone() { return this; } }; }
     const c = baseCtx(dom, { fetch, currentBrand: { id: 'brand-1' }, showToast: (m) => toasts.push(String(m)), btnWork: () => () => {}, flushBrandSave: async () => {}, getBrandContext: () => ({ brandName: 'X' }),
       _humanEditedTitles: () => [], saveState() {}, saveGeneratedIdeas() { return Promise.resolve({ ok: true }); }, DELIVERY_FORMATS: new Set(['video', 'micro', 'qna', 'statement']), saveIdeasToDB() {},
-      renderNav() {}, switchView() {}, mascotReact() {}, refreshCurrentView() {}, renderRemixResults() {}, openTeleprompter() {}, autoRefillCheck() {}, showApprovePopupFn() {},
+      renderNav() {}, switchView() {}, mascotReact() {}, refreshCurrentView() {}, renderRemixResults() {}, openTeleprompter() {}, showApprovePopupFn() {},
       notebookNotes: [], nbDevelop() {}, ideaDevelop() {}, usePAAQuestion() {}, generateTodayTabPost() { classic++; }, paaQuestions: [], paaUsed: new Set(),
       savePAAState() {}, renderPAASection() {}, refShotClear() {}, icDraftClear() {}, firstRunBrandGuard: () => false, getTodayName: () => 'Monday', getDayCommunities: () => ({ Monday: 'Myth Monday' }), DAYS: ['Monday'],
       lsSet: () => true, lsGet: () => null, lsDel() {} });
@@ -266,27 +266,22 @@ const baseCtx = (dom, extra) => {
     ok(/ideasMixRender\(\)/.test(grab('renderIdeaFilters')), 'D the steppers redraw whenever Ideas renders (brand switch included)');
   }
 
-  // ═════════ E — refill asks for the same type ═════════
+  // ═════════ E — v709 (owner decision 2): approving never buys new ideas — the auto-refill is gone ═════════
   {
-    const dom = makeDom(); const bodies = []; let refills = [];
+    ok(!/autoRefillCheck\s*\(/.test(html), 'E v709: no auto-refill function or call anywhere in the app');
+    const dom = makeDom(); const bodies = [];
     const c = baseCtx(dom, { showToast() {}, FORMAT_LABELS: {}, getDayCommunities: () => ({ Monday: 'M' }), buildLearningContext: () => '', brandGate: () => () => true, DAYS: ['Monday'],
       getBrandContext: () => ({}), getRecentTrends: () => [], rv2TagFlow: x => x, getVisibleIdeas: () => c.state, saveState() {}, renderNav() {}, activeView: 'today',
-      leanBrandFetch: async (u, body) => { bodies.push(body); const t = J({ ideas: [{ title: 'R' + bodies.length, day: 'Monday', format: 'video', postType: body.postType || undefined }] }); return { ok: true, status: 200, text: async () => t }; } });
-    vm.createContext(c); liftTypes(c); lift(c, ['autoRefillCheck']);
-    await c.autoRefillCheck('Monday', 'video', 'story'); await tick();
-    ok(bodies[0].postType === 'story' && c.state[0].postType === 'story', 'E the refill asks for the approved idea\'s type (story) and keeps it');
-    await c.autoRefillCheck('Monday', 'micro'); await tick();
-    ok(!('postType' in bodies[1]), 'E an idea without a type refills exactly as before (no postType sent)');
-    await c.autoRefillCheck('Monday', 'statement', 'bogus'); await tick();
-    ok(!('postType' in bodies[2]), 'E a junk type is never sent');
-    Object.assign(c, { reindexIdeas() {}, refreshCurrentView() {}, showApprovePopupFn() {}, autoRefillCheck: (...a) => refills.push(a) });
+      leanBrandFetch: async (u, body) => { bodies.push(body); return { ok: true, status: 200, text: async () => '{"ideas":[]}' }; },
+      fetch: async (u, init) => { bodies.push(init); return { ok: true, status: 200, text: async () => '{}' }; } });
+    vm.createContext(c); liftTypes(c);
+    Object.assign(c, { reindexIdeas() {}, refreshCurrentView() {}, showApprovePopupFn() {} });
     lift(c, ['quickApprove']);
     c.state = [{ id: 0, day: 'Monday', format: 'video', status: 'pending', postType: 'about' }, { id: 1, day: 'Monday', format: 'video', status: 'pending' }, { id: 2, day: 'Monday', format: 'qna', status: 'pending' }];
-    c.quickApprove(0); c.quickApprove(1); c.quickApprove(2);
-    ok(J(refills) === J([['Monday', 'video', 'about'], ['Monday', 'video', 'tip'], ['Monday', 'qna', 'qna']]), 'E approving from Ideas passes the idea\'s type to the refill (old idea: tip / qna)');
-    const RF = /autoRefillCheck\(idea\.day, idea\.format, \(typeof typesOf === 'function'\) \? typesOf\(idea\) : idea\.postType\)/;
-    ok(RF.test(grab('moveStage')) && RF.test(grab('tvApprove')),
-      'E Pipeline moves and the classic Quick Post approve pass it too');
+    c.quickApprove(0); c.quickApprove(1); c.quickApprove(2); await tick();
+    ok(bodies.length === 0 && c.state.every(i => i.status === 'filming'), 'E approving the last idea of a day + format moves it and sends no generation request');
+    ok(!/generate-ideas|leanBrandFetch/.test(grab('moveStage')) && !/generate-ideas|leanBrandFetch/.test(grab('tvApprove')),
+      'E Pipeline moves and the classic Quick Post save buy nothing either');
   }
 
   // ═════════ F — cards + By type filter ═════════

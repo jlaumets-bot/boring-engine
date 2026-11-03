@@ -2,6 +2,24 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-03 — v709. CONSISTENCY FIX: one rule set for every writer (owner: "no contradictions… so content wouldnt suffer").
+
+Audits (4, ~80 findings): cloud /mnt/user-data/outputs/consistency-audit/. Contract .unlazy/consistency/CONTRACT.md.
+Owner decisions: ONE face/faceless per brand (voice_extra.delivery, per-post override); NO auto-refill on approve; coach voice on demand.
+- Shared helpers in api/_write.js: postRules({type,format,delivery}) (never-salesy, ending, "write no hashtags", delivery, slot rule,
+  type shape fitted to format — short formats get one-move shapes), hashtagsFor(bc) (brand tag first + themes, max 5),
+  guardPost(post,bc,{mode}) (fact guard w/ brand proof allowed except [web]-tagged / review-summary lines; no-sell sentence removal;
+  batch: on-screen slot → drop; hook/title fallback = first sentence of post text), sourceLine. _brain: ONE PRIORITY_RULE,
+  effectiveTypeMix (format off → slots to tip), promote-the-brand wording removed, news labelled as headlines, dismissed excluded.
+- Every writer (new pipeline, ideas batch, morning batch, remix, sharpen, viral-*, video-beats, coach) uses them. Q&A answers first.
+  Angle rotation never beats type counts. formatsOff honoured everywhere; hidden ideas never count as waiting. Banned topics filter
+  trends/headlines/fact pack. Thin batch (<60% after guards) uses the ONE existing regeneration; still short → short:true (app says so).
+- app: "How you film" setting; delivery sent by every writer; newsDismissed/formatsOff mirrored to voice_extra; voice_extra saves MERGE
+  (re-read + changed keys only; newsDismissed union); auto-refill removed; coach speaker button only; confirms before discarding paid
+  work; sharpen busy until answer/300 s; carousel parser; remix boldText; unique titles; classic Approve → Save to Ideas.
+- crawl-brand tags web lines "[web] ". Gates consistency-S1 (98) / S2 (73) / APP (131); mutations 50/50, 43/43, 42/42; 1 review round.
+- .vercelignore: "Claude outputs/".
+
 ## ▶▶ 2026-11-03 — v708. OWNER ON AGENCY + €0 PROMO CODES NEED NO CARD.
 
 - user_plans: j.laumets@gmail.com set to plan 'agency' by hand (no Stripe subscription on the row, so no webhook overwrites it).

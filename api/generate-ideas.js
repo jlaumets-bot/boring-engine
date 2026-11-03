@@ -28,6 +28,70 @@ const PAA_MARK = /SEED QUESTION/;
 // stay last and prominent) and sends only its localStorage-only `tv_recent` titles.
 const AVOID_MARK = '<<CS_AVOID_LIST>>';
 
+// ── v709 THE SHARED POST RULES (.unlazy/consistency/CONTRACT.md) ──────────────────────────────────
+// postRules / hashtagsFor / guardPost / sourceLine live in api/_write.js and effectiveTypeMix in
+// api/_brain.js. They are looked up at CALL time (never destructured at load) so this file always runs
+// the current shared rules; each lookup has a guarded fallback so an older _write.js cannot crash a batch.
+const _W = () => require('./_write');
+const _B = () => require('./_brain');
+const VALID_FORMATS = ['video', 'carousel', 'static', 'statement', 'micro', 'bonus', 'qna'];
+const REAL_FORMATS = ['video', 'carousel', 'static', 'statement', 'micro', 'qna'];
+// 'face' | 'faceless' | '' (unknown). 'faceon' is the older spelling the app still sends.
+function isSeedReq(b) {
+  const o = b || {};
+  return !!(String(o.seedIdea || '').trim() || String(o.seedNotes || '').trim() || String(o.seedTranscript || ''));
+}
+function normDelivery(v) {
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  if (s === 'faceless') return 'faceless';
+  if (s === 'face' || s === 'faceon' || s === 'face-on') return 'face';
+  return '';
+}
+function sharedPostRules(o) {
+  const f = _W().postRules;
+  if (typeof f !== 'function') return '';
+  try { return String(f(o) || ''); } catch (e) { return ''; }
+}
+// The brand's own tags (Content Themes + brand name), never the model's: a model tag can turn a denied
+// claim into a claim tag (#cureinsomnia). Returned as the space-joined string the idea shape uses.
+function codeTags(bc, idea) {
+  const f = _W().hashtagsFor || (_W()._internals && _W()._internals.hashtagsFor);
+  let list = [];
+  try { list = typeof f === 'function' ? f(bc, idea) : []; } catch (e) { list = []; }
+  return (Array.isArray(list) ? list : []).map(t => String(t || '').trim()).filter(Boolean).slice(0, 6).join(' ');
+}
+// The format ids switched off in Content Mix (bc.formatsOff, mirrored by the app; a request may name more).
+// A list that would switch off every real format is ignored (nothing could be written).
+function formatsOffFrom(bc, extra, keep) {
+  const set = new Set([].concat(Array.isArray(bc && bc.formatsOff) ? bc.formatsOff : [], Array.isArray(extra) ? extra : [])
+    .map(x => String(x == null ? '' : x).trim().toLowerCase()).filter(x => VALID_FORMATS.indexOf(x) >= 0));
+  if (keep) set.delete(String(keep).toLowerCase());
+  if (REAL_FORMATS.every(f => set.has(f))) return [];
+  return Array.from(set);
+}
+// The type mix with the switched-off formats taken out (a qna slot needs the qna format). The shared
+// effectiveTypeMix when it exists; otherwise the same rule locally: qna slots become tips.
+function mixWithoutOff(bc, mix, off) {
+  const f = _B().effectiveTypeMix;
+  if (typeof f === 'function') {
+    try {
+      const m = f(Object.assign({}, bc, { typeMix: mix, formatsOff: off }));
+      const v = _B().validTypeMix(m);
+      if (v) return v;
+    } catch (e) { /* fall back below */ }
+  }
+  const m = Object.assign({}, mix);
+  if (off.indexOf('qna') >= 0 && m.qna > 0) { m.tip = (m.tip || 0) + m.qna; m.qna = 0; }
+  return _B().validTypeMix(m) || mix;
+}
+// Only what a person sees (B6): the avoid-word / banned-topic scan never reads JSON keys, enum values,
+// URLs or the [your story: ...] marker itself (its inner text is visible, so that stays).
+const VISIBLE_KEYS = ['belief', 'title', 'hook', 'script', 'boldText', 'caption', 'reelTitle', 'shots', 'community'];
+function visibleText(ideas) {
+  return (Array.isArray(ideas) ? ideas : []).map(i => VISIBLE_KEYS.map(k => (i && typeof i[k] === 'string') ? i[k] : '').join('\n'))
+    .join('\n').replace(/\[\s*your story\s*:/gi, '[').replace(/https?:\/\/\S+/g, ' ');
+}
+
 // ── TIME BUDGET ──────────────────────────────────────────────────────────────
 // `_llm.httpsPost` defaults to 240000ms when no `timeoutMs` is passed. The ideas lane makes TWO
 // SEQUENTIAL calls — the main generation, then the output-guardrail REGENERATION (which fires
@@ -154,7 +218,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { brandContext, gaps, count: _rawCount = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat, seedQuestion, typeMix: _rawMix, postType: _rawPostType, newsDismissed } = req.body || {};
+    const { brandContext, gaps, count: _rawCount = 5, mode, seedIdea, seedNotes, seedTranscript, forceFormat, refImage, delivery, brandId, bcFields, avoidExtra, exFormat, seedQuestion, typeMix: _rawMix, postType: _rawPostType, newsDismissed, formatsOff: _bodyFormatsOff, newsSource: _redoNews, libraryTitles: _libTitles } = req.body || {};
     // types (.unlazy/types/PLAN.md) — WHAT EACH IDEA IS ABOUT. `postType` (one type, for one-off calls
     // such as Quick Post and auto-refill) wins over `typeMix` ({tip,about,news,qna,story,bts} -> 0..10).
     // Neither sent -> _typeReq stays null and everything below is exactly what it was before types.
@@ -214,7 +278,9 @@ module.exports = async function handler(req, res) {
     // does not receive generated content: send-daily reads the 402 as "no idea" and falls back
     // to its generic push, which carries nothing we had to generate.
     if (_billingUser) {
-      const _gate = await _usage.checkLimit(_billingUser, _usage.creditsFor('ideas'), 'ideas');
+      // v709 (D F14) — the reservation names the brand, so the morning batch (send-daily) can see a manual
+      // generate in flight for the same brand and skip its own run instead of writing a second batch.
+      const _gate = await _usage.checkLimit(_billingUser, _usage.creditsFor('ideas'), 'ideas', { brandId: _meterBrand || null });
       // v678: this path calls checkLimit directly, so guard() cannot attach the release — do it
       // here, or a failed generation keeps the credit for the full hold TTL. See _usage.js.
       if (_gate && _gate.ok && _gate.hold) _usage.attachHoldRelease(res, _gate.hold);
@@ -243,6 +309,7 @@ module.exports = async function handler(req, res) {
     // (lean request) or the internal send-daily cron, which hydrated it itself. A body-sent
     // brandContext from a user is never trusted for them.
     let _storedNews = (_isInternal && bc && Array.isArray(bc.freshNews)) ? bc.freshNews : [];
+    let _hydLibrary = [];   // v709 — the brand's library titles (dedupe)
     let _hydBc = null;   // types r2 — the SERVER-loaded brand, the only source of allowed facts on a lean request
     if (brandId) {
       const _hyd = await require('./_brandctx').loadBrandContext(
@@ -265,6 +332,7 @@ module.exports = async function handler(req, res) {
       }
       _storedNews = (_hyd.bc && Array.isArray(_hyd.bc.freshNews)) ? _hyd.bc.freshNews : [];
       _hydBc = _hyd.bc || {};
+      _hydLibrary = Array.isArray(_hyd.avoidTitles) ? _hyd.avoidTitles : [];
       bc = Object.assign({}, _hyd.bc, bc);
       learningContext = _composeAvoidList(learningContext, avoidExtra, _hyd.avoidTitles);
     }
@@ -293,10 +361,26 @@ module.exports = async function handler(req, res) {
     // fresh stored headline becomes a tip BEFORE the model is asked (never invent news), and the
     // response says so with warnings:['no_fresh_news'].
     const _typeWarn = [];
+    // v709 — ONE delivery setting per brand (CONTRACT.md): this request's override, else the brand's.
+    const _delivery = normDelivery(delivery) || normDelivery(bc.delivery) || 'face';
+    // v709 (C4/D4) — formats switched off in Content Mix are never written (an explicit forceFormat is the
+    // person's own pick for this one post and stays), and a typeMix loses the slots that need them.
+    const _off = formatsOffFrom(bc, _bodyFormatsOff, !isSeedReq(req.body) && forceFormat)
+      .filter(f => !(f === 'qna' && _rawPostType === 'qna'));   // one Q&A asked for by name is the person's own pick
+    if (_typeReq && !_rawPostType && _off.length) _typeReq = mixWithoutOff(bc, _typeReq, _off);
     let _slots = null, _fresh = [];
     if (_typeReq) {
       const _scaled = scaleTypeMix(_typeReq, count);
-      _fresh = normFreshNews(_storedNews, Date.now(), newsDismissed);
+      // v709 — headlines the brand dismissed (the app's list and the stored one) and headlines that name a
+      // banned topic (C9) never reach a news slot.
+      _fresh = normFreshNews(_storedNews, Date.now(), [].concat(Array.isArray(newsDismissed) ? newsDismissed : [], Array.isArray(bc.newsDismissed) ? bc.newsDismissed : []));
+      // v709 (D5) — Redo with notes on a News idea sends its own headline: it stays usable for this one idea
+      // even when it has aged out of the stored list, so the redo keeps its source link when the topic stays.
+      if (_rawPostType === 'news' && count === 1 && _redoNews && typeof _redoNews === 'object') {
+        const _rn = normFreshNews([{ title: _redoNews.title, url: _redoNews.url, date: Date.now(), source: _redoNews.source }], Date.now());
+        if (_rn.length && /^https:\/\//i.test(_rn[0].url)) _fresh = _rn.concat(_fresh.filter(x => x.url !== _rn[0].url));
+      }
+      _fresh = require('./_trends').dropBanned(_fresh, bc.bannedTopics || '');
       if (_scaled.news > 0 && !_fresh.length) { _scaled.tip += _scaled.news; _scaled.news = 0; _typeWarn.push('no_fresh_news'); }
       _slots = typeSlots(_scaled);
     }
@@ -363,11 +447,21 @@ module.exports = async function handler(req, res) {
 
     // Face-on vs faceless steering (only meaningful for the filmable formats: video, micro, qna, statement).
     let deliveryInstruction = '';
-    if (delivery === 'faceless') {
+    // v709 — the shared POST RULES block (api/_write.js postRules) carries the delivery rule, the ending,
+    // the hashtag policy and the never-salesy rule ONCE; this file's own copies are only the fallback for
+    // an older _write.js. One type and/or one format for the whole call → its shape fitted to the format.
+    const _oneType = (_slots && _slots.length && _slots.every(t => t === _slots[0])) ? _slots[0] : '';
+    const _rulesBlock = sharedPostRules({ type: _oneType, format: (!isSeed && forceFormat) || '', delivery: _delivery });
+    if (_rulesBlock) { /* the delivery rule is in _rulesBlock */ }
+    else if (_delivery === 'faceless') {
       deliveryInstruction = `\nDELIVERY STYLE — FACELESS (applies to any VIDEO, MICRO-LECTURE, Q&A or STATEMENT idea; ignore for CAROUSEL/IMAGE, which are visual by nature): the creator is NOT on camera. Write the script as a VOICEOVER read over footage (it may be AI-voiced): natural spoken rhythm, but never a piece to camera. The shot list MUST be b-roll, stock clips, screen recordings, product or close-up shots, or text-on-screen cards — never "you on camera", "talk to camera", "look into the lens", or "hold the product to your face". Lean on on-screen text overlays to carry the key beats.`;
-    } else if (delivery === 'faceon') {
+    } else if (normDelivery(delivery) === 'face') {
       deliveryInstruction = `\nDELIVERY STYLE — FACE-ON (applies to any VIDEO, MICRO-LECTURE, Q&A or STATEMENT idea): the creator films themselves talking to camera. Write the script to be performed on camera and let the shot list assume the creator is on screen.`;
     }
+
+    // v709 (C4/D4) — the formats switched off in Content Mix: never written (ideas in them are dropped below).
+    const formatsOffInstruction = _off.length
+      ? `\nFORMATS SWITCHED OFF for this brand (never use them, not even as a bonus): ${_off.join(', ')}.` : '';
 
     // Q&A quota is a BULK feature only — never force a single/small request into Q&A.
     // (For count=1 the old formula produced "at least 2 of the 1 ideas must be qna",
@@ -382,7 +476,7 @@ module.exports = async function handler(req, res) {
     // formats with a weight above zero), so it is the honest signal for whether Q&A is wanted —
     // and it needs no new payload field. No qna gap => no Q&A instruction at all.
     const qnaGaps = (!isSeed && Array.isArray(gaps)) ? gaps.filter(g => g && g.format === 'qna').length : 0;
-    if (qnaGaps > 0 && count >= 3 && !_slots) {   // types: a type mix decides the Q&A count itself
+    if (qnaGaps > 0 && count >= 3 && !_slots && _off.indexOf('qna') < 0) {   // types: a type mix decides the Q&A count itself
       // Ask for at most what was actually requested, and never more than a third of the batch.
       const qnaMin = Math.max(1, Math.min(qnaGaps, Math.floor(count / 3)));
       qnaInstruction = `\nAt least ${qnaMin} of the ${count} ideas should use the "qna" format — the brand's content mix asks for it. Each Q&A must use a different question angle from the list above.`;
@@ -448,18 +542,16 @@ Every idea in the batch makes a DIFFERENT point, not one point reworded.`;
     if (isSeed) {
       learningBlock = `\n═══ DEVELOP THE USER'S DROPPED IDEA — THIS IS THE WHOLE JOB ═══\nThe user dropped ONE raw, half-baked idea below. Turn it into the single ready-to-film brief you return. First find the point inside it: what the user would say if they filmed it (a how-to, an answer, a story or an opinion). That is the "belief" of the brief. Build the brief AROUND it and keep its actual angle: sharpen it, give it a strong opening line, in the brand's voice. Do NOT swap it for a safer or more generic idea, and do NOT water it down. Pick the ONE format that best fits THIS idea — do not default to Q&A.\n\nTHE IDEA:\n"${seedIdea_}"${seedNotes_ ? `\n\nUser's notes about a reference video:\n"${seedNotes_}"` : ''}${seedTranscript_ ? `\n\nTranscript of a reference video (inspiration only — adapt to the brand, never copy, and never borrow its numbers, names or results as the brand's own):\n"${seedTranscript_.slice(0, 4000)}"` : ''}\n`;
     } else {
-      learningBlock = learningContext ? `\n${learningContext}\n\nUse this feedback to shape your ideas. Lean into angles, formats, and tones the user approved. Avoid patterns they rejected.\n` : '';
+      learningBlock = learningContext ? `\n${learningContext}\n\nUse this feedback to shape your ideas. Lean into angles and formats the user approved. Avoid patterns they rejected.\n` : '';
     }
 
-    // v693 — A SEARCH QUESTION IS NOT THE IDEA. PAA-to-post seeds a real search question; answered
-    // literally it becomes the search-question topic the diagnosis found ("what is X?"). The question
-    // is turned into a belief about the asker's situation instead. The old app build appends its own
-    // "SEED QUESTION ... answer it" block to learningContext, so this block comes AFTER the learning
-    // block and says in so many words that it overrides that instruction.
+    // v709 (audit A6) — "Answer this" ANSWERS THE QUESTION. v693 told the model "Do NOT simply answer it,
+    // and ignore any line above that says to answer it directly", which also cancelled the Q&A format's
+    // own rule (first sentence answers). The searcher came for the answer: it now comes first.
     const seedQuestion_ = (typeof seedQuestion === 'string' ? seedQuestion : '').replace(/\s+/g, ' ').trim().slice(0, SEED_QUESTION_CAP);
     const isQuestionSeed = !isSeed && (!!seedQuestion_ || (typeof learningContext === 'string' && PAA_MARK.test(learningContext)));
     const questionBlock = isQuestionSeed
-      ? `\nTHE SEED IS A SEARCH QUESTION${seedQuestion_ ? `: "${seedQuestion_}"` : ' (above)'}. Do NOT simply answer it, and ignore any line above that says to answer it directly or to make the hook reference it. Turn it into a belief about the viewer's situation first: why is someone asking this, and what do they assume that makes the question feel urgent? That belief is the idea and goes in "belief". The script argues the belief and answers the question on the way only where that helps. For a qna idea the title may still be the question itself.\n`
+      ? `\nTHE SEED IS A SEARCH QUESTION${seedQuestion_ ? `: "${seedQuestion_}"` : ' (above)'}. Answer it: the first sentence of the script gives the direct answer, then why, in the brand's voice. The "belief" is that answer in one plain sentence. For a qna idea the title is the question itself.\n`
       : '';
 
     const opener = isSeed
@@ -469,10 +561,9 @@ Every idea in the batch makes a DIFFERENT point, not one point reworded.`;
     // v640 — the brand block sits at the END, the last thing read before the task (recency).
     // v693 — the long craft rulebook that used to fill the middle is gone: the short style guide
     // (api/_write.js styleGuide, shared with the v2 pipeline) and the spoken rule replace it.
-    const brandTag = '#' + (String(bc.brandName || '').trim() || 'My Brand').replace(/\s+/g, '');
     const prompt = `${opener}
 ${gapInstruction}
-${forceFormatInstruction}
+${forceFormatInstruction}${formatsOffInstruction}
 ${deliveryInstruction}
 ${qnaInstruction}${typeBlock}
 ${beliefBlock}
@@ -480,12 +571,12 @@ ${beliefBlock}
 CONTENT FORMATS:
 - video: 30-60 second vertical video (Reel/TikTok). Structure: the first 2 seconds open the point, the middle delivers it in its type's shape, the last 5 seconds land the result or the reframe. Script is written to be spoken — full sentences of varied length joined by natural connectors, usually 90-180 words (90 is a FLOOR, not a target to undercut; take the words the idea needs), no headings. Shot list: 4-8 concrete shots a solo creator can film on a phone, no crew.
 - carousel: 5-8 slide Instagram carousel. Slide 1 = the point as a claim or a question that forces the swipe (never a title). Slides 2-7 = ONE idea per slide (a step, a reason, a beat), building to that one point (a slide reads best short, but say what the idea needs). Last slide = a takeaway worth saving or sharing. boldText = all slide texts, numbered ("1: ... 2: ..."). script = design instructions only: layout, contrast, type treatment. Every slide must earn the next swipe.
-- statement: A bold standalone claim for a text graphic, written in THIS brand's voice. NEVER a single line: minimum 2 sentences, because one line says nothing on its own. It must land for a stranger with ZERO context — the point first, then whatever makes it hit: the reframe, the cost, the uncomfortable contrast, or a real number from the brand profile (never an invented one). Natural sentences a person would actually say, not a run of clipped commands. A dry technical brand may simply state the fact and then the consequence. Usually 2-5 sentences, roughly 15-60 words: a guide, not a limit. No explanations, no benefits list, no lecture, no CTA. BANNED: building the statement around an invented nickname or cryptic metaphor ("hangover candy", "dessert in a costume") that the reader must decode. If a metaphor appears, the very next line must say the same thing literally. boldText = the full statement text. script = 2-3 sentences of practical shooting tips for the "film it instead" option (delivery, tone, framing — e.g. "Deadpan, straight into camera. One take, no music. Hold the last line two beats."). NO design instructions — no background/typography/layout talk, the graphic is auto-generated.
-- micro: 10-15 second single-point video. ONE point carried by one thing about how something in the WORLD works (something the brand profile or common knowledge actually supports, never an invented statistic) — never a walkthrough of how the brand's own product works, which is a feature tour, not content. Script usually 30-70 words, spoken style — full sentences someone can say out loud, never clipped fragments. The point stated plainly, then why it matters. No intro, no "did you know", no outro. 1-3 shots max.
+- statement: A bold standalone claim for a text graphic, written in THIS brand's voice. NEVER a single line: minimum 2 sentences, because one line says nothing on its own. It must land for a stranger with ZERO context — the point first, then whatever makes it hit: the reframe, the cost, the uncomfortable contrast, or a real number from the brand profile (never an invented one). Natural sentences a person would actually say, not a run of clipped commands. A dry technical brand may simply state the fact and then the consequence. Usually 2-5 sentences, roughly 15-60 words: a guide, not a limit. No explanations, no benefits list, no lecture. BANNED: building the statement around an invented nickname or cryptic metaphor ("hangover candy", "dessert in a costume") that the reader must decode. If a metaphor appears, the very next line must say the same thing literally. boldText = the full statement text. script = 2-3 sentences of practical tips for the "film it instead" option (tone, pacing, framing), following the DELIVERY rule (e.g. "Deadpan. One take, no music. Hold the last line two beats."). NO design instructions — no background/typography/layout talk, the graphic is auto-generated.
+- micro: 10-15 second single-point video. ONE point carried by one thing about how something in the WORLD works (something the brand profile or a CHECKED FACT actually supports, never an invented statistic) — never a walkthrough of how the brand's own product works, which is a feature tour, not content. Script usually 30-70 words, spoken style — full sentences someone can say out loud, never clipped fragments. The point stated plainly, then why it matters. No intro, no "did you know", no outro. 1-3 shots max.
 
 LENGTH (v693 r3 — guidance, not caps): match the length to the format. statement/static are read at a glance; micro/qna are short spoken answers; video gets the full script. Never pad a short format into a lecture, and never cut an idea short to hit a number.
-- static: Single image post (shown to users as "Image"). The image carries the idea on its own — describe ONE concrete, photographable scene or product shot (no collages, no vague lifestyle vibes). Caption: 1-3 sentences in brand voice adding context the image cannot — this is the one format where the caption IS the writing. End with a question or quiet prompt only when natural, never a hard CTA.
-- qna: Q&A — a real audience question + short filmed answer (under 30 seconds). The creator films a quick answer on camera.
+- static: Single image post (shown to users as "Image"). The image carries the idea on its own — describe ONE concrete, photographable scene or product shot (no collages, no vague lifestyle vibes). Caption: 1-3 sentences in brand voice adding context the image cannot — this is the one format where the caption IS the writing.
+- qna: Q&A — a real audience question + a short spoken answer (under 30 seconds), filmed or voiced over as the DELIVERY rule says.
   CRITICAL RULES FOR Q&A:
   1. Every question MUST come from the BRAND CONTEXT — the customer pain points, communities, target audience fears and goals. Never invent generic, off-brand questions unrelated to what this brand actually does.
   2. Questions should sound like REAL DMs or comments from followers — casual, specific, blunt. Use the audience's actual language from the brand profile.
@@ -493,9 +584,9 @@ LENGTH (v693 r3 — guidance, not caps): match the length to the format. stateme
   4. The answer gives the direct answer first, then why. Use the brand profile's REAL facts only where they answer the question — no vague "it depends", and never an invented fact: where proof is missing, write a [your story: <what to tell>] slot.
   5. TITLE = the raw question itself, as if someone typed it in a comment. HOOK = a DIFFERENT opening line for the filmed answer — it must NEVER just repeat the question. Title and hook must never be identical.
   6. ANSWER LENGTH: usually under 30 seconds spoken (about 40-80 words). The FIRST sentence answers the question directly — no wind-up, no "great question". End, don't trail off.
-- bonus: Wildcard — content that breaks the weekly rotation on purpose. One of: a reactive take on something current in the niche, a seasonal angle, a behind-the-scenes/founder moment, or a contrarian opinion. It must still CHOOSE one production shape (video, statement, or image) and obey that format's rules. Bonus content should feel like the brand going off-script, never filler.
+- bonus: Wildcard — content that breaks the weekly rotation on purpose. One of: a reactive take on something current in the niche, a seasonal angle, a behind-the-scenes/founder moment, or (only where the batch has a tip) a contrarian opinion. It must still CHOOSE one production shape (video, statement, or image) and obey that format's rules. Bonus content should feel like the brand going off-script, never filler.
 
-${toneBlock}ANGLE VARIETY (mandatory): within any single day, no two ideas may share the same angle, and not all ideas should be on the same topic. Rotate angles across: myth-bust, how-to / routine, customer story (a real one from the stories below, or a slot), mechanism, hot take / contrarian, comparison vs alternative, founder / behind-the-scenes, common mistake, before/after. Two ideas may share a topic ONLY if their angle AND format differ sharply. The goal is a feed that never feels like the same post twice.
+${toneBlock}${_slots ? 'VARIETY WITHIN EACH TYPE: the POST TYPES counts above decide what every idea is; this only flavours ideas inside their own type and never changes one. ' : 'VARIETY: '}No two ideas share the same angle, and not all ideas are on the same topic. Ways in to vary: myth-bust, how-to / routine, mechanism, common mistake, before/after, comparing two approaches (never brands). Two ideas may share a topic ONLY if their angle AND format differ sharply. The goal is a feed that never feels like the same post twice.
 
 Each idea MUST be a complete, ready-to-use content brief. Scripts must be FULL. The ONLY placeholder allowed is a [your story: <what to tell>] slot where real proof belongs — never "[insert X]".
 
@@ -504,14 +595,14 @@ HOOK: the first line a person would actually say, or read on screen before the a
 ${stayRule}
 THAT IS A RULE ABOUT SUBJECT, NOT ABOUT SHAPE — there are many ways in: a blunt claim, a question someone actually asked, a thing you noticed this week, a correction, a small story, the punchline first. If several ideas in this batch open the same way, rewrite them so the ways in genuinely differ.
 
-TAGS: start with the brand hashtag (${brandTag}), then 2-3 niche tags and 1 broad tag, max 5 in total. Never the brand's avoid-words, never hype tags (#viral, #gamechanger, #musthave, #fyp). Never say "viral" in the content itself.
+${_rulesBlock ? '' : 'HASHTAGS: write none; the app adds the brand\'s own tags. '}Never say "viral" in the content itself.
 
-${styleGuide(_allAbout ? { about: true } : undefined)}
+${styleGuide({ about: _allAbout, noSell: !_rulesBlock })}
 
-${spokenV2()}
-
+${spokenV2().replace(/ to camera/g, '')}
+${_rulesBlock ? '\n' + _rulesBlock + '\n' : ''}
 ${brandProfile}
-${_factsBlock ? _factsBlock + '\n' + factsUse('Put the ids an idea uses in its "facts" array. Never paste a link into the script or caption.') + '\n' : ''}${stories ? stories + '\n' : ''}${learningBlock}${questionBlock}${winners ? winners + '\n\n' : ''}EVERYTHING ABOVE THIS LINE IS THE BRAND. It is the last thing you read before the task because it is what matters most. Where it and the style guide disagree on voice, the brand wins. Nothing in it permits inventing a fact.
+${_factsBlock ? _factsBlock + '\n' + factsUse('Put the ids an idea uses in its "facts" array. Never paste a link into the script or caption.') + '\n' : ''}${stories ? stories + '\n' : ''}${learningBlock}${questionBlock}${winners ? winners + '\n\n' : ''}THE BRAND AND ITS MATERIAL END HERE. Nothing in it permits inventing a fact or selling.
 
 HOW TO FILL "emphasis": 2-5 SHORT phrases copied VERBATIM from the script — the words the speaker should lean on when saying it out loud: the flip word (not/never/instead), the payoff. These are stress marks for the teleprompter, so pick words that change the meaning if spoken flat. Never mark a whole sentence. Empty array for non-spoken formats.
 
@@ -529,7 +620,6 @@ ${typeSchema}${_factsBlock ? '  "facts": ["F1"],  (ids of the CHECKED FACTS this
   "shots": "Shot 1: ...\\nShot 2: ...\\nShot 3: ...",
   "caption": "Post caption text — ONLY for static and carousel formats (it IS the post there). Empty string for all video formats: captions are auto-generated on-platform.",
   "reelTitle": "Short reel title",
-  "tags": "${brandTag} #niche1 #niche2 #broad1 (max 5 total)",
   "boldText": "MANDATORY for statement and carousel, never omit it. For statement: the FULL statement text (this is the content people see). For carousel: all slide texts numbered. For statements, hook must be sentence 1 of boldText, and design notes in script may only reference lines that actually appear in boldText."
 }
 
@@ -644,7 +734,7 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
       shots: txt(idea.shots),
       caption: txt(idea.caption),
       reelTitle: txt(idea.reelTitle),
-      tags: txt(idea.tags),
+      tags: '',   // v709 — set below from the brand's own tags (codeTags), never the model's
       ...(txt(idea.boldText) ? { boldText: txt(idea.boldText) } : {})
       };
     });
@@ -664,11 +754,43 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     const _allowedBase = [userFacts(_factBc),
       (Array.isArray(_factBc.stories) ? _factBc.stories : []).map(x => (x && typeof x === 'object') ? String(x.text || '') : String(x || '')).join('\n'),
       seedIdea_, seedNotes_, seedQuestion_].join('\n');
+    // v709 — the caption's checked-fact Source line: the shared sourceLine when it exists (never on news,
+    // which keeps its own headline link), else the v706 helper.
+    const withSourceLine = (caption, ids, postType) => {
+      const sl = _W().sourceLine;
+      if (typeof sl === 'function' && postType !== 'news') {
+        const line = String(sl(_factsBc, ids) || '');
+        let c = String(caption || '').replace(/\n*Sources?:[ \t]*https?:\/\/\S+(?:[ \t]*·[ \t]*https?:\/\/\S+)*[ \t]*$/i, '').replace(/\s+$/, '');
+        if (!line) return c;
+        const room = 2200 - line.length;   // the caption cap (api/_write.js MAX_CAPTION)
+        if (c.length > room) { c = c.slice(0, Math.max(0, room)); const sp = c.lastIndexOf(' '); if (sp > room * 0.6) c = c.slice(0, sp); c = c.replace(/[\s,;:\-]+$/, ''); }
+        return c ? c + line : line.replace(/^\n+/, '');
+      }
+      return captionWithFactSources(caption, factSourcesFor(_factsBc, ids), postType);
+    };
+    // The library titles a batch must not repeat: the server-loaded list on a lean request, or the
+    // morning batch's own read (only the internal cron may send it).
+    const _library = [].concat(_hydLibrary, _isInternal && Array.isArray(_libTitles) ? _libTitles : [])
+      .slice(0, 2000).map(t => String(t == null ? '' : t).trim().slice(0, 200)).filter(Boolean);
     const _factsList = factList(_factsBc);   // v706 r2 — a fact's numbers only in a sentence that uses that fact
+    // The brand the guard reads: the SERVER-loaded one on a lean request (+ the two day-theme strings the
+    // device alone knows) and only the server's checked facts.
+    const _guardBc = Object.assign({}, _factBc, { facts: _factsBc.facts });
+    const runGuard = (idea, extra) => {
+      const gp = _W().guardPost;
+      if (typeof gp === 'function') {
+        const r = gp(idea, _guardBc, { mode: 'batch', allowed: [seedIdea_, seedNotes_, seedQuestion_, extra].filter(Boolean).join('\n'), facts: _factsList });
+        const reasons = (r && Array.isArray(r.reasons)) ? r.reasons : [];
+        if (!r || r.drop || !r.post) return { ok: false, idea: null, reasons, sales: reasons.some(x => /^sales_only/.test(x)) };
+        return { ok: true, idea: Object.assign({}, idea, r.post), reasons };
+      }
+      const g = guardIdeaFacts(idea, _allowedBase + (extra ? '\n' + extra : ''), _factsList);
+      return Object.assign(guardIdeaNoSell(g.idea), { sales: true });
+    };
     const assignTypes = (clean, raws) => {
       const quota = {};
       if (_slots) for (const t of _slots) quota[t] = (quota[t] || 0) + 1;
-      let dropped = 0, salesStrong = 0, salesDropped = 0;
+      let dropped = 0, salesStrong = 0, salesDropped = 0, offDropped = 0, unsafeDropped = 0;
       const list = clean.map((idea, i) => {
         const raw = (raws[i] && typeof raws[i] === 'object') ? raws[i] : {};
         let pt;
@@ -691,13 +813,19 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
         }
         if (_slots && quota[out.postType] > 0) quota[out.postType]--;
         if (_slots && out.postType === 'qna') out.format = 'qna';
-        const g = guardIdeaFacts(out, _allowedBase + (out.newsSource ? '\n' + out.newsSource.title : ''), _factsList);
-        // no-sell — every selling sentence is taken out, the way guardIdeaFacts slots inventions. An idea
-        // the cut would hollow out (an emptied hook, title, script, caption or a lost slide) is DROPPED.
-        // Ideas with a sales ask in their sentences are counted: 2+ in one batch earn the one regeneration below.
-        if (['hook', 'title', 'reelTitle', 'script', 'boldText', 'caption'].some(k => strongSales(g.idea[k]))) salesStrong++;
-        const ns = guardIdeaNoSell(g.idea);
-        if (!ns.ok) { salesDropped++; return null; }
+        // v709 (C4) — an idea in a format switched off in Content Mix is never kept (it would be hidden).
+        if (_off.indexOf(out.format) >= 0) { offDropped++; return null; }
+        // no-sell — ideas with a sales ask in their sentences are counted: 2+ in one batch earn the one
+        // regeneration below.
+        if (['hook', 'title', 'reelTitle', 'script', 'boldText', 'caption'].some(k => strongSales(out[k]))) salesStrong++;
+        // v709 — THE SHARED GUARD (api/_write.js guardPost, mode 'batch'): the fact guard (with the brand's
+        // own proof as allowed material, B8: title and belief included), no-sell, and on-screen safety — an
+        // idea whose on-screen text would need a [your story: ...] slot is DROPPED, never printed (B1/B2).
+        // The extra allowed material (the user's own dropped idea, search question, the news headline) and
+        // the checked facts travel in opts. An older _write.js: the two v706 guards, as before.
+        const _extra = [seedIdea_, seedNotes_, seedQuestion_, out.newsSource ? out.newsSource.title : ''].filter(Boolean).join('\n');
+        const ns = runGuard(out, _extra);
+        if (!ns.ok) { if (ns.sales) salesDropped++; else unsafeDropped++; return null; }
         // v706 — the CHECKED FACTS it names (only this brand's real ids) plus any it visibly uses without
         // naming; then the source link(s) as the caption's last line, AFTER both guards (news: its own line only).
         const _usedText = [ns.idea.script, ns.idea.boldText, ns.idea.caption].join('\n');
@@ -705,15 +833,35 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
         for (const id of factIdsUsedIn(_factsBc, _usedText)) if (fi.indexOf(id) < 0) fi.push(id);
         if (fi.length) {
           ns.idea.facts = fi;
-          ns.idea.caption = captionWithFactSources(ns.idea.caption, factSourcesFor(_factsBc, fi), ns.idea.postType);
+          ns.idea.caption = withSourceLine(ns.idea.caption, fi, ns.idea.postType);
         }
+        ns.idea.tags = codeTags(bc, ns.idea);
         return ns.idea;
       }).filter(Boolean);
-      return { list, dropped, salesStrong, salesDropped };
+      // v709 (B F13 / D F14) — the SAME dedupe as the morning batch: a title already in this batch or in
+      // the brand's library is not added again (send-daily also checks every library title at save).
+      // A single idea (Quick Post, a redo that replaces its own card, a develop) is never deduped.
+      if (count <= 1) return { list, dropped, salesStrong, salesDropped, offDropped, unsafeDropped, dupDropped: 0, dupTitles: [] };
+      // Same title twice IN this batch: the later one gets a suffix (both were paid for; the app's loader
+      // keeps one row per title, so an unrenamed twin would vanish on reload). A title the LIBRARY already
+      // has: dropped, the rule the morning batch's save applies.
+      const lib = new Set(_library.map(t => t.toLowerCase()));
+      const seenT = new Set();
+      const unique = [], dupTitles = [];
+      for (const i of list) {
+        const t = String(i.title || '').trim(), k = t.toLowerCase();
+        if (!k || k === 'untitled') { unique.push(i); continue; }
+        if (lib.has(k)) { dupTitles.push(t); continue; }
+        let name = t, n = 2;
+        while (seenT.has(name.toLowerCase()) || lib.has(name.toLowerCase())) name = t + ' (' + (n++) + ')';
+        seenT.add(name.toLowerCase());
+        unique.push(name === t ? i : Object.assign({}, i, { title: name }));
+      }
+      return { list: unique, dropped, salesStrong, salesDropped, offDropped, unsafeDropped, dupDropped: list.length - unique.length, dupTitles };
     };
     const _a1 = assignTypes(cleanIdeas(ideas), ideas);
     ideas = _a1.list;
-    let _newsDropped = _a1.dropped, _salesDropped = _a1.salesDropped;
+    let _newsDropped = _a1.dropped, _salesDropped = _a1.salesDropped, _offDropped = _a1.offDropped, _unsafeDropped = _a1.unsafeDropped, _dupDropped = _a1.dupDropped;
 
     // v666 — NEVER RETURN A BLANK CARD AS A SUCCESS.
     // Every field above falls back to '' and the title to 'Untitled', so a reply the parser could
@@ -723,8 +871,15 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     const _usable = i => !!(i && (i.hook || i.script || i.caption || i.boldText || i.reelTitle ||
                                  (i.title && i.title !== 'Untitled')));
     const _kept = ideas.filter(_usable);
+    // v709 (review #1) — A THIN BATCH EARNS THE ONE EXISTING REGENERATION. The guards drop ideas AFTER the
+    // call (an on-screen [your story: ...] slot, a switched-off format, a title the library already has, a
+    // pitch, made-up news). When that leaves fewer than 60% of the ideas asked for, the same single
+    // regeneration below runs (never a second one; CLAUDE_CALL_PLAN unchanged), naming what was dropped.
+    const _need = Math.ceil(count * 0.6);
+    const _guardDrops = (a) => a.unsafeDropped + a.offDropped + a.dupDropped + a.salesDropped + a.dropped;
+    const _thin = _kept.length < _need && _guardDrops(_a1) > 0;
     // no-sell — a batch emptied ONLY because its pitches were dropped still gets the one regeneration below.
-    const _salesRegen = _a1.salesStrong >= 2 && _genLeft() >= 40000;
+    const _salesRegen = (_a1.salesStrong >= 2 || _thin) && _genLeft() >= 40000;
     if (!_kept.length && !_salesRegen) {
       console.error('generate-ideas: model reply parsed but held no usable idea; returning an error rather than blank cards');
       return res.status(502).json({ error: "That came back empty — try again", raw: String(content || '').slice(0, 400) });
@@ -735,17 +890,23 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     // topic) into the batch, regenerate ONCE with the offenders named. Bounded to one retry, fully
     // guarded, and only keeps the retry if it's actually cleaner — so it can never break or worsen the batch.
     try {
-      const _viol = outputViolations(JSON.stringify(ideas), bc);
-      if ((_viol.length || _a1.salesStrong >= 2) && _genLeft() >= 40000) {
+      const _viol = outputViolations(visibleText(ideas), bc);
+      if ((_viol.length || _a1.salesStrong >= 2 || _thin) && _genLeft() >= 40000) {
         const _bad = Array.from(new Set(_viol.map(v => v.hit))).slice(0, 12).join(', ');
-        const _fix = prompt + imgNote + (_viol.length ? `\n\nCRITICAL FIX: your previous draft used these FORBIDDEN words/topics: ${_bad}. Regenerate ALL ideas with the SAME quality, formats and structure, but with NONE of those words or topics anywhere (not in titles, hooks, scripts, captions or tags). Return the same JSON array.` : '') + (_a1.salesStrong >= 2 ? '\n\n' + noSellNote() + ' Regenerate ALL ideas and return the same JSON array.' : '');
+        const _dupT = _a1.dupTitles.concat(_library.slice(-20)).filter(Boolean).slice(0, 30);
+        const _thinNote = _thin ? `\n\nCRITICAL FIX: too few of your ideas were usable. Regenerate ALL ${count} ideas, and this time: never put a [your story: ...] slot (or any number, name or result the brand material does not give you) in on-screen text — a statement's boldText, carousel slides, a title or a hook${_off.length ? `; never use these switched-off formats: ${_off.join(', ')}` : ''}${_dupT.length ? `; never reuse these titles: ${_dupT.map(t => '"' + String(t).slice(0, 80) + '"').join(', ')}` : ''}. Return the same JSON array.` : '';
+        const _fix = prompt + imgNote + _thinNote + (_viol.length ? `\n\nCRITICAL FIX: your previous draft used these FORBIDDEN words/topics: ${_bad}. Regenerate ALL ideas with the SAME quality, formats and structure, but with NONE of those words or topics anywhere (not in titles, hooks, scripts, captions or tags). Return the same JSON array.` : '') + (_a1.salesStrong >= 2 ? '\n\n' + noSellNote() + ' Regenerate ALL ideas and return the same JSON array.' : '');
         const _c2 = await writerCallResilient({ deadlineMs: Math.min(93333, _genLeft()), timeoutMs: 90000, provider: writerProvider(), effort: writerEffort('batch'), messages: [{ role: 'user', content: _fix }], model: 'grok', max_tokens: 16000, engine: (bc.engine || 'grok'), images: refImages.length ? refImages : undefined }, { providerFromEnv: true, label: 'batch-fix' });
         let _i2 = extractJson(_c2);
         if (_i2 && !Array.isArray(_i2)) _i2 = [_i2];
         if (Array.isArray(_i2) && _i2.length) {
           const _a2 = assignTypes(cleanIdeas(_i2), _i2);
           const _clean2 = _a2.list;
-          if (_clean2.length && outputViolations(JSON.stringify(_clean2), bc).length + _a2.salesStrong < _viol.length + _a1.salesStrong) { ideas = _clean2; _newsDropped = _a2.dropped; _salesDropped = _a2.salesDropped; }
+          // v709 (B6 + review #1) — the retry is kept when it is cleaner and holds at least as many usable ideas,
+          // or when it holds MORE usable ideas and is no less clean. Never a smaller or dirtier set.
+          const _u1 = ideas.filter(_usable).length, _u2 = _clean2.filter(_usable).length;
+          const _v1 = _viol.length + _a1.salesStrong, _v2 = outputViolations(visibleText(_clean2), bc).length + _a2.salesStrong;
+          if (_clean2.length && ((_u2 >= _u1 && _v2 < _v1) || (_u2 > _u1 && _v2 <= _v1))) { ideas = _clean2; _newsDropped = _a2.dropped; _salesDropped = _a2.salesDropped; _offDropped = _a2.offDropped; _unsafeDropped = _a2.unsafeDropped; _dupDropped = _a2.dupDropped; }
         }
       }
     } catch (e) { /* keep the original batch — guardrail is best-effort */ }
@@ -756,9 +917,14 @@ IMPORTANT: Return ONLY the JSON array, no markdown, no code fences, no explanati
     // cron's account for the daily push) — the two MUST match, or a ceiling would be checked
     // that nothing ever increments.
     if (_billingUser) await _usage.logUsage({ userId: _billingUser, brandId: _meterBrand || brandId || bc.brandId || bc.brand_id || null, action: 'ideas', model: require('./_write').usageModel(bc) });
+    // v709 (review #1) — STILL SHORT after the one regeneration: said plainly, with the counts, so the app can
+    // tell the person. Credits are whole numbers in _usage (an 'ideas' call is 1), so a partial charge is not
+    // possible without a schema change; the honest minimum is to say how many of the ideas asked for came back.
+    const _final = ideas.filter(_usable).length;
+    const _short = count > 1 && _final < _need ? { short: true, requested: count, delivered: _final } : {};
     // v693 — `warnings` is always an array (same as /api/angles and /api/write): ['tones_over_limit']
     // when the brand has more than 3 tones and none were used.
-    return res.status(200).json({ ideas, warnings: warnings.concat(_typeWarn, _newsDropped ? ['news_dropped'] : [], _salesDropped ? ['sales_dropped'] : []) });
+    return res.status(200).json({ ideas, warnings: warnings.concat(_typeWarn, _newsDropped ? ['news_dropped'] : [], _salesDropped ? ['sales_dropped'] : [], _offDropped ? ['format_off_dropped'] : [], _unsafeDropped ? ['onscreen_slot_dropped'] : [], _dupDropped ? ['duplicate_dropped'] : []), ..._short });
 
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"

@@ -228,7 +228,9 @@ setHydrated();
   const I = (r.body.ideas || [])[0] || {};
   ok(calls.length === 1, 'fact guard: no extra AI call');
   ok(/500mg sodium/.test(noSlot(I.script)) && !/3x|94%|clinically/.test(noSlot(I.script)) && /\[your story:/.test(I.script), 'about: a real product fact stays, the invented 3x / clinically proven / 94% become a slot');
-  ok(!/400/.test(noSlot(I.caption)) && /\[your story:/.test(I.caption) && !/Harvard/.test(noSlot(I.boldText)) && /\[your story:/.test(I.boldText), 'the caption and boldText are guarded too');
+  // v709 (audit B1, guardPost) — an inventing caption SENTENCE is removed (a caption is copied as it is, so it
+  // never carries a [your story: ...] slot); boldText is slotted.
+  ok(!/400/.test(I.caption) && !/\[your story:/.test(I.caption) && !/Harvard/.test(noSlot(I.boldText)) && /\[your story:/.test(I.boldText), 'the caption and boldText are guarded too');
   ok(I.hook === 'Our sticks carry ZPROD 500mg sodium.', 'an inventing hook falls back to the first spoken line of the guarded script (' + I.hook + ')');
   const NI = 'Walmart pulled 4,000 SKUs of Gatorade yesterday, CEO Doug McMillon said sugar is dead.';
   const rn = await run('ideas', { brandId: 'b1', typeMix: { news: 1 } }, batch([idea({ postType: 'news', newsIndex: 1, script: 'Electrolyte sales rose 40% this year. ' + NI })]));
@@ -290,7 +292,7 @@ const ANG = (list) => () => JSON.stringify({ angles: list });
   const ANGLE = { belief: 'Salt timing beats salt amount', why: 'w', newsSource: { title: NEWS[0].title, url: NEWS[0].url } };
   const r = await run('write', { brandId: 'b1', postType: 'news', source: { kind: 'note', text: '' }, angle: ANGLE }, wplan);
   const P = (calls[0] || {}).prompt || '';
-  ok(r.statusCode === 200 && P.includes('THE NEWS THIS POST REACTS TO') && P.includes('"' + NEWS[0].title + '"') && P.includes('Link: ' + NEWS[0].url) && P.includes('KIND OF POST. ' + W.TYPE_RULES.news), 'write news: the stored headline + link + the news rule in the draft prompt');
+  ok(r.statusCode === 200 && P.includes('THE NEWS THIS POST REACTS TO') && P.includes('"' + NEWS[0].title + '"') && P.includes('Link: ' + NEWS[0].url) && P.includes('KIND OF POST. ' + W.TYPE_RULE_BASE.news), 'write news: the stored headline + link + the news rule in the draft prompt');
   const I = (r.body && r.body.idea) || {};
   ok(I.postType === 'news' && JSON.stringify(I.newsSource) === JSON.stringify({ title: NEWS[0].title, url: NEWS[0].url }), 'write news: idea.postType news + newsSource from the stored headline');
   const noSlots = String(I.script || '').replace(/\[your story:[^\]]*\]/g, '');
@@ -310,7 +312,7 @@ const ANG = (list) => () => JSON.stringify({ angles: list });
   const PA = calls[0].prompt;
   ok(r5.body.idea.postType === 'about' && !PA.includes(FEATURES_LINE) && !PA.includes(BG_ONLY) && PA.includes(B.ABOUT_BG_NOTE) && PA.includes(B.NO_INVENTION_RULE), 'write about: the product rules lifted, no-invention kept');
   const r6 = await run('write', { brandId: 'b1', postType: 'qna', source: { kind: 'note', text: 'x' }, angle: { belief: 'b', why: 'w' } }, plain);
-  ok(r6.body.idea.postType === 'qna' && calls[0].prompt.includes(W.TYPE_RULES.qna) && calls[0].prompt.includes(FEATURES_LINE), 'write qna: the qna rule, product rule kept');
+  ok(r6.body.idea.postType === 'qna' && calls[0].prompt.includes(W.TYPE_RULE_BASE.qna) && calls[0].prompt.includes(FEATURES_LINE), 'write qna: the qna rule, product rule kept');
   const r7 = await run('write', { brandId: 'b1', postType: 'x', source: { kind: 'note', text: 'x' }, angle: { belief: 'b', why: 'w' } }, plain);
   ok(r7.statusCode === 400 && r7.body.code === 'bad_input', 'write: an unknown postType is a 400');
 }

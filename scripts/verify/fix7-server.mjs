@@ -285,11 +285,14 @@ const BCT = { brandName: 'Calm Co', tones: ['dry'], communities: ['Evening routi
   calls = []; plan = (i) => [DRAFT, DRAFT, SHAPE][i];
   const out = await W.runWrite({ bc: BCT, source: SRC, angle: ANGLE, deadlineMs: 200000 });
   const H = out.hashtags;
-  ok(calls.length === 3 && !/hashtag/i.test((calls[2].messages || [])[0].content), 'no AI call and no prompt asks for hashtags (still 3 calls)');
+  // v709 — the shape prompt now carries the shared HASHTAG rule, which FORBIDS them; it still never asks for any.
+  const _shapeP = (calls[2].messages || [])[0].content;
+  ok(calls.length === 3 && !/"hashtags"|"tags"/i.test(_shapeP) && /HASHTAGS: write none/.test(_shapeP) && (_shapeP.match(/hashtag/gi) || []).length === 1, 'no AI call and no prompt asks for hashtags (still 3 calls; the one mention forbids them)');
   ok(Array.isArray(H) && H === out.idea.hashtags, 'runWrite returns hashtags: string[] (also on the idea, like caption)');
   ok(!H.some(t => /cure|nike/.test(t)), 'model-written tags are never used — no #cureinsomnia, no #nike (' + H.join(' ') + ')');
-  ok(JSON.stringify(H) === JSON.stringify(['#sleephabits', '#magnesiumbasics', '#eveningroutines', '#calmco']),
-    'themes ranked by overlap with the idea, then the brand name; "General" skipped (' + H.join(' ') + ')');
+  // v709 r2 — the brand tag FIRST (as v708), then the themes ranked by overlap.
+  ok(JSON.stringify(H) === JSON.stringify(['#calmco', '#sleephabits', '#magnesiumbasics', '#eveningroutines']),
+    'the brand name, then themes ranked by overlap with the idea; "General" skipped (' + H.join(' ') + ')');
   ok(H.length >= 3 && H.length <= 6 && H.every(t => /^#[\p{Ll}\p{N}]+$/u.test(t)), '3-6 lowercase #word tags');
   calls = []; plan = (i) => [DRAFT, DRAFT, SHAPE][i];
   const again = await W.runWrite({ bc: BCT, source: SRC, angle: ANGLE, deadlineMs: 200000 });
@@ -298,17 +301,19 @@ const BCT = { brandName: 'Calm Co', tones: ['dry'], communities: ['Evening routi
 {
   calls = []; plan = (i) => [DRAFT, DRAFT, SHAPE][i];
   const out = await W.runWrite({ bc: { brandName: 'Calm Co', tones: ['dry'] }, source: SRC, angle: ANGLE, deadlineMs: 200000 });
-  ok(Array.isArray(out.hashtags) && out.hashtags.length === 0, 'a brand with no themes gets [] — never the brand name alone, never invented');
+  ok(JSON.stringify(out.hashtags) === '["#calmco"]', 'a brand with no themes gets its brand tag alone (v709 r2, as v708) — never an invented tag');
 }
 {
   const h = W._internals.hashtagsFor;
   const many = { brandName: 'Acme Studio', communities: ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'] };
   const t = h(many, { script: 'nothing matches' });
-  ok(t.length === 6 && t[5] === '#acmestudio' && t[0] === '#one', 'capped at 6 (5 themes in the brand\'s order + the brand name): ' + t.join(' '));
-  ok(h({ brandName: 'Bar Co', communities: 'Monday: Real food, Tuesday: Protein myths' }, { script: 'protein bar myths' }).join(' ') === '#proteinmyths #realfood #barco',
+  // v709 (contract) — max 5: 4 themes + the brand name.
+  ok(t.length === 5 && t[0] === '#acmestudio' && t[1] === '#one' && t[4] === '#four', 'capped at 5 (the brand name + 4 themes in the brand\'s order): ' + t.join(' '));
+  ok(h({ brandName: 'Acme', communities: ['FYP', 'Viral', 'Sale', 'Sleep tips'] }, {}).join(' ') === '#acme #sleeptips', 'hype and sales themes never become tags (v709)');
+  ok(h({ brandName: 'Bar Co', communities: 'Monday: Real food, Tuesday: Protein myths' }, { script: 'protein bar myths' }).join(' ') === '#barco #proteinmyths #realfood',
     'a day-map string of themes works too');
-  ok(h({ brandName: 'X', communities: ['Café & Küche!'] }, {}).join(' ') === '#caféküche #x', 'spaces and punctuation removed, letters kept, lowercased');
-  ok(h({ brandName: 'Boring Electrolytes', dayRotation: { Monday: 'Hydration myths', Tuesday: 'General', Bonus: 'All' } }, {}).join(' ') === '#hydrationmyths #boringelectrolytes',
+  ok(h({ brandName: 'X', communities: ['Café & Küche!'] }, {}).join(' ') === '#x #caféküche', 'spaces and punctuation removed, letters kept, lowercased');
+  ok(h({ brandName: 'Boring Electrolytes', dayRotation: { Monday: 'Hydration myths', Tuesday: 'General', Bonus: 'All' } }, {}).join(' ') === '#boringelectrolytes #hydrationmyths',
     'a brand whose themes live only in its day rotation still gets them ("General"/"All" skipped)');
 }
 

@@ -70,7 +70,9 @@ module.exports = async function handler(req, res) {
   try {
     // NOTE: competitors are stored in the `competitors_text` COLUMN (settingsToBrand), NOT in voice_extra —
     // must select it explicitly or the competitor pulse + gap-angle scoping below see nothing.
-    const r = await store.rest('GET', `/brands?select=id,brand_name,usps,target_audience,communities,auto_trends,voice_extra,competitors_text`);
+    // v709 (consistency C9) — banned_topics too: pullAllTrends (api/_trends.js) drops every trend, headline
+    // and post that names one of the brand's banned topics, so a news slot can never be handed one.
+    const r = await store.rest('GET', `/brands?select=id,brand_name,usps,target_audience,communities,auto_trends,voice_extra,competitors_text,banned_topics`);
     // Same class as the PATCH below: store.rest resolves on EVERY status, so an unchecked
     // read turned a broken/denied query into `brands = []` -> due = [] -> {ok:true,
     // considered:0} with an 'ok' heartbeat. A failed read is not "no brands are due".
