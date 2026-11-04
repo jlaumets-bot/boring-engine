@@ -1,0 +1,69 @@
+{
+  "name": "client-sec v710 — team XSS, invite confirm, onboarding escape, crawl error",
+  "mutations": [
+    {
+      "id": "M1",
+      "finding": "E1-invite-code",
+      "file": "app.html",
+      "find": "onclick=\"copyInviteLink('${escJs(inv.invite_code)}')\"",
+      "replace": "onclick=\"copyInviteLink('${inv.invite_code}')\"",
+      "gate": "client-sec-v710.mjs"
+    },
+    {
+      "id": "M2",
+      "finding": "E1-invite-email",
+      "file": "app.html",
+      "find": "<span class=\"email\">${escHtml(inv.email || 'Anyone with link')}</span>",
+      "replace": "<span class=\"email\">${inv.email || 'Anyone with link'}</span>",
+      "gate": "client-sec-v710.mjs"
+    },
+    {
+      "id": "M3",
+      "finding": "E2-join-on-load",
+      "file": "app.html",
+      "find": "const _joinOk = inviteCode ? await inviteJoinAsk(inviteCode) : false;",
+      "replace": "const _joinOk = !!inviteCode;",
+      "gate": "client-sec-v710.mjs"
+    },
+    {
+      "id": "M4",
+      "finding": "E2-brand-name-escape",
+      "file": "app.html",
+      "find": "const what = name ? escHtml(name) : 'a brand you were invited to';",
+      "replace": "const what = name ? name : 'a brand you were invited to';",
+      "gate": "client-sec-v710.mjs"
+    },
+    {
+      "id": "M5",
+      "finding": "E3-onboarding-summary",
+      "file": "app.html",
+      "find": "let html = `<h3>${escHtml(brand)}</h3>`;",
+      "replace": "let html = `<h3>${brand}</h3>`;",
+      "gate": "client-sec-v710.mjs"
+    },
+    {
+      "id": "M6",
+      "finding": "E10-crawl-raw-error",
+      "file": "api/crawl-brand.js",
+      "find": "return res.status(500).json({ error: \"Couldn't read that site just now — try again, or fill in the details by hand.\", code: 'crawl_failed' });",
+      "replace": "return res.status(500).json({ error: err.message });",
+      "gate": "client-sec-v710.mjs"
+    },
+    {
+      "id": "M7",
+      "finding": "R1-dead-invite",
+      "file": "app.html",
+      "find": "if (!info) dead = true;",
+      "replace": "if (!info) dead = false;",
+      "gate": "client-sec-v710.mjs"
+    },
+    {
+      "id": "M8",
+      "finding": "R1-error-not-dead",
+      "file": "app.html",
+      "find": "if (r && !r.error) {",
+      "replace": "if (r) {",
+      "gate": "client-sec-v710.mjs"
+    }
+  ]
+}

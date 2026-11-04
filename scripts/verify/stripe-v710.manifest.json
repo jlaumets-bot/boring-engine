@@ -1,0 +1,49 @@
+{
+  "mutations": [
+    {
+      "id": "M1",
+      "finding": "F5-free-promo",
+      "file": "api/checkout-confirm.js",
+      "find": "if (!paid && !freeByPromo) return res.status(200).json({ ok: false, pending: true });",
+      "replace": "if (!paid) return res.status(200).json({ ok: false, pending: true });",
+      "gate": "stripe-v710.mjs",
+      "why": "the v709 behaviour: a €0 promo session stays 'pending' forever"
+    },
+    {
+      "id": "M2",
+      "finding": "F5-free-promo",
+      "file": "api/checkout-confirm.js",
+      "find": "&& session.status === 'complete' && session.mode === 'subscription' && !!session.subscription;",
+      "replace": "&& session.mode === 'subscription' && !!session.subscription;",
+      "gate": "stripe-v710.mjs",
+      "why": "an open/expired no_payment_required session would grant"
+    },
+    {
+      "id": "M3",
+      "finding": "F5-free-promo",
+      "file": "api/checkout-confirm.js",
+      "find": "const live = sub && (sub.status === 'active' || sub.status === 'trialing');",
+      "replace": "const live = sub && (sub.status === 'active' || sub.status === 'trialing' || freeByPromo);",
+      "gate": "stripe-v710.mjs",
+      "why": "a €0 promo on an incomplete/canceled subscription would be written as paid"
+    },
+    {
+      "id": "M4",
+      "finding": "F6-period-end",
+      "file": "api/stripe-webhook.js",
+      "find": "  return (it && it.current_period_end) || null;\n}",
+      "replace": "  return null;\n}",
+      "gate": "stripe-v710.mjs",
+      "why": "no item fallback: new-API subscriptions lose the period end"
+    },
+    {
+      "id": "M5",
+      "finding": "F6-period-end",
+      "file": "api/stripe-webhook.js",
+      "find": "const periodEnd = subPeriodEnd(cur) ? new Date(subPeriodEnd(cur) * 1000).toISOString() : null;",
+      "replace": "const periodEnd = cur.current_period_end ? new Date(cur.current_period_end * 1000).toISOString() : null;",
+      "gate": "stripe-v710.mjs",
+      "why": "the subscription-event path reads only the top-level field again"
+    }
+  ]
+}

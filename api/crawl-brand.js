@@ -298,8 +298,10 @@ ${web.slice(0, 12000)}`;
 
   } catch (err) {
     const ai = aiUnavailable(err); if (ai) return res.status(ai.status).json(ai.body);   // v690 — a refused AI account (no credits / spending limit) is a 503 with the honest message, not "try again"
-    console.error('Crawl error:', err);
-    return res.status(500).json({ error: err.message });
+    // v710: err.message is internal text (store/REST paths, provider error bodies). It stays in the
+    // server log; the client gets a plain sentence and a stable code it can branch on.
+    console.error('Crawl error:', (err && err.stack) || err);
+    return res.status(500).json({ error: "Couldn't read that site just now — try again, or fill in the details by hand.", code: 'crawl_failed' });
   }
 };
 

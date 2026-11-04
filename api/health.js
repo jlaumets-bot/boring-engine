@@ -7,7 +7,7 @@
 // sql/health-check.sql. Safe to be public because it leaks nothing actionable.
 
 const store = require('./_publish/store');
-const { callLLM } = require('./_llm');
+const { callLLM, activeWriterProvider } = require('./_llm');
 
 // The RESOLVED cost-fuse value, read from the one place that defines it. Never
 // re-derive it here: _usage.js applies the default (25) and treats an empty or
@@ -173,7 +173,7 @@ module.exports = async function handler(req, res) {
   const [isoR, dbR, hbR, routeR] = await Promise.allSettled([
     store.rest('POST', '/rpc/security_health', { body: {} }),
     store.rest('GET', '/brands?select=id&limit=1'),
-    store.rest('GET', '/job_heartbeats?select=job,last_success_at,last_status'),
+    store.rest('GET', '/job_heartbeats?select=job,last_success_at,last_status,detail'),   // v710: detail for the ai-writer rows
     probeRouteGroups(),
   ]);
   const settled = (r) => (r.status === 'fulfilled' ? r.value : null);
@@ -255,20 +255,22 @@ module.exports = async function handler(req, res) {
   // sensitive — so the daily report can note "never observed" jobs.
   const cronMeta = {};
   const hb = settled(hbR);
-  // Heartbeats table unreachable — an INFRA error, not a dead cron. Kept as a pass so a
-  // Supabase blip cannot masquerade as "your crons are down", but meta now says which of the
-  // two happened: 'never-run' (the job) vs 'unreadable' (the table). Previously both were
-  // null and indistinguishable, so a broken monitor looked exactly like a broken cron.
-  if (!hb || hb.status >= 400 || !Array.isArray(hb.data)) {
-    console.error('health: job_heartbeats unreadable');
-    for (const { job } of CRON_JOBS) { cronMeta[job] = 'unreadable'; add('cron_' + job + '_fresh', true); }
+  // Heartbeats table unreachable. v710 — WAS A PASS: every cron scored green on a table nobody could
+  // read, so a broken monitor hid every dead cron at once (deep-audit G #11). An unknown state is not a
+  // healthy one: each cron check now FAILS, and meta says 'unreadable' (the table), not 'never-run' (the
+  // job), so the owner looks at Supabase first.
+  const hbReadable = !!hb && hb.status < 400 && Array.isArray(hb.data);
+  if (!hbReadable) {
+    console.error('health: job_heartbeats unreadable — every cron check is unknown, so failing');
+    for (const { job } of CRON_JOBS) { cronMeta[job] = 'unreadable'; add('cron_' + job + '_fresh', false); }
   } else {
     const byJob = Object.create(null);
     for (const row of hb.data) byJob[row.job] = row;
     const now = Date.now();
     for (const { job, maxAgeMin, firstRunGraceMin } of CRON_JOBS) {
       const row = byJob[job];
-      if ((!row || !row.last_success_at) && firstRunGraceMin > 0) {
+      // v710 — the grace covers only a job that has never written ANY row; a row that says 'error' is red.
+      if ((!row || !row.last_success_at) && firstRunGraceMin > 0 && !(row && row.last_status === 'error')) {
         // v706 — a just-added job before its first scheduled run: honest, not red (see CRON_JOBS).
         const mark = byJob[FIRST_MISSING + job];
         let since = mark && Date.parse(mark.last_success_at);
@@ -295,6 +297,11 @@ module.exports = async function handler(req, res) {
           continue;
         }
       }
+      if (row && row.last_status === 'error' && !row.last_success_at) {
+        cronMeta[job] = { ageMin: null, status: 'error' };
+        add('cron_' + job + '_fresh', false);
+        continue;
+      }
       if (!row || !row.last_success_at) {
         // WAS A PASS. "Never observed" was treated as a fresh deploy that hasn't run yet — but a
         // heartbeat row SURVIVES deploys, so it is only ever absent if the job has never once
@@ -311,10 +318,54 @@ module.exports = async function handler(req, res) {
       // how OLD the heartbeat was, never what it SAID. So a run that reported 'error' (every
       // write failed) or 'partial' (ran out of budget, some users missed) scored green purely
       // for being recent. Status is now part of the verdict.
+      // v710 CONTRACT: a cron writes 'error' when a whole run failed (send-daily: every batch; fact-pack:
+      // every brand it tried) and then does NOT advance last_success_at — so the age grows too.
       const status = row.last_status || 'ok';
       cronMeta[job] = { ageMin, status };
       add('cron_' + job + '_fresh', ageMin <= maxAgeMin && status === 'ok');
     }
+  }
+
+  // ── v710: the AI writer's REAL state (api/_llm.js writes job_heartbeats 'ai-writer:<provider>') ──────
+  // config_xai_key only proves the key EXISTS. Live 2026-11-03 the xAI key was DISABLED (403 "key is
+  // disabled"), every writer was down, and this page was green. _llm.js now records an account error
+  // (401/402/403, or a 429 about credits/quota/billing) as last_status 'error' without touching
+  // last_success_at, and a real success as 'ok'. FAILS when the ACTIVE writer's row (the provider _llm.js
+  // activeWriterProvider() picks — WRITER_PROVIDER, Grok by default) is in error and that error is newer than
+  // its last success. Other providers (opt-in arms such as the blind test's Claude) are shown as info only.
+  // An error older than AI_STALE_MS with nothing newer is 'stale' (unknown now), not failing. No row = not
+  // yet observed = pass. Unreadable table = fail. Public output: provider, HTTP code and times — never the
+  // provider's message.
+  const AI_STALE_MS = 24 * 3600 * 1000;
+  let activeAi = 'grok';
+  try { activeAi = activeWriterProvider(); } catch (_) {}
+  const aiMeta = {};
+  if (!hbReadable) {
+    aiMeta.state = 'unreadable';
+    add('ai_writer_ok', false);
+  } else {
+    const down = [];
+    for (const row of hb.data) {
+      if (!row || typeof row.job !== 'string' || !/^ai-writer(?::|$)/.test(row.job)) continue;
+      const d = (row.detail && typeof row.detail === 'object' && !Array.isArray(row.detail)) ? row.detail : {};
+      const provider = String(d.provider || row.job.split(':')[1] || 'unknown').replace(/[^a-z0-9_-]/gi, '').slice(0, 20) || 'unknown';
+      const okAt = Date.parse(row.last_success_at) || 0;
+      const errAt = Date.parse(d.errorAt) || 0;
+      // A first-ever error row gets last_success_at from the column default (= the moment of the error),
+      // so "newer" allows a few seconds of clock difference between this function and the database.
+      const inError = row.last_status === 'error' && (!errAt || !okAt || errAt >= okAt - 5000);
+      const active = provider === activeAi;
+      const stale = inError && Date.now() - (errAt || okAt) > AI_STALE_MS;
+      if (inError) {
+        if (active && !stale) down.push(provider);
+        aiMeta[provider] = { state: stale ? 'stale-error' : 'error', http: Number(d.http) || null, errorAt: errAt ? new Date(errAt).toISOString() : null, active };
+      } else {
+        aiMeta[provider] = { state: row.last_status === 'ok' ? 'ok' : String(row.last_status || 'unknown').slice(0, 20),
+          lastOkAt: okAt ? new Date(okAt).toISOString() : null, active };
+      }
+    }
+    if (down.length) console.error('health: AI writer account error on ' + down.join(', '));
+    add('ai_writer_ok', down.length === 0);
   }
 
   // ── Live route reachability: open-app + onboarding paths ────────────────────
@@ -395,6 +446,6 @@ module.exports = async function handler(req, res) {
     total: checks.length,
     failing,           // check NAMES only — no sensitive detail
     checks,
-    meta: { crons: cronMeta, routes: routeMeta, grok, isolation: iso.state } // ages (min) + route statuses + live Grok ping + why the audit did or did not run
+    meta: { crons: cronMeta, routes: routeMeta, grok, isolation: iso.state, aiWriter: aiMeta } // ages (min) + route statuses + live Grok ping + why the audit did or did not run + v710 writer state
   });
 };

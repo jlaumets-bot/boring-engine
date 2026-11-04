@@ -1,0 +1,68 @@
+{
+ "mutations": [
+  {
+   "id": "F1",
+   "finding": "a failed search is recognised as failed",
+   "file": "api/fact-pack.js",
+   "find": "function searchFailed(out) {\n  if (!out) return true;",
+   "replace": "function searchFailed(out) {\n  return false;\n  if (!out) return true;",
+   "gate": "fact-pack-v710.mjs"
+  },
+  {
+   "id": "F2",
+   "finding": "release restores the previous lastSearchAt",
+   "file": "api/fact-pack.js",
+   "find": "{ lastSearchAt: prevAt == null ? null : prevAt, failedAt: now, failCount, rev: newRev() }",
+   "replace": "{ failedAt: now, failCount, rev: newRev() }",
+   "gate": "fact-pack-v710.mjs"
+  },
+  {
+   "id": "F3",
+   "finding": "an error heartbeat must not advance last_success_at",
+   "file": "api/fact-pack.js",
+   "find": "  if (status === 'ok') return store.heartbeat('fact-pack-cron', 'ok', detail);",
+   "replace": "  return store.heartbeat('fact-pack-cron', status, detail);",
+   "gate": "fact-pack-v710.mjs"
+  },
+  {
+   "id": "F5",
+   "finding": "every brand tried failed -> heartbeat error",
+   "file": "api/fact-pack.js",
+   "find": "const status = ((n.failed && !n.updated) || allSilent || allFailed) ? 'error' : 'ok';",
+   "replace": "const status = ((n.failed && !n.updated) || allSilent) ? 'error' : 'ok';",
+   "gate": "fact-pack-v710.mjs"
+  },
+  {
+   "id": "F4",
+   "finding": "short cooldown after a failure (no same-day hammering)",
+   "file": "api/fact-pack.js",
+   "find": "(!failsOf(b) || (now - failedOf(b)) >= failCooldownMs(failsOf(b)) - C.CRON_SLACK_MS))",
+   "replace": "true)",
+   "gate": "fact-pack-v710.mjs"
+  },
+  {
+   "id": "F6",
+   "finding": "backoff doubles per failure in a row",
+   "file": "api/fact-pack.js",
+   "find": "return Math.min(C.FAIL_COOLDOWN_MS * Math.pow(2, Math.min(count, 20) - 1), C.FAIL_BACKOFF_MAX_MS);",
+   "replace": "return C.FAIL_COOLDOWN_MS;",
+   "gate": "fact-pack-v710.mjs"
+  },
+  {
+   "id": "F7",
+   "finding": "backed-off brands sort after healthy due brands",
+   "file": "api/fact-pack.js",
+   "find": ".sort((a, b) => ((failsOf(a) > 0) - (failsOf(b) > 0)) || (failsOf(a) - failsOf(b)) || (lastOf(a) - lastOf(b)));",
+   "replace": ".sort((a, b) => lastOf(a) - lastOf(b));",
+   "gate": "fact-pack-v710.mjs"
+  },
+  {
+   "id": "F8",
+   "finding": "a search that runs resets failCount",
+   "file": "api/fact-pack.js",
+   "find": "{ lastSearchAt: now, rev: newRev(), failCount: 0 }",
+   "replace": "{ lastSearchAt: now, rev: newRev() }",
+   "gate": "fact-pack-v710.mjs"
+  }
+ ]
+}

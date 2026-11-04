@@ -1,0 +1,68 @@
+{
+ "mutations": [
+  {
+   "id": "H1",
+   "finding": "unreadable job_heartbeats must fail every cron check",
+   "file": "api/health.js",
+   "find": "for (const { job } of CRON_JOBS) { cronMeta[job] = 'unreadable'; add('cron_' + job + '_fresh', false); }",
+   "replace": "for (const { job } of CRON_JOBS) { cronMeta[job] = 'unreadable'; add('cron_' + job + '_fresh', true); }",
+   "gate": "health-v710.mjs"
+  },
+  {
+   "id": "H2",
+   "finding": "ai_writer_ok fails on a current writer error",
+   "file": "api/health.js",
+   "find": "const inError = row.last_status === 'error' && (!errAt || !okAt || errAt >= okAt - 5000);",
+   "replace": "const inError = false;",
+   "gate": "health-v710.mjs"
+  },
+  {
+   "id": "H3",
+   "finding": "the first-run grace never covers a row that says error",
+   "file": "api/health.js",
+   "find": "if ((!row || !row.last_success_at) && firstRunGraceMin > 0 && !(row && row.last_status === 'error')) {",
+   "replace": "if ((!row || !row.last_success_at) && firstRunGraceMin > 0) {",
+   "gate": "health-v710.mjs"
+  },
+  {
+   "id": "H4",
+   "finding": "an ai-writer error must not advance last_success_at",
+   "file": "api/_llm.js",
+   "find": "_writeWriterBeat({ job: 'ai-writer:' + provider, last_status: 'error',",
+   "replace": "_writeWriterBeat({ job: 'ai-writer:' + provider, last_success_at: new Date(now).toISOString(), last_status: 'error',",
+   "gate": "health-v710.mjs"
+  },
+  {
+   "id": "H5",
+   "finding": "the stored provider message never carries a key or key suffix",
+   "file": "api/_llm.js",
+   "find": ".replace(/\\b(?:xai|sk|gsk|pk|rk)[-_][^\\s\"',;)]*/gi, '[key]')",
+   "replace": "",
+   "gate": "health-v710.mjs"
+  },
+  {
+   "id": "H6",
+   "finding": "only the ACTIVE writer is judged",
+   "file": "api/health.js",
+   "find": "if (active && !stale) down.push(provider);",
+   "replace": "if (!stale) down.push(provider);",
+   "gate": "health-v710.mjs"
+  },
+  {
+   "id": "H7",
+   "finding": "an error older than 24h is stale, not failing",
+   "file": "api/health.js",
+   "find": "const stale = inError && Date.now() - (errAt || okAt) > AI_STALE_MS;",
+   "replace": "const stale = false;",
+   "gate": "health-v710.mjs"
+  },
+  {
+   "id": "H8",
+   "finding": "active writer resolved like _write.js (claude needs a key)",
+   "file": "api/_llm.js",
+   "find": "return (raw === 'claude' && claudeConfigured()) ? 'claude' : 'grok';",
+   "replace": "return raw === 'claude' ? 'claude' : 'grok';",
+   "gate": "health-v710.mjs"
+  }
+ ]
+}

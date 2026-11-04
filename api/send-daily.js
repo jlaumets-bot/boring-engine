@@ -162,6 +162,61 @@ const DAILY_BATCH_MAX = 7;      // most ideas asked for in one morning. = DAILY_
                                 // 7 is what "Plan my week" asks for.
 const DAILY_FLOW = 'daily';     // the marker on every row this cron writes (ideas.gen_flow)
 
+/* v710 — THE MORNING BATCH CALLS THE PUBLIC DOMAIN, NEVER THE DEPLOYMENT'S OWN ADDRESS.
+   It used to call https://${VERCEL_URL}/api/generate-ideas. VERCEL_URL is this deployment's own
+   *.vercel.app address, and Vercel Authentication guards every deployment address on this project
+   except the custom domains — so the call got Vercel's 401 login page, postJson read it as "no
+   answer", no ideas were made, and the heartbeat still said 'ok' (deep audit G #2/#3).
+   PUBLIC_APP_URL wins when it is a valid https URL (trimmed, origin only, no trailing slash);
+   anything else falls back to the custom domain. */
+const PUBLIC_APP_FALLBACK = 'https://contentshrimp.com';
+function publicAppUrl() {
+  const raw = String(process.env.PUBLIC_APP_URL || '').trim();
+  if (raw) {
+    try {
+      const u = new URL(raw);
+      if (u.protocol === 'https:' && u.hostname && !u.username && !u.password) return u.origin;
+    } catch (_) { /* not a URL: fall back */ }
+    console.error('send-daily: PUBLIC_APP_URL is not a valid https URL — using ' + PUBLIC_APP_FALLBACK);
+  }
+  return PUBLIC_APP_FALLBACK;
+}
+// v710 — did generate-ideas actually ANSWER? null = yes (ideas, or a JSON refusal such as the 402
+// limit_reached / feature_locked or the 429 rate limit — the service is up, that is not an outage);
+// otherwise { status, why, outage }. A timeout is not judged here (it is counted as genTimedOut).
+// outage = the SERVICE is broken (an HTML page, a body that is not JSON, 401/403, or a 5xx other than
+// generate-ideas' own JSON "came back empty"), as opposed to an ordinary per-brand answer (a 400
+// bad_input, a 424 brand_context_unavailable, one empty batch) that must not turn the run red.
+function genFailureOf(r) {
+  if (!r || r.timedOut) return null;
+  const j = r.json;
+  const isObj = !!j && typeof j === 'object' && !Array.isArray(j);
+  const status = r.status || 0;
+  if (r.html) return { status, why: 'an HTML page (a login or error page, not the API)', outage: true };
+  if (isObj && (status === 402 || status === 429) && typeof j.error === 'string') return null;
+  if (!isObj) return { status, why: 'a body that is not JSON', outage: true };
+  if (status === 401 || status === 403) return { status, why: 'HTTP ' + status + ' (refused)', outage: true };
+  if (status >= 500) {
+    const empty = typeof j.error === 'string' && /came back empty/i.test(j.error);
+    return { status, why: 'HTTP ' + status + (empty ? ' (the batch came back empty)' : ''), outage: !empty };
+  }
+  if (!(status >= 200 && status < 300)) return { status, why: 'HTTP ' + status, outage: false };
+  if (!Array.isArray(j.ideas)) return { status, why: 'JSON without an ideas list', outage: false };
+  return null;
+}
+// v710 — an 'error' heartbeat that does NOT move last_success_at: same table, same upsert, the column
+// simply left out of the row (on an existing row the upsert updates only the columns it sends).
+async function heartbeatError(job, detail) {
+  try {
+    return await store.rest('POST', '/job_heartbeats', {
+      body: { job, last_status: 'error', detail },
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    });
+  } catch (_) {
+    return null;
+  }
+}
+
 module.exports = async function handler(req, res) {
   const _t0 = Date.now();   // fix7 r3: the whole run's clock starts HERE (see RUN_BUDGET_MS)
   // This cron has maxDuration 300; the shared Supabase timeout defaults to 4s because the
@@ -275,6 +330,7 @@ module.exports = async function handler(req, res) {
     let sent = 0, failed = 0, skipped = 0, stampFailed = 0, brandDenied = 0, overLimit = 0, ranOut = false;
     let ideaSaved = 0, ideaWaiting = 0, ideaSaveFailed = 0;   // fix7 — heartbeat detail only
     let genTimedOut = 0, genBlocked = 0, genNoTime = 0, genBusy = 0, genShort = 0;       // fix7 r3 — heartbeat detail only (v709: genBusy)
+    let genAttempted = 0, genOk = 0, genFailed = 0, genOutage = 0; const genStatuses = {};   // v710 — generate calls made / answered / failed / outage (status -> count)
     const _left = () => RUN_BUDGET_MS - (Date.now() - _t0);
 
     // fix7 r3 — brands whose batch timed out recently (see GEN_TIMEOUT_MS). Carried in this job's own
@@ -396,7 +452,7 @@ module.exports = async function handler(req, res) {
         plan.payload = _fallback();
         return plan;
       }
-      const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://contentshrimp.com';
+      const host = publicAppUrl();   // v710 — the public domain (see publicAppUrl)
       // NAME THE ACCOUNT THIS BATCH IS FOR. The secret identifies the CALLER; forUserId and forBrandId
       // identify the ACCOUNT, so generate-ideas meters it against that plan (one 'ideas' credit per
       // call — what "Plan my week" costs). The brand id is the one authorizedBrandId() verified
@@ -426,11 +482,25 @@ module.exports = async function handler(req, res) {
       // (_brain.effectiveTypeMix), the brand's own Face-on/Faceless setting (C2, was hard-coded 'faceon'),
       // the switched-off formats themselves, and every library title for the batch dedupe.
       const _typeMix = topUpMix(effectiveMix(bc, _off), _want, _dayIndex);
-      const gen = await postJson(`${host}/api/generate-ideas`,
+      const _genResp = await postJson(`${host}/api/generate-ideas`,
         { count: _want, typeMix: _typeMix, brandContext: _bcOut, forUserId: sub.user_id, forBrandId: brandId,
           gaps: _days.map(d => ({ day: d })), learningContext: act.learningContext || '', delivery: deliveryOf(bc),
           formatsOff: _off, libraryTitles: act.titles },
         { Authorization: `Bearer ${cronSecret}` }, genMs);
+      // v710 — a non-2xx, non-JSON or HTML answer is a FAILED batch: counted, logged, nothing saved or
+      // charged here, and the plain push goes out (as before). gen stays what the code below reads.
+      genAttempted++;
+      const _genFail = genFailureOf(_genResp);
+      let gen = null;
+      if (_genResp && _genResp.timedOut) { gen = _genResp; genOutage++; }   // every batch timing out is an outage too
+      else if (_genFail) {
+        genFailed++;
+        if (_genFail.outage) genOutage++;
+        const _k = String(_genFail.status || 'none');
+        genStatuses[_k] = (genStatuses[_k] || 0) + 1;
+        console.error('send-daily: generate-ideas FAILED for brand ' + brandId + ' — status ' + (_genFail.status || 'none') +
+          ', got ' + _genFail.why + ' from ' + host + '. No ideas saved, plain push instead.');
+      } else { genOk++; gen = _genResp.json; }
       if (gen && gen.timedOut) {
         genTimedOut++;
         _genTimeouts[brandId] = new Date().toISOString();
@@ -578,6 +648,13 @@ module.exports = async function handler(req, res) {
     // Same shape as pull-trends-cron: a run where everything attempted failed is NOT
     // healthy, and a run that could not finish its queue is not a clean 'ok' either.
     const _health = (failed && !sent) ? 'error' : (ranOut ? 'partial' : 'ok');
+    // v710 — at least one batch was attempted and EVERY attempted batch hit an OUTAGE signal (HTML, not JSON,
+    // 401/403, a 5xx other than "came back empty", or a timeout): the run is 'error' and last_success_at
+    // does NOT move (heartbeatError). /api/health treats last_status 'error' as failing. Ordinary
+    // per-brand answers are counted in detail.gen but never turn the run red on their own.
+    const _genAllFailed = genAttempted > 0 && genOutage === genAttempted;
+    if (genFailed || genOutage) console.error('send-daily: ' + genFailed + ' of ' + genAttempted + ' morning batch(es) FAILED this run, ' + genOutage +
+      ' with an outage signal incl. timeouts (statuses ' + JSON.stringify(genStatuses) + ')' + (_genAllFailed ? ' — ALL of them; heartbeat set to error' : ''));
     // brandDenied rides in the heartbeat DETAIL only. /api/health reads job/last_success_at/
     // last_status and never touches detail, so this is additive telemetry — and the HTTP
     // response below stays byte-identical in shape.
@@ -589,8 +666,11 @@ module.exports = async function handler(req, res) {
       const t = Date.parse(at);
       if (!isNaN(t) && (nowUtc.getTime() - t) < GEN_BLOCK_MS) genTimeouts[b] = at;
     }
-    await store.heartbeat('send-daily', _health, { checked: subs.length, due: due.length, units: _units.length, sent, failed, skipped, stampFailed, brandDenied, overLimit, ranOut,
-      ideaSaved, ideaWaiting, ideaSaveFailed, genTimedOut, genBlocked, genNoTime, genBusy, genShort, genTimeoutsRead: _gt.ok, genTimeouts });
+    const _hbDetail = { checked: subs.length, due: due.length, units: _units.length, sent, failed, skipped, stampFailed, brandDenied, overLimit, ranOut,
+      ideaSaved, ideaWaiting, ideaSaveFailed, genTimedOut, genBlocked, genNoTime, genBusy, genShort, genTimeoutsRead: _gt.ok, genTimeouts,
+      gen: { attempted: genAttempted, ok: genOk, failed: genFailed, outage: genOutage, timedOut: genTimedOut, statuses: genStatuses } };
+    if (_genAllFailed) await heartbeatError('send-daily', _hbDetail);
+    else await store.heartbeat('send-daily', _health, _hbDetail);
     return res.status(200).json({ checked: subs.length, due: due.length, sent, failed, skipped, stampFailed, ranOut });
   } catch (e) {
     console.error('send-daily error:', e);
@@ -891,7 +971,13 @@ function postJson(url, body, extraHeaders, timeoutMs) {
     const r = https.request(opts, resp => {
       let d = '';
       resp.on('data', c => d += c);
-      resp.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { resolve(null); } });
+      // v710: the status and an HTML marker ride along, so a 401 login page is a named failure, not "null".
+      resp.on('end', () => {
+        const ct = String((resp.headers && resp.headers['content-type']) || '').toLowerCase();
+        let json = null; try { json = JSON.parse(d); } catch (e) { json = null; }
+        const html = ct.indexOf('text/html') >= 0 || (json === null && /^\s*</.test(d));
+        resolve({ status: resp.statusCode || 0, json, html });
+      });
     });
     if (timeoutMs) {
       r.on('timeout', () => {

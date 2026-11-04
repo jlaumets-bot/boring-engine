@@ -45,6 +45,8 @@ const C = {
   CRON_SLACK_MS: 30 * 60 * 1000,      // the cron fires at the same minute daily; a search stamped 2 min into
                                       // last week's run must be due again at this week's run
   MANUAL_GAP_MS: 6 * 3600 * 1000,
+  FAIL_COOLDOWN_MS: 12 * 3600 * 1000, // v710 — after the 1st failed search; doubles per failure in a row (failCount)
+  FAIL_BACKOFF_MAX_MS: 7 * 24 * 3600 * 1000,   // ... capped at a week, so a brand that never works costs one search a week
   INACTIVE_MS: 14 * 24 * 3600 * 1000,
   CRON_CAP: 12,                       // brands searched per run at most
   CRON_CONC: 3,
@@ -569,9 +571,67 @@ async function claimSearch(brandId, prev, now) {
   const prevAt = prev && prev.lastSearchAt;
   const filter = !prev ? '&fact_pack=is.null'
     : (prevAt != null ? '&fact_pack->>lastSearchAt=eq.' + encodeURIComponent(String(prevAt)) : '&fact_pack->>lastSearchAt=is.null');
-  const body = { fact_pack: Object.assign({ facts: [] }, prev || {}, { lastSearchAt: now, rev: newRev() }) };
+  // v710 r2 — the claim resets failCount: a search that then runs (even one that finds little) ends the
+  // failure streak; a failed one is released below with the PREVIOUS count + 1.
+  const body = { fact_pack: Object.assign({ facts: [] }, prev || {}, { lastSearchAt: now, rev: newRev(), failCount: 0 }) };
   const r = await store.rest('PATCH', '/brands?id=eq.' + enc + filter + '&select=id', { body, headers: { Prefer: 'return=representation' } });
   return okStatus(r) && Array.isArray(r.data) && r.data.length === 1;
+}
+// v710 — A FAILED SEARCH IS NOT A SEARCH (deep-audit G #4). The claim above stamps lastSearchAt BEFORE the
+// search runs (that stamp is the lock), so a refused or dead search used to count as this week's search:
+// with the xAI key disabled one run used up the weekly slot of every brand it touched and got nothing.
+// Undo our own claim: lastSearchAt goes back to what it was, failedAt + failCount (failures in a row) set a
+// BACKOFF (failCooldownMs): 12 h after the first failure (= the next daily run), then 24 h, 48 h, ... capped at
+// 7 days — so a brand whose search keeps failing is not paid for every day. Re-reads the pack first, so a
+// fact removed while the search ran is not brought back. Never throws.
+async function releaseSearch(brandId, prevAt, claimedAt, now, prevFailCount) {
+  const enc = encodeURIComponent(brandId);
+  for (let i = 0; i < 2; i++) {
+    try {
+      const g = await store.rest('GET', '/brands?id=eq.' + enc + '&select=fact_pack');
+      if (!okStatus(g) || !Array.isArray(g.data) || !g.data[0]) return false;
+      const cur = packOf(g.data[0]);
+      if (!cur || String(cur.lastSearchAt) !== String(claimedAt)) return false;   // not our claim any more
+      const failCount = (Number(prevFailCount) > 0 ? Math.floor(Number(prevFailCount)) : 0) + 1;
+      const body = { fact_pack: Object.assign({}, cur, { lastSearchAt: prevAt == null ? null : prevAt, failedAt: now, failCount, rev: newRev() }) };
+      const r = await store.rest('PATCH', '/brands?id=eq.' + enc + '&fact_pack->>lastSearchAt=eq.' + encodeURIComponent(String(claimedAt)) +
+        revFilter(cur) + '&select=id', { body, headers: { Prefer: 'return=representation' } });
+      if (okStatus(r) && Array.isArray(r.data) && r.data.length === 1) return true;
+    } catch (e) { /* try once more, then give up */ }
+  }
+  return false;
+}
+// v710 r2 — failures in a row on a pack (a failedAt without a count = one failure) and the backoff they earn.
+function failCountOf(p) {
+  const n = Number(p && p.failCount);
+  if (n > 0) return Math.floor(n);
+  return (p && Number(p.failedAt) > 0 && p.failCount == null) ? 1 : 0;
+}
+function failCooldownMs(count) {
+  if (!(count > 0)) return 0;
+  return Math.min(C.FAIL_COOLDOWN_MS * Math.pow(2, Math.min(count, 20) - 1), C.FAIL_BACKOFF_MAX_MS);
+}
+// Did this search FAIL (retry tomorrow) rather than run and find little (done for the week)?
+// Failed = no answer (refused key, timeout, provider 4xx/5xx), an answer that is not a list, or zero facts
+// kept where every candidate was dropped only because its page could not be fetched.
+const FETCH_ERROR_REASONS = ['unreachable', 'timeout'];
+function searchFailed(out) {
+  if (!out) return true;
+  if (out.reason === 'search_empty' || out.reason === 'search_unparseable') return true;
+  if (out.searched && (!Array.isArray(out.kept) || out.kept.length === 0) && out.candidates > 0) {
+    const reasons = Object.keys(out.dropped || {});
+    return reasons.length > 0 && reasons.every(r => FETCH_ERROR_REASONS.indexOf(r) !== -1);
+  }
+  return false;
+}
+// The cron's heartbeat. 'ok' advances last_success_at (store.heartbeat); anything else must NOT — an
+// all-failed run is not a success — so it upserts only last_status + detail. Never throws.
+async function beat(status, detail) {
+  if (status === 'ok') return store.heartbeat('fact-pack-cron', 'ok', detail);
+  try {
+    return await store.rest('POST', '/job_heartbeats', { body: { job: 'fact-pack-cron', last_status: status, detail },
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' } });
+  } catch (_) { return null; }
 }
 // Replace the pack — only when it holds KEEP_MIN facts, and only if nobody claimed a newer search since.
 async function savePack(brandId, kept, claimedAt, now) {
@@ -630,7 +690,7 @@ async function runCron(req, res) {
   const r = await store.rest('GET', '/brands?select=' + BRAND_COLS);
   if (columnMissing(r)) {
     console.error('fact-pack-cron: brands.fact_pack does not exist yet — run sql/fact-pack.sql. Nothing searched.');
-    await store.heartbeat('fact-pack-cron', 'error', { notSetUp: true });
+    await beat('error', { notSetUp: true });
     return res.status(200).json({ ok: false, notSetUp: true });
   }
   if (!okStatus(r)) {
@@ -640,8 +700,14 @@ async function runCron(req, res) {
   const now = deps.now();
   const brands = Array.isArray(r.data) ? r.data : [];
   const lastOf = (b) => Number((packOf(b) || {}).lastSearchAt) || 0;
-  const due = brands.filter(b => b && b.id && (now - lastOf(b)) >= C.WEEK_MS - C.CRON_SLACK_MS).sort((a, b) => lastOf(a) - lastOf(b));
-  const n = { considered: due.length, searched: 0, updated: 0, tooFew: 0, searchEmpty: 0, skipInactive: 0, skipActivityUnknown: 0,
+  const failedOf = (b) => Number((packOf(b) || {}).failedAt) || 0;
+  const failsOf = (b) => failCountOf(packOf(b));
+  // v710 r2 — backoff: a brand that failed waits failCooldownMs(failCount) (less the cron's slack, as for the
+  // week), and once due again it queues BEHIND every healthy due brand, so it can never starve them of CRON_CAP.
+  const due = brands.filter(b => b && b.id && (now - lastOf(b)) >= C.WEEK_MS - C.CRON_SLACK_MS &&
+      (!failsOf(b) || (now - failedOf(b)) >= failCooldownMs(failsOf(b)) - C.CRON_SLACK_MS))
+    .sort((a, b) => ((failsOf(a) > 0) - (failsOf(b) > 0)) || (failsOf(a) - failsOf(b)) || (lastOf(a) - lastOf(b)));
+  const n = { considered: due.length, searched: 0, updated: 0, tooFew: 0, searchEmpty: 0, searchFailed: 0, releaseFailed: 0, skipInactive: 0, skipActivityUnknown: 0,
     skipCostCap: 0, skipNoTopics: 0, skipClaimed: 0, failed: 0, untried: 0, ranOut: false };
   // Cheap eligibility first (no money spent), then the paid searches in small parallel batches.
   const ready = [];
@@ -659,12 +725,25 @@ async function runCron(req, res) {
     if (left() < C.WORST_BATCH_MS) { n.untried += ready.length - i; n.ranOut = true; break; }
     const batch = ready.slice(i, i + C.CRON_CONC);
     await Promise.all(batch.map(async (b) => {
+      const claimedAt = deps.now();
+      const prevAt = (packOf(b) || {}).lastSearchAt;
+      const prevFails = failsOf(b);
+      let claimed = false;
       try {
-        const claimedAt = deps.now();
         if (!(await claimSearch(b.id, packOf(b), claimedAt))) { n.skipClaimed++; return; }
+        claimed = true;
         n.searched++;
         const out = await buildFacts(b, { searchMs: Math.max(10000, Math.min(60000, left() - 35000)), verifyMs: 25000 });
         if (out.reason === 'search_empty' || out.reason === 'search_unparseable') n.searchEmpty++;
+        if (searchFailed(out)) {
+          // v710 — not this week's search: give the slot back so tomorrow's run tries again.
+          n.searchFailed++;
+          claimed = false;
+          if (!(await releaseSearch(b.id, prevAt, claimedAt, deps.now(), prevFails))) n.releaseFailed++;
+          console.error('fact-pack-cron: brand ' + b.id + ' search FAILED (' + (out.reason || 'no usable page') + '; dropped ' +
+            JSON.stringify(out.dropped) + ') — failure ' + (prevFails + 1) + ' in a row, retried in ~' + Math.round(failCooldownMs(prevFails + 1) / 3600000) + ' h');
+          return;
+        }
         const s = await savePack(b.id, out.kept, claimedAt, deps.now());
         if (s.saved) n.updated++;
         else {
@@ -674,6 +753,8 @@ async function runCron(req, res) {
         }
       } catch (e) {
         n.failed++;
+        // v710 — a crash after the claim (e.g. the save PATCH failed) must not lock the brand for a week either.
+        if (claimed && !(await releaseSearch(b.id, prevAt, claimedAt, deps.now(), prevFails))) n.releaseFailed++;
         console.error('fact-pack-cron: brand ' + b.id + ' (' + (b.brand_name || 'unnamed') + ') failed — ' + ((e && e.message) || e));
       }
     }));
@@ -681,11 +762,16 @@ async function runCron(req, res) {
   console.log('fact-pack-cron: considered=' + n.considered + ' searched=' + n.searched + ' updated=' + n.updated + ' tooFew=' + n.tooFew +
     ' searchEmpty=' + n.searchEmpty + ' skipped(inactive=' + n.skipInactive + ', activityUnknown=' + n.skipActivityUnknown +
     ', costCap=' + n.skipCostCap + ', noTopics=' + n.skipNoTopics + ', claimed=' + n.skipClaimed + ') failed=' + n.failed +
+    ' searchFailed=' + n.searchFailed + (n.releaseFailed ? ' releaseFailed=' + n.releaseFailed : '') +
     (n.ranOut ? ' ranOut untried=' + n.untried : ''));
   const allSilent = n.searched > 0 && n.searchEmpty === n.searched;
   if (allSilent) console.error('fact-pack-cron: EVERY search came back empty (' + n.searched + ') — the search lane is down, not a quiet week.');
-  await store.heartbeat('fact-pack-cron', ((n.failed && !n.updated) || allSilent) ? 'error' : 'ok', n);
-  return res.status(200).json(Object.assign({ ok: !allSilent }, n));
+  // v710 — every brand it tried failed → 'error', and last_success_at stays where it was (see beat()).
+  const allFailed = n.searched > 0 && (n.failed + n.searchFailed) >= n.searched;
+  if (allFailed && !allSilent) console.error('fact-pack-cron: EVERY brand it tried failed (' + n.searched + ').');
+  const status = ((n.failed && !n.updated) || allSilent || allFailed) ? 'error' : 'ok';
+  await beat(status, n);
+  return res.status(200).json(Object.assign({ ok: status === 'ok' }, n));
 }
 
 // ─────────────────────────────── the button ───────────────────────────────
@@ -733,7 +819,8 @@ async function runUser(req, res) {
   // refresh — the brand OWNER only (a member cannot spend the owner's search budget).
   if (!b.user_id || b.user_id !== user.id) return res.status(403).json({ code: 'owner_only', error: 'Only the brand owner can refresh facts.' });
   const now = deps.now();
-  const last = Number(prev && prev.lastSearchAt) || 0;
+  // v710 — a failed attempt (failedAt) counts for the 6 h gap too; it just no longer costs the brand its week.
+  const last = Math.max(Number(prev && prev.lastSearchAt) || 0, Number(prev && prev.failedAt) || 0);
   if (last && now - last < C.MANUAL_GAP_MS) {
     const retryAfter = Math.ceil((C.MANUAL_GAP_MS - (now - last)) / 1000);
     const h = Math.max(1, Math.round(retryAfter / 3600));
@@ -742,10 +829,25 @@ async function runUser(req, res) {
   if (!searchPrompt(b)) return res.status(400).json({ code: 'no_topics', error: 'Add a few content themes in Brand Basics first.' });
   if (await overCostCap(user.id)) return res.status(402).json({ code: 'cost_cap', error: 'Fact refresh is paused on this plan for now.' });
   if (!(await claimSearch(brandId, prev, now))) return res.status(429).json({ code: 'rate_limited', retryAfter: Math.ceil(C.MANUAL_GAP_MS / 1000), error: 'A refresh is already running for this brand.' });
+  const prevAt = prev ? prev.lastSearchAt : undefined;
   const out = await buildFacts(b, { searchMs: 60000, verifyMs: 25000 });
+  if (searchFailed(out)) {
+    // v710 — give the slot back (see releaseSearch): the next daily run retries instead of waiting a week.
+    const failedAt = deps.now();
+    const released = await releaseSearch(brandId, prevAt, now, failedAt, failCountOf(prev));
+    console.error('fact-pack: manual refresh brand ' + brandId + ' search FAILED (' + (out.reason || 'no usable page') + ') released=' + released);
+    const failedPack = Object.assign({}, prev || { facts: [] }, released ? { lastSearchAt: prevAt == null ? null : prevAt, failedAt } : { lastSearchAt: now });
+    return res.status(200).json({ ok: true, updated: false, kept: 0, factPack: publicPack(failedPack),
+      message: out.reason === 'search_empty' ? 'The web search did not answer. Your current facts are kept.'
+        : 'The fact search did not work this time. Your current facts are kept.' });
+  }
   let s;
   try { s = await savePack(brandId, out.kept, now, deps.now()); }
-  catch (e) { console.error('fact-pack: save failed for brand ' + brandId + ' — ' + e.message); return res.status(502).json({ error: 'Could not save the new facts. Try again later.' }); }
+  catch (e) {
+    console.error('fact-pack: save failed for brand ' + brandId + ' — ' + e.message);
+    await releaseSearch(brandId, prevAt, now, deps.now(), failCountOf(prev));
+    return res.status(502).json({ error: 'Could not save the new facts. Try again later.' });
+  }
   console.log('fact-pack: manual refresh brand ' + brandId + ' — ' + out.kept.length + ' of ' + out.candidates + ' passed, saved=' + !!s.saved +
     ' dropped ' + JSON.stringify(out.dropped));
   if (s.saved) return res.status(200).json({ ok: true, updated: true, kept: out.kept.length, factPack: publicPack(s.pack) });
@@ -781,4 +883,5 @@ Object.assign(module.exports, {
   _deps: deps, C, ipIsPrivate, checkUrl, sourceBlockReason, sourceScore, canonNum, numbersIn, normText, htmlToText,
   keyTerms, pageSupports, stripTags, ipv6Groups, aboutBrandReason, bannedReason, salesy, normCandidates, topicsFor, searchPrompt, fetchPage, verifyCandidates,
   packFrom, buildFacts, claimSearch, savePack, lastActivityAt, overCostCap, columnMissing,
+  releaseSearch, searchFailed, beat, failCountOf, failCooldownMs,
 });

@@ -1,0 +1,36 @@
+{
+ "mutations": [
+  {
+   "id": "T1",
+   "finding": "F-money #3: a brand inactive > 14 days makes no provider call",
+   "file": "api/pull-trends-cron.js",
+   "find": "if ((now - at) > INACTIVE_MS) { skipInactive++; continue; }",
+   "replace": "if (false) { skipInactive++; continue; }",
+   "gate": "trends-cron-v710.mjs"
+  },
+  {
+   "id": "T2",
+   "finding": "F-money #3: most recently active brands go first",
+   "file": "api/pull-trends-cron.js",
+   "find": ".sort((a, c) => (actOf.get(c) - actOf.get(a)) ||",
+   "replace": ".sort((a, c) => (actOf.get(a) - actOf.get(c)) ||",
+   "gate": "trends-cron-v710.mjs"
+  },
+  {
+   "id": "T3",
+   "finding": "fact-pack rule: the daily cron's own untouched rows are not activity",
+   "file": "api/pull-trends-cron.js",
+   "find": "const own = r.data.find(x => x && !(x.gen_flow === 'daily' && (!x.status || x.status === 'pending')));",
+   "replace": "const own = r.data[0];",
+   "gate": "trends-cron-v710.mjs"
+  },
+  {
+   "id": "T4",
+   "finding": "fact-pack rule: unknown activity is skipped, not paid for",
+   "file": "api/pull-trends-cron.js",
+   "find": "if (at == null) { skipActivityUnknown++; continue; }",
+   "replace": "if (at == null) { active.push(b); continue; }",
+   "gate": "trends-cron-v710.mjs"
+  }
+ ]
+}

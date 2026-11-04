@@ -59,6 +59,17 @@ function subscriptionEnded(status) { return !!ENDED_STATUSES[status]; }
    match, and a 500 only made Stripe retry it for three days. */
 const UNMATCHED_RETRY_MS = 24 * 60 * 60 * 1000;
 
+/* v710 — WHERE THE BILLING PERIOD END LIVES. Newer Stripe API versions moved current_period_end
+   off the subscription and onto each subscription item. Reading only the top-level
+   field then gave null on every grant, so the row lost the anchor its monthly allowance resets on.
+   Top-level first (older versions), then the first item, otherwise null. Unix seconds, as Stripe sends. */
+function subPeriodEnd(s) {
+  if (!s || typeof s !== 'object') return null;
+  if (s.current_period_end) return s.current_period_end;
+  const it = s.items && Array.isArray(s.items.data) ? s.items.data[0] : null;
+  return (it && it.current_period_end) || null;
+}
+
 function sameInstant(a, b) {
   if (!a || !b) return false;
   const x = Date.parse(a), y = Date.parse(b);
@@ -215,7 +226,7 @@ async function grantFromLive(userId, liveSub, snap, secret, evtId) {
       '" matches no STRIPE_PRICE_PRO / STRIPE_PRICE_AGENCY / STRIPE_PRICE_STARTER. user=' + userId + ' sub=' + liveSub.id +
       ' evt=' + (evtId || 'none') + ' — granted "' + plan + '" from metadata instead; fix the env var.');
   }
-  const periodEnd = liveSub.current_period_end ? new Date(liveSub.current_period_end * 1000).toISOString() : null;
+  const periodEnd = subPeriodEnd(liveSub) ? new Date(subPeriodEnd(liveSub) * 1000).toISOString() : null;
   const r = await applyPlan(userId, plan, {
     stripe_customer_id: liveSub.customer || null, stripe_subscription_id: liveSub.id, current_period_end: periodEnd
   }, snap);
@@ -579,7 +590,7 @@ module.exports = async function handler(req, res) {
         }
         cur = live.absent ? Object.assign({}, sub, { status: 'canceled' }) : live.sub;
       }
-      const periodEnd = cur.current_period_end ? new Date(cur.current_period_end * 1000).toISOString() : null;
+      const periodEnd = subPeriodEnd(cur) ? new Date(subPeriodEnd(cur) * 1000).toISOString() : null;
       // Metadata fallback: on a first purchase no row carries the stripe ids yet, so the
       // database lookup CANNOT resolve the user. create-checkout stamps user_id on the
       // subscription for exactly this moment.
@@ -804,3 +815,5 @@ module.exports.confirmGrant = confirmGrant;
 module.exports.searchUserSubscriptions = searchUserSubscriptions;
 module.exports.liveSubscription = liveSubscription;
 module.exports.subscriptionEnded = subscriptionEnded;
+// v710 — for scripts/verify/stripe-v710.mjs.
+module.exports.subPeriodEnd = subPeriodEnd;

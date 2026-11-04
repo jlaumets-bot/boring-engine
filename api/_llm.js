@@ -70,6 +70,83 @@ function httpsPost(url, headers, body, timeoutMs) {
   });
 }
 
+/* v710 — THE WRITER'S REAL STATE REACHES /api/health (deep-audit G #1).
+   Health only checked that XAI_API_KEY EXISTS, so a disabled key (xAI 403 "key is disabled") left every
+   AI check green while every writer was down. Each provider call now records what really happened in
+   job_heartbeats, row 'ai-writer:<provider>':
+     • an account error (401/402/403, or a 429 whose body talks about credits/quota/billing/a disabled key)
+       → last_status 'error' + a SAFE detail {provider, http, message (first 120 chars, keys/links/ids
+         redacted), errorAt}. last_success_at is NOT sent, so it keeps the time of the last real success.
+     • a successful call → last_status 'ok' + last_success_at, at most once per 30 min per warm instance
+       (immediately after this instance last wrote an error, so recovery shows at once).
+   FIRE-AND-FORGET: the write is started in a microtask, never awaited, and every error is swallowed —
+   it can never slow down or break the call it describes. Same Supabase REST upsert the crons use
+   (api/_publish/store.js heartbeat). Never sends the key, a header or a request body. */
+const WRITER_OK_EVERY_MS = 30 * 60 * 1000;
+const WRITER_ERR_EVERY_MS = 60 * 1000;          // a burst of refused calls writes one row a minute, not one per call
+const _writerHb = Object.create(null);           // provider -> { last: 'ok'|'error'|null, okAt, errAt }
+const WRITER_BILLING_RE = /credit|quota|billing|disabled|spend(?:ing)?[ _-]?limit|insufficient[ _-]?(?:funds|balance)/i;
+function _writerBodyText(body) {
+  try { return typeof body === 'string' ? body : JSON.stringify(body == null ? '' : body); } catch (_) { return ''; }
+}
+// An error only the owner can fix (key revoked or disabled, no credits, spend cap) — not a blip.
+function isAccountError(status, body) {
+  if (status === 401 || status === 402 || status === 403) return true;
+  return status === 429 && WRITER_BILLING_RE.test(_writerBodyText(body));
+}
+// The provider's own words, made safe to store: first 120 chars, no key, link, id or address.
+function safeProviderMessage(body) {
+  let m = '';
+  try {
+    let b = body;
+    if (typeof b === 'string') { try { b = JSON.parse(b); } catch (_) { b = { raw: b }; } }
+    b = (b && typeof b === 'object') ? b : {};
+    const e = b.error;
+    m = (e && typeof e === 'object') ? (e.message || e.type || '') : (e || b.message || b.code || b.raw || '');
+    m = String(m);
+    for (const k of [process.env.XAI_API_KEY, process.env.ANTHROPIC_API_KEY]) {
+      if (k && String(k).length >= 8) m = m.split(String(k)).join('[key]');
+    }
+    m = m.replace(/https?:\/\/\S+/gi, '[link]')
+      .replace(/\bBearer\s+\S+/gi, 'Bearer [key]')
+      .replace(/\b(?:xai|sk|gsk|pk|rk)[-_][^\s"',;)]*/gi, '[key]')
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '[id]')
+      .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[email]')
+      .replace(/[A-Za-z0-9_\-]{24,}/g, '[redacted]')
+      .replace(/\s+/g, ' ').trim();
+  } catch (_) { m = ''; }
+  return m.slice(0, 120);
+}
+function _writeWriterBeat(row) {
+  try {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+    Promise.resolve()
+      .then(() => require('./_publish/store').rest('POST', '/job_heartbeats', { body: row, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' } }))
+      .catch(() => {});
+  } catch (_) { /* telemetry never breaks a call */ }
+}
+function noteWriterOk(provider) {
+  try {
+    const s = _writerHb[provider] || (_writerHb[provider] = { last: null, okAt: 0, errAt: 0 });
+    const now = Date.now();
+    if (s.last === 'ok' && now - s.okAt < WRITER_OK_EVERY_MS) return;
+    s.last = 'ok'; s.okAt = now;
+    const iso = new Date(now).toISOString();
+    _writeWriterBeat({ job: 'ai-writer:' + provider, last_success_at: iso, last_status: 'ok', detail: { provider, okAt: iso } });
+  } catch (_) {}
+}
+function noteWriterError(provider, status, body) {
+  try {
+    const s = _writerHb[provider] || (_writerHb[provider] = { last: null, okAt: 0, errAt: 0 });
+    const now = Date.now();
+    if (s.last === 'error' && now - s.errAt < WRITER_ERR_EVERY_MS) return;
+    s.last = 'error'; s.errAt = now;
+    _writeWriterBeat({ job: 'ai-writer:' + provider, last_status: 'error',
+      detail: { provider, http: Number(status) || null, message: safeProviderMessage(body), errorAt: new Date(now).toISOString() } });
+  } catch (_) {}
+}
+function _resetWriterHealth() { for (const k of Object.keys(_writerHb)) delete _writerHb[k]; }
+
 // ── xAI (Grok) — OpenAI-compatible API. The ONLY text writer (no fallback). ──
 // `images` (optional): [{ mime, data(base64) }] attached to the last user turn so Grok
 // can actually SEE a screenshot. (Grok is the only writer — there is no fallback.)
@@ -206,6 +283,7 @@ async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images 
           if (LAST_TRUNCATED) console.log('xAI reply hit max_tokens (' + payload.max_tokens + ') — it is CUT OFF; model=' + model);
         } catch (_) { LAST_TRUNCATED = false; }
         if (meta) meta.truncated = LAST_TRUNCATED;
+        noteWriterOk('grok');   // v710 — fire-and-forget, throttled
         return txt;
       }
       // WAS SILENT, and this is the likely one: grok-4.6 is a REASONING model, so it can burn the
@@ -220,7 +298,8 @@ async function callXAI({ messages, temperature = 0.7, max_tokens = 2000, images 
       return null;
     }
     const transient = resp.status === 429 || resp.status >= 500;
-    console.log('xAI ' + (transient ? 'transient' : 'error') + ' (' + resp.status + ') attempt ' + (attempt + 1) + ': ' + JSON.stringify(resp.body).slice(0, 160));
+    if (isAccountError(resp.status, resp.body)) noteWriterError('grok', resp.status, resp.body);   // v710 — fire-and-forget
+    console.log('xAI ' + (transient ? 'transient' : 'error') + ' (' + resp.status + ') attempt ' + (attempt + 1) + ': ' + safeProviderMessage(resp.body));   // v710 — redacted (no key suffix, no links)
     /* v690 — 401/402/403 is xAI REFUSING the account (bad key, no credits, spending limit),
        not a blip. The user was told "try again in a few seconds", which can never work. Record
        it on the caller's own meta object (per call, so concurrent calls cannot overwrite it). */
@@ -381,6 +460,7 @@ async function callClaude({ messages, max_tokens = 2000, images = null, timeoutM
         const truncated = stop === 'max_tokens';
         if (truncated) console.log('Claude reply hit max_tokens (' + cBody.max_tokens + ') — it is CUT OFF; model=' + model);
         if (meta) meta.truncated = truncated;
+        noteWriterOk('claude');   // v710 — fire-and-forget, throttled
         return txt;
       }
       console.log('Claude EMPTY 200 after ' + (Date.now() - t0) + 'ms, attempt ' + (attempt + 1) + ' — stop_reason=' + stop + ' model=' + model);
@@ -391,6 +471,7 @@ async function callClaude({ messages, max_tokens = 2000, images = null, timeoutM
       return null;
     }
     const refused = claudeRefusal(resp.status, b);
+    if (refused || isAccountError(resp.status, b)) noteWriterError('claude', resp.status, b);   // v710 — fire-and-forget
     const errType = (b.error && b.error.type) || '';
     console.log('Claude ' + (refused ? 'REFUSED our account' : 'error') + ' (' + resp.status + (errType ? ' ' + errType : '') + ') attempt ' + (attempt + 1) +
       ': ' + String((b.error && b.error.message) || '').slice(0, 160));
@@ -484,7 +565,7 @@ function callGrokSearch(prompt, opts = {}) {
         const el = Date.now() - started;
         const stat = 'first byte ' + (firstByteMs < 0 ? 'never' : firstByteMs + 'ms') + ', ' + bytes + ' bytes, ' +
                      events + ' events, ' + el + 'ms total, budget ' + TOTAL_MS + 'ms';
-        if (text) console.log('grok-search: ok — ' + stat);
+        if (text) { console.log('grok-search: ok — ' + stat); noteWriterOk('grok'); }   // v710 — same key as the writer
         else console.error('grok-search: ' + why + ' — ' + stat);
         resolve(text || null);
       };
@@ -532,11 +613,13 @@ function callGrokSearch(prompt, opts = {}) {
                (null), but the log says what it is and opts.meta.refused lets an endpoint tell the
                user the truth instead of "no results". */
             const st = resp.statusCode;
+            if (isAccountError(st, buf)) noteWriterError('grok', st, buf);   // v710 — fire-and-forget
             if (st === 401 || st === 402 || st === 403) {
               console.error('grok-search: xAI REFUSED our account (http ' + st + ' — out of credits, spending limit or a bad key) — the web-search lane is off until that is fixed');
               if (opts.meta && typeof opts.meta === 'object') opts.meta.refused = st;
             }
-            console.error('grok-search: http ' + resp.statusCode + ' — ' + String(buf).slice(0, 300));
+            // v710 — the body is logged REDACTED: xAI's 403 names the key's suffix and the team console link.
+            console.error('grok-search: http ' + resp.statusCode + ' — ' + safeProviderMessage(buf));
             return finish(null, 'refused with http ' + resp.statusCode);
           }
           if (!streaming) {
@@ -657,5 +740,13 @@ function aiUnavailable(err) {
 
 // v693 — claudeConfigured lets a caller say "this arm is unavailable" before spending anything.
 function claudeConfigured() { return !!process.env.ANTHROPIC_API_KEY; }
+// v710 r2 — the provider the production writers use RIGHT NOW: the same rule as _write.js writerProvider()
+// ('claude' only when WRITER_PROVIDER is claude AND Claude is configured; anything else is Grok), without its
+// warnings. /api/health judges only this provider's ai-writer row; the others are opt-in arms (blind test).
+function activeWriterProvider() {
+  const raw = String(process.env.WRITER_PROVIDER == null ? '' : process.env.WRITER_PROVIDER).trim().toLowerCase();
+  return (raw === 'claude' && claudeConfigured()) ? 'claude' : 'grok';
+}
 
-module.exports = { callLLM, callGrokSearch, aiUnavailable, claudeConfigured, withThinkingHeadroom, inThinkingHeadroom, THINKING_HEADROOM, AI_UNAVAILABLE_MESSAGE, AI_NOT_CONFIGURED_MESSAGE, CLAUDE_DEFAULT_MODEL };
+module.exports = { callLLM, callGrokSearch, aiUnavailable, claudeConfigured, activeWriterProvider, withThinkingHeadroom, inThinkingHeadroom, THINKING_HEADROOM, AI_UNAVAILABLE_MESSAGE, AI_NOT_CONFIGURED_MESSAGE, CLAUDE_DEFAULT_MODEL,
+  isAccountError, safeProviderMessage, _resetWriterHealth, WRITER_OK_EVERY_MS };

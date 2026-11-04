@@ -20,6 +20,43 @@ const CONC = 2;                    // parallel brands per batch
 // green, because a lane returning zero items is not an error anywhere.
 // 2 leaves headroom for the retry the scraper makes on a slow run.
 
+// v710 — SKIP BRANDS NOBODY USES (deep-audit F-money #3). Every night this cron paid for a Grok
+// web search, an Apify tweet run and (weekly) a competitor-pulse search for EVERY stale brand —
+// expired trials, test brands, people who left months ago — oldest first, 30 a run, so past 30
+// brands the dead ones took the slots of the brands people actually open.
+// The activity rule is the SAME one api/fact-pack.js uses for its weekly search: lastActivityAt()
+// and C.INACTIVE_MS (14 days) there. It is copied, not imported: fact-pack.js is a route handler
+// whose exports exist for its own gate, not a shared module. Change both together.
+const INACTIVE_MS = 14 * 24 * 3600 * 1000;   // = fact-pack.js C.INACTIVE_MS
+const ACTIVITY_CONC = 6;                       // parallel activity look-ups (reads only, no money)
+const ACTIVITY_WINDOW_MS = 60000;              // stop starting look-ups after this; the rest wait a night
+const _okStatus = (r) => !!r && r.status >= 200 && r.status < 300;
+// Last thing a PERSON did on the brand: their newest idea (the daily cron's untouched 'daily' rows do not
+// count — the send-daily rule) or their newest usage row (except 'ideas', which the daily batch also writes).
+// Copy of api/fact-pack.js lastActivityAt(). Returns a ms timestamp (0 = never), or null = could not tell.
+async function lastActivityAt(brand) {
+  const enc = encodeURIComponent(brand.id);
+  let at = 0, anyRead = false;
+  try {
+    let r = await store.rest('GET', '/ideas?brand_id=eq.' + enc + '&select=created_at,status,gen_flow&order=created_at.desc&limit=50');
+    if (!_okStatus(r) && /gen_flow/i.test(String((r && r.raw) || ''))) r = await store.rest('GET', '/ideas?brand_id=eq.' + enc + '&select=created_at,status&order=created_at.desc&limit=50');
+    if (_okStatus(r) && Array.isArray(r.data)) {
+      anyRead = true;
+      const own = r.data.find(x => x && !(x.gen_flow === 'daily' && (!x.status || x.status === 'pending')));
+      if (own) at = Math.max(at, Date.parse(own.created_at) || 0);
+    }
+  } catch (e) { /* counted as unread */ }
+  try {
+    const u = await store.rest('GET', '/usage_events?brand_id=eq.' + enc + '&select=created_at,action&order=created_at.desc&limit=20');
+    if (_okStatus(u) && Array.isArray(u.data)) {
+      anyRead = true;
+      const own = u.data.find(x => x && x.action && !/^(hold:)?ideas(:|$)/.test(String(x.action)));
+      if (own) at = Math.max(at, Date.parse(own.created_at) || 0);
+    }
+  } catch (e) { /* counted as unread */ }
+  return anyRead ? at : null;
+}
+
 // Best news-search terms come from the brand's niche/communities, not its name.
 function deriveKeywords(b) {
   const candidates = [];
@@ -68,6 +105,9 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   try {
+    // v710: the run budget (see the v662 note below) now starts HERE, so the activity look-ups count against it.
+    const BUDGET_MS = 270000, WORST_BATCH_MS = 75000, _cronT0 = Date.now();
+    const _left = () => BUDGET_MS - (Date.now() - _cronT0);
     // NOTE: competitors are stored in the `competitors_text` COLUMN (settingsToBrand), NOT in voice_extra —
     // must select it explicitly or the competitor pulse + gap-angle scoping below see nothing.
     // v709 (consistency C9) — banned_topics too: pullAllTrends (api/_trends.js) drops every trend, headline
@@ -85,9 +125,41 @@ module.exports = async function handler(req, res) {
     const brands = Array.isArray(r.data) ? r.data : [];
     const now = Date.now();
 
-    const due = brands
-      .filter(b => { const at = b.auto_trends && b.auto_trends.at; return !at || (now - at) > STALE_MS; })
-      .sort((a, c) => ((a.auto_trends && a.auto_trends.at) || 0) - ((c.auto_trends && c.auto_trends.at) || 0))
+    const stale = brands
+      .filter(b => { const at = b.auto_trends && b.auto_trends.at; return !at || (now - at) > STALE_MS; });
+
+    // v710: who actually uses each stale brand (reads only). Inactive > 14 days or unknown -> skipped,
+    // exactly as fact-pack.js does; the rest go most-recently-active first, so paying, working brands
+    // get the CAP slots before anything else.
+    const actOf = new Map();
+    let skipInactive = 0, skipActivityUnknown = 0, activityUnchecked = 0, _nextAct = 0;
+    const _actT0 = Date.now();
+    await Promise.all(Array.from({ length: Math.min(ACTIVITY_CONC, stale.length) }, async () => {
+      while (_nextAct < stale.length) {
+        if ((Date.now() - _actT0) > ACTIVITY_WINDOW_MS || _left() <= WORST_BATCH_MS) return;
+        const b = stale[_nextAct++];
+        let at = null;
+        try { at = await lastActivityAt(b); } catch (_) { at = null; }
+        actOf.set(b, at);
+      }
+    }));
+    const active = [];
+    for (const b of stale) {
+      if (!actOf.has(b)) { activityUnchecked++; continue; }
+      const at = actOf.get(b);
+      if (at == null) { skipActivityUnknown++; continue; }
+      if ((now - at) > INACTIVE_MS) { skipInactive++; continue; }
+      active.push(b);
+    }
+    // Every look-up failed: that is a broken read, not "nobody is active". Same path as the brands read
+    // failing above — 500 and deliberately NO heartbeat, so /api/health sees the job go stale.
+    if (skipActivityUnknown > 0 && !active.length && !skipInactive) {
+      console.error('pull-trends-cron: activity read FAILED for all ' + skipActivityUnknown + ' due brand(s) — 0 brands processed');
+      return res.status(500).json({ error: 'activity read failed' });
+    }
+    const due = active
+      .sort((a, c) => (actOf.get(c) - actOf.get(a)) ||
+        (((a.auto_trends && a.auto_trends.at) || 0) - ((c.auto_trends && c.auto_trends.at) || 0)))
       .slice(0, CAP);
 
     // `failed` is tracked SEPARATELY from `skipped`: a skip is a legitimate no-op (no keywords,
@@ -130,8 +202,7 @@ module.exports = async function handler(req, res) {
        The race abandons in-flight lane work, which is safe: every brand's work is wrapped in its
        own try/catch and writes only at the end, so an abandoned brand simply is not updated and
        is picked up next run. Losing one brand's refresh beats losing the whole run's record. */
-    const BUDGET_MS = 270000, WORST_BATCH_MS = 75000, _cronT0 = Date.now();
-    const _left = () => BUDGET_MS - (Date.now() - _cronT0);
+    // (BUDGET_MS, WORST_BATCH_MS, _cronT0 and _left() are declared at the top of the run — v710.)
     for (let i = 0; i < due.length; i += CONC) {
       if (_left() <= WORST_BATCH_MS) { ranOut = true; untried += (due.length - i); skipped += (due.length - i); break; }
       const batch = due.slice(i, i + CONC);
@@ -289,6 +360,9 @@ module.exports = async function handler(req, res) {
     console.log('pull-trends-cron: lanes this run — grok=' + laneTotals.grok + ' news=' + laneTotals.news +
       ' x=' + laneTotals.x + ' | updated=' + updated + ' skipped=' + skipped +
       ' (noKeywords=' + skipNoKeywords + ', noItems=' + skipNoItems + ') failed=' + failed);
+    console.log('pull-trends-cron: brands total=' + brands.length + ', skipped as inactive=' + skipInactive +
+      ' (activity unknown=' + skipActivityUnknown + ', not checked in time=' + activityUnchecked + ', not due=' + (brands.length - stale.length) +
+      ', over cap=' + (active.length - due.length) + '), processed=' + (due.length - untried - abandoned));
 
     // v670 — EVERY SOURCE SILENT IS A FAILURE, NOT A SKIP.
     // A run where brands were due, none failed outright, and not one of them got a single item
@@ -307,7 +381,8 @@ module.exports = async function handler(req, res) {
     }
     const _health = ((failed && !updated) || _allSilent) ? 'error' : 'ok';
     const _meta = { considered: due.length, updated, skipped, failed, ranOut, untried, abandoned,
-                    skipNoKeywords, skipNoItems, lanes: laneTotals, allSilent: _allSilent };
+                    skipNoKeywords, skipNoItems, lanes: laneTotals, allSilent: _allSilent,
+                    total: brands.length, skipInactive, skipActivityUnknown };
     await store.heartbeat('pull-trends-cron', _health, _meta);
     return res.status(200).json(Object.assign({ ok: !_allSilent }, _meta));
   } catch (e) {

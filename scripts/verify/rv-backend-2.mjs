@@ -35,6 +35,8 @@ delete process.env.APIFY_API_TOKEN;
 
 const put = (rel, exp) => { const k = require_.resolve(path.join(ROOT, rel)); require_.cache[k] = { id: k, filename: k, loaded: true, exports: exp }; };
 
+// v710: one shared 'last used' time, so the cron's most-recently-active ordering keeps plan order.
+const USED_AT = new Date().toISOString();
 // plan: brandId -> 'items' | 'empty' | 'hang'
 async function runCron(plan) {
   const beats = []; const patches = [];
@@ -44,6 +46,8 @@ async function runCron(plan) {
     rest: async (m, p) => {
       if (m === 'GET' && p.startsWith('/brands?select=')) return { status: 200, data: brands };
       if (m === 'GET' && p.startsWith('/ideas?')) return { status: 200, data: [] };
+      // v710: the cron now skips brands inactive > 14 days (fact-pack's rule); every brand here was used just now.
+      if (m === 'GET' && p.startsWith('/usage_events?')) return { status: 200, data: [{ created_at: USED_AT, action: 'write' }] };
       if (m === 'PATCH') { patches.push(p); return { status: 204, data: null }; }
       return { status: 200, data: [] };
     },

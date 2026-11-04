@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v709';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v710';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -7810,7 +7810,7 @@ async function generateInviteLink() {
 }
 
 async function copyInviteLink(code) {
-  const link = window.location.origin + '/?invite=' + code;
+  const link = window.location.origin + '/?invite=' + encodeURIComponent(String(code == null ? '' : code));
   try { await navigator.clipboard.writeText(link); } catch(ce) { copyFallback(link); }
   const el = document.getElementById('spInviteCopied');
   if (el) { el.style.display = 'inline'; setTimeout(() => el.style.display = 'none', 2000); }
@@ -7855,6 +7855,60 @@ async function removeMember(memberId) {
     alert("Couldn't remove that member — check your connection and try again.");
   }
 }
+
+// v710: opening an invite link used to JOIN the brand the moment the page loaded — no question. Anyone
+// could send a signed-in user a link and silently make them a member of the sender's brand (the owner then
+// sees their email, and their work lands there). Now the user is asked first. Resolves true (Join) or
+// false (Cancel). The brand name comes from lookup_invite, a read-only lookup that joins nothing; when it
+// is missing or slow the dialog says "a brand you were invited to". The name is escaped — the owner typed it.
+// When the lookup ANSWERS with no row (expired, used or wrong code) nothing is asked: resolves 'dead'.
+function inviteJoinAsk(code) {
+  return new Promise(async (resolve) => {
+    let name = '', dead = false;
+    try {
+      if (sb && typeof sb.rpc === 'function') {
+        const r = await Promise.race([
+          Promise.resolve(sb.rpc('lookup_invite', { p_code: code })),
+          new Promise(res => setTimeout(() => res(null), 4000))
+        ]);
+        if (r && !r.error) {                      // an answer, not a timeout or an error
+          const rows = r.data;
+          const info = Array.isArray(rows) ? rows[0] : rows;
+          if (!info) dead = true;
+          else if (typeof info.brand_name === 'string' && info.brand_name.trim()) name = info.brand_name.trim().slice(0, 80);
+        }
+      }
+    } catch (e) {}
+    if (dead) { resolve('dead'); return; }
+    try { dismissCsSplash(); } catch (e) {}   // the splash sits above every dialog
+    const old = document.getElementById('invJoinBackdrop'); if (old) old.remove();
+    const w = document.createElement('div'); w.className = 'dp-backdrop'; w.id = 'invJoinBackdrop';
+    const what = name ? escHtml(name) : 'a brand you were invited to';
+    w.innerHTML = '<div class="dismiss-popup open" style="position:relative">'
+      + '<button class="dp-x" data-inv-answer="cancel" aria-label="Close" style="position:absolute;top:6px;right:10px;background:none;border:none;font-size:26px;line-height:1;color:var(--text3);cursor:pointer;padding:6px;min-width:40px;min-height:40px">&times;</button>'
+      + '<div class="dp-title">Join ' + what + ' as a team member?</div>'
+      + '<div class="dp-sub">The owner will see your email.</div>'
+      + '<div class="dp-actions-row" style="margin-top:16px">'
+      + '<button class="dp-cancel" data-inv-answer="cancel">Cancel</button>'
+      + '<button class="dp-custom-send" data-inv-answer="join">Join</button>'
+      + '</div></div>';
+    let done = false;
+    const finish = (yes) => {
+      if (done) return; done = true;
+      window._inviteJoinAnswer = null;
+      try { w.remove(); } catch (e) {}
+      resolve(!!yes);
+    };
+    window._inviteJoinAnswer = finish;
+    w.addEventListener('click', (e) => {
+      const b = e.target && e.target.closest ? e.target.closest('[data-inv-answer]') : null;
+      if (b) finish(b.getAttribute('data-inv-answer') === 'join');
+    });
+    document.body.appendChild(w);
+  });
+}
+// Esc / the desktop dialog's X (CSX_DIALOGS 'invite-join') = Cancel.
+function inviteJoinCancel() { if (typeof window._inviteJoinAnswer === 'function') window._inviteJoinAnswer(false); }
 
 // Returns { ok, retryable, message } — never a bare boolean. Every failure used to return false
 // with nothing but a debugLog, and the caller stripped ?invite= from the URL regardless, so a user
@@ -8922,7 +8976,17 @@ async function initApp() {
     // Check for invite code in URL
     const urlParams = new URLSearchParams(window.location.search);
     const inviteCode = urlParams.get('invite');
-    if (inviteCode) {
+    // v710: ask before joining (inviteJoinAsk). Cancel only takes ?invite= out of the address bar.
+    const _joinOk = inviteCode ? await inviteJoinAsk(inviteCode) : false;
+    if (inviteCode && _joinOk !== true) {
+      try {
+        const _u = new URL(window.location.href); _u.searchParams.delete('invite');
+        window.history.replaceState(window.history.state, '', _u.pathname + _u.search + _u.hash);
+      } catch (e) {}
+      debugLog('initApp: invite ' + (_joinOk === 'dead' ? 'dead (no such open invite)' : 'declined'));
+      // Deferred for the same reason as the toast below: the splash would cover it.
+      if (_joinOk === 'dead') setTimeout(() => { try { if (typeof showToast === 'function') showToast('This invite link has expired or was already used. Ask the brand owner for a new one.', 9000); } catch(e) {} }, 1500);
+    } else if (inviteCode) {
       debugLog('initApp: found invite code ' + inviteCode);
       const _inv = await handleInviteCode(inviteCode);
       // Only drop the code from the URL once it has actually been redeemed. Stripping it on EVERY
@@ -15266,7 +15330,7 @@ async function ideasQuickGo(btn){
   // generateNewIdeas() untouched — its #generateCount / #generateIdeasBtn / #generateStatus reads
   // still resolve inside the folded panel (display:none keeps them in the DOM).
   try { await generateNewIdeas(); }
-  catch (e) { if (st && !st.textContent) { st.textContent = (e && e.message) || 'Something went wrong — try again.'; st.className = 'generate-status error'; } }
+  catch (e) { if (st && !st.textContent) { st.textContent = humanErr(e && e.message, 'Something went wrong — try again.'); st.className = 'generate-status error'; } }
   finally { stopW(); }
   const added = (((typeof state !== 'undefined' && state) ? state.length : 0) - before);
   if (added > 0) {
@@ -15762,6 +15826,16 @@ function humanErr(code, fallback) {
   if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(c) || !/\s/.test(c)) return FB;
   return c;
 }
+// v710: "Couldn't rewrite (limit_reached). Try again." still put the code on screen. A sentence keeps
+// the old "<lead> (<reason>). Try again." frame; a known code is replaced by its words; an unknown code
+// becomes the plain fallback.
+function humanErrFrame(code, lead, fallback) {
+  const raw = String((code && code.message) || code || '').trim();
+  const NONE = '\u0000';                       // humanErr's "no words for this" answer
+  const h = humanErr(raw, NONE);
+  if (h === NONE) return fallback || (lead + ' \u2014 try again.');
+  return h === raw ? lead + ' (' + raw + '). Try again.' : h;
+}
 function _leanErrMsg(e, fallback) {
   if (_leanNetFail(e)) return 'Your connection dropped mid-request — the work was likely done but never reached your phone. Try again.';
   return (e && e.message) || fallback || 'Something went wrong — try again';
@@ -16170,7 +16244,7 @@ async function generateTodayTabPost() {
       // answered. Say so, and say we already retried, so a second failure is understood as the link.
       : (_isNetFail(err)
           ? 'Your connection dropped mid-request' + (window._tvPhase && window._tvPhase.retried ? ' twice' : '') + ' \u2014 the post was likely written but never reached your phone. Press to try again.'
-          : (err.message || 'Couldn\u2019t write the post'));
+          : humanErr(err && err.message, 'Couldn\u2019t write the post'));
     window._tvGenTimedOut = false;
     statusEl.textContent = _msg;
     statusEl.style.color = 'var(--red, #777777)';
@@ -16275,7 +16349,7 @@ async function tvViralTwist(btn){
     if (box) { box.innerHTML = h; _tvReveal(box); }
   } catch(e) {
     stopThinking('vtThink-tv');
-    if (box) box.innerHTML = `<div class="vt-error">${escHtml(_leanNetFail(e) ? _leanErrMsg(e) : "Couldn't generate a twist (" + e.message + "). Try again.")}</div>`;
+    if (box) box.innerHTML = `<div class="vt-error">${escHtml(_leanNetFail(e) ? _leanErrMsg(e) : humanErrFrame(e, "Couldn't generate a twist"))}</div>`;
   } finally {
     stopThinking('vtThink-tv');
     stopW();
@@ -16306,7 +16380,7 @@ async function tvViralRewrite(angleName, angleHook, btn){
     h += `<div class="vt-rw-actions"><button class="detail-btn primary" onclick="event.stopPropagation();tvApplyTwist()">Use this version ✓</button><button class="detail-btn" onclick="event.stopPropagation();const p=document.getElementById('vtRewrite-tv');if(p)p.innerHTML='';">Discard</button></div></div>`;
     if (preview) { preview.innerHTML = h; _tvReveal(preview); }
   } catch(e) {
-    if (preview) preview.innerHTML = `<div class="vt-error">${escHtml(_leanNetFail(e) ? _leanErrMsg(e) : "Couldn't rewrite (" + e.message + "). Try again.")}</div>`;
+    if (preview) preview.innerHTML = `<div class="vt-error">${escHtml(_leanNetFail(e) ? _leanErrMsg(e) : humanErrFrame(e, "Couldn't rewrite"))}</div>`;
   } finally {
     stopW();
   }
@@ -18404,7 +18478,7 @@ async function deleteAccount() {
     alert(data.billingWarning || 'Account deleted. You can sign up fresh with the same email.');
     location.reload();
   } catch (e) {
-    showToast('Could not delete: ' + e.message);
+    showToast('Could not delete: ' + humanErr(e && e.message, 'try again.'));
   }
 }
 
@@ -19735,7 +19809,7 @@ async function viralTwist(id, btn){
       : `<div class="vt-error">That came back without any angles — press Viral twist again, or use Redo with notes to steer it.</div>`;
   }catch(e){
     stopThinking('vtThink-'+id);
-    if(box) box.innerHTML = `<div class="vt-error">Couldn't generate a twist (${escHtml(e.message)}). Try again.</div>`;
+    if(box) box.innerHTML = `<div class="vt-error">${escHtml(humanErrFrame(e, "Couldn't generate a twist"))}</div>`;
   }finally{
     stopThinking('vtThink-'+id);
     stopW();
@@ -19774,7 +19848,7 @@ async function viralRewrite(id, angleName, angleHook, btn){
     h += `<div class="vt-rw-actions"><button class="detail-btn primary" onclick="event.stopPropagation();applyViralRewrite(${id})">Replace this idea ✓</button><button class="detail-btn" onclick="event.stopPropagation();const p=document.getElementById('vtRewrite-${id}');if(p)p.innerHTML='';">Discard</button></div></div>`;
     if(preview) preview.innerHTML = h;
   }catch(e){
-    if(preview) preview.innerHTML = `<div class="vt-error">Couldn't rewrite (${escHtml(e.message)}). Try again.</div>`;
+    if(preview) preview.innerHTML = `<div class="vt-error">${escHtml(humanErrFrame(e, "Couldn't rewrite"))}</div>`;
   }finally{
     stopW();
   }
@@ -19866,7 +19940,7 @@ async function sharpenNow(opts){
       }, null, _shCtrl ? { signal: _shCtrl.signal } : {});
     const data = await resp.json().catch(()=>({}));
     if(resp.status===402){ if(data && data.error==='limit_reached' && typeof showUpgrade==='function') showUpgrade(data); return; }
-    if(!resp.ok || !data){ if(typeof showToast==='function') showToast((data && data.error) || "Couldn't sharpen — try again"); return; }
+    if(!resp.ok || !data){ if(typeof showToast==='function') showToast(humanErr(data && data.error, "Couldn't sharpen — try again")); return; }
     // "Already sharp" is a REAL outcome, not a failure — Sharpen is deliberately a light-touch
     // editor (its prompt hard-caps the rewrite at the same length) so on a draft with no weak parts
     // it correctly changes nothing. Reported as a bug because the only evidence was a 2.6s toast:
@@ -20643,7 +20717,7 @@ async function startCheckout(plan){
     // subscription — try again in a minute". Say what the server said; the old line only when it said nothing.
     if(r.status === 503){ if(typeof showToast==='function') showToast((d && typeof d.error === 'string' && d.error) || 'Plans are launching soon — thanks for using it!', 5000); return; }
     if(d && d.url){ window.location.href = d.url; }
-    else if(typeof showToast==='function') showToast((d && d.error) || 'Could not open checkout — try again.', 4000);
+    else if(typeof showToast==='function') showToast(humanErr(d && d.error, 'Could not open checkout — try again.'), 4000);
   }catch(e){ if(typeof showToast==='function') showToast('Could not open checkout — try again.', 4000); }
 }
 // Handle the redirect back from Stripe Checkout.
@@ -21050,7 +21124,7 @@ async function ideaDevelop(){
     if(typeof showToast==='function') showToast('Your idea is now a full brief ✓');
   }catch(e){
     const resBox = document.getElementById('icResult');
-    if(resBox) resBox.innerHTML = '<div class="ic-result-card err">' + escHtml(e.message || 'Could not develop that one — try again.') + '</div>';
+    if(resBox) resBox.innerHTML = '<div class="ic-result-card err">' + escHtml(humanErr(e && e.message, 'Could not develop that one — try again.')) + '</div>';
     if(status){ status.textContent=''; status.className='vl-status'; }
   }finally{ stopThinking('icStatus'); stopW(); }
 }
@@ -21802,7 +21876,7 @@ async function transcribeFromYoutube(ev) {
 
     status.style.color = 'var(--green)';
   } catch (err) {
-    status.textContent = (err && err.message && err.message.length < 80) ? err.message : 'Could not fetch the transcript — check the link and try again.';
+    status.textContent = (err && err.message && err.message.length < 80) ? humanErr(err.message, 'Could not fetch the transcript — check the link and try again.') : 'Could not fetch the transcript — check the link and try again.';
     status.style.color = 'var(--red)';
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Get Transcript'; }
@@ -21839,7 +21913,7 @@ async function extractArticle(ev) {
     status.textContent = `Done! ${wordCount} words extracted.`;
     status.style.color = 'var(--green)';
   } catch (err) {
-    status.textContent = (err && err.message && err.message.length < 80) ? err.message : 'Could not extract this article — try a different link.';
+    status.textContent = (err && err.message && err.message.length < 80) ? humanErr(err.message, 'Could not extract this article — try a different link.') : 'Could not extract this article — try a different link.';
     status.style.color = 'var(--red)';
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Extract Text'; }
@@ -21895,7 +21969,7 @@ async function transcribeFromUrl() {
 
 
   } catch (err) {
-    status.textContent = `${err.message}`;
+    status.textContent = humanErr(err && err.message, 'Transcription failed — try again.');
     status.style.color = 'var(--red)';
   } finally {
     btn.disabled = false;
@@ -21977,7 +22051,7 @@ async function handleTranscribeUpload(event) {
     status.style.color = 'var(--green)';
 
   } catch (err) {
-    status.textContent = `${err.message}`;
+    status.textContent = humanErr(err && err.message, 'Transcription failed — try again.');
     status.style.color = 'var(--red)';
   }
 
@@ -23775,7 +23849,7 @@ async function tryAllModes() {
     } catch (err) {
       statusEl.textContent = 'Failed';
       statusEl.style.color = 'var(--red)';
-      bodyEl.textContent = err.message;
+      bodyEl.textContent = humanErr(err && err.message, 'Something went wrong — try again.');
       bodyEl.style.color = 'var(--red)';
     }
   });
@@ -24698,7 +24772,7 @@ async function factPackRemove(btn){
     }
     if (r.ok && r.data.factPack) { factPackApply(b.id, r.data.factPack); _factPackMsg = ''; try { renderSettingsPanel(); } catch (e) {} return; }
     if (r.status === 409) { _factPackMsg = 'The facts just changed. Showing the latest.'; try { renderSettingsPanel(); } catch (e) {} return; }
-    showToast(String(r.data.error || 'Could not remove that fact.'));
+    showToast(humanErr(r.data.error, 'Could not remove that fact.'));
   } catch (e) { showToast('Could not remove that fact.'); }
   btn.disabled = false;
 }
@@ -25476,7 +25550,7 @@ async function spDraftFromSocial(silent) {
       : `Read ${data.postsAnalyzed} posts — your voice fields were already filled, nothing overwritten`);
   } catch (e) {
     clearTimeout(to); stopW();
-    if (!silent) showToast(e && e.name === 'AbortError' ? 'Reading your posts timed out — check your connection and try again' : (e.message && e.message.length < 90 ? e.message : 'Could not read that profile — check the URL or try later'));
+    if (!silent) showToast(e && e.name === 'AbortError' ? 'Reading your posts timed out — check your connection and try again' : (e.message && e.message.length < 90 ? humanErr(e.message, 'Could not read that profile — check the URL or try later') : 'Could not read that profile — check the URL or try later'));
     return;
   }
   clearTimeout(to); stopW();
@@ -25941,20 +26015,23 @@ function renderSettingsPanel() {
 
             <label class="sp-label">Current Team</label>
             <div class="sp-team-member">
-              <div class="sp-team-avatar">${(currentUser?.email||'?')[0].toUpperCase()}</div>
+              <div class="sp-team-avatar">${escHtml((currentUser?.email||'?')[0].toUpperCase())}</div>
               <div class="sp-team-info">
-                <div class="sp-team-email">${currentUser?.email||'You'}</div>
+                <div class="sp-team-email">${escHtml(currentUser?.email||'You')}</div>
                 <div class="sp-team-role">${currentBrand?.user_id === currentUser?.id ? 'Owner' : 'Member'}</div>
               </div>
             </div>
+            ${/* v710 XSS: brand_members.user_email, brand_invites.email and invite_code are free text the
+                 brand OWNER can write straight through the REST API, and this panel is drawn for MEMBERS too —
+                 so every value is escaped: escHtml for text, escJs (JS string + attribute) inside onclick. */''}
             ${teamMembers.filter(m => m.user_id !== currentUser?.id).map(m => `
               <div class="sp-team-member">
-                <div class="sp-team-avatar" style="background:rgba(0,0,0,0.1);color:var(--text);">${(m.user_email||'?')[0].toUpperCase()}</div>
+                <div class="sp-team-avatar" style="background:rgba(0,0,0,0.1);color:var(--text);">${escHtml((m.user_email||'?')[0].toUpperCase())}</div>
                 <div class="sp-team-info">
-                  <div class="sp-team-email">${m.user_email || 'Team member'}</div>
-                  <div class="sp-team-role">Member &middot; joined ${m.joined_at ? new Date(m.joined_at).toLocaleDateString() : ''}</div>
+                  <div class="sp-team-email">${escHtml(m.user_email || 'Team member')}</div>
+                  <div class="sp-team-role">Member &middot; joined ${m.joined_at ? escHtml(new Date(m.joined_at).toLocaleDateString()) : ''}</div>
                 </div>
-                ${currentBrand?.user_id === currentUser?.id ? `<button class="sp-team-remove" onclick="removeMember('${m.id}')" title="Remove">&times;</button>` : ''}
+                ${currentBrand?.user_id === currentUser?.id ? `<button class="sp-team-remove" onclick="removeMember('${escJs(m.id)}')" title="Remove">&times;</button>` : ''}
               </div>
             `).join('')}
 
@@ -25979,10 +26056,10 @@ function renderSettingsPanel() {
               <label class="sp-label" style="margin-top:16px;">Pending Invites</label>
               ${teamInvites.map(inv => `
                 <div class="sp-invite-pending">
-                  <span class="email">${inv.email || 'Anyone with link'}</span>
+                  <span class="email">${escHtml(inv.email || 'Anyone with link')}</span>
                   <span style="display:flex;gap:6px;">
-                    <button class="sp-invite-btn secondary" onclick="copyInviteLink('${inv.invite_code}')" style="padding:4px 10px;font-size:11px;">Copy</button>
-                    ${currentBrand?.user_id === currentUser?.id ? `<button class="sp-team-remove" onclick="revokeInvite('${inv.id}')" style="font-size:13px;padding:2px 6px;">&times;</button>` : ''}
+                    <button class="sp-invite-btn secondary" onclick="copyInviteLink('${escJs(inv.invite_code)}')" style="padding:4px 10px;font-size:11px;">Copy</button>
+                    ${currentBrand?.user_id === currentUser?.id ? `<button class="sp-team-remove" onclick="revokeInvite('${escJs(inv.id)}')" style="font-size:13px;padding:2px 6px;">&times;</button>` : ''}
                   </span>
                 </div>
               `).join('')}
@@ -27302,7 +27379,7 @@ function obAddExampleChip(theme) {
 function obBuildDayGrid() {
   const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday','Bonus'];
   const grid = document.getElementById('obDayGrid');
-  const options = obCommunities.map(c => `<option value="${c}">${c}</option>`).join('');
+  const options = obCommunities.map(c => `<option value="${escAttr(c)}">${escHtml(c)}</option>`).join('');
   grid.innerHTML = days.map(d =>
     `<label>${d}</label><select id="obDay_${d}"><option value="">— Pick a theme —</option>${options}</select>`
   ).join('');
@@ -27314,9 +27391,11 @@ function obBuildSummary() {
   const tones = obSelectedTones.join(', ') || 'Default';
   const audience = (document.getElementById('obAudience')?.value || '').trim();
   const themeCount = obCommunities.length;
-  let html = `<h3>${brand}</h3>`;
-  html += `<p><strong>Voice:</strong> ${tones}</p>`;
-  if(audience) html += `<p><strong>Audience:</strong> ${audience.substring(0, 80)}${audience.length > 80 ? '...' : ''}</p>`;
+  // v710: the name and audience come from the crawl (an LLM reading a stranger's web page), and the only
+  // filter upstream (CRAWL_MARKUP_RX) blocks a short tag list — <svg onload> passes it. Escape at the sink.
+  let html = `<h3>${escHtml(brand)}</h3>`;
+  html += `<p><strong>Voice:</strong> ${escHtml(tones)}</p>`;
+  if(audience) html += `<p><strong>Audience:</strong> ${escHtml(audience.substring(0, 80))}${audience.length > 80 ? '...' : ''}</p>`;
   if(themeCount) html += `<p><strong>Topics:</strong> ${themeCount} topic${themeCount !== 1 ? 's' : ''}</p>`;
   document.getElementById('obSummary').innerHTML = html;
 }
@@ -30300,6 +30379,7 @@ var CSX_DIALOGS = [
   { k: 'dismiss', root: '#dpBackdrop', panel: '.dismiss-popup', title: '.dp-title', x: '.dp-x', foot: '.dp-actions-row' },
   { k: 'approve', root: '#apBackdrop', panel: '.dismiss-popup', title: '.dp-title', x: '.dp-x', foot: '.dp-actions-row' },
   { k: 'brand-guard', root: '#brgBackdrop', panel: '.dismiss-popup', title: '.dp-title', x: '.dp-x', foot: '.dp-actions-row', close: 'closeBrandGuard' },
+  { k: 'invite-join', root: '#invJoinBackdrop', panel: '.dismiss-popup', title: '.dp-title', x: '.dp-x', foot: '.dp-actions-row', close: 'inviteJoinCancel' },
   { k: 'angle', root: '#angleSheetWrap', panel: '.more-sheet', title: '.as-title, h3, h2', x: '.as-close', close: 'closeAngleSheet' },
   { k: 'opinion', root: '#rv2Sheet', panel: '.rv2-lab-in', head: '.rv2-lab-top', x: '.rv2-lab-top > .sp-back', body: '.rv2-card', close: 'rv2CloseSheet', size: 'lg' },
   { k: 'content-lab', root: '#clOverlay', panel: '.rv2-lab-in', head: '.rv2-lab-top', x: '.rv2-lab-top > .sp-back', close: 'clClose', size: 'lg' },

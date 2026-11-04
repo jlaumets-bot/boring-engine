@@ -2,6 +2,31 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-04 — v710. DEEP AUDIT wave 1: silent outages, team XSS, €0 vouchers, cost leak (owner: "fix").
+
+Audits E–I (security, money, reliability, client, leftovers): cloud /mnt/user-data/outputs/deep-audit/*.md.
+- send-daily: self-call now uses PUBLIC_APP_URL || https://contentshrimp.com (VERCEL_URL hit Vercel Authentication → likely 401,
+  0 generate-ideas logs in 14 d; heartbeat showed ideaSaved 0). Gen failures counted in detail.gen {attempted,ok,failed,outage,
+  timedOut,statuses}; run = 'error' only when EVERY attempted batch was an outage (HTML/non-JSON/401/403/5xx/timeout).
+- _llm.js: writes job_heartbeats 'ai-writer:<provider>' — 'error' on 401/402/403/credit-429 (redacted 120-char detail), 'ok'
+  throttled 30 min/instance; fire-and-forget (no @vercel/functions → can be lost on freeze). Two xAI log lines no longer print key suffix.
+- health: ai_writer_ok judges ONLY the active writer (activeWriterProvider mirrors _write.js); others info; error >24h = stale-error.
+  Unreadable job_heartbeats now FAILS crons; first-run grace never covers an 'error' row; any cron 'error' fails.
+- fact-pack: failed search releases the claim (restores lastSearchAt, rev-guarded), failCount backoff 12h×2^(n-1) cap 7 d,
+  backoff brands sorted after healthy; all-failed run → 'error' w/o last_success_at.
+- pull-trends-cron: skips brands inactive >14 d (copy of fact-pack lastActivityAt rule), newest-active first, cap 30.
+- app.html: team panel escaped (escHtml/escJs), invite ?invite= now asks "Join <brand>?" first (dead code → toast, no dialog),
+  onboarding crawl summary escaped, ~17 error sinks → humanErr. crawl-brand.js returns code 'crawl_failed', logs internals.
+- checkout-confirm: accepts no_payment_required only if complete + subscription + live sub active/trialing (same guards).
+  stripe-webhook: subPeriodEnd() falls back to items.data[0].current_period_end.
+- Checked live: user_plans + usage_events RLS on, SELECT-own only → users can't edit plan/usage (E5/F "unknown" closed).
+- Usage evidence: last usage_events row 2026-09-19; peak week 08-24 (220 calls, owner acct). Crons are NOT metered (F2 open).
+Gates: send-daily-v710, health-v710, fact-pack-v710, client-sec-v710, stripe-v710, trends-cron-v710 (+manifests, all mutations killed);
+_send-daily-harness got PUBLIC_APP_URL + store.rest stub; rv-backend-2 stub got a recent usage row. Independent review: no blockers.
+NOT DONE (next waves): saves replace whole lists/rows (H1/H2/G6), paid-plan cost cap + real token spend (F1/F2), free plan locks
+(owner decision), push throughput 6–18 brands/h (G5) + multi-brand device, 1000-row cron reads, startup speed, iOS code sign-in,
+copy/legal (company name, privacy partners, AI-training claim), dead code + 5 false-comfort gates.
+
 ## ▶▶ 2026-11-03 — v709. CONSISTENCY FIX: one rule set for every writer (owner: "no contradictions… so content wouldnt suffer").
 
 Audits (4, ~80 findings): cloud /mnt/user-data/outputs/consistency-audit/. Contract .unlazy/consistency/CONTRACT.md.

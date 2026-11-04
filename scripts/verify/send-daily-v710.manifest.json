@@ -1,0 +1,69 @@
+{
+  "name": "send-daily v710 — public host + failed batches counted",
+  "mutations": [
+    {
+      "id": "M1",
+      "finding": "G3-host",
+      "file": "api/send-daily.js",
+      "find": "const host = publicAppUrl();   // v710 — the public domain (see publicAppUrl)",
+      "replace": "const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://contentshrimp.com';",
+      "gate": "send-daily-v710.mjs"
+    },
+    {
+      "id": "M2",
+      "finding": "G3-fallback",
+      "file": "api/send-daily.js",
+      "find": "const PUBLIC_APP_FALLBACK = 'https://contentshrimp.com';",
+      "replace": "const PUBLIC_APP_FALLBACK = 'https://content-shrimp.vercel.app';",
+      "gate": "send-daily-v710.mjs"
+    },
+    {
+      "id": "M3",
+      "finding": "G2-error-status",
+      "file": "api/send-daily.js",
+      "find": "    if (_genAllFailed) await heartbeatError('send-daily', _hbDetail);\n    else await store.heartbeat('send-daily', _health, _hbDetail);",
+      "replace": "    await store.heartbeat('send-daily', _genAllFailed ? 'error' : _health, _hbDetail);",
+      "gate": "send-daily-v710.mjs"
+    },
+    {
+      "id": "M4",
+      "finding": "G2-no-advance",
+      "file": "api/send-daily.js",
+      "find": "      body: { job, last_status: 'error', detail },",
+      "replace": "      body: { job, last_success_at: new Date().toISOString(), last_status: 'error', detail },",
+      "gate": "send-daily-v710.mjs"
+    },
+    {
+      "id": "M5",
+      "finding": "G2-401-html-counted",
+      "file": "api/send-daily.js",
+      "find": "  if (r.html) return { status, why: 'an HTML page (a login or error page, not the API)', outage: true };\n",
+      "replace": "  if (r.html) return null;\n",
+      "gate": "send-daily-v710.mjs"
+    },
+    {
+      "id": "M6",
+      "finding": "G2-empty-is-not-outage",
+      "file": "api/send-daily.js",
+      "find": "outage: !empty };",
+      "replace": "outage: true };",
+      "gate": "send-daily-v710.mjs"
+    },
+    {
+      "id": "M7",
+      "finding": "G2-timeout-is-outage",
+      "file": "api/send-daily.js",
+      "find": "{ gen = _genResp; genOutage++; }",
+      "replace": "{ gen = _genResp; }",
+      "gate": "send-daily-v710.mjs"
+    },
+    {
+      "id": "M8",
+      "finding": "G2-red-only-on-outage",
+      "file": "api/send-daily.js",
+      "find": "const _genAllFailed = genAttempted > 0 && genOutage === genAttempted;",
+      "replace": "const _genAllFailed = genAttempted > 0 && genFailed === genAttempted;",
+      "gate": "send-daily-v710.mjs"
+    }
+  ]
+}

@@ -54,6 +54,7 @@ export function createHarness(ROOT) {
     setRequestBudget() {},
     userCanAccessBrand: (u, b) => S.access(u, b),
     heartbeat: async (job, status, detail) => { S.heartbeats.push({ job, status, detail, at: vnow }); },
+    rest: async (m, p, op) => { if (m === 'POST' && p === '/job_heartbeats' && op && op.body) S.heartbeats.push({ job: op.body.job, status: op.body.last_status, detail: op.body.detail, at: vnow }); return { status: 201, data: null }; },
   });
   stub('_brandctx.js', { loadBrandContext: async (id, opts) => { S.ctxCalls++;
     if (S.o.ctxMs) await new Promise(r => vSet(r, typeof S.o.ctxMs === 'function' ? S.o.ctxMs(id) : S.o.ctxMs));
@@ -90,7 +91,7 @@ export function createHarness(ROOT) {
 
   Object.assign(process.env, {
     CRON_SECRET: 'cron-test', VAPID_PUBLIC_KEY: 'vp', VAPID_PRIVATE_KEY: 'vk', VAPID_SUBJECT: 'mailto:t@t',
-    SUPABASE_URL: 'https://sb.test', SUPABASE_SERVICE_ROLE_KEY: 'svc-test-key', VERCEL_URL: 'app.test',
+    SUPABASE_URL: 'https://sb.test', SUPABASE_SERVICE_ROLE_KEY: 'svc-test-key', VERCEL_URL: 'app.test', PUBLIC_APP_URL: 'https://app.test',
   });
   const sendDaily = require_(path.join(API, 'send-daily.js'));
   const sdSrc = fs.readFileSync(path.join(API, 'send-daily.js'), 'utf8');

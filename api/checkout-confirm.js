@@ -63,12 +63,22 @@ module.exports = async function handler(req, res) {
     const session = await stripeGet('/v1/checkout/sessions/' + encodeURIComponent(sessionId), secret);
 
     // Must belong to THIS user and be genuinely PAID. Require payment_status==='paid'
-    // — do NOT accept status==='complete' alone, which a 100%-off promo / no-charge
-    // session also satisfies (would grant a paid tier without payment).
+    // — do NOT accept status==='complete' alone: a no-charge session satisfies that too.
+    //
+    // v710 — THE €0 PROMO CODE. Since v708 a 100%-off promotion code checks out with no card
+    // (create-checkout: payment_method_collection=if_required). Stripe finishes that session
+    // with payment_status 'no_payment_required', not 'paid', so this answered "pending" forever
+    // and the app showed an error to someone holding a valid voucher. It is accepted ONLY when
+    // nothing was owed because of a discount on a real subscription: the session is complete,
+    // it is a subscription checkout, it names its subscription, and (checked below, the same
+    // check a paid session gets) that subscription is active or trialing in Stripe right now.
+    // Every other guard below applies unchanged.
     const metaUser = session && session.metadata && session.metadata.user_id;
     const paid = session && session.payment_status === 'paid';
+    const freeByPromo = !!session && session.payment_status === 'no_payment_required'
+      && session.status === 'complete' && session.mode === 'subscription' && !!session.subscription;
     if (!metaUser || metaUser !== user.id) return res.status(403).json({ error: 'This checkout is not yours.' });
-    if (!paid) return res.status(200).json({ ok: false, pending: true });
+    if (!paid && !freeByPromo) return res.status(200).json({ ok: false, pending: true });
 
     // ── REPLAY GUARD (v657) ────────────────────────────────────────────────────
     // This endpoint used to check only: session exists, metadata.user_id is mine,
