@@ -25,7 +25,9 @@ try { ({ COST_CAP_EUR } = require('./_usage')); } catch (_) {}
 // v693: blind_tests (sql/blind-tests.sql) and brand_memory (sql/brand-memory.sql) are service-role
 // only ON PURPOSE — RLS on, no policies, every read/write goes through api/blind-test.js and
 // api/brand-memory.js. A policy on either would let the public anon key reach them.
-const ZERO_POLICY_ALLOWED = ['brand_connections', 'job_heartbeats', 'blind_tests', 'brand_memory'];
+// v712: creator_feed_state (sql/creator-feed.sql, v711) is server-only by design — RLS on, no policy; only
+// api/creator-feed.js writes it with the service role.
+const ZERO_POLICY_ALLOWED = ['brand_connections', 'job_heartbeats', 'blind_tests', 'brand_memory', 'creator_feed_state'];
 
 // The arrays security_health() always returns. Their PRESENCE is what proves the audit
 // actually ran: a PostgREST error body is also a plain object, and treating one as an

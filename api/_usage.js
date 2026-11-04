@@ -62,7 +62,11 @@ const FREE_LOCKED_ACTIONS = {};   // v2026-09-27: its only members (blog, meme, 
 const ACTION_CREDITS = {
   ideas: 1, quickpost: 1, remix: 1, viral: 1, expand: 1, beats: 1,
   transcribe: 2,
-  image: 2, imageedit: 2, transcribeurl: 2,
+  image: 2, imageedit: 2,
+  // v712 — READING A LINK IS FREE (owner: Remix is the main feature; a read must not cost credits before
+  // the user picks a twist — the twist itself, api/remix.js, keeps its charge). Still GATED (burst limit +
+  // cost fuse, its real cost below) and bounded per UTC day by dailyReadCheck: DAILY_READ_LIMITS.
+  transcribeurl: 0,
   // ── formerly 0 (see the note above) ────────────────────────────────────────
   crawlbrand: 3,          // <=10 page fetches + a Grok web search + 2 Grok calls, 300s budget
   crawlsocial: 2,         // paid Apify actor run (up to 40 posts) + an LLM voice extraction
@@ -96,7 +100,8 @@ const ACTION_CREDITS = {
   // (angles once, then write one belief) is therefore 1.5 credits against the old remix's 1.
   angles: 0.5,
   write: 1,
-  creatorfeed: 0          // v711 creator-feed Apify pull: platform cost (ACTION_COST), never gated; see scripts/verify/spend-cap.mjs
+  creatorfeed: 0,         // v711 creator-feed Apify pull: platform cost (ACTION_COST), never gated; see scripts/verify/spend-cap.mjs
+  apifyfallback: 0        // v712 one paid Apify single-video read (tikwm failed): logged only, never gated, APIFY_FALLBACK_DAILY per user per day
 };
 function creditsFor(action) {
   // A reservation row carries "hold:<action>:<token>"; it must price as the action it holds,
@@ -161,7 +166,11 @@ const ACTION_COST = {
   // v693 — angles is one call (same as ideas); write is three sequential calls, the third small.
   angles: 0.006,
   write: 0.018,
-  creatorfeed: 0.15       // v711 one creator-feed pull: <=50 Apify results x $0.003
+  creatorfeed: 0.15,      // v711 one creator-feed pull: <=50 Apify results x $0.003
+  // v712 — one clockworks~tiktok-scraper run for ONE video. apify.com/clockworks/tiktok-scraper (read 2026-11-04):
+  // pay per event, "from $1.70 / 1,000 results" = ~$0.002 for the result; the run-start event is not listed there,
+  // so 0.01 is a deliberate over-estimate (the safe side for a fuse). It was never logged before v712.
+  apifyfallback: 0.01
 };
 /* v693 r4/r5 — THE FUSE KNOWS WHEN A WRITER RAN ON CLAUDE. The Grok numbers above are ~€0.01 per
    call; with WRITER_PROVIDER=claude the same action costs far more, and a flat table would let a
@@ -869,7 +878,10 @@ async function checkLimit(userId, credits, action, opts) {
     }
     const need = Number(credits) || 0;
     const addCost = action ? costFor(action, currentWriterModel()) : 0;
-    const overCredits = s.used + need > s.limit;
+    // v712 — a 0-credit call spends no allowance, so the allowance never refuses it (a free account at
+    // 41/40 after rounding was refused a free read while one at 40/40 was not). Its own daily cap bounds it
+    // (dailyReadCheck), and the cost fuse and burst limit below still apply to it.
+    const overCredits = need > 0 && s.used + need > s.limit;
     // Cost fuse: armed by default (COST_CAP_EUR, €25), disabled only if the env sets it
     // to 0. It guards NON-paying accounts only — paid plans (starter/pro/agency) are
     // never cut off by it, and image gen is on the user's own key (no app cost).
@@ -1196,6 +1208,113 @@ function attachHoldRelease(res, hold) {
   };
 }
 
+// ── v712 — FREE LINK READS, CAPPED PER UTC DAY ──────────────────────────────────
+// Reading a TikTok/YouTube link (api/transcribe-url.js, and the creator feed's tap-to-transcribe) costs 0
+// credits. What bounds it instead: DAILY_READ_LIMITS successful reads per user per UTC day, counted from
+// usage_events — one indexed read (user_id + action + created_at >= start of the UTC day), no new table.
+// "Successful" = a completed 'transcribeurl' row; a read that returns no words is never logged (its hold is
+// released), so it is never counted. Cached and automatic (weekly-winner) transcripts never log the action,
+// so they are never counted either.
+// PARALLEL READS (review of v712): a read in flight is a live 'hold:transcribeurl:<token>' row (guard() wrote it
+// before the read). The count adds the live holds ranked AHEAD of the caller's own (holdCmp, the same total order
+// checkLimit uses), so a burst of N parallel reads admits exactly what is left of the cap, not all N.
+// ONE POOL PER BRAND: the user is the BILLING user — guard()/billingUserFor turn a request's brandId into the
+// brand owner ONLY after the membership check (same as api/creator-feed.js), and the row is logged against it.
+const DAILY_READ_ACTION = 'transcribeurl';
+const DAILY_READ_LIMITS = { trial: 5, free: 5, paid: 20 };
+// The paid Apify single-video fallback (only when tikwm fails): at most this many per user per UTC day,
+// each logged as its own 'apifyfallback' row (0 credits, its real cost) so the spend shows and the fuse sees it.
+const APIFY_FALLBACK_ACTION = 'apifyfallback';
+const APIFY_FALLBACK_DAILY = 3;
+const MSG_DAILY_READ_LIMIT = (n) => "You've read " + n + ' videos today, the daily limit on your plan. ' +
+  'Paste the spoken words instead, or try again tomorrow.';
+
+function utcDayStartISO(nowMs) {
+  const d = new Date(nowMs == null ? Date.now() : nowMs);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
+}
+function dailyReadLimitFor(plan) {
+  return PAID_PLANS[plan] ? DAILY_READ_LIMITS.paid : (plan === 'trial' ? DAILY_READ_LIMITS.trial : DAILY_READ_LIMITS.free);
+}
+// Rows of ONE action for ONE user today (UTC): every completed row, plus the live (unexpired) reservations
+// 'hold:<action>:<token>' ranked AHEAD of opts.hold (the caller's own; never counted). Without opts.hold every
+// live reservation counts. Two indexed reads (user_id + action + created_at). Throws on a failed read.
+async function countToday(userId, action, opts) {
+  const o = (opts && typeof opts === 'object') ? opts : { now: opts };
+  const nowMs = Number.isFinite(Number(o.now)) && o.now != null ? Number(o.now) : Date.now();
+  const own = o.hold || null;
+  const dayStartMs = Date.parse(utcDayStartISO(nowMs));
+  const holdFloorMs = Math.max(dayStartMs, nowMs - HOLD_TTL_MS);
+  const base = '/rest/v1/usage_events?user_id=eq.' + encodeURIComponent(userId);
+  const [done, held] = await Promise.all([
+    sbRequest('GET', base + '&action=eq.' + encodeURIComponent(action) + '&created_at=gte.' +
+      encodeURIComponent(new Date(dayStartMs).toISOString()) + '&select=action&limit=100',
+      null, { 'Prefer': 'count=exact' }, { withHeaders: true }),
+    sbRequest('GET', base + '&action=like.' + encodeURIComponent(HOLD_PREFIX + action + ':') + '*' + '&created_at=gte.' +
+      encodeURIComponent(new Date(holdFloorMs).toISOString()) + '&select=action,created_at&order=created_at.asc&limit=500'),
+  ]);
+  const rows = done && Array.isArray(done.body) ? done.body : null;
+  if (!rows || !Array.isArray(held)) throw new Error('usage_events count came back unreadable');
+  const total = contentRangeTotal(done.headers);
+  let n = total != null ? total : rows.length;
+  for (const h of held) {
+    const t = h && h.created_at ? Date.parse(h.created_at) : NaN;
+    if (!h || typeof h.action !== 'string' || isNaN(t) || t < holdFloorMs) continue;   // expired: a dead request
+    if (own && h.action === own.holdAction) continue;                                   // our own
+    if (own && holdCmp(t, h.action, own.createdMs, own.holdAction) > 0) continue;       // behind us: it defers to us
+    n++;
+  }
+  return n;
+}
+// { ok, used, limit, plan }. opts.hold = the caller's own reservation (guard()'s `hold`), so parallel reads rank.
+// FAIL-OPEN like the rest of this file: an unreadable count lets the read through (the cost fuse and burst limit
+// in checkLimit still apply) and says so in the log.
+async function dailyReadCheck(userId, opts) {
+  try {
+    const plan = effectivePlan(await getOrInitPlan(userId));
+    const limit = dailyReadLimitFor(plan);
+    const used = await countToday(userId, DAILY_READ_ACTION, opts);
+    return { ok: used < limit, used, limit, plan };
+  } catch (e) {
+    console.error('dailyReadCheck FAILED — user=' + userId + ' — letting this read through uncounted:', (e && e.message) || e);
+    return { ok: true, unknown: true };
+  }
+}
+function secondsToUtcMidnight(nowMs) {
+  const now = nowMs == null ? Date.now() : nowMs;
+  return Math.max(60, Math.ceil((Date.parse(utcDayStartISO(now)) + 86400000 - now) / 1000));
+}
+function dailyReadDeny(res, cap) {
+  const c = cap || {};
+  try { res.setHeader('Retry-After', String(secondsToUtcMidnight())); } catch (e) {}
+  return res.status(429).json({ error: MSG_DAILY_READ_LIMIT(c.limit || DAILY_READ_LIMITS.free), code: 'daily_read_limit', limit: c.limit });
+}
+// Ask for ONE paid Apify fallback. A marker row 'hold:apifyfallback:<token>' is written FIRST, then the count
+// ranks it (completed 'apifyfallback' rows + live markers ahead of it), so parallel fallbacks cannot pass the cap.
+//   admitted -> the marker is turned into the logged 'apifyfallback' row (0 credits, real cost) at once, before
+//               the run: the run's cost starts when it starts, and a request killed mid-run still leaves its row;
+//   refused  -> the marker is deleted.
+// No marker could be written (reservations off / Supabase refused it) -> no fallback. The count failed -> no
+// fallback. FAIL-CLOSED on purpose: refusing only means the user pastes the words; it never blocks a write.
+async function useApifyFallback(userId, brandId, nowMs) {
+  if (!userId) return { ok: false, limit: APIFY_FALLBACK_DAILY };
+  const marker = await createHold(userId, APIFY_FALLBACK_ACTION, brandId);
+  if (!marker) {
+    console.error('useApifyFallback: no marker row could be written — user=' + userId + ' — skipping the paid fallback');
+    return { ok: false, unknown: true, limit: APIFY_FALLBACK_DAILY };
+  }
+  let used;
+  try { used = await countToday(userId, APIFY_FALLBACK_ACTION, { now: nowMs, hold: marker }); }
+  catch (e) {
+    console.error('useApifyFallback: count FAILED — user=' + userId + ' — skipping the paid fallback:', (e && e.message) || e);
+    await releaseHold(marker);
+    return { ok: false, unknown: true, limit: APIFY_FALLBACK_DAILY };
+  }
+  if (used >= APIFY_FALLBACK_DAILY) { await releaseHold(marker); return { ok: false, used, limit: APIFY_FALLBACK_DAILY }; }
+  await logUsage({ userId, brandId: brandId || null, action: APIFY_FALLBACK_ACTION, model: 'apify:clockworks~tiktok-scraper', hold: marker });
+  return { ok: true, used: used + 1, limit: APIFY_FALLBACK_DAILY };
+}
+
 async function guard(req, action, res) {
   const user = await require('./_requireUser')(req);
   if (!user) return { user: null, over: false };
@@ -1223,4 +1342,7 @@ module.exports = {
   // Reservations — the concurrency control. Exported so a gate/harness can drive them
   // directly and so a handler with a long tail of its own can release one early.
   HOLD_PREFIX, HOLD_TTL_MS, RESERVATIONS_ON,
-  createHold, releaseHold, isPending, attachHoldRelease, parseHoldAction, isHoldAction, holdActionFor, denyResponse };
+  createHold, releaseHold, isPending, attachHoldRelease, parseHoldAction, isHoldAction, holdActionFor, denyResponse,
+  // v712 — free link reads, capped per UTC day; the capped paid Apify fallback.
+  DAILY_READ_ACTION, DAILY_READ_LIMITS, APIFY_FALLBACK_ACTION, APIFY_FALLBACK_DAILY,
+  utcDayStartISO, dailyReadLimitFor, countToday, dailyReadCheck, dailyReadDeny, useApifyFallback };

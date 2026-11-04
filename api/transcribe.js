@@ -56,9 +56,24 @@ const handler = async function (req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const _g = await require('./_usage').guard(req, 'transcribe', res);
+  // v712 — TWO PRICES IN ONE ENDPOINT. A YouTube LINK READ (the Remix link read, same as a TikTok link through
+  // /api/transcribe-url) is free: gated and logged as 'transcribeurl' (0 credits, real cost in ACTION_COST) and
+  // counted toward the SAME per-UTC-day read cap (_usage.dailyReadCheck). An uploaded audio/video file
+  // (inline base64 or storagePath) keeps its 'transcribe' charge. Same branch condition as the YouTube block below.
+  const U = require('./_usage');
+  const _b = (req.body && typeof req.body === 'object') ? req.body : {};
+  const ytRead = _b.mode === 'youtube' || !!(_b.url && !_b.audio);
+  let _g;
+  if (ytRead) {
+    const _gRead = await U.guard(req, 'transcribeurl', res);
+    if (_gRead.user && _gRead.over) return U.denyResponse(res, _gRead.gate);
+    _g = _gRead;
+  } else {
+    const _gFile = await U.guard(req, 'transcribe', res);
+    if (_gFile.user && _gFile.over) return U.denyResponse(res, _gFile.gate);
+    _g = _gFile;
+  }
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
-  if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
 
   try {
     const { audio, filename, mimeType, url, mode } = req.body || {};
@@ -69,6 +84,10 @@ const handler = async function (req, res) {
       const idMatch = url.match(/(?:v=|youtu\.be\/|\/embed\/|\/v\/|\/shorts\/)([a-zA-Z0-9_-]{11})/);
       if (!idMatch) return res.status(400).json({ error: 'Invalid YouTube URL' });
       const videoId = idMatch[1];
+      // v712 — the daily read cap, before anything is fetched. Only a read that returns words is logged (below),
+      // so only those count; a refusal here hands the reservation back (attachHoldRelease).
+      const cap = await U.dailyReadCheck(_g.billingUserId || _g.user.id, { hold: _g.hold });
+      if (!cap.ok) return U.dailyReadDeny(res, cap);
       // Primary: YouTube innertube API (ANDROID client) — survives bot walls that block HTML scraping
       let trackUrl = null;
       try {
@@ -141,7 +160,7 @@ const handler = async function (req, res) {
         return res.status(400).json({ error: 'Could not parse captions from video.' });
       }
       const fullText = textParts.join(' ');
-      await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribe' });
+      await U.logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribeurl', model: 'youtube:captions' });
       return res.status(200).json({ text: fullText, wordCount: fullText.split(/\s+/).length });
     }
 
@@ -231,7 +250,7 @@ const handler = async function (req, res) {
     }
     if (transcript == null) return res.status(502).json({ error: lastErr || "Couldn't transcribe that — please try again." });
 
-    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribe' });
+    await U.logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribe' });
     return res.status(200).json({ transcript });
 
   } catch (err) {

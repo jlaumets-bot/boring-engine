@@ -97,7 +97,7 @@ const c = {
   firstRunBrandGuard: () => false, getTodayName: () => 'Monday', getDayCommunities: () => ({ Monday: 'Myth-busting Monday' }), DAYS: ['Monday'],
 };
 vm.createContext(c);
-for (const n of ['escapeHtml', 'escHtml', 'humanErr', '_leanNetFail', '_leanErrMsg', 'csAiPausedText', '_tvBcFieldCount', 'brandGate', 'asText',
+for (const n of ['escapeHtml', 'escHtml', 'humanErr', 'csBrandRef', '_leanNetFail', '_leanErrMsg', 'csAiPausedText', '_tvBcFieldCount', 'brandGate', 'asText',
   'tpEscape', 'tpOutsideTags', 'tpSenseLines', 'tpStressRx', 'tpEmphasise', 'tpPruneEmphasis', 'tpCleanEmphasis',
   '_buildIdeaRows', '_saveIdeasToDBNow', 'normalizeIdeaStatus', '_ideaRowRecency', 'loadIdeasFromDB']) vm.runInContext(grab(n), c);
 for (const m of html.matchAll(/^const (TP_STRESS_[AB]) = .*$/gm)) vm.runInContext(m[0].replace(/^const /, 'var '), c);

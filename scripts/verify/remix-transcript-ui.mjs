@@ -91,7 +91,7 @@ const c = {
 c.globalThis = c;
 vm.createContext(c);
 vm.runInContext(between('// remix-tt — ONE-BOX, ORIGINAL FIRST', '\nfunction remixCheckStage2() {').replace(/^(let|const) /gm, 'var '), c);
-for (const n of ['remixTopPost', 'escapeHtml', 'escAttr', 'safeUrl', 'brandGate', 'remixContent', 'rv2Source', 'extractArticle', 'setRemixSource', 'remixToggleManual',
+for (const n of ['csBrandRef', 'remixTopPost', 'escapeHtml', 'escAttr', 'safeUrl', 'brandGate', 'remixContent', 'rv2Source', 'extractArticle', 'setRemixSource', 'remixToggleManual',
   'renderRemixDelivery', 'remixHasContent', 'renderRemixResults', 'remixParts', 'remixCopyText', 'remixToIdeas', 'copyRemix', 'sendRemixToPipeline', 'saveRemixToIdeas'])
   vm.runInContext(grab(n), c);
 { const m = html.match(/^const _rxSaving = .*$/m); if (!m) throw new Error('no _rxSaving'); vm.runInContext(m[0].replace(/^const /, 'var '), c); }

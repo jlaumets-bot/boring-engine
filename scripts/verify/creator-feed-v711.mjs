@@ -131,7 +131,12 @@ stub('_requireUser.js', async () => currentUser);
 const U = { checks: [], logs: [], holdsAttached: 0, gateOk: true, status: { plan: 'pro', cost: 0 } };
 stub('_usage.js', {
   COST_CAP_EUR: 25, ACTION_COST: { creatorfeed: 0.15, transcribeurl: 0.06 },
-  creditsFor: (a) => (a === 'transcribeurl' ? 2 : a === 'creatorfeed' ? 0 : 1),
+  // v712: a link read is 0 credits (bounded by the daily read cap; scripts/verify/free-read-v712.mjs owns that).
+  creditsFor: (a) => (a === 'transcribeurl' ? 0 : a === 'creatorfeed' ? 0 : 1),
+  dailyReadCheck: async () => ({ ok: true, used: 0, limit: 20, plan: 'pro' }),
+  dailyReadDeny: (res, c) => res.status(429).json({ error: 'You have read your videos for today.', code: 'daily_read_limit' }),
+  useApifyFallback: async () => ({ ok: true }),
+  claimedBrandId: () => null,
   billingUserFor: async (uid) => 'owner-1',
   checkLimit: async (uid, credits, action) => { U.checks.push({ uid, credits, action }); return U.gateOk ? { ok: true, hold: { token: 'h' + U.checks.length } } : { ok: false, reason: 'limit', plan: 'free', used: 40, limit: 40 }; },
   attachHoldRelease: () => { U.holdsAttached++; },
@@ -371,8 +376,8 @@ let r1;
   r = await call({ brandId: B1, action: 'transcript', videoId: '1000001' });
   const v = vid(r, 1000001);
   ok(r.statusCode === 200 && v && v.transcript === 'hello from the video' && v.transcriptStatus === 'ready' && v.auto === false, '6b a new transcript comes back in the payload (' + JSON.stringify(v && v.transcript) + ')');
-  ok(U.checks.length === c0 + 1 && U.checks[c0].action === 'transcribeurl' && U.checks[c0].credits === 2 && U.checks[c0].uid === 'owner-1' && U.holdsAttached >= 1,
-    '6c it reserves the existing transcribeurl credits on the brand owner, with the refund attached');
+  ok(U.checks.length === c0 + 1 && U.checks[c0].action === 'transcribeurl' && U.checks[c0].credits === 0 && U.checks[c0].uid === 'owner-1' && U.holdsAttached >= 1,
+    '6c it reserves the transcribeurl read (v712: 0 credits) on the brand owner, with the refund attached');
   ok(U.logs.filter(l => l.action === 'transcribeurl').length === 1, '6d charged exactly once');
   ok(T.calls[T.calls.length - 1].url === 'https://www.tiktok.com/@alpha/video/1000001', '6e the transcriber gets the canonical TikTok link');
   r = await call({ brandId: B1, action: 'transcript', videoId: '1000001' });

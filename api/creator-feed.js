@@ -22,7 +22,8 @@
 //   (0 credits, its real cost in ACTION_COST), so the spend shows in usage_events and the fuse.
 // TRANSCRIPTS: cached = free. Each video is claimed atomically ('working') before any transcriber runs, so a
 //   double tap never charges twice and a failure never overwrites a finished transcript. A new one uses transcribe-url's own pipeline (tikwm -> Groq Whisper) and
-//   charges the existing 'transcribeurl' credits ONLY when words came back. After a pull, up to 2
+//   logs 'transcribeurl' ONLY when words came back (v712: 0 credits, counted toward the daily read cap, the paid
+//   Apify fallback capped per day). After a pull, up to 2
 //   "winners" (score >= 2, posted <= 14 days ago) are transcribed for free, at most 3 tries per brand per
 //   ISO week, and only while the request still has time.
 // Storage: sql/creator-feed.sql (creator_videos + creator_feed_state, both server-written only).
@@ -82,6 +83,7 @@ const MSG = {
   notConfigured: "Creator updates aren't switched on yet.",
   transcribeFailed: "Couldn't get the words from that video. Try another one, or open it on TikTok.",
   notFound: 'That video is not in your feed any more. Refresh and try again.',
+  fallbackLimit: "We couldn't read this video the quick way, and the backup reader is used up for today. Open it on TikTok and paste the spoken words instead.",
 };
 
 // Swappable edges — the gate replaces these; nothing else in this file touches the network.
@@ -681,7 +683,8 @@ async function run(req, res) {
   }
 }
 
-// ── 'transcript': cached = free; new = the existing 'transcribeurl' credits, only when words came back ──
+// ── 'transcript': cached = free; new = a free read (v712: 0 credits) counted toward the SAME daily read cap as
+//    /api/transcribe-url (_usage.dailyReadCheck), logged as 'transcribeurl' only when words came back ──
 async function transcript(req, res, ctx) {
   const { user, brandId, body, f, state, rows, t0 } = ctx;
   const videoId = String(body.videoId || '').trim();
@@ -706,10 +709,24 @@ async function transcript(req, res, ctx) {
   if (!gate.ok) { await patchVideo(brandId, videoId, giveBack, whileClaimed(stamp)); return usage.denyResponse(res, gate); }
   // Nothing logged = nothing charged: a failed transcript hands the reservation back (api/_usage.js).
   if (gate.hold) usage.attachHoldRelease(res, gate.hold);
+  // v712 — the daily read cap, ranked against our own reservation so parallel taps cannot all pass.
+  const cap = await usage.dailyReadCheck(billingUserId, { hold: gate.hold });
+  if (!cap.ok) { await patchVideo(brandId, videoId, giveBack, whileClaimed(stamp)); return usage.dailyReadDeny(res, cap); }
 
-  let text = null;
-  try { text = cleanTranscript(await deps.transcribe(row.url, { deadline: t0 + C.TRANSCRIPT_BUDGET_MS })); }
-  catch (e) { console.error('creator-feed: transcript of ' + videoId + ' failed — ' + ((e && e.message) || e)); }
+  let text = null, fallbackCapped = false;
+  try {
+    text = cleanTranscript(await deps.transcribe(row.url, { deadline: t0 + C.TRANSCRIPT_BUDGET_MS,
+      // v712 — the paid Apify fallback: capped per user per UTC day and logged as its own row (_usage.js).
+      apifyGate: () => usage.useApifyFallback(billingUserId, brandId) }));
+  } catch (e) {
+    fallbackCapped = !!(e && e.limitCode === 'fallback_limit');
+    console.error('creator-feed: transcript of ' + videoId + ' failed — ' + ((e && e.message) || e));
+  }
+  if (!text && fallbackCapped) {
+    // Not the video's fault: hand the claim back so it can be tapped again tomorrow.
+    await patchVideo(brandId, videoId, giveBack, whileClaimed(stamp));
+    return fail(res, 502, 'fallback_limit', MSG.fallbackLimit);
+  }
   if (!text) {
     await patchVideo(brandId, videoId, { transcript_status: 'failed' }, whileClaimed(stamp));
     return fail(res, 502, 'transcribe_failed', MSG.transcribeFailed);

@@ -42,6 +42,9 @@ const appDefines = n => new RegExp('\\n(?:async )?function ' + n.replace(/\$/g, 
 
 const JS_A = '/* ===== v703 DESKTOP-NATIVE STRUCTURE (D2)', JS_B = '/* ===== end v703 desktop-native structure ===== */';
 const js = between(html, JS_A, JS_B);
+// v712: the menus and CSX_TITLES read the feature's public name from ONE constant defined in the shell block
+const REMIX_NAME_JS = (/\nvar CS_REMIX_NAME = '[^'\n]+';/.exec(html) || [''])[0];
+ok(REMIX_NAME_JS, 'v712: var CS_REMIX_NAME is in app.html');
 const css = between(html, '<style id="csx-layout">', '</style>');
 const rest = html.replace(js, '');      // app.html without D2's own script (where the dialogs must come from)
 ok(js.length > 20000 && css.length > 2000, 'the csx-layout style and the desktop structure code are in app.html');
@@ -55,7 +58,7 @@ const world = (extra = {}, wide = true, desk = true) => {
   const c = Object.assign({ console, Math, JSON, String, Number, Array, Object, RegExp, Set, Map, Date, Promise, Boolean, Error,
     navigator: { platform: 'MacIntel', userAgent: '' }, matchMedia: q => ({ matches: /1100/.test(q) ? (desk && wide) : desk }),
     innerWidth: 1440, requestAnimationFrame: f => f(), escHtml, document: stubDoc() }, extra);
-  c.window = c; vm.createContext(c); vm.runInContext(js, c); return c;
+  c.window = c; vm.createContext(c); vm.runInContext(REMIX_NAME_JS + '\n' + js, c); return c;
 };
 
 /* ═══ 1. reachability ═══ */
@@ -64,7 +67,7 @@ const world = (extra = {}, wide = true, desk = true) => {
   const c = { window: { APP_VERSION: 'vT' }, escHtml, DS_ICONS: {}, syncDesktopNav() {}, renderUsagePill() {},
     document: { getElementById: () => null, querySelector: () => ({ textContent: 'Acme Co' }), createElement: () => ({ innerHTML: '' }), body: { appendChild: e => { built = e; } } } };
   vm.createContext(c);
-  vm.runInContext(between(html, 'var CS_DRAWER_ICONS = {', '\n};') + '\n' + grab(html, '_dsItem') + '\n' + grab(html, 'buildDesktopSidebar'), c);
+  vm.runInContext(REMIX_NAME_JS + '\n' + between(html, 'var CS_DRAWER_ICONS = {', '\n};') + '\n' + grab(html, '_dsItem') + '\n' + grab(html, 'buildDesktopSidebar'), c);
   c.buildDesktopSidebar();
   const sb = built ? built.innerHTML : '';
   const np = sb.indexOf('class="csx-newpost'), br = sb.indexOf('id="dsBrand"');

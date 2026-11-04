@@ -1,0 +1,131 @@
+{
+  "gate": "free-read-v712.mjs",
+  "mutations": [
+    {
+      "id": "M1",
+      "finding": "read-free",
+      "file": "api/_usage.js",
+      "find": "  transcribeurl: 0,\n",
+      "replace": "  transcribeurl: 2,\n",
+      "gate": "free-read-v712.mjs",
+      "why": "a link read charges 2 credits again"
+    },
+    {
+      "id": "M2",
+      "finding": "daily-cap",
+      "file": "api/_usage.js",
+      "find": "const DAILY_READ_LIMITS = { trial: 5, free: 5, paid: 20 };",
+      "replace": "const DAILY_READ_LIMITS = { trial: 5, free: 6, paid: 20 };",
+      "gate": "free-read-v712.mjs",
+      "why": "a free account gets a 6th read"
+    },
+    {
+      "id": "M3",
+      "finding": "daily-cap-paid",
+      "file": "api/_usage.js",
+      "find": "return PAID_PLANS[plan] ? DAILY_READ_LIMITS.paid :",
+      "replace": "return PAID_PLANS[plan] ? DAILY_READ_LIMITS.free :",
+      "gate": "free-read-v712.mjs",
+      "why": "paid plans get only 5"
+    },
+    {
+      "id": "M4",
+      "finding": "failed-not-counted",
+      "file": "api/transcribe-url.js",
+      "find": "    console.error('Transcribe-url error:', err);\n",
+      "replace": "    console.error('Transcribe-url error:', err);\n    await U.logUsage({ userId: billingUserId, action: 'transcribeurl' });\n",
+      "gate": "free-read-v712.mjs",
+      "why": "a failed read is logged and counted"
+    },
+    {
+      "id": "M5",
+      "finding": "apify-cap",
+      "file": "api/_usage.js",
+      "find": "if (used >= APIFY_FALLBACK_DAILY) {",
+      "replace": "if (used > APIFY_FALLBACK_DAILY) {",
+      "gate": "free-read-v712.mjs",
+      "why": "a 4th Apify fallback runs"
+    },
+    {
+      "id": "M6",
+      "finding": "feed-tap-cap",
+      "file": "api/creator-feed.js",
+      "find": "  if (!cap.ok) { await patchVideo(brandId, videoId, giveBack, whileClaimed(stamp)); return usage.dailyReadDeny(res, cap); }\n",
+      "replace": "",
+      "gate": "free-read-v712.mjs",
+      "why": "the feed tap ignores the daily read cap"
+    },
+    {
+      "id": "M7",
+      "finding": "auto-no-apify",
+      "file": "api/creator-feed.js",
+      "find": "{ deadline: until, apifyFallback: false }",
+      "replace": "{ deadline: until }",
+      "gate": "free-read-v712.mjs",
+      "why": "automatic winner transcripts fall back to paid Apify, uncapped"
+    },
+    {
+      "id": "M8",
+      "finding": "need-zero",
+      "file": "api/_usage.js",
+      "find": "const overCredits = need > 0 && s.used + need > s.limit;",
+      "replace": "const overCredits = s.used + need > s.limit;",
+      "gate": "free-read-v712.mjs",
+      "why": "a free read is refused once rounding puts the account over its allowance"
+    },
+    {
+      "id": "M9",
+      "finding": "youtube-read-free",
+      "file": "api/transcribe.js",
+      "find": "action: 'transcribeurl', model: 'youtube:captions'",
+      "replace": "action: 'transcribe', model: 'youtube:captions'",
+      "gate": "free-read-v712.mjs",
+      "why": "a YouTube link read charges 2 credits and escapes the read cap"
+    },
+    {
+      "id": "M10",
+      "finding": "youtube-read-cap",
+      "file": "api/transcribe.js",
+      "find": "      if (!cap.ok) return U.dailyReadDeny(res, cap);\n",
+      "replace": "",
+      "gate": "free-read-v712.mjs",
+      "why": "YouTube link reads ignore the daily read cap"
+    },
+    {
+      "id": "M11",
+      "finding": "parallel-reads",
+      "file": "api/_usage.js",
+      "find": "    n++;\n  }\n  return n;",
+      "replace": "  }\n  return n;",
+      "gate": "free-read-v712.mjs",
+      "why": "in-flight reservations are not counted: 10 parallel reads all pass a 5-read cap"
+    },
+    {
+      "id": "M12",
+      "finding": "parallel-apify",
+      "file": "api/_usage.js",
+      "find": "  const marker = await createHold(userId, APIFY_FALLBACK_ACTION, brandId);",
+      "replace": "  const marker = { userId, action: APIFY_FALLBACK_ACTION, token: 'x', holdAction: 'none', createdMs: 0 };",
+      "gate": "free-read-v712.mjs",
+      "why": "no marker row before the Apify call: parallel fallbacks all see 0 and all run"
+    },
+    {
+      "id": "M13",
+      "finding": "brand-pool",
+      "file": "api/_usage.js",
+      "find": "    return member ? owner : userId;",
+      "replace": "    return userId;",
+      "gate": "free-read-v712.mjs",
+      "why": "a member's reads with brandId are counted on their own pool, not the brand's"
+    },
+    {
+      "id": "M14",
+      "finding": "health-denyall",
+      "file": "api/health.js",
+      "find": ", 'creator_feed_state'];",
+      "replace": "];",
+      "gate": "free-read-v712.mjs",
+      "why": "health flags the server-only creator_feed_state table red again"
+    }
+  ]
+}

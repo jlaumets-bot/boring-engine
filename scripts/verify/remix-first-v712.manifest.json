@@ -1,0 +1,92 @@
+{
+ "mutations": [
+  {
+   "id": "R1",
+   "finding": "v712 1: the app opens on Remix by default",
+   "file": "app.html",
+   "find": "var CS_START_VIEW = 'create';",
+   "replace": "var CS_START_VIEW = 'ideas';",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R2",
+   "finding": "v712 1: the morning push link still opens Ideas, not Remix first",
+   "file": "app.html",
+   "find": "  try { if ((typeof csReadOpen === 'function' && csReadOpen(u)) || (typeof window !== 'undefined' && window._csPendingOpen)) return 'ideas'; } catch (e) {}\n",
+   "replace": "",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R3",
+   "finding": "v712 2: Remix is first in the desktop sidebar",
+   "file": "app.html",
+   "find": "h += _dsItem('create',CS_REMIX_NAME)+_dsItem('today','Quick Post')+",
+   "replace": "h += _dsItem('today','Quick Post')+_dsItem('create',CS_REMIX_NAME)+",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R4",
+   "finding": "v712 5: humanErr maps daily_read_limit (Remix Step 1 + the feed tap show it, then the paste card)",
+   "file": "app.html",
+   "find": "    daily_read_limit: \"You've read today's limit of videos.",
+   "replace": "    daily_read_limit_old: \"You've read today's limit of videos.",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R6",
+   "finding": "v712 3: only TikTok profiles with a name are accepted, normalised to https://www.tiktok.com/@name",
+   "file": "app.html",
+   "find": "return (hit && hit.handle) ? 'https://www.tiktok.com/@' + hit.handle : '';",
+   "replace": "return hit ? hit.url : (t.indexOf('.') > 0 ? 'https://' + t : '');",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R7",
+   "finding": "v712 3: onboarding creators obey the ONE 5-creator rule",
+   "file": "app.html",
+   "find": "    if (!cfAllowLinks(null, links)) return;\n    let cat = bookmarkCategories[0];",
+   "replace": "    let cat = bookmarkCategories[0];",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R8",
+   "finding": "v712 4: Remix only when creators were saved; a skip keeps the old first-post ending",
+   "file": "app.html",
+   "find": "  if (_obFollowed > 0) {",
+   "replace": "  if (true) {",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R9",
+   "finding": "v712 7: no creators followed → no feed request, one line above Step 1",
+   "file": "app.html",
+   "find": "  if (!refresh && !cfFollowedHandles(null).length && !(typeof listLoadFailed === 'function' && listLoadFailed('bookmarks'))) {",
+   "replace": "  if (false) {",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R10",
+   "finding": "v712 review 1: a failed creator save reports 0, so the first-post ending runs",
+   "file": "app.html",
+   "find": "  if (!_saved || _saved.ok === false) return 0;\n",
+   "replace": "",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R11",
+   "finding": "v712 review 3: Remix Step 1 link reads send brandId",
+   "file": "app.html",
+   "find": "    body: JSON.stringify(Object.assign(isTT ? { url: url } : { url: url, mode: 'youtube' }, csBrandRef()))",
+   "replace": "    body: JSON.stringify(isTT ? { url: url } : { url: url, mode: 'youtube' })",
+   "gate": "remix-first-v712.mjs"
+  },
+  {
+   "id": "R12",
+   "finding": "v712 review 2: re-entering onboarding clears the creators box",
+   "file": "app.html",
+   "find": "if (_oc) _oc.value = '';",
+   "replace": "if (_oc) _oc.value = _oc.value;",
+   "gate": "remix-first-v712.mjs"
+  }
+ ]
+}

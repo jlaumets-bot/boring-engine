@@ -2,6 +2,25 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-04 — v712. REMIX IS THE FRONT DOOR (owner: "remix will be the main attraction… easiest to explain and to use").
+
+- Start view = Remix (CS_START_VIEW='create'; csStartView() still opens Ideas for push links / locked Remix). Remix first in
+  sidebar, drawer, palette, tab bars. Visible name behind CS_REMIX_NAME (rename pending owner pick; 42 other visible
+  strings listed in .unlazy/rename/remix-strings.md).
+- Onboarding step 4 "Who do you follow on TikTok?" (≤5, bookmark row, shared creator rule). Saved ≥1 → land on Remix feed;
+  skipped or save failed (obSaveCreators returns 0 on ok:false) → the pre-v712 first-post ending. obFinish now arms list
+  saves for a brand-new user (they were refused until reload).
+- Reading a link is FREE (transcribeurl 0 credits, cost 0.06 still logged): transcribe-url.js, transcribe.js (YouTube URL
+  reads only; uploads keep 2 credits), creator-feed tap. Daily UTC cap per billing user: trial/free 5, paid 20, counting
+  in-flight holds (10 parallel free reads → exactly 5 pass) → 429 daily_read_limit. brandId sent by all 8 client link reads
+  (csBrandRef) → team members share the owner's pool (non-member brandId ignored).
+- Apify single-video fallback capped 3/user/day via a marker row written BEFORE the call (apifyfallback, 0 credits, cost
+  0.01 over-estimate) → fallback_limit; client shows the paste-the-words card. humanErr maps both codes.
+- health: creator_feed_state added to ZERO_POLICY_ALLOWED (v711 made health 25/26 via no_unexpected_denyall_tables).
+Gates: free-read-v712 (54, 14/14 mutations), remix-first-v712 (11/11 mutations); spend-cap accepts the two capped 0-credit actions.
+Independent review: no blockers; 2 should-fix + 2 nits fixed.
+NOT DONE: public rename of Remix + landing headline (owner to pick), Android share target.
+
 ## ▶▶ 2026-11-04 — v711. "NEW FROM YOUR CREATORS" FEED AT THE TOP OF REMIX (owner: "start with Remix more… creators I follow", TikTok, max 5).
 
 Contract .unlazy/creator-feed/CONTRACT.md (+ "## Server notes"). Gates creator-feed-v711 (server, 102 checks, 15/15 mutations),

@@ -42,7 +42,7 @@ let sidebar = '';
   const c = { window: { APP_VERSION: 'vT' }, escHtml, DS_ICONS: {}, syncDesktopNav() {}, renderUsagePill() {},
     document: { getElementById: () => null, querySelector: () => ({ textContent: 'Acme Co' }), createElement: () => ({ innerHTML: '' }), body: { appendChild: e => { built = e; } } } };
   vm.createContext(c);
-  vm.runInContext(between(html, 'var CS_DRAWER_ICONS = {', '\n};') + '\n' + grab('_dsItem') + '\n' + grab('buildDesktopSidebar'), c);
+  vm.runInContext((/\nvar CS_REMIX_NAME = '[^'\n]+';/.exec(html) || [''])[0] + '\n' + between(html, 'var CS_DRAWER_ICONS = {', '\n};') + '\n' + grab('_dsItem') + '\n' + grab('buildDesktopSidebar'), c);   // v712: the sidebar reads CS_REMIX_NAME
   c.buildDesktopSidebar();
   sidebar = built ? built.innerHTML : '';
   ok(built && built.id === 'desktopSidebar' && sidebar.length > 500, '1 the desktop sidebar builds');
@@ -97,7 +97,7 @@ const wide = blocks.filter(b => inMin(b, 1100)).map(b => b.body).join('\n');
   ok(/\.header-top \{ visibility: hidden; height: 0 !important;/.test(desk) && /#brandDropdown \{ visibility: visible; \}/.test(desk) && /backdrop-filter: none !important/.test(desk), '2 the content header row is gone on desktop; its dropdown can still open');
   ok(/#ideaContent > div \{ grid-template-columns: 1fr !important; \}/.test(desk) && !/1fr 1fr/.test(wide), '2 one idea column (the list is a document column now)');
   ok(/body\[data-cs-view\] \.cs-composer \{ display: none !important; \}/.test(desk), '2 no pinned composer on desktop (the Composer dialog replaces it)');
-  ok(/\.cs-page-title \{ margin: 0; font-size: var\(--cs-fs-screen\);/.test(desk) && /var CS_PAGE_TITLES = \{ today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: 'Remix'/.test(html), '2 a page title per screen');
+  ok(/\.cs-page-title \{ margin: 0; font-size: var\(--cs-fs-screen\);/.test(desk) && /var CS_PAGE_TITLES = \{ today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: CS_REMIX_NAME/.test(html) && /\nvar CS_REMIX_NAME = '[^'\n]+';/.test(html), '2 a page title per screen (v712: Remix\'s from CS_REMIX_NAME)');
 }
 
 /* ═══ 3. Approve / Skip ═══ */

@@ -52,6 +52,8 @@ const MSG_HOST          = "Couldn't download that video — the host didn't resp
 const MSG_BAD_LINK      = 'That video host returned a link we cannot follow — paste the spoken words or a short description instead.';
 const MSG_PROVIDER_SLOW = "The video service didn't respond in time — try again in a minute, or paste the spoken words instead.";
 const MSG_UNEXPECTED    = 'Something went wrong on our side — try again, or paste the spoken words instead.';
+// v712 — the paid Apify fallback is capped per user per UTC day (_usage.APIFY_FALLBACK_DAILY).
+const MSG_FALLBACK_LIMIT = "We couldn't read this TikTok the quick way, and the backup reader is used up for today. Paste the spoken words instead.";
 
 // Node's socket failures (ECONNRESET, "socket hang up", ENOTFOUND, CERT_HAS_EXPIRED…)
 // carry an err.code and read as gibberish to a user. Every message thrown deliberately
@@ -76,6 +78,9 @@ function userMessage(err) {
 // text maps the failure to its own words (creator-feed does). It charges NOTHING: billing stays with the
 // caller. opts.deadline = absolute ms (default now + HANDLER_BUDGET_MS); opts.groqKey (default
 // GROQ_API_KEY); opts.apifyFallback === false skips the paid Apify fallback for TikTok.
+// v712: opts.apifyGate = async () => ({ ok }) is asked BEFORE the paid fallback (_usage.useApifyFallback: the
+// per-day cap, and it logs the run's cost). Not ok, or it throws -> no Apify call; throws an Error with
+// .limitCode = 'fallback_limit' (no .code, so userMessage keeps the sentence; callers map it to that code).
 async function transcribeVideo(url, opts) {
   opts = opts || {};
   const deadline = Number(opts.deadline) > 0 ? Number(opts.deadline) : Date.now() + HANDLER_BUDGET_MS;
@@ -123,6 +128,14 @@ async function transcribeVideo(url, opts) {
       const apifyToken = process.env.APIFY_API_TOKEN;
       if (!apifyToken) {
         throw new Error("Couldn't read that TikTok automatically right now — paste the spoken words or a short description instead.");
+      }
+      if (typeof opts.apifyGate === 'function') {
+        let g = null;
+        try { g = await opts.apifyGate(); } catch (e) { console.error('transcribe-url: fallback gate failed —', (e && e.message) || e); }
+        if (!g || !g.ok) {
+          console.log('transcribe-url: Apify fallback skipped — daily cap reached or not countable');
+          const e = new Error(MSG_FALLBACK_LIMIT); e.limitCode = 'fallback_limit'; throw e;
+        }
       }
       console.log('tikwm gave nothing — falling back to Apify...');
       const run = await apifyRequest('POST', '/v2/acts/clockworks~tiktok-scraper/runs?waitForFinish=90', apifyToken, {
@@ -227,9 +240,13 @@ const handler = async function (req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const _g = await require('./_usage').guard(req, 'transcribeurl', res);
+  // v712 — 0 credits (ACTION_CREDITS.transcribeurl). guard() still authenticates and applies the burst limit and
+  // the cost fuse (its real cost is in ACTION_COST); dailyReadCheck below is what bounds it.
+  const U = require('./_usage');
+  const _g = await U.guard(req, 'transcribeurl', res);
   if (!_g.user) return res.status(401).json({ error: 'Please sign in again.' });
-  if (_g.over) return require('./_usage').denyResponse(res, _g.gate);
+  if (_g.over) return U.denyResponse(res, _g.gate);
+  const billingUserId = _g.billingUserId || _g.user.id;
 
   // Transcription provider: Groq Whisper ONLY (OpenAI is used nowhere except /api/speak TTS).
   const groqKey = process.env.GROQ_API_KEY;
@@ -241,13 +258,22 @@ const handler = async function (req, res) {
     try { await require('./_safeurl').assertPublicHttpUrl(String(url).trim()); }
     catch (e) { return res.status(400).json({ error: require('./_safeurl').urlRefusalMessage(e, 'That URL is not allowed.') }); }
 
-    const transcript = await transcribeVideo(url, { deadline, groqKey });
+    // v712 — free reads, DAILY_READ_LIMITS successful ones per user per UTC day. The 429 is a JSON answer, so
+    // the reservation guard() placed is handed back by attachHoldRelease (nothing was logged).
+    const cap = await U.dailyReadCheck(billingUserId, { hold: _g.hold });
+    if (!cap.ok) return U.dailyReadDeny(res, cap);
 
-    await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribeurl' });
+    const transcript = await transcribeVideo(url, { deadline, groqKey,
+      apifyGate: () => U.useApifyFallback(billingUserId, U.claimedBrandId(req)) });
+
+    // Logged ONLY on success: this row is what the daily cap counts, and its cost what the fuse sees.
+    await U.logUsage({ userId: billingUserId, action: 'transcribeurl' });
     return res.status(200).json({ transcript });
 
   } catch (err) {
     console.error('Transcribe-url error:', err);
+    // Same status as every other "couldn't read" answer here; the code tells the client it was the cap.
+    if (err && err.limitCode === 'fallback_limit') return res.status(500).json({ error: MSG_FALLBACK_LIMIT, code: 'fallback_limit' });
     // userMessage() keeps every hand-written sentence above verbatim and swaps raw
     // socket noise ("socket hang up", ECONNRESET) for something a user can act on.
     return res.status(500).json({ error: userMessage(err) });

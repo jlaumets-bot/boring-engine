@@ -56,7 +56,7 @@ const toasts = [], fpAddOpens = [];
 let calls = [], route = null;
 const c = {
   console: { log() {}, warn() {}, error() {}, info() {} }, JSON, Promise, Date, Math, String, Number, Array, Object, Set, Map, RegExp, Error, TypeError, isFinite, encodeURIComponent, URL,
-  window: {}, currentBrand: { id: 'brand-1' }, bookmarkCategories: [],
+  window: {}, currentBrand: { id: 'brand-1' }, bookmarkCategories: [{ id: 'k0', name: 'Following', entries: [{ id: 'e0', name: 'ann', links: { tt: 'https://www.tiktok.com/@ann' } }] }],   // v712: the feed asks the server only when someone is followed
   document: {
     getElementById: id => els[id] || null,
     querySelectorAll: () => [],
@@ -217,13 +217,17 @@ const tt = (i) => ({ id: 'e' + i, name: 'C' + i, links: { tt: 'https://www.tikto
     ok(!/Getting the words/.test(rowOf('v1')) && vm.runInContext('_cf.busy', c) === '', '5 and the row is usable again'); }
 
   // ═══ 6. empty state ═══
-  for (const [label, rt] of [['creators: []', FEED({ creators: [], videos: [], note: null })], ['code no_creators', async () => ({ status: 400, body: { error: 'Follow a TikTok creator first.', code: 'no_creators' } })]]) {
-    resetFeed(); calls = []; c.bookmarkCategories = []; route = rt; fpAddOpens.length = 0;
+  // v712: nobody followed on TikTok → NO request, no heading, no skeleton: ONE line above Step 1 + the add path
+  { resetFeed(); calls = []; c.bookmarkCategories = []; route = FEED({ creators: [], videos: [], note: null }); fpAddOpens.length = 0;
     c.switchView('create'); await tick();
-    ok(/Follow up to 5 TikTok creators to see their new posts here/.test(F()) && /onclick="cfAddCreator\(\)"/.test(F()) && !/cf-row/.test(F()) && !/>Refresh</.test(F()), '6 empty state (' + label + '): one line + "Add a creator", no rows');
+    ok(feedCalls().length === 0, '6 nobody followed: opening Remix asks the server nothing (' + feedCalls().length + ')');
+    ok(/^<div class="cf-empty cf-empty-line"><span class="cf-empty-txt">[^<]+<\/span><button type="button" class="cf-add" onclick="cfAddCreator\(\)">Add one<\/button><\/div>$/.test(F()) && !/cf-row|cf-title|cf-skel|>Refresh</.test(F()), '6 empty state: ONE line + "Add one", no heading, no rows (' + F().slice(0, 90) + ')');
     vm.runInContext('_fpAdding = false; cfAddCreator()', c);
-    ok(vm.runInContext('_fpAdding', c) === true && scrolls.includes('followPanels'), '6 "Add a creator" opens the existing + Add creator panel (' + label + ')');
-  }
+    ok(vm.runInContext('_fpAdding', c) === true && scrolls.includes('followPanels'), '6 "Add one" opens the existing + Add creator panel'); }
+  { // the server knows nobody even though a creator was just added here (code no_creators): no rows, no code, Refresh offered
+    resetFeed(); calls = []; c.bookmarkCategories = [{ id: 'k0', name: 'Following', entries: [{ id: 'e0', name: 'ann', links: { tt: 'https://www.tiktok.com/@ann' } }] }]; route = async () => ({ status: 422, body: { error: 'Follow a TikTok creator first.', code: 'no_creators' } });
+    c.switchView('create'); await tick();
+    ok(feedCalls('list').length === 1 && !/cf-row/.test(F()) && !/no_creators/.test(F()) && /Press Refresh to load their new posts\./.test(F()), '6 code no_creators: no rows, plain words, Refresh'); }
 
   // ═══ 7. max 5 TikTok creators — the server's ONE creator rule, mirrored ═══
   { // 7a the client's count IS the server's: api/creator-feed.js followedCreators runs on the same fixtures
@@ -291,7 +295,7 @@ const tt = (i) => ({ id: 'e' + i, name: 'C' + i, links: { tt: 'https://www.tikto
     ok(c.fpSaveEdit() === true && c.bookmarkCategories[0].entries[0].links.tt === 'https://www.tiktok.com/@c1-new', '7 replacing a followed creator\'s own TikTok link passes'); }
 
   // ═══ 9. the feed belongs to one brand ═══
-  c.bookmarkCategories = [];
+  c.bookmarkCategories = [{ id: 'k0', name: 'Following', entries: [{ id: 'e0', name: 'ann', links: { tt: 'https://www.tiktok.com/@ann' } }] }];
   { resetFeed(); calls = []; c.currentBrand = { id: 'brand-A' };
     const gA = deferred(), gB = deferred();
     route = async (u, b) => { if (b.brandId === 'brand-A') { await gA.p; return { status: 200, body: payload({ videos: [vid('A1', 'annA', 3, D, 10)] }) }; } await gB.p; return { status: 200, body: payload({ videos: [vid('B1', 'bobB', 3, D, 10)] }) }; };
@@ -324,7 +328,7 @@ const tt = (i) => ({ id: 'e' + i, name: 'C' + i, links: { tt: 'https://www.tikto
     ok(r2 === false && toasts.includes('Already transcribing — try again in a minute') && /Transcribing…/.test(rowOf('w2')) && !/cf-row-err/.test(rowOf('w2')), '10 a transcript call that finds it in progress elsewhere shows "Transcribing…", not an error'); }
 
   // ═══ 8. refresh + plain-words errors ═══
-  c.bookmarkCategories = [];
+  c.bookmarkCategories = [{ id: 'k0', name: 'Following', entries: [{ id: 'e0', name: 'ann', links: { tt: 'https://www.tiktok.com/@ann' } }] }];   // v712: someone is followed
   resetFeed(); calls = []; route = FEED(); c.switchView('create'); await tick();
   { route = FEED({ note: 'Fresh already — next refresh after 14:05' });
     await c.cfRefresh(); await tick();

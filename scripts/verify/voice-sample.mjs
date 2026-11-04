@@ -127,10 +127,11 @@ ok(/voiceSample:\s*v\.voiceSample\s*\|\|\s*''/.test(ctxSrc), 'B1 _brandctx hydra
   const step3 = between(app, 'class="onboarding-step" data-step="3"', 'class="onboarding-step" data-step="4"');
   ok(step3.includes('id="obVoiceSample"') && step3.includes("dictateInto('obVoiceSample'"), 'D8 step 3 has the voice box and a mic wired to it');
   ok(/obGoToStep\(4\)/.test(step3) && /skip/i.test(step3), 'D9 step 3 has a Skip that bypasses the floor');
-  ok(/OB_TOTAL_STEPS = 4/.test(app), 'D10 wizard is 4 steps');
-  ok(/if\(step === 4\) obBuildSummary\(\)/.test(app), 'D11 the summary builds on the FINAL step (4), not the voice step');
-  const finale = between(app, 'class="onboarding-step" data-step="4"', '<!-- ===== END ONBOARDING');
-  ok(finale.includes('id="obFinishBtn"'), 'D12 the finish button lives on step 4');
+  // v712: step 4 is now "Who do you follow on TikTok?" (remix-first-v712.mjs); the summary + finish moved to step 5
+  ok(/OB_TOTAL_STEPS = 5/.test(app), 'D10 wizard is 5 steps (v712: + TikTok creators)');
+  ok(/if\(step === 5\) \{ obBuildSummary\(\);/.test(app), 'D11 the summary builds on the FINAL step (5), not the voice step');
+  const finale = between(app, 'class="onboarding-step" data-step="5"', '<!-- ===== END ONBOARDING');
+  ok(finale.includes('id="obFinishBtn"'), 'D12 the finish button lives on the final step (5)');
   const fin = lift('async function obFinish() {', '\n}\n');
   ok(fin.includes('obVoiceSample') && fin.includes('settings.voiceSample'), 'D13 obFinish reads the box into settings.voiceSample');
 }

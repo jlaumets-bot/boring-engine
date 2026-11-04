@@ -50,7 +50,28 @@ for (const k of ['PLAN_LIMITS', 'ACTION_CREDITS', 'ACTION_COST', 'TRIAL_DAYS']) 
 const PLATFORM_ZERO = {
   creatorfeed: { file: 'api/creator-feed.js', why: 'the creator-feed Apify pull (owner: no credits, .unlazy/creator-feed/CONTRACT.md), bounded by 24 h list / 6 h refresh per brand + a per-brand lock',
                  check: (s) => /LIST_STALE_MS/.test(s) && /REFRESH_GAP_MS/.test(s) && /claimLock\(/.test(s) },
+  // v712 — the paid Apify single-video fallback, logged by _usage.useApifyFallback only AFTER its per-day count
+  // (APIFY_FALLBACK_DAILY), and both callers ask that gate before the fallback can run.
+  apifyfallback: { file: 'api/_usage.js', why: 'the paid Apify fallback read, capped at APIFY_FALLBACK_DAILY per user per UTC day and asked for by both transcribe callers',
+                 check: (s) => /APIFY_FALLBACK_DAILY\s*=\s*\d/.test(s) && /used >= APIFY_FALLBACK_DAILY/.test(s) &&
+                   /apifyGate:\s*\(\)\s*=>\s*U\.useApifyFallback\(/.test(read('api/transcribe-url.js')) &&
+                   /apifyGate:\s*\(\)\s*=>\s*usage\.useApifyFallback\(/.test(read('api/creator-feed.js')) },
 };
+// v712 — ONE named GATED zero: reading a video link is free (owner: Remix is the main feature; a read must not
+// cost credits before the twist). It stays gated (burst limit + cost fuse, real ACTION_COST), and is bounded
+// instead by a per-UTC-day count of successful reads (DAILY_READ_LIMITS) checked by EVERY endpoint that logs it.
+// Re-checked mechanically: the limits are positive, and each caller runs dailyReadCheck before reading.
+const DAILY_CAPPED_ZERO = {
+  transcribeurl: { files: ['api/transcribe-url.js', 'api/creator-feed.js', 'api/transcribe.js'],
+                   check: (s) => /dailyReadCheck\(/.test(s) && /dailyReadDeny\(res/.test(s) },
+};
+for (const [a, e] of Object.entries(DAILY_CAPPED_ZERO)) {
+  if (!(Number(usage.ACTION_COST[a]) > 0)) fail.push(`daily-capped zero action '${a}' has no real ACTION_COST — its spend would be invisible`);
+  const L = usage.DAILY_READ_LIMITS || {};
+  if (!(L.free > 0 && L.trial > 0 && L.paid > 0 && L.paid <= 50)) fail.push(`daily-capped zero action '${a}' has no sane DAILY_READ_LIMITS (${JSON.stringify(L)})`);
+  if (usage.DAILY_READ_ACTION !== a) fail.push(`DAILY_READ_ACTION is '${usage.DAILY_READ_ACTION}', not '${a}' — the cap counts the wrong rows`);
+  for (const f of e.files) { let src = ''; try { src = read(f); } catch (_) {} if (!e.check(src)) fail.push(`${f} logs '${a}' (0 credits) without the daily read cap (dailyReadCheck + dailyReadDeny)`); }
+}
 for (const [a, e] of Object.entries(PLATFORM_ZERO)) {
   if (usage.ACTION_CREDITS[a] == null) continue;
   const gatedBy = readdirSync(join(ROOT, 'api')).filter((f) => f.endsWith('.js') && f !== '_usage.js').filter((f) => {
@@ -63,7 +84,7 @@ for (const [a, e] of Object.entries(PLATFORM_ZERO)) {
   try { src = read(e.file); } catch (_) {}
   if (!e.check(src)) fail.push(`0-credit platform action '${a}' is no longer bounded as claimed (${e.why}) in ${e.file}`);
 }
-const zero = Object.entries(usage.ACTION_CREDITS || {}).filter(([k, v]) => !(Number(v) > 0) && !PLATFORM_ZERO[k]);
+const zero = Object.entries(usage.ACTION_CREDITS || {}).filter(([k, v]) => !(Number(v) > 0) && !PLATFORM_ZERO[k] && !DAILY_CAPPED_ZERO[k]);
 if (zero.length) {
   fail.push('ACTION_CREDITS registers ' + zero.length + ' action(s) at 0 credits, which can never ' +
             'trip a plan limit: ' + zero.map(([k]) => k).join(', '));

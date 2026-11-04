@@ -337,7 +337,7 @@ function el(id, extra) { return Object.assign({ id, value: '', innerHTML: '', te
   ok(!/alert\('Remix failed/.test(html), 'O a Remix error is said in words, not a raw alert');
   ok(!/product facts baked in/.test(html), 'O the Remix FAQ no longer promises product facts (never salesy)');
   const f = []; const c = ctx({ fetch: async (u) => { f.push(u); return { ok: true, status: 200, text: async () => J({ transcript: 'the words' }) }; } });
-  vm.runInContext('const _icTranscripts = new Map();', c); lift(c, ['icReadVideo']);
+  vm.runInContext('const _icTranscripts = new Map();', c); lift(c, ['csBrandRef', 'icReadVideo']);   // v712: link reads send brandId
   const a1 = await c.icReadVideo('https://www.tiktok.com/@x/video/1'); const a2 = await c.icReadVideo('https://www.tiktok.com/@x/video/1');
   ok(f.length === 1 && a1.text === 'the words' && a2.text === 'the words', 'O Idea Catcher reads (and pays for) a video once per session');
 }

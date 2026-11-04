@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v711';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v712';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6513,11 +6513,29 @@ if (!window.supabase) {
       <p class="ob-sub" style="text-align:center;margin-top:12px;margin-bottom:0;font-size:13px;">You can record this any time in Settings. We’ll remind you.</p>
     </div>
 
-    <!-- Screen 4: Ready (was screen 3 before v649) -->
+    <!-- Screen 4 (v712): who they follow on TikTok — optional, max 5. Kept in obPendingCreators until the brand
+         exists; obFinish then saves them through the bookmark path (obSaveCreators → the "__bookmarks__" row,
+         the ONE 5-creator rule cfAllowLinks) BEFORE it opens Remix, so the feed's first 'list' already has them. -->
     <div class="onboarding-step" data-step="4">
       <div class="ob-welcome-top">
+        <h2>Who do you follow on TikTok?</h2>
+        <p class="ob-sub" style="margin-bottom:14px;">Add up to 5 creators you learn from. Their newest videos will be waiting for you, ready to make your own version of.</p>
+      </div>
+      <label class="ob-field-label" for="obCreators">Profile links or @handles, one per line</label>
+      <textarea id="obCreators" placeholder="@creator&#10;tiktok.com/@another" autocomplete="off" autocapitalize="off" spellcheck="false" oninput="obClearErr('obStep4Err')" style="min-height:120px;"></textarea>
+      <p class="ob-crawl-error" id="obStep4Err" style="display:none;margin:0 0 10px;"></p>
+      <div style="display:flex;align-items:center;gap:16px;margin-top:4px;">
+        <button class="ob-btn" id="obCreatorsNext" onclick="obNext(4)" style="flex:1;justify-content:center;">Follow them &rarr;</button>
+        <span class="ob-back" id="obCreatorsSkip" role="button" tabindex="0" onclick="obSkipCreators()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();obSkipCreators()}">Skip for now</span>
+      </div>
+      <p class="ob-sub" style="text-align:center;margin-top:12px;margin-bottom:0;font-size:13px;">You can add or change them any time in Bookmarks.</p>
+    </div>
+
+    <!-- Screen 5: Ready (was screen 4 before v712, screen 3 before v649) -->
+    <div class="onboarding-step" data-step="5">
+      <div class="ob-welcome-top">
         <h2>Your brand brain is ready</h2>
-        <p class="ob-sub" style="margin-bottom:18px;">Now watch it write your first post — a talking-head script in your voice. Film it straight away, or twist it until it's right. I learn from every pick, edit and pass.</p>
+        <p class="ob-sub" id="obFinaleSub" style="margin-bottom:18px;">Now watch it write your first post — a talking-head script in your voice. Film it straight away, or twist it until it's right. I learn from every pick, edit and pass.</p>
       </div>
       <div class="ob-summary" id="obSummary"></div>
       <button class="ob-btn" id="obFinishBtn" style="width:100%;justify-content:center;margin-top:18px;">Write my first post &rarr;</button>
@@ -6718,6 +6736,10 @@ if (!window.supabase) {
       .cf-more{min-height:44px;padding:0 12px;margin-left:-12px;background:none;border:0;border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
       .cf-empty{font-size:14px;line-height:1.5;color:var(--text2);padding:4px 0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;}
       .cf-add{min-height:44px;padding:0 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:999px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+      /* v712: no creators followed → ONE line above Step 1 (never wraps; the text gives way, the button never does) */
+      .cf-empty.cf-empty-line{flex-wrap:nowrap;gap:6px;padding:0 0 10px;font-size:13px;color:var(--text3);min-width:0;}
+      .cf-empty-line .cf-empty-txt{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .cf-empty-line .cf-add{flex:0 0 auto;padding:0 4px;background:none;border:0;border-radius:6px;color:var(--text);text-decoration:underline;text-underline-offset:3px;white-space:nowrap;}
       .cf-cerr{font-size:13px;line-height:1.45;color:var(--text3);margin-top:6px;overflow-wrap:anywhere;}
       .cf-skel{min-height:56px;display:flex;flex-direction:column;justify-content:center;gap:8px;border-bottom:1px solid var(--border);}
       .cf-skel i{display:block;height:10px;width:40%;border-radius:5px;background:var(--surface3);animation:cfPulse 1.2s ease-in-out infinite;}
@@ -9139,10 +9161,12 @@ async function initApp() {
     // Render — each wrapped so one failure doesn't kill the rest
     try { renderNav(); } catch(e) { debugLog('renderNav error: ' + e.message); }
 
-    // v699: the app opens on Ideas (CS_START_VIEW). A deep link (?open=…, csHandleOpenIdeas below) still wins.
+    // v712: the app opens on Remix (CS_START_VIEW via csStartView). A deep link (?open=…, csHandleOpenIdeas below)
+    // still wins, and csStartView starts it on Ideas directly so Remix's feed is not loaded for nothing.
     try {
-      switchView(CS_START_VIEW);
-      debugLog('initApp: switchView(' + CS_START_VIEW + ') OK');
+      const _sv = csStartView(window.location.href);
+      switchView(_sv);
+      debugLog('initApp: switchView(' + _sv + ') OK');
     } catch(e) {
       debugLog('switchView error: ' + e.message);
       // Manual fallback: just make the view visible
@@ -9979,10 +10003,10 @@ function renderNav() {
   const inProd=state.filter(i=>["filming"].includes(i.status)).length;
   const remixCount = remixes.length;
   const tabs = [
+    {id:"create",label:CS_REMIX_NAME,icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',count:remixCount||null},   // v712: Remix first (owner: "the easiest to explain and to use")
     {id:"today",label:"Quick Post",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',count:null},
     {id:"ideas",label:"Ideas",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',count:null},
     {id:"pipeline",label:"Pipeline",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',count:inProd||null},
-    {id:"create",label:"Remix",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',count:remixCount||null},
     {id:"notebook",label:"Notebook",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',count:(typeof notebookNotes!=='undefined'?notebookNotes.length:0)||null},
   ];
   const coachTab = {id:"coach",label:"Assistant",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>'};
@@ -10038,8 +10062,9 @@ function buildDesktopSidebar(){
     h += '<div class="brand-switcher-wrap ds-brand-wrap"><button type="button" class="ds-brand" id="dsBrand" aria-haspopup="true" onclick="toggleBrandSwitcher()">'
       + '<span class="ds-brand-name" id="dsBrandName">' + escHtml(_bn || 'Your Brand') + '</span>'
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></div>';
-    h += _dsItem('today','Quick Post')+_dsItem('ideas','Ideas')+_dsItem('pipeline','Pipeline');
-    h += '<div class="ds-lbl">Create</div>'+_dsItem('create','Remix')+_dsItem('idea','Idea Catcher')+_dsItem('viral','Trends');
+    // v712: Remix is the first screen in every menu; everything else keeps its order
+    h += _dsItem('create',CS_REMIX_NAME)+_dsItem('today','Quick Post')+_dsItem('ideas','Ideas')+_dsItem('pipeline','Pipeline');
+    h += '<div class="ds-lbl">Create</div>'+_dsItem('idea','Idea Catcher')+_dsItem('viral','Trends');
     h += '<div class="ds-lbl">Tools</div>'+_dsItem('notebook','Notebook')+_dsItem('questions','What people search')+
       '<button class="ds-item" data-act="toggleBookmarkBar" onclick="toggleBookmarkBar()">'+CS_DRAWER_ICONS.bookmarks+'<span>Bookmarks</span></button>'+
       '<button class="ds-item" data-act="openBrain" onclick="openBrain()">'+CS_DRAWER_ICONS.brain+'<span>Brand brain</span></button>';
@@ -10123,7 +10148,18 @@ function closeMoreSheet() { const w = document.getElementById('moreSheetWrap'); 
 // those two reached (tab bar: Quick Post, Ideas, Pipeline, Remix, Notebook, Assistant, More; More: Assistant,
 // Idea Catcher, What people search, Notebook, Trends, Terms/Privacy/Refunds, check for update) plus the
 // header buttons that moved in here on phones (Bookmarks, Brain, Settings, Help).
-var CS_START_VIEW = 'ideas';
+/* v712 — THE APP OPENS ON REMIX (owner 2026-11-04: Remix is "the easiest to explain and to use").
+   Only the DEFAULT changed: the morning push (?open=ideas, or one posted by sw.js before the app was ready)
+   still opens Ideas, and a brand that has not met the minimum (Remix is locked for it) still opens Ideas. */
+var CS_START_VIEW = 'create';
+// The feature's PUBLIC name, in one place: the menus, the page title and the screen heading read it.
+// The rename (.unlazy/rename/remix-strings.md lists every other visible "Remix") changes this line first.
+var CS_REMIX_NAME = 'Remix';
+function csStartView(u){
+  try { if ((typeof csReadOpen === 'function' && csReadOpen(u)) || (typeof window !== 'undefined' && window._csPendingOpen)) return 'ideas'; } catch (e) {}
+  try { if (typeof csNavLocked === 'function' && csNavLocked(CS_START_VIEW)) return 'ideas'; } catch (e) {}
+  return CS_START_VIEW;
+}
 // The floating shrimp (#mascotWrap) is OFF for anyone who never chose; Settings → Workspace → Shrimp Mascot
 // (setMascotVisible, 'mascot-hidden' '0'/'1') still turns it on and off, and a saved choice always wins.
 var CS_MASCOT_DEFAULT_ON = false;
@@ -10144,8 +10180,8 @@ var CS_LOCKED_VIEWS = ['pipeline', 'create'];
 function csNavLocked(view){ return CS_LOCKED_VIEWS.indexOf(view) !== -1 && !(typeof isBrandMinimumMet === 'function' && isBrandMinimumMet()); }
 // groups: a row is a screen ({view}) or an action ({act}: the exact function the old control called)
 var CS_DRAWER_GROUPS = [
-  { label: '', rows: [ { view: 'today', label: 'Quick Post' }, { view: 'ideas', label: 'Ideas' }, { view: 'pipeline', label: 'Pipeline' } ] },
-  { label: 'Create', rows: [ { view: 'create', label: 'Remix' }, { view: 'idea', label: 'Idea Catcher' }, { view: 'viral', label: 'Trends' } ] },
+  { label: '', rows: [ { view: 'create', label: CS_REMIX_NAME }, { view: 'today', label: 'Quick Post' }, { view: 'ideas', label: 'Ideas' }, { view: 'pipeline', label: 'Pipeline' } ] },   // v712: Remix first
+  { label: 'Create', rows: [ { view: 'idea', label: 'Idea Catcher' }, { view: 'viral', label: 'Trends' } ] },
   { label: 'Tools', rows: [ { view: 'notebook', label: 'Notebook' }, { view: 'questions', label: 'What people search' }, { act: 'toggleBookmarkBar', icon: 'bookmarks', label: 'Bookmarks' } ] },
   { label: '', rows: [ { act: 'bvTabClick', icon: 'coach', label: 'Assistant', hold: true }, { act: 'openBrain', icon: 'brain', label: 'Brand brain' }, { act: 'openSettings', icon: 'settings', label: 'Settings' }, { act: 'startTour', icon: 'help', label: 'Help' } ] }
 ];
@@ -10245,7 +10281,7 @@ try {
 function csNewPost(){ csDrawerClose(); switchView('today'); }
 // Called by switchView after every screen change: closes the drawer, tells the CSS which screen is up
 // (the composer shows on Ideas and Quick Post only).
-var CS_PAGE_TITLES = { today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: 'Remix', idea: 'Idea Catcher',
+var CS_PAGE_TITLES = { today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: CS_REMIX_NAME, idea: 'Idea Catcher',
   notebook: 'Notebook', viral: 'Trends', questions: 'What people search' };
 function csShellSync(view){
   try { document.body.setAttribute('data-cs-view', String(view || '')); } catch (e) {}
@@ -10385,6 +10421,7 @@ const FN_FAQ = {
     { q:'What does Remix do?', a:"Paste content that's already proven to work — a TikTok, a YouTube video, an article — and it rebuilds the idea in your brand voice, for your audience. You take the structure and the hook mechanics, never the words." },
     { q:'What are the remix modes?', a:'Remix (same shape, your voice), Simplify, Flip It, Format Swap, Make Series, and Roast & Respond. Pick the angle you want.' },
     { q:'Is it just copying?', a:'No — it adapts the mechanic to your brand and never invents facts about your product.' },
+    { q:'Does getting the words from a TikTok cost anything?', a:"No. Reading a TikTok link is free, up to a daily limit. Only making your own version uses your plan. Over the limit, paste the words yourself." },
     { q:'Under the hood — how does the rewrite work?', a:"It extracts the source's structural mechanic — hook, beats, payoff — discards the words, then rebuilds it with your product facts and voice memory. Adaptation at the structure level, not a paraphrase." }
   ],
   viral: [
@@ -15863,13 +15900,27 @@ function humanErr(code, fallback) {
     brand_context_unavailable: "Your brand brain wasn't ready just then — try again.",
     stale_brand_row: "Your brand brain wasn't ready just then — try again.",
     unauthorized: 'Please sign in again.',
-    rate_limited: 'Too many requests just now — wait a few seconds and try again.'
+    rate_limited: 'Too many requests just now — wait a few seconds and try again.',
+    // v712: reading a link is free, capped per day (api/_usage.js dailyReadDeny, api/transcribe-url.js)
+    daily_read_limit: "You've read today's limit of videos. Paste the words yourself, or try again tomorrow.",
+    fallback_limit: "We couldn't read this video right now. Paste the words yourself."
   };
   if (MAP[c]) return MAP[c];
   // snake_case, or a single bare word: a machine code, never something to show a person.
   if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(c) || !/\s/.test(c)) return FB;
   return c;
 }
+// v712: the words for a server CODE, or '' when there are none. A reply carries both `error` (the server's
+// sentence) and `code`; when the app has its own words for the code they win (they say what to do next).
+function humanErrCode(code){
+  const c = String(code == null ? '' : code).trim();
+  if (!/^[a-z0-9]+(_[a-z0-9]+)+$/.test(c)) return '';
+  const NONE = '\u0000', h = humanErr(c, NONE);
+  return h === NONE ? '' : h;
+}
+// v712: every LINK read (/api/transcribe-url, /api/transcribe mode youtube) names the brand, so a team member's free
+// reads count against that brand's one shared daily pool. Uploaded-file transcriptions do not send it.
+function csBrandRef(){ try { return (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) ? { brandId: String(currentBrand.id) } : {}; } catch (e) { return {}; } }
 // v710: "Couldn't rewrite (limit_reached). Try again." still put the code on screen. A sentence keeps
 // the old "<lead> (<reason>). Try again." frame; a known code is replaced by its words; an unknown code
 // becomes the plain fallback.
@@ -20169,10 +20220,10 @@ async function analyzeViral(){
       if(status){ status.textContent = isYT ? 'Fetching captions…' : 'Downloading & transcribing the video…'; status.className='vl-status'; }
       try{
         if(isYT){
-          const r = await fetch('/api/transcribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url, mode:'youtube'})});
+          const r = await fetch('/api/transcribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({url, mode:'youtube'}, csBrandRef()))});
           const d = await r.json(); if(!r.ok) throw new Error(d.error||'transcript failed'); content = d.text || '';
         } else {
-          const r = await fetch('/api/transcribe-url', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+          const r = await fetch('/api/transcribe-url', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({url}, csBrandRef()))});
           const txt = await r.text(); let d; try{ d = JSON.parse(txt); }catch(e){ throw new Error('transcribe failed'); }
           if(!r.ok) throw new Error(d.error||'transcribe failed'); content = d.transcript || '';
         }
@@ -21089,11 +21140,11 @@ async function ideaDevelop(){
       try{
         const isYT = /youtu\.?be|youtube\.com/i.test(url);
         if(isYT){
-          const r = await fetch('/api/transcribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url, mode:'youtube'})});
+          const r = await fetch('/api/transcribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({url, mode:'youtube'}, csBrandRef()))});
           const t = await r.text(); let d; try{ d=JSON.parse(t); }catch(e){ d={}; }
           if(r.ok) transcript = d.text || ''; else videoErr = d.error || ('error '+r.status);
         } else {
-          const r = await fetch('/api/transcribe-url', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+          const r = await fetch('/api/transcribe-url', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({url}, csBrandRef()))});
           const t = await r.text(); let d; try{ d=JSON.parse(t); }catch(e){ d={}; }
           if(r.ok) transcript = d.transcript || ''; else videoErr = d.error || ('error '+r.status);
         }
@@ -21691,12 +21742,16 @@ async function remixFetchWords(kind, url){
   const isTT = kind === 'tiktok';
   const resp = await fetch(isTT ? '/api/transcribe-url' : '/api/transcribe', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(isTT ? { url: url } : { url: url, mode: 'youtube' })
+    body: JSON.stringify(Object.assign(isTT ? { url: url } : { url: url, mode: 'youtube' }, csBrandRef()))
   });
   let data = null;
   try { data = JSON.parse(await resp.text()); } catch (e) { data = null; }
   const said = (data && typeof data.error === 'string') ? data.error.trim() : '';
-  if (!resp.ok) throw new Error(said || (isTT ? "Couldn't get the words from that TikTok — try again in a minute." : "Couldn't get the words from that video — try again in a minute."));
+  const code = (data && typeof data.code === 'string') ? data.code : '';
+  if (!resp.ok) {   // v712: daily_read_limit / fallback_limit → humanErr's words; remixQuickGo then opens the paste card
+    const e = new Error((typeof humanErrCode === 'function' && humanErrCode(code)) || said || (isTT ? "Couldn't get the words from that TikTok — try again in a minute." : "Couldn't get the words from that video — try again in a minute."));
+    e.code = code; throw e;
+  }
   if (!data || typeof data !== 'object') throw new Error("The words came back unreadable — try again in a minute.");
   const words = isTT ? data.transcript : data.text;
   return typeof words === 'string' ? words : '';
@@ -21908,7 +21963,7 @@ async function transcribeFromYoutube(ev) {
     const resp = await fetch('/api/transcribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, mode: 'youtube' })
+      body: JSON.stringify(Object.assign({ url, mode: 'youtube' }, csBrandRef()))
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Failed to get transcript');
@@ -21988,7 +22043,7 @@ async function transcribeFromUrl() {
     const resp = await fetch('/api/transcribe-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
+      body: JSON.stringify(Object.assign({ url }, csBrandRef()))
     });
 
     const text = await resp.text();
@@ -23000,7 +23055,7 @@ async function icReadVideo(url) {
   try {
     const isYT = /youtu\.?be|youtube\.com/i.test(url);
     const r = await fetch(isYT ? '/api/transcribe' : '/api/transcribe-url', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(isYT ? { url: url, mode: 'youtube' } : { url: url }) });
+      body: JSON.stringify(Object.assign(isYT ? { url: url, mode: 'youtube' } : { url: url }, csBrandRef())) });
     let d = {}; try { d = JSON.parse(await r.text()) || {}; } catch (e) { d = {}; }
     if (!r.ok) return { text: '', err: d.error || ('error ' + r.status) };
     const _txt = String((isYT ? d.text : d.transcript) || '').trim();
@@ -24040,7 +24095,7 @@ async function cfCall(action, videoId){
   try { data = JSON.parse(await resp.text()); } catch (e) { data = null; }
   if (!resp.ok || !data || data.ok !== true) {
     const code = (data && typeof data.code === 'string') ? data.code : '';
-    const e2 = new Error(humanErr((data && typeof data.error === 'string' && data.error) || code, fb));
+    const e2 = new Error((typeof humanErrCode === 'function' && humanErrCode(code)) || humanErr((data && typeof data.error === 'string' && data.error) || code, fb));
     e2.code = code; e2.status = resp.status; throw e2;
   }
   return data;
@@ -24062,6 +24117,13 @@ async function cfLoad(action){
   if (_cf.brandId !== brandId) cfReset(brandId);   // another brand: never wait on (or show) the old brand's request
   else if (_cf.inflight) return false;              // one feed request at a time
   const refresh = action === 'refresh';
+  // v712: nobody followed on TikTok (and the list did load) → nothing to ask the server: no call, no skeleton,
+  // just the one-line empty state, so the paste box stays the first thing to use
+  if (!refresh && !cfFollowedHandles(null).length && !(typeof listLoadFailed === 'function' && listLoadFailed('bookmarks'))) {
+    ++_cf.seq; _cf.data = { creators: [], videos: [], fetchedAt: null }; _cf.status = 'ready'; _cf.note = ''; _cf.err = '';
+    cfRender();
+    return false;
+  }
   const seq = ++_cf.seq;
   _cf.inflight = true;
   if (refresh && _cf.data) _cf.refreshing = true; else { _cf.status = 'loading'; _cf.err = ''; }
@@ -24090,6 +24152,16 @@ function cfAddCreator(){
   try { const p = document.getElementById('followPanels'); if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
 }
 // fill Step 1 exactly as a pasted TikTok link does (remixQuickGo → remixShowOriginal), then go to Step 2
+// v712: the words cannot be read today (the daily free-read limit, or the backup reader is used up), or the read
+// came back with none: open Step 1 EMPTY with the video's link and creator — the same "paste the words yourself"
+// card a failed pasted link opens (nothing charged). A one-off failure (transcribe_failed) keeps "try again".
+const CF_PASTE_CODES = ['daily_read_limit', 'fallback_limit'];
+function cfPasteCard(v){
+  const h = cfHandle(v.handle);
+  const url = (typeof fpHttps === 'function' ? fpHttps(v.url) : '') || (h ? 'https://www.tiktok.com/@' + h + '/video/' + encodeURIComponent(String(v.videoId)) : '');
+  remixShowOriginal({ kind: 'tiktok', url: url, creator: remixCreatorFromUrl(url) || h, text: '', failed: true });
+  return false;
+}
 function cfFill(v){
   const h = cfHandle(v.handle);
   const url = (typeof fpHttps === 'function' ? fpHttps(v.url) : '') || (h ? 'https://www.tiktok.com/@' + h + '/video/' + encodeURIComponent(String(v.videoId)) : '');
@@ -24118,9 +24190,12 @@ async function cfPick(i){
     if (typeof nv.transcript === 'string') return cfFill(nv);
     if (nv.transcriptStatus === 'working') { try { showToast('Already transcribing — try again in a minute'); } catch (e) {} return false; }
     _cf.rowErr[id] = "Couldn't get the words from this one — open it on TikTok and paste what they say into the box above.";
-    return false;
+    return cfPasteCard(nv);
   } catch (e) {
-    if (brandId === cfBrandNow()) _cf.rowErr[id] = (e && e.message) || "Couldn't get the words from that TikTok — try again in a minute.";
+    if (brandId === cfBrandNow()) {
+      _cf.rowErr[id] = (e && e.message) || "Couldn't get the words from that TikTok — try again in a minute.";
+      if (e && CF_PASTE_CODES.indexOf(e.code) >= 0) cfPasteCard(v);
+    }
     return false;
   } finally {
     if (_cf.busy === id) _cf.busy = '';
@@ -24155,9 +24230,10 @@ function cfRender(){
     return;
   }
   if (!d.creators.length) {
-    el.innerHTML = head + '<div class="cf-empty">' + (hasTtNow
-      ? 'Press Refresh to load their new posts.'
-      : 'Follow up to 5 TikTok creators to see their new posts here. <button type="button" class="cf-add" onclick="cfAddCreator()">+ Add a creator</button>') + '</div>';
+    // v712: no TikTok creators followed = ONE line (no heading), so Step 1's paste box stays the obvious first thing
+    el.innerHTML = hasTtNow
+      ? head + '<div class="cf-empty">Press Refresh to load their new posts.</div>'
+      : '<div class="cf-empty cf-empty-line"><span class="cf-empty-txt">Your creators\u2019 new TikToks show up here.</span><button type="button" class="cf-add" onclick="cfAddCreator()">Add one</button></div>';
     _cfRows = [];
     return;
   }
@@ -27045,7 +27121,8 @@ document.addEventListener('keydown', e => {
 });
 
 // ===== ONBOARDING WIZARD =====
-const OB_TOTAL_STEPS = 4; // v649: 1 site · 2 confirm · 3 voice memo · 4 ready
+const OB_TOTAL_STEPS = 5; // v712: 1 site · 2 confirm · 3 voice memo · 4 TikTok creators · 5 ready
+let obPendingCreators = [];   // v712: step 4's profile links (https://www.tiktok.com/@name), saved by obFinish
 let obCurrentStep = 1;
 let obSelectedTones = [];
 let obCommunities = [];
@@ -27216,6 +27293,8 @@ function obShowWizard() {
     if (typeof obStopSteps === 'function') obStopSteps();
   } catch (e) {}
   obGoToStep(1);
+  obPendingCreators = [];   // v712: a re-entry (save failure, + Add new brand) asks step 4 again, with an empty box
+  try { const _oc = document.getElementById('obCreators'); if (_oc) _oc.value = ''; obClearErr('obStep4Err'); } catch (e) {}
   obRenderToneCards();
   obRenderExampleChips();
   obRenderCommunityTags();
@@ -27244,7 +27323,7 @@ function obShowWizard() {
 // One place that knows how to put the finish button back the way the markup has it.
 function obResetFinishBtn() {
   const b = document.getElementById('obFinishBtn');
-  if (b) { b.disabled = false; b.textContent = 'Write my first post →'; }
+  if (b) { b.disabled = false; b.textContent = (typeof obFinaleMode === 'function') ? OB_FINALE[obFinaleMode()].btn : 'Write my first post →'; }
 }
 
 // Render all tap-to-fill example chips
@@ -27303,7 +27382,7 @@ function obGoToStep(step) {
     target.classList.add('active');
   }
   document.getElementById('obProgress').style.width = ((step / OB_TOTAL_STEPS) * 100) + '%';
-  if(step === 4) obBuildSummary();
+  if(step === 5) { obBuildSummary(); obFinaleCopy(); }
 }
 
 // Crawl findings that are NOT on any onboarding screen. Held here — deliberately out of
@@ -27583,7 +27662,79 @@ function obNext(fromStep) {
       obShowErr('obStep3Err', _w ? 'A bit more — even thirty seconds of talking is ~60 words. Or skip for now and record it later.' : 'Use the mic and talk first — or skip for now.', 'obVoiceSample'); return;
     }
   }
+  if (fromStep === 4) {
+    obClearErr('obStep4Err');
+    const p = obParseCreators((document.getElementById('obCreators') || {}).value);
+    if (p.error) { obShowErr('obStep4Err', p.error, 'obCreators'); return; }
+    obPendingCreators = p.urls;   // empty box = the same as Skip
+  }
   obGoToStep(fromStep + 1);
+}
+/* v712 — step 4, "Who do you follow on TikTok?". Each line (or space/comma-separated item) is a TikTok profile
+   link or an @handle; both become https://www.tiktok.com/@name through cfTtLink, the creator feed's own link
+   rule (lowercase handle). Anything else — another site, a share link that names nobody, a bare word — is
+   refused with ONE plain line naming it. More than 5 different creators is refused the same way. */
+function obCreatorUrl(tok){
+  let t = String(tok == null ? '' : tok).trim();
+  if (!t) return '';
+  if (/^@[\w.\-]{1,60}$/.test(t)) t = 'https://www.tiktok.com/' + t;
+  const hit = (typeof cfTtLink === 'function') ? cfTtLink(t) : null;
+  return (hit && hit.handle) ? 'https://www.tiktok.com/@' + hit.handle : '';
+}
+function obParseCreators(raw){
+  const toks = String(raw == null ? '' : raw).split(/[\s,;]+/).filter(Boolean);
+  const urls = [];
+  for (const t of toks) {
+    const u = obCreatorUrl(t);
+    if (!u) return { urls: [], error: '\u201c' + t.slice(0, 60) + '\u201d isn\u2019t a TikTok profile. Use a link like tiktok.com/@name or an @handle.' };
+    if (urls.indexOf(u) < 0) urls.push(u);
+  }
+  if (urls.length > CF_MAX_CREATORS) return { urls: [], error: 'You can follow up to 5 creators. Remove ' + (urls.length - CF_MAX_CREATORS) + '.' };
+  return { urls: urls, error: '' };
+}
+function obSkipCreators(){ obPendingCreators = []; obClearErr('obStep4Err'); obGoToStep(5); }
+// v712 follow-up: the ending depends on step 4. Creators added → the finale opens Remix with their feed;
+// skipped → the pre-v712 finale, unchanged: the first Quick Post is written. (A new user never lands on an empty feed.)
+const OB_FINALE = {
+  post: { sub: 'Now watch it write your first post \u2014 a talking-head script in your voice. Film it straight away, or twist it until it\'s right. I learn from every pick, edit and pass.', btn: 'Write my first post \u2192', busy: 'Generating...' },
+  feed: { sub: 'Next: their newest videos. Pick one that already works and make your own version of it, in your voice. I learn from every pick, edit and pass.', btn: 'Show their videos \u2192', busy: 'Setting up...' }
+};
+function obFinaleMode(){ return (Array.isArray(obPendingCreators) && obPendingCreators.length) ? 'feed' : 'post'; }
+function obFinaleCopy(){
+  const f = OB_FINALE[obFinaleMode()];
+  const p = document.getElementById('obFinaleSub'); if (p) p.textContent = f.sub;
+  const b = document.getElementById('obFinishBtn'); if (b && !b.disabled) b.textContent = f.btn;
+}
+// Saves step 4's creators into this brand's Bookmarks — the same entry shape, list and database row as
+// "+ Add creator" (fpAdd: first category, else a new "Following" one; { name, links: { tt } }), and every one
+// passes cfAllowLinks, the ONE 5-creator rule. Awaited, so Remix's first 'list' reads them. A brand created
+// a moment ago has no bookmarks row: the empty list IS the truth, so the save guard may be armed for it.
+// An existing brand whose list never loaded is never overwritten (saveBookmarksToDB refuses; nothing added).
+async function obSaveCreators(urls, freshBrand){
+  const list = (Array.isArray(urls) ? urls : []).slice(0, CF_MAX_CREATORS);
+  if (!list.length || !currentBrand || !currentBrand.id) return 0;
+  if (freshBrand) { if (!Array.isArray(bookmarkCategories)) bookmarkCategories = []; _markListLoad('bookmarks', true); }
+  if (!_listLoaded('bookmarks')) return 0;
+  const have = new Set(cfFollowedHandles(null));
+  let added = 0;
+  list.forEach(u => {
+    const hit = cfTtLink(u);
+    if (!hit || !hit.handle || have.has(hit.handle)) return;
+    const links = { tt: 'https://www.tiktok.com/@' + hit.handle };
+    if (!cfAllowLinks(null, links)) return;
+    let cat = bookmarkCategories[0];
+    if (!cat) { cat = { id: bmId(), name: 'Following', entries: [] }; bookmarkCategories.push(cat); }
+    if (!Array.isArray(cat.entries)) cat.entries = [];
+    cat.entries.push({ id: bmId(), name: fpNameFromLink(links.tt), links: links });
+    have.add(hit.handle);
+    added++;
+  });
+  if (!added) return 0;
+  const _saved = _warnSaveFailed('bookmarks', await saveBookmarksToDB());   // the toast says it failed
+  try { rerenderBookmarks(); } catch (e) {}
+  // not in the database → the server's feed would have nobody: report 0 so obFinish keeps the first-post ending
+  if (!_saved || _saved.ok === false) return 0;
+  return added;
 }
 // v649 — live word count under the onboarding mic, so "a minute or two" has a visible target.
 function obVoiceWords(){
@@ -27704,6 +27855,7 @@ function obBuildSummary() {
 // Finish
 async function obFinish() {
   debugLog('obFinish called, user=' + (currentUser?.id || 'null') + ' sb=' + !!sb);
+  const _obFreshBrand = !currentBrand;   // v712: saveBrandToDB INSERTs → this brand has no bookmarks yet
 
   const brandName = (document.getElementById('obBrandName')?.value || '').trim() || 'My Brand';
   const tagline = (document.getElementById('obTagline')?.value || '').trim();
@@ -27784,7 +27936,28 @@ async function obFinish() {
     try { obShowWizard(); } catch(_) {}   // re-open onboarding so they can retry
     return;                                // do NOT proceed to generate on an unsaved brand
   }
+  /* v712: a brand INSERTed a moment ago has no rows in any list table, so its empty lists ARE what the database
+     holds. initApp's fresh-user branch disarmed every list save (_listLoadOk all false) and nothing re-armed them
+     until a reload — so the new user's first saved remix, bookmark or note was refused ("never loaded"). That
+     first remix is now the very first thing they do (onboarding lands on Remix). */
+  if (_obFreshBrand) ['remixes', 'productRefs', 'bookmarks', 'promptHistory', 'notebook'].forEach(k => _markListLoad(k, true));
 
+  /* v712: the ending depends on step 4 (owner follow-up 2026-11-04).
+     Creators added → they are saved FIRST (awaited), then Remix opens: switchView('create') → cfOpen, whose first
+     'list' already sees them and pulls their videos (no cache yet). Nothing is generated.
+     Skipped (or nothing could be saved) → the pre-v712 ending, exactly: v447's ONE finished post on Quick Post, so a
+     new user never lands on an empty feed. */
+  let _obFollowed = 0;
+  if (obPendingCreators.length) {
+    try { _obFollowed = await obSaveCreators(obPendingCreators, _obFreshBrand); } catch(e) { console.error('Saving the creators failed:', e); }
+  }
+  obPendingCreators = [];
+  if (_obFollowed > 0) {
+    try {
+      if (currentBrand) await saveIdeasToDB();
+    } catch(e) { console.error('Ideas save error:', e); }
+    switchView(csStartView(''));
+  } else {
   // v447: onboarding's grand finale is ONE finished post on the Shazam home — the
   // wow lands in minute two, before they've explored anything. (Was: dump into the
   // Ideas view and generate a whole week's batch — heavier, slower, wrong first ask.
@@ -27801,6 +27974,7 @@ async function obFinish() {
     console.log('First post generated after onboarding');
   } catch(e) {
     console.error('First-post generate failed:', e);
+  }
   }
 
   // Refresh locks + show popup if profile is incomplete
@@ -27891,10 +28065,10 @@ function renderNavWithLocks() {
   const inProd = (state || []).filter(i => ["filming"].includes(i.status)).length;
   const remixCount = (remixes || []).length;
   const tabs = [
+    {id:"create",label:CS_REMIX_NAME,icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',count:remixCount||null, locked:!unlocked},   // v712: Remix first (owner: "the easiest to explain and to use")
     {id:"today",label:"Quick Post",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',count:null, locked:false},
     {id:"ideas",label:"Ideas",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',count:null, locked:false},
     {id:"pipeline",label:"Pipeline",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',count:inProd||null, locked:!unlocked},
-    {id:"create",label:"Remix",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',count:remixCount||null, locked:!unlocked},
     {id:"notebook",label:"Notebook",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',count:(typeof notebookNotes!=='undefined'?notebookNotes.length:0)||null, locked:false},
   ];
   const coachTab = {id:"coach",label:"Assistant",icon:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>'};
@@ -28003,7 +28177,7 @@ renderNav = renderNavWithLocks;
     btn.addEventListener('click', function() {
       console.log('obFinishBtn clicked');
       this.disabled = true;
-      this.textContent = 'Generating...';
+      this.textContent = (typeof obFinaleMode === 'function') ? OB_FINALE[obFinaleMode()].busy : 'Generating...';
       obFinish().catch(function(err) {
         console.error('obFinish error:', err);
         alert('Error: ' + err.message);
@@ -30157,7 +30331,7 @@ function csxIsDesk(){ try { return !!(window.matchMedia && window.matchMedia(CSX
 function csxIsWide(){ try { return !!(window.matchMedia && window.matchMedia(CSX_MQ_MD).matches); } catch (e) { return false; } }
 var CSX_MD_VIEWS = ['ideas', 'pipeline', 'notebook', 'bookmarks'];
 var CSX_DOC_VIEWS = ['today', 'create', 'idea', 'viral', 'questions', 'dfy'];
-var CSX_TITLES = { today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: 'Remix', idea: 'Idea Catcher', viral: 'Trends',
+var CSX_TITLES = { today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: CS_REMIX_NAME, idea: 'Idea Catcher', viral: 'Trends',
   notebook: 'Notebook', questions: 'What people search', dfy: 'Done-for-you', bookmarks: 'Bookmarks', settings: 'Settings', assistant: 'Assistant' };
 var CSX_EMPTY = { ideas: 'Select an idea', pipeline: 'Select a post', notebook: 'Select a note', bookmarks: 'Select a bookmark' };
 var csxSel = { ideas: null, pipeline: null, notebook: null, bookmarks: null };
@@ -30862,8 +31036,9 @@ function csxTrapTab(e){
 
 /* ── ⌘K command palette ── */
 function csxPaletteItems(){
-  var it = [{ g: 'Actions', label: 'New post', call: ['csxComposerOpen'], kbd: 'N' }];
-  [['today', 'Quick Post'], ['ideas', 'Ideas'], ['pipeline', 'Pipeline'], ['create', 'Remix'], ['idea', 'Idea Catcher'], ['viral', 'Trends'], ['notebook', 'Notebook'], ['questions', 'What people search']].forEach(function(v){
+  // v712: Remix is the first item; "New post" leads the Actions group (one Actions heading, not two)
+  var it = [];
+  [['create', CS_REMIX_NAME], ['today', 'Quick Post'], ['ideas', 'Ideas'], ['pipeline', 'Pipeline'], ['idea', 'Idea Catcher'], ['viral', 'Trends'], ['notebook', 'Notebook'], ['questions', 'What people search']].forEach(function(v){
     if (typeof csShelved === 'function' && csShelved(v[0])) return;
     it.push({ g: 'Go to', label: v[1], call: ['switchView', v[0]] });
   });
@@ -30876,6 +31051,7 @@ function csxPaletteItems(){
     it.push({ g: 'Switch brand', label: String(b.brand_name || 'Unnamed brand').replace(/\s+/g, ' ').trim().slice(0, 60), call: ['switchBrand', b.id] });
   }); } catch (e) {}
   it.push({ g: 'Switch brand', label: 'Add new brand', call: ['addNewBrand'] });
+  it.push({ g: 'Actions', label: 'New post', call: ['csxComposerOpen'], kbd: 'N' });
   var dark = document.documentElement.getAttribute('data-theme') === 'dark';
   it.push({ g: 'Actions', label: dark ? 'Switch to light theme' : 'Switch to dark theme', call: ['toggleDarkMode', !dark] });
   it.push({ g: 'Actions', label: 'Keyboard shortcuts', call: ['csxShortcutsOpen'], kbd: '?' });

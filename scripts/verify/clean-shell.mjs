@@ -305,10 +305,11 @@ for (const unlocked of [true, false]) {
 
 /* ═══ 7. start screen ═══ */
 {
-  ok(/var CS_START_VIEW = 'ideas';/.test(html), '7 CS_START_VIEW is Ideas');
+  // v712 (owner 2026-11-04): the start screen is Remix ('create'); csStartView keeps Ideas for a push deep link. Full proof: remix-first-v712.mjs
+  ok(/var CS_START_VIEW = 'create';/.test(html), '7 CS_START_VIEW is Remix (v712)');
   const init = grab('initApp');
-  const sv = init.indexOf('switchView(CS_START_VIEW);'), deep = init.indexOf('csHandleOpenIdeas(window.location.href, true)');
-  ok(sv > 0 && !/switchView\('today'\);\n\s*debugLog\('initApp: switchView\(today\)/.test(init), '7 initApp opens CS_START_VIEW (not Quick Post)');
+  const sv = init.indexOf('switchView(_sv);'), deep = init.indexOf('csHandleOpenIdeas(window.location.href, true)');
+  ok(sv > 0 && /const _sv = csStartView\(window\.location\.href\);/.test(init) && !/switchView\('today'\);\n\s*debugLog\('initApp: switchView\(today\)/.test(init), '7 initApp opens csStartView() (CS_START_VIEW, not Quick Post)');
   ok(deep > sv, '7 the ?open= deep link is handled AFTER the start screen, so it wins');
   const c = { URL, location: { origin: 'https://contentshrimp.com' } }; vm.createContext(c); vm.runInContext(grab('csReadOpen'), c);
   ok(c.csReadOpen('/app.html?open=ideas&b=abc') && !c.csReadOpen('/app.html'), '7 csReadOpen still reads ?open=ideas');
