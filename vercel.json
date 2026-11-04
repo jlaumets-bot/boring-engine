@@ -203,6 +203,9 @@
     },
     "api/fact-pack.js": {
       "maxDuration": 300
+    },
+    "api/creator-feed.js": {
+      "maxDuration": 180
     }
   },
   "crons": [

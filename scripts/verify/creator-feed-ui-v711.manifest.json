@@ -1,0 +1,109 @@
+{
+  "name": "creator-feed v711 client — list once per open, sorted rows, escaping, ready fill, one transcript call, max 5; v711b: brand-keyed feed, server creator rule, 'working' status, link spacing",
+  "mutations": [
+    {
+      "id": "M1",
+      "finding": "list-once-per-open",
+      "file": "app.html",
+      "find": "if(_cfPrevView!=='create'){ try{ cfOpen(); }catch(e){} }",
+      "replace": "try{ cfOpen(); }catch(e){}",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M2",
+      "finding": "rerender-never-refires",
+      "file": "app.html",
+      "find": "  try { cfRender(); } catch (e) {}   // v711: redraw only",
+      "replace": "  try { cfOpen(); } catch (e) {}   // v711: redraw only",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M3",
+      "finding": "caption-escaped",
+      "file": "app.html",
+      "find": "(cap ? escHtml(cap) : 'No caption')",
+      "replace": "(cap ? cap : 'No caption')",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M4",
+      "finding": "ready-row-no-fetch",
+      "file": "app.html",
+      "find": "  if (cfReady(v)) return cfFill(v);",
+      "replace": "  if (false && cfReady(v)) return cfFill(v);",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M5",
+      "finding": "double-tap-ignored",
+      "file": "app.html",
+      "find": "  if (_cf.busy) { if (_cf.busy !== id) {",
+      "replace": "  if (false) { if (_cf.busy !== id) {",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M6",
+      "finding": "score-chip-at-2",
+      "file": "app.html",
+      "find": "  if (!(s >= 2)) return '';",
+      "replace": "  if (!(s > 2)) return '';",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M7",
+      "finding": "max-5-creators",
+      "file": "app.html",
+      "find": "  return !(after > CF_MAX_CREATORS && after > before);",
+      "replace": "  return true;",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M8",
+      "finding": "rows-sorted-by-score",
+      "file": "app.html",
+      "find": "((Number(b.score) || 0) - (Number(a.score) || 0)) || ",
+      "replace": "",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M9",
+      "finding": "brand-switch-mid-request",
+      "file": "app.html",
+      "find": "    if (bid && typeof activeView !== 'undefined' && activeView === 'create') { cfLoad('list'); return; }\n",
+      "replace": "",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M10",
+      "finding": "late-answer-dropped",
+      "file": "app.html",
+      "find": "    if (seq !== _cf.seq || brandId !== cfBrandNow()) return false;   // the brand changed meanwhile: drop it",
+      "replace": "",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M11",
+      "finding": "server-rule-other-fields",
+      "file": "app.html",
+      "find": "  for (const k of Object.keys(L)) { if (k === 'tt') continue; const t = cfTtLink(L[k]); if (t) return t; }\n  return null;\n}\n// the followed",
+      "replace": "  return null;\n}\n// the followed",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M12",
+      "finding": "working-no-call",
+      "file": "app.html",
+      "find": "  if (v.transcriptStatus === 'working') { try { showToast('Already transcribing",
+      "replace": "  if (false) { try { showToast('Already transcribing",
+      "gate": "creator-feed-ui-v711.mjs"
+    },
+    {
+      "id": "M13",
+      "finding": "open-label-spacing",
+      "file": "app.html",
+      "find": "\"><span>Open<span class=\"cf-open-long\"> on TikTok</span> ↗</span></a>'",
+      "replace": "\">Open<span class=\"cf-open-long\"> on TikTok</span> ↗</a>'",
+      "gate": "creator-feed-ui-v711.mjs"
+    }
+  ]
+}

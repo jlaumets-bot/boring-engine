@@ -70,9 +70,17 @@ function userMessage(err) {
   return raw || MSG_HOST;
 }
 
-const handler = async function (req, res) {
-  // Started before the auth round-trip so the guard's own latency counts against the budget.
-  const deadline = Date.now() + HANDLER_BUDGET_MS;
+// v711 — THE URL → TRANSCRIPT PATH, lifted out of the handler UNCHANGED so api/creator-feed.js can reuse it.
+// Resolves the transcript text, or throws an Error whose message is one of this file's sentences — or a
+// provider's own error text (Whisper's lastErr, cobalt's code), so a caller that must never show provider
+// text maps the failure to its own words (creator-feed does). It charges NOTHING: billing stays with the
+// caller. opts.deadline = absolute ms (default now + HANDLER_BUDGET_MS); opts.groqKey (default
+// GROQ_API_KEY); opts.apifyFallback === false skips the paid Apify fallback for TikTok.
+async function transcribeVideo(url, opts) {
+  opts = opts || {};
+  const deadline = Number(opts.deadline) > 0 ? Number(opts.deadline) : Date.now() + HANDLER_BUDGET_MS;
+  const groqKey = opts.groqKey || process.env.GROQ_API_KEY;
+  if (!groqKey) throw new Error('Transcription is not configured on the server.');
   // Clamp a stage to what is left of the budget; refuse to start one that cannot finish.
   const stageBudget = (max, stage) => {
     const left = deadline - Date.now();
@@ -83,6 +91,133 @@ const handler = async function (req, res) {
     return Math.min(max, left);
   };
 
+  // Detect platform and get audio download URL
+  let audioDownloadUrl;
+  const isTikTok = url.includes('tiktok.com') || url.includes('vm.tiktok');
+  const isInstagram = url.includes('instagram.com');
+
+  if (isTikTok) {
+    // 1) tikwm.com — free, fast. Now sent WITH a browser User-Agent (it rejects
+    //    UA-less requests with "Url parsing is failed", which broke this before).
+    try {
+      console.log('TikTok detected, trying tikwm.com...');
+      const tikwmResp = await fetchJson('https://www.tikwm.com/api/', {
+        method: 'POST',
+        timeoutMs: stageBudget(FETCH_JSON_TIMEOUT_MS, 'tikwm lookup'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          'Accept': 'application/json'
+        },
+        body: 'url=' + encodeURIComponent(url) + '&hd=1'
+      });
+      if (tikwmResp && tikwmResp.data) {
+        audioDownloadUrl = tikwmResp.data.play || tikwmResp.data.wmplay || tikwmResp.data.music;
+      }
+    } catch (e) { console.log('tikwm failed:', e.message); }
+
+    // 2) Fallback: Apify TikTok scraper (reliable, already used elsewhere) — used only
+    //    if tikwm couldn't return a media URL.
+    //    v711: opts.apifyFallback === false skips it (api/creator-feed.js's automatic transcripts).
+    if (!audioDownloadUrl && opts.apifyFallback !== false) {
+      const apifyToken = process.env.APIFY_API_TOKEN;
+      if (!apifyToken) {
+        throw new Error("Couldn't read that TikTok automatically right now — paste the spoken words or a short description instead.");
+      }
+      console.log('tikwm gave nothing — falling back to Apify...');
+      const run = await apifyRequest('POST', '/v2/acts/clockworks~tiktok-scraper/runs?waitForFinish=90', apifyToken, {
+        postURLs: [url], resultsPerPage: 1, shouldDownloadVideos: false, shouldDownloadCovers: false, shouldDownloadSubtitles: false
+      }, stageBudget(APIFY_RUN_TIMEOUT_MS, 'Apify run'));
+      const datasetId = run && run.data && run.data.defaultDatasetId;
+      if (!datasetId) throw new Error("Couldn't read that TikTok right now — try again in a minute, or paste a description.");
+      const items = await apifyRequest('GET', `/v2/datasets/${datasetId}/items?limit=1&format=json`, apifyToken, null,
+        stageBudget(APIFY_READ_TIMEOUT_MS, 'Apify dataset read'));
+      const item = (Array.isArray(items) ? items : [])[0] || {};
+      audioDownloadUrl =
+        (Array.isArray(item.mediaUrls) && item.mediaUrls[0]) ||
+        (item.videoMeta && item.videoMeta.downloadAddr) ||
+        (item.video && item.video.downloadAddr) ||
+        item.downloadAddr || null;
+    }
+
+    if (!audioDownloadUrl) {
+      throw new Error("Couldn't get the audio from that TikTok (it may be private or region-locked). Paste the spoken words or a short description instead.");
+    }
+  } else {
+    // For YouTube, Instagram, etc — use cobalt if configured
+    const cobaltApiKey = process.env.COBALT_API_KEY;
+    const cobaltApiUrl = process.env.COBALT_API_URL || 'https://api.cobalt.tools';
+
+    console.log('Using cobalt for:', url);
+    const cobaltHeaders = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    };
+    if (cobaltApiKey) {
+      cobaltHeaders['Authorization'] = 'Api-Key ' + cobaltApiKey;
+    }
+
+    const cobaltResp = await fetchJson(cobaltApiUrl, {
+      method: 'POST',
+      timeoutMs: stageBudget(FETCH_JSON_TIMEOUT_MS, 'cobalt lookup'),
+      headers: cobaltHeaders,
+      body: JSON.stringify({
+        url: url,
+        downloadMode: 'audio',
+        audioFormat: 'mp3'
+      })
+    });
+
+    if (cobaltResp.status === 'error') {
+      const errCode = cobaltResp.error?.code || '';
+      if (errCode.includes('auth') || errCode.includes('jwt')) {
+        throw new Error("We can't read that link automatically yet — TikTok links work best. Paste a TikTok URL, or type a short description of the video instead.");
+      }
+      throw new Error(errCode || cobaltResp.text || 'Could not get download link.');
+    }
+
+    audioDownloadUrl = cobaltResp.url;
+    if (!audioDownloadUrl) {
+      throw new Error('No download URL returned.');
+    }
+  }
+
+  // Download the audio file — re-validate the third-party URL (it came from tikwm/cobalt,
+  // not the user, so it could point at an internal/metadata host).
+  try { await require('./_safeurl').assertPublicHttpUrl(audioDownloadUrl); }
+  // v690 — a DNS blip on the provider's download host is not an "unsafe link".
+  catch (e) { throw new Error(e && e.code === 'UNRESOLVED' ? 'The video host could not be reached. Try again in a minute.' : 'The video host returned an unsafe download link.'); }
+  console.log('Downloading audio from:', audioDownloadUrl.substring(0, 80) + '...');
+  const audioBuffer = await downloadFile(audioDownloadUrl, { timeoutMs: stageBudget(DOWNLOAD_TIMEOUT_MS, 'audio download') });
+  console.log('Downloaded:', audioBuffer.length, 'bytes');
+
+  // Belt-and-braces only: downloadFile now enforces MAX_AUDIO_BYTES *during* the
+  // stream, so this can no longer be the thing that catches an oversized file.
+  if (audioBuffer.length > MAX_AUDIO_BYTES) {
+    throw new Error(MSG_TOO_LARGE);
+  }
+
+  // Transcribe — Groq Whisper (whisper-large-v3) ONLY. No OpenAI fallback anywhere.
+  console.log('Transcribing...');
+  const whisperMs = stageBudget(WHISPER_TIMEOUT_MS, 'transcription');
+  const providers = [{ host: 'api.groq.com', path: '/openai/v1/audio/transcriptions', key: groqKey, model: 'whisper-large-v3' }];
+
+  let transcript = null, lastErr = '';
+  for (const p of providers) {
+    try {
+      const r = await whisperTranscribe(p, audioBuffer, whisperMs);
+      if (r.status === 200 && r.body && r.body.trim()) { transcript = r.body.trim(); break; }
+      try { lastErr = JSON.parse(r.body).error.message; } catch (e) { lastErr = 'transcription error ' + r.status; }
+      console.log(p.host + ' transcription failed:', lastErr);
+    } catch (e) { lastErr = e.message; }
+  }
+  if (transcript == null) throw new Error(lastErr || 'Could not transcribe the audio — try again.');
+  return transcript;
+}
+
+const handler = async function (req, res) {
+  // Started before the auth round-trip so the guard's own latency counts against the budget.
+  const deadline = Date.now() + HANDLER_BUDGET_MS;
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
   const origin = req.headers.origin || '';
   res.setHeader('Access-Control-Allow-Origin', allowed.includes(origin) ? origin : allowed[0]);
@@ -106,126 +241,7 @@ const handler = async function (req, res) {
     try { await require('./_safeurl').assertPublicHttpUrl(String(url).trim()); }
     catch (e) { return res.status(400).json({ error: require('./_safeurl').urlRefusalMessage(e, 'That URL is not allowed.') }); }
 
-    // Detect platform and get audio download URL
-    let audioDownloadUrl;
-    const isTikTok = url.includes('tiktok.com') || url.includes('vm.tiktok');
-    const isInstagram = url.includes('instagram.com');
-
-    if (isTikTok) {
-      // 1) tikwm.com — free, fast. Now sent WITH a browser User-Agent (it rejects
-      //    UA-less requests with "Url parsing is failed", which broke this before).
-      try {
-        console.log('TikTok detected, trying tikwm.com...');
-        const tikwmResp = await fetchJson('https://www.tikwm.com/api/', {
-          method: 'POST',
-          timeoutMs: stageBudget(FETCH_JSON_TIMEOUT_MS, 'tikwm lookup'),
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-            'Accept': 'application/json'
-          },
-          body: 'url=' + encodeURIComponent(url) + '&hd=1'
-        });
-        if (tikwmResp && tikwmResp.data) {
-          audioDownloadUrl = tikwmResp.data.play || tikwmResp.data.wmplay || tikwmResp.data.music;
-        }
-      } catch (e) { console.log('tikwm failed:', e.message); }
-
-      // 2) Fallback: Apify TikTok scraper (reliable, already used elsewhere) — used only
-      //    if tikwm couldn't return a media URL.
-      if (!audioDownloadUrl) {
-        const apifyToken = process.env.APIFY_API_TOKEN;
-        if (!apifyToken) {
-          throw new Error("Couldn't read that TikTok automatically right now — paste the spoken words or a short description instead.");
-        }
-        console.log('tikwm gave nothing — falling back to Apify...');
-        const run = await apifyRequest('POST', '/v2/acts/clockworks~tiktok-scraper/runs?waitForFinish=90', apifyToken, {
-          postURLs: [url], resultsPerPage: 1, shouldDownloadVideos: false, shouldDownloadCovers: false, shouldDownloadSubtitles: false
-        }, stageBudget(APIFY_RUN_TIMEOUT_MS, 'Apify run'));
-        const datasetId = run && run.data && run.data.defaultDatasetId;
-        if (!datasetId) throw new Error("Couldn't read that TikTok right now — try again in a minute, or paste a description.");
-        const items = await apifyRequest('GET', `/v2/datasets/${datasetId}/items?limit=1&format=json`, apifyToken, null,
-          stageBudget(APIFY_READ_TIMEOUT_MS, 'Apify dataset read'));
-        const item = (Array.isArray(items) ? items : [])[0] || {};
-        audioDownloadUrl =
-          (Array.isArray(item.mediaUrls) && item.mediaUrls[0]) ||
-          (item.videoMeta && item.videoMeta.downloadAddr) ||
-          (item.video && item.video.downloadAddr) ||
-          item.downloadAddr || null;
-      }
-
-      if (!audioDownloadUrl) {
-        throw new Error("Couldn't get the audio from that TikTok (it may be private or region-locked). Paste the spoken words or a short description instead.");
-      }
-    } else {
-      // For YouTube, Instagram, etc — use cobalt if configured
-      const cobaltApiKey = process.env.COBALT_API_KEY;
-      const cobaltApiUrl = process.env.COBALT_API_URL || 'https://api.cobalt.tools';
-
-      console.log('Using cobalt for:', url);
-      const cobaltHeaders = {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      };
-      if (cobaltApiKey) {
-        cobaltHeaders['Authorization'] = 'Api-Key ' + cobaltApiKey;
-      }
-
-      const cobaltResp = await fetchJson(cobaltApiUrl, {
-        method: 'POST',
-        timeoutMs: stageBudget(FETCH_JSON_TIMEOUT_MS, 'cobalt lookup'),
-        headers: cobaltHeaders,
-        body: JSON.stringify({
-          url: url,
-          downloadMode: 'audio',
-          audioFormat: 'mp3'
-        })
-      });
-
-      if (cobaltResp.status === 'error') {
-        const errCode = cobaltResp.error?.code || '';
-        if (errCode.includes('auth') || errCode.includes('jwt')) {
-          throw new Error("We can't read that link automatically yet — TikTok links work best. Paste a TikTok URL, or type a short description of the video instead.");
-        }
-        throw new Error(errCode || cobaltResp.text || 'Could not get download link.');
-      }
-
-      audioDownloadUrl = cobaltResp.url;
-      if (!audioDownloadUrl) {
-        throw new Error('No download URL returned.');
-      }
-    }
-
-    // Download the audio file — re-validate the third-party URL (it came from tikwm/cobalt,
-    // not the user, so it could point at an internal/metadata host).
-    try { await require('./_safeurl').assertPublicHttpUrl(audioDownloadUrl); }
-    // v690 — a DNS blip on the provider's download host is not an "unsafe link".
-    catch (e) { throw new Error(e && e.code === 'UNRESOLVED' ? 'The video host could not be reached. Try again in a minute.' : 'The video host returned an unsafe download link.'); }
-    console.log('Downloading audio from:', audioDownloadUrl.substring(0, 80) + '...');
-    const audioBuffer = await downloadFile(audioDownloadUrl, { timeoutMs: stageBudget(DOWNLOAD_TIMEOUT_MS, 'audio download') });
-    console.log('Downloaded:', audioBuffer.length, 'bytes');
-
-    // Belt-and-braces only: downloadFile now enforces MAX_AUDIO_BYTES *during* the
-    // stream, so this can no longer be the thing that catches an oversized file.
-    if (audioBuffer.length > MAX_AUDIO_BYTES) {
-      throw new Error(MSG_TOO_LARGE);
-    }
-
-    // Transcribe — Groq Whisper (whisper-large-v3) ONLY. No OpenAI fallback anywhere.
-    console.log('Transcribing...');
-    const whisperMs = stageBudget(WHISPER_TIMEOUT_MS, 'transcription');
-    const providers = [{ host: 'api.groq.com', path: '/openai/v1/audio/transcriptions', key: groqKey, model: 'whisper-large-v3' }];
-
-    let transcript = null, lastErr = '';
-    for (const p of providers) {
-      try {
-        const r = await whisperTranscribe(p, audioBuffer, whisperMs);
-        if (r.status === 200 && r.body && r.body.trim()) { transcript = r.body.trim(); break; }
-        try { lastErr = JSON.parse(r.body).error.message; } catch (e) { lastErr = 'transcription error ' + r.status; }
-        console.log(p.host + ' transcription failed:', lastErr);
-      } catch (e) { lastErr = e.message; }
-    }
-    if (transcript == null) throw new Error(lastErr || 'Could not transcribe the audio — try again.');
+    const transcript = await transcribeVideo(url, { deadline, groqKey });
 
     await require('./_usage').logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribeurl' });
     return res.status(200).json({ transcript });
@@ -502,3 +518,4 @@ function apifyRequest(method, path, token, body, timeoutMs) {
 }
 
 module.exports = handler;
+module.exports.transcribeVideo = transcribeVideo;

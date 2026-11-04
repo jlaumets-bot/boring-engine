@@ -2,6 +2,28 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-04 — v711. "NEW FROM YOUR CREATORS" FEED AT THE TOP OF REMIX (owner: "start with Remix more… creators I follow", TikTok, max 5).
+
+Contract .unlazy/creator-feed/CONTRACT.md (+ "## Server notes"). Gates creator-feed-v711 (server, 102 checks, 15/15 mutations),
+creator-feed-ui-v711 (client, 72 checks, 13/13). One independent review round: 3 should-fix + nits fixed.
+- WHY APIFY: free tikwm /api/user/posts is Cloudflare-blocked (403 HTML, checked 2026-11-04 from the owner's Mac);
+  tikwm single-video /api/ still works. Listing = Apify clockworks~tiktok-profile-scraper ($0.003/result, 10/creator,
+  no downloads/subtitles/comments; run capped 50 results / $0.20) ≈ $0.15 per pull.
+- api/creator-feed.js POST {brandId, action:'list'|'refresh'|'transcript', videoId}. Guards: list pulls only if no cache or
+  >24 h; refresh ≥6 h apart; per-brand lock (200 s, > maxDuration 180); a SUCCEEDED run is re-read, never re-bought
+  (run_id, kept 24 h), cost logged once (logged_run_id, usage action 'creatorfeed' 0 credits / cost 0.15); 2 failed pulls → 6 h.
+- Score = views ÷ median views of that creator in the pull. Auto winners: ≤2 per pull, ≤3 per ISO week per brand,
+  score ≥2, ≤14 d old, NOT charged. Tap transcript: atomic 'working' claim; charged 'transcribeurl' only on success; cached = free.
+- Creators: from the brand's "__bookmarks__" competitors row; ONE rule (creatorTiktokLink/followedCreators) shared by server and
+  client: links.tt else first tiktok.com link, dedupe by handle, first 5. Client blocks a 6th on all four add paths.
+- api/transcribe-url.js: pipeline exported as transcribeVideo (endpoint unchanged). _usage.js: creatorfeed 0 credits + cost.
+  spend-cap gate: named exception for creatorfeed. vercel.json: creator-feed maxDuration 180.
+- SQL sql/creator-feed.sql (creator_videos + creator_feed_state, RLS select via user_brand_ids(), server-only writes) —
+  MUST be run in Supabase before/at deploy (owner presses Run; classifier blocks Claude from prod DDL).
+- Client: #creatorFeed first child of Remix; cfOpen once per Remix open (switchView), brand-keyed state (stale responses dropped),
+  rows → remixShowOriginal (same as a pasted link) → focus "My take". Old "Creators you follow" panels kept at the bottom.
+NOT DONE: Instagram/YouTube creators; Android share-target; Groq/Apify-fallback cost of transcripts still unlogged (F2).
+
 ## ▶▶ 2026-11-04 — v710. DEEP AUDIT wave 1: silent outages, team XSS, €0 vouchers, cost leak (owner: "fix").
 
 Audits E–I (security, money, reliability, client, leftovers): cloud /mnt/user-data/outputs/deep-audit/*.md.

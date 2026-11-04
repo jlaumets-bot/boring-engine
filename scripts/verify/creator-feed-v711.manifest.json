@@ -1,0 +1,124 @@
+{
+ "mutations": [
+  {
+   "id": "CF1",
+   "finding": "'list' pulls only when the cache is older than 24 h",
+   "file": "api/creator-feed.js",
+   "find": "  LIST_STALE_MS: 24 * HOUR,",
+   "replace": "  LIST_STALE_MS: 1 * HOUR,",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF2",
+   "finding": "'refresh' pulls at most every 6 h per brand",
+   "file": "api/creator-feed.js",
+   "find": "  REFRESH_GAP_MS: 6 * HOUR,",
+   "replace": "  REFRESH_GAP_MS: 0,",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF3",
+   "finding": "a brand mid-pull is not pulled twice (lock)",
+   "file": "api/creator-feed.js",
+   "find": "  if (!lock.claimed) {",
+   "replace": "  if (false) {",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF4",
+   "finding": "score = views / creator median, 1 decimal",
+   "file": "api/creator-feed.js",
+   "find": "Math.round((r.views / med[r.handle]) * 10) / 10",
+   "replace": "Math.round(r.views / med[r.handle])",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF5",
+   "finding": "a cached transcript is free (the early return AND the claim, which also refuses a 'ready' row, both undone)",
+   "file": "api/creator-feed.js",
+   "find": "  if (row.transcript_status === 'ready' && row.transcript) return res.status(200).json(buildPayload(f, state, rows, null));\n  if (!CANON_URL.test(String(row.url || ''))) return fail(res, 422, 'not_tiktok', MSG.transcribeFailed);\n\n  // One job per video: a second tap / device gets the row as it is now (\"working\"), never a second charge.\n  const stamp = isWorking(row, deps.now()) ? null : await claimVideo(brandId, videoId, deps.now());\n",
+   "replace": "  if (!CANON_URL.test(String(row.url || ''))) return fail(res, 422, 'not_tiktok', MSG.transcribeFailed);\n\n  // One job per video: a second tap / device gets the row as it is now (\"working\"), never a second charge.\n  const stamp = iso(deps.now());\n",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF6",
+   "finding": "a new transcript is charged only when words came back",
+   "file": "api/creator-feed.js",
+   "find": "  if (!text) {\n    await patchVideo(brandId, videoId, { transcript_status: 'failed' }, whileClaimed(stamp));",
+   "replace": "  if (!text) {\n    await usage.logUsage({ userId: billingUserId, brandId, action: 'transcribeurl' });\n    await patchVideo(brandId, videoId, { transcript_status: 'failed' }, whileClaimed(stamp));",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF7",
+   "finding": "free transcripts: hard cap 3 per brand per ISO week",
+   "file": "api/creator-feed.js",
+   "find": "C.AUTO_PER_WEEK - tried",
+   "replace": "C.AUTO_PER_WEEK",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF8",
+   "finding": "a failed pull answers in plain words, never provider/internal text",
+   "file": "api/creator-feed.js",
+   "find": "      await failedPull(out.why, !!(out.keepRun && out.runId));\n      if (!at2) return fail(res, 502, 'apify_failed', MSG.apifyFailed);",
+   "replace": "      await failedPull(out.why, !!(out.keepRun && out.runId));\n      if (!at2) return fail(res, 502, 'apify_failed', 'Apify: ' + out.why);",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF9",
+   "finding": "transcribe-url exports its pipeline for the feed",
+   "file": "api/transcribe-url.js",
+   "find": "module.exports.transcribeVideo = transcribeVideo;\n",
+   "replace": "",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF10",
+   "finding": "one transcript job per video (atomic claim) — a double tap is charged once",
+   "file": "api/creator-feed.js",
+   "find": "  const stamp = isWorking(row, deps.now()) ? null : await claimVideo(brandId, videoId, deps.now());",
+   "replace": "  const stamp = iso(deps.now());",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF11",
+   "finding": "a failed transcript never overwrites 'ready'",
+   "file": "api/creator-feed.js",
+   "find": "    await patchVideo(brandId, videoId, { transcript_status: 'failed' }, whileClaimed(stamp));\n    return fail(res, 502, 'transcribe_failed', MSG.transcribeFailed);",
+   "replace": "    await patchVideo(brandId, videoId, { transcript_status: 'failed' });\n    return fail(res, 502, 'transcribe_failed', MSG.transcribeFailed);",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF12",
+   "finding": "the pull cost is logged once per SUCCEEDED Apify run",
+   "file": "api/creator-feed.js",
+   "find": "        if (loggedRun === runId) return;\n",
+   "replace": "",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF13",
+   "finding": "a SUCCEEDED run whose dataset read failed is kept and re-read, not re-bought",
+   "file": "api/creator-feed.js",
+   "find": "'dataset ' + (d ? 'HTTP ' + d.status : 'no answer'), runId, keepRun: true };",
+   "replace": "'dataset ' + (d ? 'HTTP ' + d.status : 'no answer'), runId };",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF14",
+   "finding": "2 failed pulls in a row wait 6 h",
+   "file": "api/creator-feed.js",
+   "find": "  FAIL_LONG_AFTER: 2,",
+   "replace": "  FAIL_LONG_AFTER: 99,",
+   "gate": "creator-feed-v711.mjs"
+  },
+  {
+   "id": "CF15",
+   "finding": "one creator rule: links.tt decides, then the first tiktok.com link in another field",
+   "file": "api/creator-feed.js",
+   "find": "  const tt = tiktokLink(L.tt);\n  if (tt) return tt;",
+   "replace": "  const tt = tiktokLink(L.tt);\n  if (tt && tt.handle) return tt;",
+   "gate": "creator-feed-v711.mjs"
+  }
+ ]
+}

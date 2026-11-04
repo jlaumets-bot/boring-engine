@@ -95,7 +95,8 @@ const ACTION_CREDITS = {
   // two full calls and a small one, the same weight as sharpen's two calls (1). A whole v2 Remix
   // (angles once, then write one belief) is therefore 1.5 credits against the old remix's 1.
   angles: 0.5,
-  write: 1
+  write: 1,
+  creatorfeed: 0          // v711 creator-feed Apify pull: platform cost (ACTION_COST), never gated; see scripts/verify/spend-cap.mjs
 };
 function creditsFor(action) {
   // A reservation row carries "hold:<action>:<token>"; it must price as the action it holds,
@@ -159,7 +160,8 @@ const ACTION_COST = {
   healthping: 0.002,
   // v693 — angles is one call (same as ideas); write is three sequential calls, the third small.
   angles: 0.006,
-  write: 0.018
+  write: 0.018,
+  creatorfeed: 0.15       // v711 one creator-feed pull: <=50 Apify results x $0.003
 };
 /* v693 r4/r5 — THE FUSE KNOWS WHEN A WRITER RAN ON CLAUDE. The Grok numbers above are ~€0.01 per
    call; with WRITER_PROVIDER=claude the same action costs far more, and a flat table would let a

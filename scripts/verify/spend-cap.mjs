@@ -43,7 +43,27 @@ for (const k of ['PLAN_LIMITS', 'ACTION_CREDITS', 'ACTION_COST', 'TRIAL_DAYS']) 
 }
 
 // ── 1. no metered action may be registered at zero credits ────────────────────
-const zero = Object.entries(usage.ACTION_CREDITS || {}).filter(([, v]) => !(Number(v) > 0));
+// v711 — ONE named exception: an action that is only ever LOGGED (never passed to guard()/checkLimit())
+// records platform cost the owner chose not to charge credits for. A 0 there cannot be "infinitely
+// callable on every plan", because nothing gates on it; its frequency is bounded server-side instead.
+// Re-checked mechanically below: still logged-only, still bounded, and still carrying a real cost.
+const PLATFORM_ZERO = {
+  creatorfeed: { file: 'api/creator-feed.js', why: 'the creator-feed Apify pull (owner: no credits, .unlazy/creator-feed/CONTRACT.md), bounded by 24 h list / 6 h refresh per brand + a per-brand lock',
+                 check: (s) => /LIST_STALE_MS/.test(s) && /REFRESH_GAP_MS/.test(s) && /claimLock\(/.test(s) },
+};
+for (const [a, e] of Object.entries(PLATFORM_ZERO)) {
+  if (usage.ACTION_CREDITS[a] == null) continue;
+  const gatedBy = readdirSync(join(ROOT, 'api')).filter((f) => f.endsWith('.js') && f !== '_usage.js').filter((f) => {
+    const src = read(join('api', f));
+    return new RegExp("\\bguard\\(\\s*req\\s*,\\s*['\"]" + a + "['\"]").test(src) || new RegExp("checkLimit\\([^;]*['\"]" + a + "['\"]").test(src);
+  });
+  if (gatedBy.length) fail.push(`0-credit platform action '${a}' is GATED in ${gatedBy.join(', ')} — a gated action must carry credits`);
+  if (!(Number(usage.ACTION_COST[a]) > 0)) fail.push(`0-credit platform action '${a}' has no real ACTION_COST — its spend would be invisible`);
+  let src = '';
+  try { src = read(e.file); } catch (_) {}
+  if (!e.check(src)) fail.push(`0-credit platform action '${a}' is no longer bounded as claimed (${e.why}) in ${e.file}`);
+}
+const zero = Object.entries(usage.ACTION_CREDITS || {}).filter(([k, v]) => !(Number(v) > 0) && !PLATFORM_ZERO[k]);
 if (zero.length) {
   fail.push('ACTION_CREDITS registers ' + zero.length + ' action(s) at 0 credits, which can never ' +
             'trip a plan limit: ' + zero.map(([k]) => k).join(', '));

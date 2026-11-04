@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v710';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v711';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6633,6 +6633,7 @@ if (!window.supabase) {
   <div class="view" id="view-create">
 
     <div class="create-section active" id="createRemix">
+      <div id="creatorFeed" class="cf-wrap"></div>
       <div class="al-banner"><!-- v699: decorative emoji animation removed -->
         <div class="al-banner-text"><strong>Start from what's proven.</strong> The smartest creators study what already works. We rebuild the idea in your voice with your facts baked in — inspired by, never copied.</div>
       </div>
@@ -6681,6 +6682,48 @@ if (!window.supabase) {
       .fp-save{flex:1;background:var(--text);color:var(--surface);border:0;border-radius:8px;padding:8px 10px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;}
       .fp-err{font-size:12px;line-height:1.4;color:var(--red);}
       .fp-err:empty{display:none;}
+      /* creator-feed v711: "New from your creators" — the FIRST thing on Remix; calm rows like Ideas, 44px+ targets */
+      .cf-wrap{margin:0 0 18px;max-width:100%;min-width:0;box-sizing:border-box;}
+      .cf-wrap:empty{display:none;}
+      .cf-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 2px;min-width:0;}
+      .cf-title{margin:0;font-size:17px;font-weight:700;line-height:1.3;letter-spacing:-0.01em;color:var(--text);}
+      .cf-refresh{min-height:44px;padding:0 12px;margin-right:-12px;background:none;border:0;border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;}
+      .cf-refresh:hover{background:var(--surface2);color:var(--text);}
+      .cf-refresh:disabled{opacity:.6;cursor:progress;}
+      .cf-note{font-size:13px;line-height:1.45;color:var(--text3);margin:0 0 6px;}
+      .cf-note:empty{display:none;}
+      .cf-note-bad{color:var(--red);}
+      .cf-err{font-size:13.5px;line-height:1.5;color:var(--red);padding:6px 0;}
+      .cf-list{display:flex;flex-direction:column;border-top:1px solid var(--border);min-width:0;}
+      .cf-row{display:flex;flex-wrap:wrap;align-items:center;gap:0 4px;border-bottom:1px solid var(--border);min-width:0;}
+      .cf-main{flex:1 1 0;min-width:0;min-height:56px;display:flex;flex-direction:column;align-items:stretch;gap:3px;padding:10px 8px;margin:0 0 0 -8px;background:none;border:0;border-radius:10px;text-align:left;font-family:inherit;color:var(--text);cursor:pointer;}
+      .cf-main:hover{background:var(--surface2);}
+      .cf-main:disabled{cursor:progress;}
+      .cf-main:focus-visible,.cf-open:focus-visible,.cf-refresh:focus-visible,.cf-more:focus-visible,.cf-add:focus-visible{outline:2px solid var(--text);outline-offset:-2px;}
+      .cf-top{display:flex;align-items:baseline;gap:8px;min-width:0;}
+      .cf-handle{flex:0 1 auto;min-width:0;font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .cf-age{flex:0 0 auto;font-size:13px;color:var(--text3);white-space:nowrap;}
+      .cf-cap{display:block;min-width:0;font-size:14px;line-height:1.4;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .cf-cap-none{color:var(--text4);}
+      .cf-chips{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0;}
+      .cf-views{font-size:13px;color:var(--text3);white-space:nowrap;}
+      .cf-chip{font-size:13px;font-weight:600;line-height:1;padding:4px 7px;border-radius:6px;background:var(--surface3);color:var(--text2);white-space:nowrap;}
+      .cf-chip-hot{color:var(--text);}
+      .cf-chip-ok{background:var(--green-bg);color:var(--green);}
+      .cf-busy .cf-main{opacity:.75;}
+      .cf-open{flex:0 0 auto;display:inline-flex;align-items:center;min-height:44px;padding:0 8px;margin-right:-8px;border-radius:10px;font-size:13px;font-weight:600;color:var(--text2);text-decoration:underline;text-underline-offset:3px;white-space:nowrap;}
+      .cf-open:hover{color:var(--text);}
+      @media (max-width: 600px){.cf-open-long{display:none;}}   /* phones: "Open ↗" leaves the caption room; the aria-label still says TikTok */
+      .cf-row-err{flex:1 1 100%;font-size:13px;line-height:1.45;color:var(--red);padding:0 0 10px;}
+      .cf-more{min-height:44px;padding:0 12px;margin-left:-12px;background:none;border:0;border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+      .cf-empty{font-size:14px;line-height:1.5;color:var(--text2);padding:4px 0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;}
+      .cf-add{min-height:44px;padding:0 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:999px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+      .cf-cerr{font-size:13px;line-height:1.45;color:var(--text3);margin-top:6px;overflow-wrap:anywhere;}
+      .cf-skel{min-height:56px;display:flex;flex-direction:column;justify-content:center;gap:8px;border-bottom:1px solid var(--border);}
+      .cf-skel i{display:block;height:10px;width:40%;border-radius:5px;background:var(--surface3);animation:cfPulse 1.2s ease-in-out infinite;}
+      .cf-skel i+i{width:78%;}
+      @keyframes cfPulse{0%,100%{opacity:.45;}50%{opacity:1;}}
+      @media (prefers-reduced-motion: reduce){.cf-skel i{animation:none;}}
       /* v450: classic remix form folds behind "set it up manually" (beats the desktop display:flex !important) */
       #remixManualPanel.remix-manual-hidden{display:none !important;}
       /* remix-tt: Step 1 "The original" (exact words) + Step 2 "Make it yours" */
@@ -10394,6 +10437,7 @@ function switchView(view) {
   const oldIdx = VIEW_ORDER.indexOf(activeView);
   const newIdx = VIEW_ORDER.indexOf(view);
   const direction = newIdx > oldIdx ? 'slide-right' : 'slide-left';
+  const _cfPrevView = activeView;   // v711 creator-feed: Remix loads its feed once per OPEN, not per re-render
   activeView = view;
   document.querySelectorAll('.view').forEach(v => {
     v.classList.remove('active','slide-right','slide-left');
@@ -10409,7 +10453,7 @@ function switchView(view) {
   else if(view==='ideas') { renderFilmingQueue(); restoreProToolsState(); renderStats(); renderIdeaFilters(); renderIdeas(); try{ renderIdeaDelivery(); }catch(e){} }
   else if(view==='questions') renderPAASection();
   else if(view==='pipeline') { renderPipeline(); }
-  else if(view==='create') { renderCreate(); try{ renderFollowPanels(); }catch(e){} try{ renderRemixDelivery(); }catch(e){} }
+  else if(view==='create') { renderCreate(); try{ renderFollowPanels(); }catch(e){} try{ renderRemixDelivery(); }catch(e){} if(_cfPrevView!=='create'){ try{ cfOpen(); }catch(e){} } }
   else if(view==='notebook') renderNotebook();
   else if(view==='viral') renderViralLab();
   else if(view==='idea') renderIdeaCatcher();
@@ -23897,6 +23941,256 @@ let _bmEditingEntry = null; // {catId, entId} currently editing links
 
 function bmId() { return 'bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
+// ===== creator-feed (v711): "New from your creators" — the FIRST thing on Remix (owner 2026-11-04) =====
+// The newest TikTok posts of the creators you follow (Bookmarks, max 5), from POST /api/creator-feed
+// (.unlazy/creator-feed/CONTRACT.md). Opening Remix loads 'list' ONCE (cfOpen, from switchView); any other
+// re-render only redraws (cfRender). Tapping a row fills the Step 1 card through remixShowOriginal — the
+// same call a pasted TikTok link ends in — with NO network call when the transcript is already there;
+// otherwise 'transcript' runs once (the row is busy, more taps are ignored), then the card is filled.
+// Every server string (handle, caption, note, error) is user content: escHtml in text, escAttr in attributes.
+const CF_MAX_CREATORS = 5;
+const CF_TOP = 8;
+const CF_MAX_MSG = 'You can follow up to 5 creators. Remove one first.';
+let _cf = { brandId: '', status: 'idle', data: null, err: '', note: '', noteBad: false, showAll: false, inflight: false, refreshing: false, busy: '', rowErr: {}, seq: 0 };
+let _cfRows = [];   // the rows on screen right now, in order (cfPick(i) reads from here)
+function cfShortNum(n){
+  n = Math.max(0, Number(n) || 0);
+  const f = (v, u) => (v >= 100 ? String(Math.round(v)) : String(Math.round(v * 10) / 10)) + u;
+  if (n < 1000) return String(Math.round(n));
+  if (n < 999500) return f(n / 1e3, 'K');
+  if (n < 999500000) return f(n / 1e6, 'M');
+  return f(n / 1e9, 'B');
+}
+function cfAge(iso, now){
+  const t = Date.parse(iso || ''); if (!isFinite(t)) return '';
+  const s = Math.max(0, ((now == null ? Date.now() : now) - t) / 1000);
+  if (s < 3600) return Math.max(1, Math.floor(s / 60)) + ' min ago';
+  if (s < 86400) return Math.floor(s / 3600) + ' h ago';
+  if (s < 86400 * 60) return Math.floor(s / 86400) + ' d ago';
+  return Math.floor(s / (86400 * 30)) + ' mo ago';
+}
+// "2.4× their usual" only when the post did at least twice its creator's usual views
+function cfScoreLabel(score){
+  const s = Number(score);
+  if (!(s >= 2)) return '';
+  return (Math.round(s * 10) / 10).toFixed(1).replace(/\.0$/, '') + '× their usual';
+}
+function cfHandle(h){ return String(h == null ? '' : h).trim().replace(/^@+/, ''); }
+// a transcript is "ready" when the server already holds it (an empty one = a video with no spoken words)
+function cfReady(v){ return !!v && typeof v.transcript === 'string' && (v.transcript.trim() !== '' || v.transcriptStatus === 'ready'); }
+function cfSorted(videos){
+  return (Array.isArray(videos) ? videos : []).filter(v => v && v.videoId != null && v.videoId !== '').slice().sort((a, b) =>
+    ((Number(b.score) || 0) - (Number(a.score) || 0)) || ((Date.parse(b.postedAt || '') || 0) - (Date.parse(a.postedAt || '') || 0)));
+}
+// ---- max 5 TikTok creators (client-side) ----
+// THE ONE CREATOR RULE — a line-for-line mirror of api/creator-feed.js tiktokLink / creatorTiktokLink /
+// followedCreators (CONTRACT.md "## Server notes"), so the app and the server always count the same 5:
+//   the entry's TikTok link = links.tt when it is a tiktok.com link, else the FIRST tiktok.com link among its other
+//   fields (Object.keys order); handle = the lowercase /@name in its path ('' = a share link naming nobody — not counted;
+//   a nameless links.tt is NOT replaced by another field). Walk every entry in bookmark order, dedupe by handle.
+function cfTtLink(raw){
+  let t = String(raw == null ? '' : raw).trim();
+  if (!t || /\s/.test(t) || t.length > 500) return null;
+  if (/^http:\/\//i.test(t)) t = 'https://' + t.slice(7);
+  else if (!/^[a-z][a-z0-9+.\-]*:/i.test(t)) t = 'https://' + t.replace(/^\/+/, '');
+  let u;
+  try { u = new URL(t); } catch (e) { return null; }
+  if (u.protocol !== 'https:' || u.username || u.password || (u.port && u.port !== '443')) return null;
+  if (!/(^|\.)tiktok\.com$/i.test(u.hostname)) return null;
+  const m = /^\/@([\w.\-]{1,60})(?:\/|$)/.exec(u.pathname);
+  return { handle: m ? m[1].toLowerCase() : '', url: u.href };
+}
+function cfCreatorTtLink(links){
+  const L = (links && typeof links === 'object') ? links : {};
+  const tt = cfTtLink(L.tt);
+  if (tt) return tt;
+  for (const k of Object.keys(L)) { if (k === 'tt') continue; const t = cfTtLink(L[k]); if (t) return t; }
+  return null;
+}
+// the followed TikTok handles, deduped, in bookmark order. change = { entId, links }: that entry's links as they
+// WOULD be saved (entId null = a new entry, added at the end)
+function cfFollowedHandles(change){
+  const out = [], seen = new Set();
+  const take = links => { const hit = cfCreatorTtLink(links); if (hit && hit.handle && !seen.has(hit.handle)) { seen.add(hit.handle); out.push(hit.handle); } };
+  (Array.isArray(bookmarkCategories) ? bookmarkCategories : []).forEach(cat => ((cat && Array.isArray(cat.entries)) ? cat.entries : []).forEach(e => {
+    if (!e || typeof e !== 'object') return;
+    take(change && change.entId && e.id === change.entId ? change.links : e.links);
+  }));
+  if (change && !change.entId) take(change.links);
+  return out;
+}
+// may this save go through? Refused only when it would ADD a 6th followed TikTok creator: keeping or replacing an
+// entry's own creator, a creator already followed, a share link with no @name, or any non-TikTok link always pass.
+function cfAllowLinks(entId, links){
+  const before = cfFollowedHandles(null).length, after = cfFollowedHandles({ entId: entId || null, links: links }).length;
+  return !(after > CF_MAX_CREATORS && after > before);
+}
+// ---- the server ----
+async function cfCall(action, videoId){
+  const brandId = (currentBrand && currentBrand.id) || '';
+  if (!brandId) { const e0 = new Error('Pick a brand first.'); e0.code = 'no_brand'; throw e0; }
+  const body = { brandId: brandId, action: action };
+  if (videoId != null) body.videoId = String(videoId);
+  const fb = action === 'transcript' ? "Couldn't get the words from that TikTok — try again in a minute." : "Couldn't load your creators' new posts — try again in a minute.";
+  let resp;
+  try {
+    resp = await fetch('/api/creator-feed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (e) { const e1 = new Error('Your connection dropped — try again.'); e1.code = 'network'; throw e1; }
+  let data = null;
+  try { data = JSON.parse(await resp.text()); } catch (e) { data = null; }
+  if (!resp.ok || !data || data.ok !== true) {
+    const code = (data && typeof data.code === 'string') ? data.code : '';
+    const e2 = new Error(humanErr((data && typeof data.error === 'string' && data.error) || code, fb));
+    e2.code = code; e2.status = resp.status; throw e2;
+  }
+  return data;
+}
+function cfApply(d){
+  _cf.data = { creators: Array.isArray(d.creators) ? d.creators.filter(Boolean) : [], videos: cfSorted(d.videos), fetchedAt: d.fetchedAt || null };
+  _cf.note = typeof d.note === 'string' ? d.note : '';
+  _cf.noteBad = false;
+  _cf.status = 'ready';
+}
+function cfBrandNow(){ return (currentBrand && currentBrand.id) || ''; }
+// the feed belongs to ONE brand: a different brand starts from nothing (a request still on its way for the old
+// brand is orphaned by the seq bump and its answer dropped)
+function cfReset(brandId){ _cf = { brandId: brandId, status: 'idle', data: null, err: '', note: '', noteBad: false, showAll: false, inflight: false, refreshing: false, busy: '', rowErr: {}, seq: _cf.seq + 1 }; _cfRows = []; }
+// Remix opened: ONE 'list' (switchView calls this only when the screen was not already Remix)
+function cfOpen(){ return cfLoad('list'); }
+async function cfLoad(action){
+  const brandId = cfBrandNow();
+  if (_cf.brandId !== brandId) cfReset(brandId);   // another brand: never wait on (or show) the old brand's request
+  else if (_cf.inflight) return false;              // one feed request at a time
+  const refresh = action === 'refresh';
+  const seq = ++_cf.seq;
+  _cf.inflight = true;
+  if (refresh && _cf.data) _cf.refreshing = true; else { _cf.status = 'loading'; _cf.err = ''; }
+  cfRender();
+  try {
+    const d = await cfCall(refresh ? 'refresh' : 'list');
+    if (seq !== _cf.seq || brandId !== cfBrandNow()) return false;   // the brand changed meanwhile: drop it
+    cfApply(d);
+    return true;
+  } catch (e) {
+    if (seq !== _cf.seq || brandId !== cfBrandNow()) return false;
+    const msg = (e && e.message) || "Couldn't load your creators' new posts — try again in a minute.";
+    if (e && (e.code === 'no_creators' || e.code === 'not_tiktok')) { _cf.data = { creators: [], videos: [], fetchedAt: null }; _cf.status = 'ready'; _cf.note = ''; }
+    else if (_cf.refreshing) { _cf.note = msg; _cf.noteBad = true; }   // keep the rows; say why the refresh failed
+    else { _cf.status = 'error'; _cf.err = msg; }
+    return false;
+  } finally {
+    if (seq === _cf.seq) { _cf.inflight = false; _cf.refreshing = false; if (_cf.status === 'loading') _cf.status = 'idle'; }
+    cfRender();
+  }
+}
+function cfRefresh(){ return cfLoad('refresh'); }
+function cfToggleAll(){ _cf.showAll = !_cf.showAll; cfRender(); }
+function cfAddCreator(){
+  try { if (typeof fpAddOpen === 'function') fpAddOpen(); } catch (e) {}
+  try { const p = document.getElementById('followPanels'); if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+}
+// fill Step 1 exactly as a pasted TikTok link does (remixQuickGo → remixShowOriginal), then go to Step 2
+function cfFill(v){
+  const h = cfHandle(v.handle);
+  const url = (typeof fpHttps === 'function' ? fpHttps(v.url) : '') || (h ? 'https://www.tiktok.com/@' + h + '/video/' + encodeURIComponent(String(v.videoId)) : '');
+  remixShowOriginal({ kind: 'tiktok', url: url, creator: remixCreatorFromUrl(url) || h, text: typeof v.transcript === 'string' ? v.transcript : '' });
+  try { const s = document.querySelector('#remixOrigCard .rx-step-2'); if (s && s.scrollIntoView) s.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+  try { const b = document.querySelector('#remixOrigCard .rx-mode-main'); if (b && b.focus) b.focus({ preventScroll: true }); } catch (e) {}
+  return true;
+}
+async function cfPick(i){
+  const v = _cfRows[i]; if (!v) return false;
+  const id = String(v.videoId);
+  if (_cf.busy) { if (_cf.busy !== id) { try { showToast('One at a time — wait for this one to finish.'); } catch (e) {} } return false; }   // a double tap does nothing
+  // a Step 2 run or a pasted link is being read: the card is in use (remixQuickGo refuses the same way)
+  if ((typeof _rxBusy !== 'undefined' && _rxBusy) || (typeof _rxFetching !== 'undefined' && _rxFetching)) { try { showToast('Wait for this one to finish first.'); } catch (e) {} return false; }
+  if (cfReady(v)) return cfFill(v);   // already transcribed: no network call, nothing charged
+  if (v.transcriptStatus === 'working') { try { showToast('Already transcribing — try again in a minute'); } catch (e) {} return false; }   // another tab/device is on it: no call
+  const brandId = cfBrandNow();
+  _cf.busy = id; delete _cf.rowErr[id];
+  try { _rxFetching = true; } catch (e) {}
+  cfRender();
+  try {
+    const d = await cfCall('transcript', id);
+    if (brandId !== cfBrandNow()) return false;
+    cfApply(d);
+    const nv = _cf.data.videos.find(x => String(x.videoId) === id) || v;
+    if (typeof nv.transcript === 'string') return cfFill(nv);
+    if (nv.transcriptStatus === 'working') { try { showToast('Already transcribing — try again in a minute'); } catch (e) {} return false; }
+    _cf.rowErr[id] = "Couldn't get the words from this one — open it on TikTok and paste what they say into the box above.";
+    return false;
+  } catch (e) {
+    if (brandId === cfBrandNow()) _cf.rowErr[id] = (e && e.message) || "Couldn't get the words from that TikTok — try again in a minute.";
+    return false;
+  } finally {
+    if (_cf.busy === id) _cf.busy = '';
+    try { _rxFetching = false; } catch (e) {}
+    cfRender();
+  }
+}
+function cfRender(){
+  const el = document.getElementById('creatorFeed'); if (!el) return;
+  // another brand than the one on screen: never draw its rows. On Remix that is a new feed → load it now
+  // (cfLoad shows the skeleton); elsewhere just clear — the next open loads it. A plain re-render never loads.
+  const bid = cfBrandNow();
+  if (_cf.brandId !== bid && (_cf.brandId || _cf.data || _cf.inflight)) {
+    if (bid && typeof activeView !== 'undefined' && activeView === 'create') { cfLoad('list'); return; }
+    cfReset(bid);
+  }
+  const st = _cf.status;
+  if (st === 'idle' && !_cf.data) { el.innerHTML = ''; return; }
+  const d = _cf.data || { creators: [], videos: [] };
+  const hasTtNow = cfFollowedHandles(null).length > 0;
+  const showRefresh = st !== 'loading' && (d.creators.length > 0 || hasTtNow || st === 'error');
+  const head = '<div class="cf-head"><h2 class="cf-title">New from your creators</h2>'
+    + (showRefresh ? '<button type="button" class="cf-refresh" onclick="cfRefresh()"' + (_cf.refreshing ? ' disabled aria-busy="true">Refreshing…' : '>Refresh') + '</button>' : '')
+    + '</div>';
+  if (st === 'loading') {
+    const sk = '<div class="cf-skel" aria-hidden="true"><i></i><i></i></div>';
+    el.innerHTML = head + '<div class="cf-note" role="status">Loading their new posts…</div><div class="cf-list">' + sk + sk + sk + '</div>';
+    return;
+  }
+  if (st === 'error') {
+    el.innerHTML = head + '<div class="cf-err" role="alert">' + escHtml(_cf.err) + '</div>';
+    return;
+  }
+  if (!d.creators.length) {
+    el.innerHTML = head + '<div class="cf-empty">' + (hasTtNow
+      ? 'Press Refresh to load their new posts.'
+      : 'Follow up to 5 TikTok creators to see their new posts here. <button type="button" class="cf-add" onclick="cfAddCreator()">+ Add a creator</button>') + '</div>';
+    _cfRows = [];
+    return;
+  }
+  const note = _cf.note || (d.fetchedAt ? 'Updated ' + cfAge(d.fetchedAt) : '');
+  const all = d.videos;
+  _cfRows = all;
+  const shown = _cf.showAll ? all : all.slice(0, CF_TOP);
+  const rows = shown.map((v, i) => {
+    const id = String(v.videoId), busy = _cf.busy === id, ready = cfReady(v), h = cfHandle(v.handle);
+    const cap = String(v.caption == null ? '' : v.caption).replace(/\s+/g, ' ').trim();
+    const score = cfScoreLabel(v.score);
+    const chips = '<span class="cf-views">' + escHtml(cfShortNum(v.views) + ' views') + '</span>'
+      + (score ? '<span class="cf-chip cf-chip-hot">' + escHtml(score) + '</span>' : '')
+      + (busy ? '<span class="cf-chip">Getting the words…</span>' : (ready ? '<span class="cf-chip cf-chip-ok">Transcript ready</span>' : (v.transcriptStatus === 'working' ? '<span class="cf-chip">Transcribing…</span>' : '')));
+    const openUrl = safeUrl(typeof fpHttps === 'function' ? fpHttps(v.url) : '');   // https only, then the shared scheme check
+    const err = _cf.rowErr[id] ? '<div class="cf-row-err" role="alert">' + escHtml(_cf.rowErr[id]) + '</div>' : '';
+    return '<div class="cf-row' + (busy ? ' cf-busy' : '') + '" data-cf-vid="' + escAttr(id) + '">'
+      + '<button type="button" class="cf-main" onclick="cfPick(' + i + ')"' + (busy ? ' disabled aria-busy="true"' : '') + '>'
+      + '<span class="cf-top"><span class="cf-handle">@' + escHtml(h) + '</span><span class="cf-age">' + escHtml(cfAge(v.postedAt)) + '</span></span>'
+      + '<span class="cf-cap' + (cap ? '' : ' cf-cap-none') + '">' + (cap ? escHtml(cap) : 'No caption') + '</span>'
+      + '<span class="cf-chips">' + chips + '</span>'
+      + '</button>'
+      + (openUrl ? '<a class="cf-open" href="' + escAttr(openUrl) + '" target="_blank" rel="noopener" aria-label="' + escAttr('Open @' + h + "'s video on TikTok") + '"><span>Open<span class="cf-open-long"> on TikTok</span> ↗</span></a>' : '')
+      + err + '</div>';
+  }).join('');
+  const more = all.length > CF_TOP ? '<button type="button" class="cf-more" onclick="cfToggleAll()" aria-expanded="' + (_cf.showAll ? 'true' : 'false') + '">' + (_cf.showAll ? 'Show fewer' : 'Show all ' + all.length) + '</button>' : '';
+  const cerr = d.creators.filter(c => c && c.error).map(c => '<div class="cf-cerr">@' + escHtml(cfHandle(c.handle)) + ': ' + escHtml(c.error) + '</div>').join('');
+  el.innerHTML = head
+    + '<div class="cf-note' + (_cf.noteBad ? ' cf-note-bad' : '') + '" role="status">' + escHtml(note) + '</div>'
+    + (all.length ? '<div class="cf-list">' + rows + '</div>' + more : '<div class="cf-empty">No new posts from them yet.</div>')
+    + cerr;
+}
+
 // ===== follow-panels: "Creators you follow" (bottom of Remix, owner 2026-10-04) =====
 // The creators are the saved Bookmarks (bookmarkCategories → entries { id, name, links, note }), stored
 // as ONE JSON blob in competitors.notes (saveBookmarksToDB / loadBookmarksFromDB) — so the per-creator
@@ -24048,6 +24342,7 @@ function fpSaveEdit(){
       links[np] = u;
     }
   } else if (old) delete links[old.plat];
+  if (typeof cfAllowLinks === 'function' && !cfAllowLinks(f.ent.id, links)) { if (err) err.textContent = CF_MAX_MSG; return false; }   // v711: max 5
   f.ent.links = links;
   const note = fpCleanNote((document.getElementById('fpEditNote') || {}).value);
   if (note) f.ent.note = note; else delete f.ent.note;
@@ -24062,6 +24357,8 @@ function fpAdd(){
   const u = fpNormLink(raw);
   const plat = u ? fpPlatOf(u) : '';
   if (!u || !/^(tt|ig|yt)$/.test(plat)) { if (err) err.textContent = 'Paste a TikTok, Instagram or YouTube profile link.'; return false; }
+  // v711: at most 5 TikTok creators (the feed at the top of Remix follows them) — the server's one creator rule
+  { const _l = {}; _l[plat] = u; if (typeof cfAllowLinks === 'function' && !cfAllowLinks(null, _l)) { if (err) err.textContent = CF_MAX_MSG; return false; } }
   const note = fpCleanNote((document.getElementById('fpAddNote') || {}).value);
   let cat = (bookmarkCategories || [])[0];
   if (!cat) { cat = { id: bmId(), name: 'Following', entries: [] }; bookmarkCategories.push(cat); }
@@ -24142,6 +24439,7 @@ function addBmEntry(catId) {
       _nm = (_handle || 'Creator').slice(0, 40);
     }
   } catch(e) {}
+  if (typeof cfAllowLinks === 'function' && !cfAllowLinks(null, _links)) { try { showToast(CF_MAX_MSG); } catch (e) {} return; }   // v711: max 5
   cat.entries.push({ id: entId, name: _nm, links: _links });
   inp.value = '';
   _bmEditingEntry = { catId, entId };
@@ -24177,6 +24475,7 @@ function saveBmLinks(catId, entId, btn) {
     const v = (_f('bmLink_' + entId + '_' + k)?.value || '').trim();
     if (v) links[k] = v;
   });
+  if (typeof cfAllowLinks === 'function' && !cfAllowLinks(entId, links)) { try { showToast(CF_MAX_MSG); } catch (e) {} return; }   // v711: max 5
   ent.links = links;
   // follow-panels: the note is edited here too (≤140, tidied); an empty box removes it
   const _nb = _f('bmNote_' + entId);
@@ -24264,6 +24563,7 @@ function rerenderBookmarks() {
   if (el) el.innerHTML = renderBookmarksInner();
   renderBookmarkBar();
   try{ renderFollowPanels(); }catch(e){}
+  try{ cfRender(); }catch(e){}
 }
 
 // ===== BOOKMARK BAR =====
@@ -24324,6 +24624,7 @@ function switchCreateSub(sub) {
 function renderCreate() {
   renderRemixResults();
   renderRefGrid();
+  try { cfRender(); } catch (e) {}   // v711: redraw only — the feed loads once per open (switchView → cfOpen)
 }
 
 let activeSceneDay = null;
