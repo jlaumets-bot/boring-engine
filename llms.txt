@@ -1,6 +1,6 @@
 # Content Shrimp
 
-> A brand brain that learns your voice and turns it into ready-to-post content — social posts, scripts, remixes and memes — that actually sound like you, not generic AI.
+> A brand brain that learns your voice and turns it into ready-to-post content — social posts, scripts, your own versions of other creators' posts, and memes — that actually sound like you, not generic AI.
 
 ## What is Content Shrimp?
 
@@ -11,7 +11,7 @@ Content Shrimp is a web app for founders, creators, and small brands who are tir
 - Brand Brain: learns your voice across many dimensions — tone, pain points, vocabulary, words to avoid, CTA style, audience, competitors, and what you approve, edit and pass
 - Weekly Ideas and a 7-day content calendar mapped to your themes
 - Quick Posts: one-tap, ready-to-film posts for today
-- Remix: turn any creator's video into a post in your own voice
+- Make it yours: paste any TikTok or creator video and get your own version, in your voice
 - Trends: rising niche topics + competitor moves, plus reverse-engineer any viral video into the brand's own version
 - Memes and product / lifestyle images (bring your own Google Gemini key)
 - What People Search: the real questions people and AI assistants ask about your niche

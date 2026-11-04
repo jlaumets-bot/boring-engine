@@ -34,7 +34,7 @@ const hits = (re) => { const out = []; let m; const r = new RegExp(re.source, re
   const ALLOW = [];   // none needed
   const h = hits(/(?<![\w.\-#])(?:tap|taps|tapped|tapping)(?![\w\-])/i).filter(x => !ALLOW.some(a => x.includes(a)));
   ok(!h.length, '1 no "tap" wording in UI strings' + (h.length ? ' — ' + h.length + ':\n    ' + h.slice(0, 8).join('\n    ') : ''));
-  ok(/'Press again to discard' : 'Close'/.test(html) && /Pick one to open it in Remix/.test(html) && /<span class="tp-edit-hint">\$\{pencil\}Edit<\/span>/.test(html), '1 the named replacements are in (discard / Remix / Edit)');
+  ok(/'Press again to discard' : 'Close'/.test(html) && /Pick one to rebuild it in your voice/.test(html) && /<span class="tp-edit-hint">\$\{pencil\}Edit<\/span>/.test(html), '1 the named replacements are in (discard / rebuild / Edit)');
 }
 
 /* ═══ 2. glyph icons ═══ */

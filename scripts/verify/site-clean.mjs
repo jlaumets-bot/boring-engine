@@ -135,10 +135,17 @@ function firstTextDiff(a, b) {
   return 'at word ' + i + ': HEAD "…' + wa.slice(Math.max(0, i - 6), i + 8).join(' ') + '…" vs now "…' + wb.slice(Math.max(0, i - 6), i + 8).join(' ') + '…"';
 }
 
+// v713 — the ONE approved copy change (owner 2026-11-04): "Remix" is renamed "Make it yours" and the hero h1 is
+// "Paste any TikTok. Make it yours.". These exact before → after pairs are applied to the HEAD baseline, so only
+// they may differ; once v713 is committed the 'before' text is gone from HEAD and each pair is a no-op.
+const APPROVED_COPY = {"index.html": [["<title>Content Shrimp — Never wonder what to post again. A week of on-brand posts, in your voice.</title>", "<title>Content Shrimp — Paste any TikTok. Make it yours. On-brand posts, in your voice.</title>"], ["<meta property=\"og:title\" content=\"Content Shrimp — Never wonder what to post again\">", "<meta property=\"og:title\" content=\"Content Shrimp — Paste any TikTok. Make it yours.\">"], ["<meta name=\"twitter:title\" content=\"Content Shrimp — Never wonder what to post again\">", "<meta name=\"twitter:title\" content=\"Content Shrimp — Paste any TikTok. Make it yours.\">"], ["<h1>Never wonder <em>what to post</em> again.</h1>", "<h1>Paste any TikTok. <em>Make it yours.</em></h1>"], ["Get it rebuilt in your voice, never copied.</span><span class=\"wk\">remix</span>", "Get it rebuilt in your voice, never copied.</span><span class=\"wk\">make it yours</span>"], ["var TOOL=['Scripts','Statements','Carousels','Micro-lectures','Q&As','Remixes'];", "var TOOL=['Scripts','Statements','Carousels','Micro-lectures','Q&As','Your versions'];"], ["<h3>Remix</h3>", "<h3>Make it yours</h3>"], ["The daily tools &mdash; Quick Post, Ideas, Pipeline, Remix, Trends, Notebook", "The daily tools &mdash; Make it yours, Quick Post, Ideas, Pipeline, Trends, Notebook"], ["Every tool &mdash; Remix, Trends, Film it, Assistant", "Every tool &mdash; Make it yours, Trends, Film it, Assistant"], ["the daily tools — Quick Post, Ideas, Remix, Trends, Notebook —", "the daily tools — Make it yours, Quick Post, Ideas, Trends, Notebook —"], ["The posts worth making yours are one tap from Remix.</p>", "The posts worth making yours are one tap from your own version.</p>"]], "faq.html": [["every tool (posts, scripts, remixes, memes)", "every tool (posts, scripts, Make it yours, memes)"]]};
+const approve = (p, html) => (APPROVED_COPY[p] || []).reduce((h, [a, b]) => h.split(a).join(b), html);
+
 function checkPage(p) {
   const errs = [];
   let old, now;
   try { old = headOf(p); } catch (e) { return ['baseline: cannot read HEAD:' + p + ' from ' + baseRepo + ' (set SITE_BASE_REPO when running from a copy without .git): ' + String(e.message).split('\n')[0]]; }
+  old = approve(p, old);
   try { now = fs.readFileSync(path.join(root, p), 'utf8'); } catch (e) { return ['cannot read ' + p]; }
 
   // T

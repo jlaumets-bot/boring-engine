@@ -53,7 +53,7 @@ ok(/7[- ]day/.test(live) && /\$24/.test(live) && /\$79/.test(live), 'B3 visible 
 
 // ── C. the agreed shape ───────────────────────────────────────────────────────────────────────
 const h1 = (live.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) || [])[1] || '';
-ok(/what to post/i.test(h1), 'C1 H1 is the "never wonder what to post" promise (' + h1.replace(/<[^>]+>/g, '').trim() + ')');
+ok(h1.trim() === 'Paste any TikTok. <em>Make it yours.</em>', 'C1 H1 is the v713 promise "Paste any TikTok. Make it yours." (' + h1.replace(/<[^>]+>/g, '').trim() + ')');
 ok(/class="pain-strip"/.test(live), 'C2 pain strip kept');
 ok(/class="lp-brain"/.test(live) && /lpStage/.test(live), 'C3 brain animation kept');
 ok(count(section('formats'), /class="func reveal"/g) === 6, 'C4 exactly 6 format cards (' + count(section('formats'), /class="func reveal"/g) + ')');

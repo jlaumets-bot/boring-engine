@@ -182,7 +182,7 @@ module.exports = async function handler(req, res) {
     console.error('Remix error:', err);
     // The raw message used to go to the browser — which on a body-less POST meant the client
     // was shown our own TypeError. Siblings (viral-*, sharpen) all return a written sentence.
-    return res.status(500).json({ error: 'Remix failed — try again' });
+    return res.status(500).json({ error: "Couldn't make your version — try again" });
   }
 };
 

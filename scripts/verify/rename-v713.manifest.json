@@ -1,0 +1,44 @@
+{
+ "mutations": [
+  {
+   "id": "N1",
+   "finding": "v713 1: the one constant names the feature 'Make it yours'",
+   "file": "app.html",
+   "find": "var CS_REMIX_NAME = 'Make it yours';",
+   "replace": "var CS_REMIX_NAME = 'Remix';",
+   "gate": "rename-v713.mjs"
+  },
+  {
+   "id": "N2",
+   "finding": "v713 4: homepage h1 is 'Paste any TikTok. Make it yours.'",
+   "file": "index.html",
+   "find": "<h1>Paste any TikTok. <em>Make it yours.</em></h1>",
+   "replace": "<h1>Never wonder <em>what to post</em> again.</h1>",
+   "gate": "rename-v713.mjs"
+  },
+  {
+   "id": "N3",
+   "finding": "v713 5: the Trends button uses the one phrase",
+   "file": "app.html",
+   "find": "onclick=\"remixTopPost(${i})\">Make it yours →</button>",
+   "replace": "onclick=\"remixTopPost(${i})\">Make it mine →</button>",
+   "gate": "rename-v713.mjs"
+  },
+  {
+   "id": "N4",
+   "finding": "v713 2: a lowercase 'remix' inside a visible sentence (tour step) is caught",
+   "file": "app.html",
+   "find": "or paste a link to make it yours.'",
+   "replace": "or paste a link to remix it.'",
+   "gate": "rename-v713.mjs"
+  },
+  {
+   "id": "N5",
+   "finding": "v713 3: the homepage tool card is named 'Make it yours'",
+   "file": "index.html",
+   "find": "<h3>Make it yours</h3>",
+   "replace": "<h3>Remix</h3>",
+   "gate": "rename-v713.mjs"
+  }
+ ]
+}

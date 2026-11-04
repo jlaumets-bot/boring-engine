@@ -2,6 +2,15 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-04 — v713. "REMIX" IS NOW "MAKE IT YOURS" (owner picked it; "remix" read as copying, needs to be ad-friendly).
+
+- CS_REMIX_NAME = 'Make it yours'; 44 visible app strings renamed (default mode "Remix" → "My take", "Remix Mode" → "Pick an angle",
+  "Generate Remix" → "Make my version", Trends "Make it mine" → "Make it yours"). Code ids/view 'create'/API/actions unchanged.
+- index.html hero h1 "Paste any TikTok. <em nowrap>Make it yours.</em>"; title/og/twitter titles match. faq.html, llms.txt,
+  brand-brain-animation.html renamed. api/remix.js error → "Couldn't make your version — try again".
+- Gate rename-v713 (5/5 mutations); landing, copy-clean, site-clean updated. Full list: cloud /mnt/user-data/outputs/v713/rename-changes.md.
+OPEN (owner copy): hero subtext + phone mockup still pitch "a week of ideas", not "paste a TikTok"; "no setup" claim.
+
 ## ▶▶ 2026-11-04 — v712. REMIX IS THE FRONT DOOR (owner: "remix will be the main attraction… easiest to explain and to use").
 
 - Start view = Remix (CS_START_VIEW='create'; csStartView() still opens Ideas for push links / locked Remix). Remix first in

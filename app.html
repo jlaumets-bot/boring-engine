@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v712';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v713';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6804,7 +6804,7 @@ if (!window.supabase) {
         <div style="font-size:12.5px;color:var(--text3);line-height:1.5;margin-bottom:10px;">Paste a TikTok, YouTube or article link &mdash; or any text. You see the exact words first, then pick how to make it yours.</div>
         <textarea class="gen-textarea" id="remixQuickIn" placeholder="Paste a link or text&hellip;" style="min-height:64px;"></textarea>
         <div id="remixQuickStatus" style="font-size:12px;color:var(--text3);margin-top:6px;min-height:15px;"></div>
-        <button class="gen-btn" style="width:100%;margin-top:8px;" id="remixQuickBtn" onclick="remixQuickGo(this)">Remix it</button>
+        <button class="gen-btn" style="width:100%;margin-top:8px;" id="remixQuickBtn" onclick="remixQuickGo(this)">Make it yours</button>
         <button class="tp-shz-angle" style="margin-top:6px;padding:6px 10px;" onclick="remixToggleManual()">or set it up manually<span class="fold-caret" aria-hidden="true"><svg class="cs-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>
       </div>
       <div id="remixOrigCard"></div>
@@ -6852,9 +6852,9 @@ if (!window.supabase) {
 
         <div id="remixStage2" style="display:none;">
         <div style="margin-bottom:8px;">
-          <label class="sp-label" style="margin-bottom:6px;">Remix Mode</label>
+          <label class="sp-label" style="margin-bottom:6px;">Pick an angle</label>
           <div class="gen-scene-presets">
-            <button class="search-tag remix-mode-tag active" onclick="setRemixMode(this, 'remix')" data-mode="remix">Remix</button>
+            <button class="search-tag remix-mode-tag active" onclick="setRemixMode(this, 'remix')" data-mode="remix">My take</button>
             <button class="search-tag remix-mode-tag" onclick="setRemixMode(this, 'simplify')" data-mode="simplify">Simplify</button>
             <button class="search-tag remix-mode-tag" onclick="setRemixMode(this, 'flip')" data-mode="flip">Flip It</button>
             <button class="search-tag remix-mode-tag" onclick="setRemixMode(this, 'format-swap')" data-mode="format-swap">Format Swap</button>
@@ -6894,7 +6894,7 @@ if (!window.supabase) {
         <div id="remixStage2b" style="display:none;">
         <div id="remixDeliverySlot" style="margin-bottom:10px;"></div>
         <div style="display:flex; gap:8px;">
-          <button class="gen-btn hero" id="remixBtn" onclick="remixContent()" style="flex:1;">Generate Remix</button>
+          <button class="gen-btn hero" id="remixBtn" onclick="remixContent()" style="flex:1;">Make my version</button>
           <button id="tryAllBtn" onclick="tryAllModes()" style="flex:0 0 auto;background:none;border:none;color:var(--text3);font-size:13px;font-weight:600;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:10px 6px;">Try all modes</button>
         </div>
         </div>
@@ -6943,7 +6943,7 @@ if (!window.supabase) {
       <div id="vlTrendMemory"></div>
     </div>
     <div id="vlPanel-analyze" style="display:none;">
-    <p class="vl-sub" style="margin:0 0 12px;">Paste any video that's blowing up — it works out why it worked, then gives you angles in your voice. To rebuild one into a finished post, use Remix.</p>
+    <p class="vl-sub" style="margin:0 0 12px;">Paste any video that's blowing up — it works out why it worked, then gives you angles in your voice. To rebuild one into a finished post, open “Make it yours”.</p>
     <div id="vlQuick" style="background:var(--surface,#fff);border:1.5px solid #16130F;border-radius:16px;padding:16px;margin:0 0 14px;">
       <textarea class="gen-textarea" id="vlQuickIn" placeholder="Paste the viral video link &mdash; or its transcript&hellip;" style="min-height:64px;"></textarea>
       <button class="gen-btn" style="width:100%;margin-top:10px;" id="vlQuickBtn" onclick="vlQuickGo(this)">Analyze it</button>
@@ -7513,7 +7513,7 @@ function _markListLoad(k, ok) { try { _listLoadOk[k] = !!ok; } catch(e) {} }
    correctly refuses), so the second toast is the first they hear of any problem.
    Ideas already had this: window._ideasLoadFailed + notifyIdeasLoadFailed(). The five
    side-lists were given the flag and not the notification. */
-const _LIST_LABELS = { remixes: 'remixes', productRefs: 'reference photos', bookmarks: 'bookmarks',
+const _LIST_LABELS = { remixes: 'saved versions', productRefs: 'reference photos', bookmarks: 'bookmarks',
                        promptHistory: 'prompt history', notebook: 'notebook' };
 function listLoadFailed(k) { return _listLoadOk[k] === false; }
 let _listFailWarned = {};
@@ -8901,7 +8901,7 @@ async function _replaceBrandRows(table, brandId, rows, opts) {
 async function saveRemixesToDB() {
   if (!currentBrand) return;
   // Refuse to overwrite the database with a list that never loaded.
-  if (!_listLoaded('remixes')) { _warnListNotSaved('remixes'); return { ok: false, error: new Error('remixes were never loaded') }; }
+  if (!_listLoaded('remixes')) { _warnListNotSaved('saved versions'); return { ok: false, error: new Error('remixes were never loaded') }; }
   const safeIso = d => { const t = new Date(d || Date.now()); return isNaN(t.getTime()) ? new Date().toISOString() : t.toISOString(); };
   // v638: this mapping looked for sourceType / sourceUrl / sourceText / remixedText — FOUR field
   // names that are never set anywhere in this file. What remixContent actually stores is the
@@ -9993,7 +9993,7 @@ const TAB_INFO = {
   today: 'Your daily post — pick a format, generate, film and post.',
   ideas: 'A 7-day calendar of full briefs — hook, script, caption and shot list. Approve, dismiss, or expand any idea.',
   pipeline: 'Track approved ideas through production: Ready → Film & Post → Done.',
-  create: 'Remix any post, article or TikTok/YouTube link into your voice — six ways: remix, simplify, flip, swap formats, series or roast.',
+  create: 'Make any post, article or TikTok/YouTube link yours, in your voice — six ways: my take, simplify, flip, swap formats, series or roast.',
   notebook: 'Type or talk any thought → turn it into a post or a saved voice rule.',
   coach: 'Talk to your brand brain — sharpen your voice by chatting, and it applies what it learns across every tool.'
 };
@@ -10154,7 +10154,7 @@ function closeMoreSheet() { const w = document.getElementById('moreSheetWrap'); 
 var CS_START_VIEW = 'create';
 // The feature's PUBLIC name, in one place: the menus, the page title and the screen heading read it.
 // The rename (.unlazy/rename/remix-strings.md lists every other visible "Remix") changes this line first.
-var CS_REMIX_NAME = 'Remix';
+var CS_REMIX_NAME = 'Make it yours';
 function csStartView(u){
   try { if ((typeof csReadOpen === 'function' && csReadOpen(u)) || (typeof window !== 'undefined' && window._csPendingOpen)) return 'ideas'; } catch (e) {}
   try { if (typeof csNavLocked === 'function' && csNavLocked(CS_START_VIEW)) return 'ideas'; } catch (e) {}
@@ -10390,7 +10390,7 @@ function csPlanToggle(){
 // ── Per-function FAQ ("Open FAQ only about this function") ──
 const FN_FAQ_TITLE = {
   today:'Quick Post', ideas:'Ideas', idea:'Idea Catcher', questions:'What people search',
-  create:'Remix', viral:'Trends',
+  create:'Make it yours', viral:'Trends',
   pipeline:'Pipeline', notebook:'Notebook', dfy:'Done-for-you'
 };
 const FN_FAQ = {
@@ -10418,8 +10418,8 @@ const FN_FAQ = {
     { q:'Under the hood — where do these come from?', a:"Live People-Also-Ask and autocomplete data for your niche is pulled from search, de-duplicated and ranked by relevance to your brand — real demand signals, not guesses." }
   ],
   create: [
-    { q:'What does Remix do?', a:"Paste content that's already proven to work — a TikTok, a YouTube video, an article — and it rebuilds the idea in your brand voice, for your audience. You take the structure and the hook mechanics, never the words." },
-    { q:'What are the remix modes?', a:'Remix (same shape, your voice), Simplify, Flip It, Format Swap, Make Series, and Roast & Respond. Pick the angle you want.' },
+    { q:'What does “Make it yours” do?', a:"Paste content that's already proven to work — a TikTok, a YouTube video, an article — and it rebuilds the idea in your brand voice, for your audience. You take the structure and the hook mechanics, never the words." },
+    { q:'What are the angles?', a:'My take (same shape, your voice), Simplify, Flip It, Format Swap, Make Series, and Roast & Respond. Pick the angle you want.' },
     { q:'Is it just copying?', a:'No — it adapts the mechanic to your brand and never invents facts about your product.' },
     { q:'Does getting the words from a TikTok cost anything?', a:"No. Reading a TikTok link is free, up to a daily limit. Only making your own version uses your plan. Over the limit, paste the words yourself." },
     { q:'Under the hood — how does the rewrite work?', a:"It extracts the source's structural mechanic — hook, beats, payoff — discards the words, then rebuilds it with your product facts and voice memory. Adaptation at the structure level, not a paraphrase." }
@@ -14827,7 +14827,7 @@ function renderPipeline() {
       </div>
       <div class="pipeline-card-header" onclick="toggleExpand(${idea.id})">
         <div class="pipeline-card-info">
-          <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format] || idea.format || '')}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.isRemix?'<span class="remix-origin-tag">Remix</span>':''}${idea.delivery==='faceless'?'<span class="remix-origin-tag" style="background:var(--cs-chip);color:var(--cs-text);">Faceless</span>':''}
+          <span class="format-tag ${escAttr(idea.format)}">${escHtml(FORMAT_LABELS[idea.format] || idea.format || '')}</span>${(typeof typesLabelHtml === 'function') ? typesLabelHtml(idea) : ''}${idea.isRemix?'<span class="remix-origin-tag">Your version</span>':''}${idea.delivery==='faceless'?'<span class="remix-origin-tag" style="background:var(--cs-chip);color:var(--cs-text);">Faceless</span>':''}
           <div class="pipeline-card-title" style="padding-right:50px">${escHtml(idea.title)}</div>
           ${idea.hook && asText(idea.hook).trim().toLowerCase() !== asText(idea.title).trim().toLowerCase() ? `<div class="hook-label">Hook</div><div class="pipeline-card-hook">${escHtml(idea.hook)}</div>` : ''}
           <div class="pipeline-card-day">${escHtml(idea.day)}${idea.originalCreator?' \u2022 via '+escHtml(idea.originalCreator):''}${idea.community?' \u2022 '+escHtml(idea.community):''}</div>
@@ -15214,7 +15214,7 @@ function brainHeroVisual(){
 function _startBrainStream(){
   if(window._bhTick) clearInterval(window._bhTick);
   var SRC=['Your website','Competitors','Reviews & reputation','Market complaints','Your social posts','Viral posts you feed','Google “People Also Ask”','Live trends','News · X · RSS','What you approve','How you edit drafts','Words to avoid'];
-  var TOOL=['Ideas','Quick posts','Viral angles','Remixes','Trends','Pipeline'];
+  var TOOL=['Ideas','Quick posts','Viral angles','Your versions','Trends','Pipeline'];
   if(typeof window._bhSi!=='number'){window._bhSi=0;window._bhTi=0;window._bhN=0;}
   window._bhTick=setInterval(function(){
     var stages=document.querySelectorAll('.bh-stage');
@@ -15250,7 +15250,7 @@ function brainCoverageHtml(){
   const badges = ['Frontier AI models','Ever-learning','Never forgets','Knows your competitors'].map(badge).join('');
   const pulls = ['Your website','Competitors','Reviews &amp; reputation','Market complaints','Your social posts','Viral posts you feed','Google "People Also Ask"','Live trends','News &middot; X &middot; RSS'].map(t=>chip(t,false)).join('');
   const models = facets.map(f=>chip(f[0], f[1])).join('');
-  const powers = ['Quick Post','Weekly ideas','Pipeline','Remix','Idea Catcher','People-Also-Ask','Trends','Notebook','AI Assistant','Teleprompter'].map(t=>chip(t,false)).join('');
+  const powers = ['Quick Post','Weekly ideas','Pipeline','Make it yours','Idea Catcher','People-Also-Ask','Trends','Notebook','AI Assistant','Teleprompter'].map(t=>chip(t,false)).join('');
   const knowsHtml = knows.length ? `<div style="font-size:11.5px;color:var(--text2);margin-top:12px;line-height:1.55;text-align:center;"><strong style="color:var(--text);">It already knows about you:</strong> ${knows.map(k=>`&ldquo;${escHtml(k)}&rdquo;`).join(' &middot; ')}</div>` : '';
   const details = `<details style="margin-top:12px;border-top:1px solid var(--border2);"><summary style="list-style:none;cursor:pointer;font-size:11px;font-weight:700;color:var(--text3);padding:10px 0 2px;display:flex;align-items:center;justify-content:center;gap:6px;">See everything it reads &amp; powers <span class="fold-caret" aria-hidden="true"><svg class="cs-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></summary>${group('Reads from every angle', pulls)}${group('Models &amp; remembers — ' + facets.length + '+ facets', models)}${group('Powers every tool — one brain, not scattered', powers)}</details>`;
   return `<div style="background:var(--surface);border:1.5px solid #16130F;border-radius:16px;padding:16px;margin:0 0 14px;">
@@ -15273,7 +15273,7 @@ function brainFlowHtml(){
       ${arrow}
       ${lbl('2 &middot; Your brand brain')}<div style="background:var(--lav,#E7DAF9);border:1.5px solid #16130F;border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.55;color:#16130F;">A living model of your voice, tone, pain points, vocabulary and what you approve — updated every time you use the app.</div>
       ${arrow}
-      ${lbl('3 &middot; What comes out')}<div>${chip('Ideas in your voice')}${chip('Quick posts')}${chip('Remixes')}${chip('Viral twists')}${chip('Filmed videos')}</div>
+      ${lbl('3 &middot; What comes out')}<div>${chip('Ideas in your voice')}${chip('Quick posts')}${chip('Your versions')}${chip('Viral twists')}${chip('Filmed videos')}</div>
       <div style="font-size:12px;line-height:1.6;color:var(--text2);margin-top:12px;">A blank ChatGPT starts from zero every time. Here, every result is written through your brand brain — so it already knows your voice, your customers and what you've approved. <strong>That's the difference.</strong></div>
     </div>
   </details>`;
@@ -20141,8 +20141,8 @@ function sharpenQuickPost(btn){
 // Remix — sharpen a single (non-series) remix in place. Maps the remix* field names to/from the generic shape.
 function sharpenRemix(i, btn){
   const r = (typeof remixes!=='undefined' && remixes) ? remixes[i] : null;
-  if(!r){ if(typeof showToast==='function') showToast('Could not find that remix'); return; }
-  if(r.seriesParts && r.seriesParts.length){ if(typeof showToast==='function') showToast('Sharpen works on a single remix, not a series'); return; }
+  if(!r){ if(typeof showToast==='function') showToast('Could not find that version'); return; }
+  if(r.seriesParts && r.seriesParts.length){ if(typeof showToast==='function') showToast('Sharpen works on a single version, not a series'); return; }
   const content = {};
   if(r.remixTitle && String(r.remixTitle).trim()) content.title = r.remixTitle;
   if(r.remixHook && String(r.remixHook).trim()) content.hook = r.remixHook;
@@ -20679,7 +20679,7 @@ function showFeatureLock(feature){
   ov.innerHTML = '<div class="cs-upgrade-card">' +
     '<div class="cs-upgrade-title">' + f.name + ' is a paid tool</div>' +
     '<div class="cs-upgrade-body">' + f.why + '</div>' +
-    '<div class="cs-upgrade-meta">Your daily tools — Quick Post, Ideas, Pipeline, Remix, Trends, Notebook — stay free.</div>' +
+    '<div class="cs-upgrade-meta">Your daily tools — Make it yours, Quick Post, Ideas, Pipeline, Trends, Notebook — stay free.</div>' +
     '<button class="cs-upgrade-btn" onclick="startCheckout(\'pro\')">Upgrade to Pro · $24/mo</button>' +
     '<button class="cs-upgrade-alt" onclick="startCheckout(\'agency\')">Agency · $79/mo</button>' +
     '<button class="cs-upgrade-close" id="csUpgradeClose">Maybe later</button>' +
@@ -21917,7 +21917,7 @@ async function remixQuickGo(btn){
     say('');
     try { if (box) box.value = ''; } catch (e) {}
   } catch (e) {
-    say((e && e.message) || "Couldn't remix that — try the manual setup below.", true);
+    say((e && e.message) || "Couldn't make your version — try the manual setup below.", true);
     remixToggleManual(true); // open the classic form so nobody's stuck
   } finally { stopW(); }
 }
@@ -22196,15 +22196,15 @@ async function remixContent(opts) {
       () => getBrandContext());
     // v709 (D17): a 504 page is not a parser crash, and an error is said in words
     let data;
-    if (typeof readJsonOrThrow === 'function') data = await readJsonOrThrow(resp, 'Remixing that');
+    if (typeof readJsonOrThrow === 'function') data = await readJsonOrThrow(resp, 'Making your version');
     else { data = await resp.json(); if (!resp.ok) throw new Error(data.error || 'API error'); }
 
     const remix = data.remix;
     if (!remix || !((remix.remixScript||'').trim() || (remix.remixHook||'').trim() || (remix.remixTitle||'').trim() || (remix.seriesParts||[]).length)) {
-      throw new Error("Couldn't remix that. Paste the actual post text (or a working link) and try again.");
+      throw new Error("Couldn't make your version. Paste the actual post text (or a working link) and try again.");
     }
     if (!_sameBrand()) {
-      if (typeof showToast === 'function') showToast('You switched brand while that remix was generating — it was not saved to either brand', 6000);
+      if (typeof showToast === 'function') showToast('You switched brand while your version was being written — it was not saved to either brand', 6000);
       return;
     }
     remix.creatorName = creatorName || 'unknown';
@@ -22230,7 +22230,7 @@ async function remixContent(opts) {
     document.getElementById('remixDescription').value = '';
   } catch (err) {
     // v709 (D17): plain words — a 402 says "out of posts", a timeout says so; never "limit_reached" in an alert
-    const _rxFb = "Couldn't remix that \u2014 try again.";
+    const _rxFb = "Couldn't make your version \u2014 try again.";
     const _rxRaw = (typeof _leanErrMsg === 'function') ? _leanErrMsg(err, _rxFb) : ((err && err.message) || _rxFb);
     const _rxMsg = (typeof humanErr === 'function') ? humanErr(_rxRaw, _rxFb) : _rxRaw;
     if (typeof showToast === 'function') showToast(_rxMsg, 7000); else alert(_rxMsg);
@@ -22261,8 +22261,8 @@ function renderRemixResults() {
   el.innerHTML = remixes.map((r, i) => {
     const platformIcons = { youtube: 'YT', tiktok: 'TT', instagram: 'IG', wechat: 'WC', twitter: '𝕏', other: 'Web' };
     const platformIcon = platformIcons[r.platform] || 'Web';
-    const modeBadges = { remix: 'Remix', simplify: 'Simplified', flip: 'Flipped', 'format-swap': 'Format Swap', series: 'Series', roast: 'Roast' };
-    const modeBadge = modeBadges[r.remixMode] || 'Remix';
+    const modeBadges = { remix: 'My take', simplify: 'Simplified', flip: 'Flipped', 'format-swap': 'Format Swap', series: 'Series', roast: 'Roast' };
+    const modeBadge = modeBadges[r.remixMode] || 'My take';
     const formatBadge = r.remixFormat ? `<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--green-bg);color:var(--green);font-weight:700;text-transform:uppercase;">${r.remixFormat}</span>` : '';
 
     // Handle series format (multiple parts)
@@ -22860,7 +22860,7 @@ async function rv2Save() {
       // the run is no longer on screen (sign-out / account switch): never lose the script silently
       const other = _rv2Runs[s.host] && _rv2Runs[s.host].brandId === s.brandId;
       rv2LsWrite(rv2DraftKey(s.host, s.brandId, !!other), rv2DraftJson(s));
-      try { showToast("Couldn't save your script — it is kept and comes back when you reopen " + (s.host === 'rv2Panel' ? 'Remix' : 'this screen') + '.', 7000); } catch (e) {}
+      try { showToast("Couldn't save your script — it is kept and comes back when you reopen " + (s.host === 'rv2Panel' ? '“Make it yours”' : 'this screen') + '.', 7000); } catch (e) {}
     }
     return false;
   }
@@ -22976,7 +22976,7 @@ function rv2CloseSheet() {
 function rv2CardHtml(s) {
   const _clAsk = s.classicAsk && s.classicAsk === rv2StateKey(s);
   const classic = '<button type="button" class="rv2-link" onclick="rv2Classic()">' + escapeHtml(_clAsk ? 'Press again to drop this script and write a new one the classic way'
-    : ((s.origin && s.origin.classicLabel) || 'Use the classic remix instead')) + '</button>';
+    : ((s.origin && s.origin.classicLabel) || 'Use the classic form instead')) + '</button>';
   const errLine = s.err ? '<div class="rv2-err" role="alert">' + escapeHtml(s.err) + '</div>' : '';
   let h = '<div class="rv2-card">';
   if (s.stage === 'loading') {
@@ -23391,7 +23391,7 @@ function clRender() {
     const typed = Array.isArray(_cl.typed) ? _cl.typed : [];   // v693 r4: a failed start never wipes what was typed
     for (let i = 0; i < 5; i++) {
       const t = typed[i] || {};
-      h += '<div class="rv2-lab-input"><select id="clKind' + i + '">' + kinds.map(k => '<option value="' + k + '"' + (t.kind === k ? ' selected' : '') + '>' + k + '</option>').join('') + '</select>'
+      h += '<div class="rv2-lab-input"><select id="clKind' + i + '">' + kinds.map(k => '<option value="' + k + '"' + (t.kind === k ? ' selected' : '') + '>' + (k === 'remix' ? 'post' : k) + '</option>').join('') + '</select>'
         + '<textarea class="gen-textarea" id="clText' + i + '" placeholder="Input ' + (i + 1) + (i ? ' (optional)' : '') + '" style="min-height:52px;">' + escHtml(t.text || '') + '</textarea></div>';
     }
     if (_cl.armOut) h += '<button type="button" class="gen-btn" data-arm="' + escHtml(_cl.armOut) + '" onclick="clCreateWithout(this)" style="width:100%;margin-bottom:8px;">' + (_cl.armOut === 'claude' ? 'Run without the Claude writer' : 'Run without them') + '</button>';
@@ -23770,13 +23770,13 @@ function remixToIdeas(r, status){
     const series = t(r.remixTitle) || 'Series';
     return parts.map((p, i) => one(p, (t(p.remixTitle) || series) + ' (part ' + (Number(p.partNumber) || (i + 1)) + ' of ' + parts.length + ')'));
   }
-  return [one(r, t(r.remixTitle) || 'Untitled Remix')];
+  return [one(r, t(r.remixTitle) || 'Untitled version')];
 }
 function copyRemix(idx) {
   const r = remixes[idx];
   if (!r) return;
   const text = remixCopyText(r);
-  navigator.clipboard.writeText(text).then(() => { showToast('Remix copied'); if (typeof mascotReact === 'function') mascotReact('wink', '📋'); }).catch(() => copyFallback(text));
+  navigator.clipboard.writeText(text).then(() => { showToast('Your version copied'); if (typeof mascotReact === 'function') mascotReact('wink', '📋'); }).catch(() => copyFallback(text));
 }
 
 function sendRemixToPipeline(idx) {
@@ -23848,7 +23848,7 @@ async function tryAllModes() {
   btn.textContent = 'Running 6 modes…';
 
   const modes = ['remix', 'simplify', 'flip', 'format-swap', 'series', 'roast'];
-  const modeLabels = { remix: 'Remix', simplify: 'Simplify', flip: 'Flip', 'format-swap': 'Format Swap', series: 'Series', roast: 'Roast' };
+  const modeLabels = { remix: 'My take', simplify: 'Simplify', flip: 'Flip', 'format-swap': 'Format Swap', series: 'Series', roast: 'Roast' };
 
   // Show results container immediately with loading cards
   let resultsEl = document.getElementById('tryAllResults');
@@ -26162,7 +26162,7 @@ function renderSettingsPanel() {
                   <label class="toggle-switch"><input type="checkbox" ${on?'checked':''} onchange="updateSetting('voiceLearn', this.checked); renderSettingsPanel();"><span class="toggle-track"></span></label>
                 </div>
                 ${on && n ? `<details class="sp-voice-log"><summary>See what it kept <span class="fold-caret" aria-hidden="true"><svg class="cs-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></summary>${log.slice().reverse().map((e,ri)=>{ const i=log.length-1-ri; return `<div class="sp-voice-note"><span class="sp-voice-src">${escHtml(e.src||'')}</span> ${escHtml(String(e.text||'').slice(0,220))}${String(e.text||'').length>220?'…':''} <button class="sp-voice-x" onclick="voiceLogRemove(${i})" title="Forget this one">×</button></div>`; }).join('')}</details>` : ''}
-                <div class="sp-tip" style="margin-top:6px;">Only things you say in your own words — notebook, Idea Catcher, the coach, Remix and Trends descriptions, and the stories you tell into a Remix script. 30+ words. Never the teleprompter: that is you reading a script, not you talking.</div>
+                <div class="sp-tip" style="margin-top:6px;">Only things you say in your own words — notebook, Idea Catcher, the coach, what you describe in “Make it yours” and Trends, and the stories you tell into its scripts. 30+ words. Never the teleprompter: that is you reading a script, not you talking.</div>
               </div>`;
             })()}
           </div>
@@ -26781,8 +26781,8 @@ function remixTopPost(i){
     remixShowOriginal({ kind: 'trend', url: safeUrl(p.link) ? String(p.link) : '', creator: '', text: String(p.text || '') });
     // the view switch can still be laying out — scroll again once it has
     setTimeout(function(){ try{ const el = document.getElementById('remixOrigCard'); if(el && el.scrollIntoView) el.scrollIntoView({ behavior:'smooth', block:'start' }); }catch(e){} }, 260);
-    if(typeof showToast==='function') showToast('Dropped into Remix — pick how to make it yours');
-  }catch(e){ if(typeof showToast==='function') showToast('Could not open that post in Remix'); }
+    if(typeof showToast==='function') showToast('Opened in “Make it yours” — pick an angle');
+  }catch(e){ if(typeof showToast==='function') showToast('Could not open that post'); }
 }
 /* v673 — THIS TOOK THE 16 OLDEST TRENDS AND CALLED THEM "RIGHT NOW".
    It read `getTrendStore().concat(getAutoTrends())` and sliced from the FRONT. The store is
@@ -26872,8 +26872,8 @@ function renderTrendMemory(){
   // is the only thing on the screen a user can act on, so it stays out front.
   let act = '';
   if (_tp.length) {
-    act = `<div class="vl-trend-panel"><div class="vl-trend-head">${ICO.zap} Worth making yours <span class="vl-trend-sub">— posts pulling numbers in your niche right now. Pick one to open it in Remix, rebuilt in your voice.</span></div><div class="vl-top-list">` +
-      _tp.map((p,i)=>`<div class="vl-top-post"><div class="vl-top-meta">${p.handle?`<span class="vl-top-handle">@${vlEscAttr(p.handle)}</span>`:''}<span class="vl-top-nums">${p.likes?`${p.likes.toLocaleString()} likes`:''}${p.likes&&p.reposts?' · ':''}${p.reposts?`${p.reposts.toLocaleString()} reposts`:''}</span></div><div class="vl-top-text">${vlEscAttr(String(p.text).slice(0,280))}${String(p.text).length>280?'…':''}</div><div class="vl-top-actions"><button class="vl-top-use" onclick="remixTopPost(${i})">Make it mine →</button>${safeUrl(p.link)?`<a class="vl-cm-src" href="${vlEscAttr(safeUrl(p.link))}" target="_blank" rel="noopener">see the post ↗</a>`:''}</div></div>`).join('') +
+    act = `<div class="vl-trend-panel"><div class="vl-trend-head">${ICO.zap} Worth making yours <span class="vl-trend-sub">— posts pulling numbers in your niche right now. Pick one to rebuild it in your voice.</span></div><div class="vl-top-list">` +
+      _tp.map((p,i)=>`<div class="vl-top-post"><div class="vl-top-meta">${p.handle?`<span class="vl-top-handle">@${vlEscAttr(p.handle)}</span>`:''}<span class="vl-top-nums">${p.likes?`${p.likes.toLocaleString()} likes`:''}${p.likes&&p.reposts?' · ':''}${p.reposts?`${p.reposts.toLocaleString()} reposts`:''}</span></div><div class="vl-top-text">${vlEscAttr(String(p.text).slice(0,280))}${String(p.text).length>280?'…':''}</div><div class="vl-top-actions"><button class="vl-top-use" onclick="remixTopPost(${i})">Make it yours →</button>${safeUrl(p.link)?`<a class="vl-cm-src" href="${vlEscAttr(safeUrl(p.link))}" target="_blank" rel="noopener">see the post ↗</a>`:''}</div></div>`).join('') +
       `</div><div class="vl-top-note">Most-engaged of the recent posts we pulled for your niche — a sample, not a leaderboard.</div></div>`;
   }
   const _cm = (typeof currentBrand!=='undefined' && currentBrand && currentBrand.auto_trends && currentBrand.auto_trends.competitorMoves) || '';
@@ -28334,14 +28334,14 @@ const TOUR_STEPS = [
   {
     deskTarget: '#csxNewPost', phoneTarget: '#csNewBtn',
     title: 'Start a post',
-    text: 'New post opens a box: write what the post is about, or paste a link to remix it.',
+    text: 'New post opens a box: write what the post is about, or paste a link to make it yours.',
     phoneText: 'The pencil opens Quick Post: a ready-to-film post for today, in your voice.'
   },
   {
     deskTarget: '#desktopSidebar .ds-item[data-view="ideas"]', phoneTarget: '#csMenuBtn',
     title: 'Every screen in one place',
-    text: 'The sidebar holds every screen: Quick Post, Ideas, Pipeline, Remix and your tools.',
-    phoneText: 'The menu holds every screen: Quick Post, Ideas, Pipeline, Remix and your tools.'
+    text: 'The sidebar holds every screen: Make it yours, Quick Post, Ideas, Pipeline and your tools.',
+    phoneText: 'The menu holds every screen: Make it yours, Quick Post, Ideas, Pipeline and your tools.'
   },
   {
     deskTarget: '#view-ideas > .csx-toolbar', phoneTarget: '#csPlanToggle||#ideasQuickBtn', deskView: 'ideas', phoneView: 'ideas',
@@ -28578,7 +28578,7 @@ setTimeout(() => {
         const used = localStorage.getItem('mascot_used_remix');
         return !used && typeof IDEAS !== 'undefined' && IDEAS.length > 5;
       },
-      text: 'Ever tried <strong>Remix</strong>? Paste any post, article, or video and I\'ll turn it into content in your brand voice.',
+      text: 'Ever tried <strong>Make it yours</strong>? Paste any post, article, or video and I\'ll turn it into content in your brand voice.',
       actions: [{ label: 'Cool, got it', fn: () => { localStorage.setItem('mascot_used_remix','1'); mascotDismiss(); } }]
     },
     {
@@ -28981,7 +28981,7 @@ setTimeout(() => {
         pet.classList.add('backflip');
         const tips = [
           'Tip: Fill in all 13 Brand Voice fields for best results',
-          'Tip: Use Remix to adapt trending content to your voice',
+          'Tip: Paste a trending post into “Make it yours” to get your own version',
           'Tip: Link a Master Prompt doc in Settings for deeper AI context',
           'Tip: Approve ideas you like — the AI learns your taste',
           'Tip: Say why you dismiss ideas — it improves future generations'
@@ -29011,7 +29011,7 @@ setTimeout(() => {
             'Ask the AI Assistant to refine your brand voice',
             'Generate a post, then copy the script — ready to film!',
             'Each day has a theme. Check Settings to customize them',
-            'Remix lets you turn any viral post into your own content'
+            '“Make it yours” turns any viral post into your own content'
           ];
           mascotSay(hints[Math.floor(Math.random() * hints.length)], 4000);
           setTimeout(() => pet.classList.remove('giggling'), 600);
@@ -30808,7 +30808,7 @@ function csxComposerOpen(text){
     onClose: function(){ try { var v = _ta ? String(_ta.value || '') : ''; if (v.trim()) _csxComposerDraft = v; } catch (e) {} },
     body: '<label class="csx-label" for="csxComposerIn">Write a post about… or paste a link</label>'
       + '<textarea class="csx-textarea" id="csxComposerIn" rows="4" placeholder="Write a post about… or paste a TikTok link"></textarea>'
-      + '<p class="csx-hint">A link opens Remix. Anything else is written as a post in your voice.</p>',
+      + '<p class="csx-hint">A link opens “Make it yours”. Anything else is written as a post in your voice.</p>',
     foot: csxBtn('Cancel', "csxDialogClose('csxComposerDlg')", 'ghost') + csxBtn('Write it', 'csxComposerSend()', 'primary') });
   var ta = bd.querySelector('#csxComposerIn'); _ta = ta;
   if (ta) {
