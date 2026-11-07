@@ -2,6 +2,11 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-07 — v715. FACT SEARCH BUDGET 60 s → 150 s.
+Live evidence (Vercel logs 2026-11-07 03:21 UTC): "grok-search: cut off at the 60000ms budget with 736 chars of partial text —
+it is WORKING, just slower" → search_empty → fact-pack heartbeat 'error' → health 25/26. xAI key confirmed working (stream 390 KB).
+api/fact-pack.js: cron searchMs = clamp(10 s, left()-35 s, 150 s); owner refresh 150 s (maxDuration 300, BUDGET 270 s).
+
 ## ▶▶ 2026-11-07 — v714. HYBRID MAIN SCREEN: Grok-chat base + Shazam paste button + Granola list (owner picked from 3 mockups).
 
 Owner now uses ONLY "Make it yours". Mockups: cloud /mnt/user-data/outputs/design-options/ (A/B/C + H-hybrid.png). Contract .unlazy/hybrid/CONTRACT.md.

@@ -733,7 +733,7 @@ async function runCron(req, res) {
         if (!(await claimSearch(b.id, packOf(b), claimedAt))) { n.skipClaimed++; return; }
         claimed = true;
         n.searched++;
-        const out = await buildFacts(b, { searchMs: Math.max(10000, Math.min(60000, left() - 35000)), verifyMs: 25000 });
+        const out = await buildFacts(b, { searchMs: Math.max(10000, Math.min(150000, left() - 35000)), verifyMs: 25000 });   // v715: Grok search often needs >60 s (cut off at 60 s on 2026-11-07 with partial text)
         if (out.reason === 'search_empty' || out.reason === 'search_unparseable') n.searchEmpty++;
         if (searchFailed(out)) {
           // v710 — not this week's search: give the slot back so tomorrow's run tries again.
@@ -830,7 +830,7 @@ async function runUser(req, res) {
   if (await overCostCap(user.id)) return res.status(402).json({ code: 'cost_cap', error: 'Fact refresh is paused on this plan for now.' });
   if (!(await claimSearch(brandId, prev, now))) return res.status(429).json({ code: 'rate_limited', retryAfter: Math.ceil(C.MANUAL_GAP_MS / 1000), error: 'A refresh is already running for this brand.' });
   const prevAt = prev ? prev.lastSearchAt : undefined;
-  const out = await buildFacts(b, { searchMs: 60000, verifyMs: 25000 });
+  const out = await buildFacts(b, { searchMs: 150000, verifyMs: 25000 });   // v715: was 60 s, too short for Grok search
   if (searchFailed(out)) {
     // v710 — give the slot back (see releaseSearch): the next daily run retries instead of waiting a week.
     const failedAt = deps.now();
