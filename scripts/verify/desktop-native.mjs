@@ -83,7 +83,7 @@ const world = (extra = {}, wide = true, desk = true) => {
   const undef = [...new Set(items.map(i => i.call[0]))].filter(n => !appDefines(n));
   ok(!undef.length, '1 every function a palette item calls exists in app.html' + (undef.length ? ' — missing ' + undef : ''));
   ok(c2.csxPaletteFilter(items, 'pipe').map(i => i.label).join() === 'Pipeline' && c2.csxPaletteFilter(items, 'theme').length === 1, '1 palette filtering by typed text');
-  ok(/<span>Bookmarks<\/span>/.test(sb) && /data-act="openSettings"/.test(sb), '1 the sidebar keeps Bookmarks and Settings');
+  ok(/data-act="toggleBookmarkBar"[^>]*>[\s\S]*?<span>Creators<\/span>/.test(sb) && /data-act="openSettings"/.test(sb), '1 the sidebar keeps Bookmarks (v716: labelled Creators) and Settings');
 }
 
 /* ═══ 2. toolbar ═══ */

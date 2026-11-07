@@ -20,8 +20,8 @@
    "id": "R3",
    "finding": "v712 2: Remix is first in the desktop sidebar",
    "file": "app.html",
-   "find": "h += _dsItem('create',CS_REMIX_NAME)+_dsItem('today','Quick Post')+",
-   "replace": "h += _dsItem('today','Quick Post')+_dsItem('create',CS_REMIX_NAME)+",
+   "find": "h += _dsItem('create',CS_REMIX_NAME)+_dsItem('ideas','Ideas')+",
+   "replace": "h += _dsItem('ideas','Ideas')+_dsItem('create',CS_REMIX_NAME)+",
    "gate": "remix-first-v712.mjs"
   },
   {

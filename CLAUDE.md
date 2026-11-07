@@ -2,6 +2,22 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-07 — v716. APP-WIDE STYLE, PHASE 1: Ideas, Idea detail, Pipeline, typed ideas, menu (owner approved sheet).
+Mockups: cloud /mnt/user-data/outputs/design-options/appwide/. Two patterns: CHAT (create) / CALM LIST (browse). Shared aw-* CSS.
+- Ideas: calm list Today/This week/Earlier (grouping = device first-seen time; ideas.created_at is the LAST SAVE because every save
+  re-inserts all rows — real date needs a new column), type+format chips, ×/✓ icons, swipe (|dx|>2|dy|, >16 px lock, cancel >24 px
+  vertical, commit >96 px) + 5 s Undo. Header ⋯: Select several (Keep N bar), Show skipped, Restore skipped, Copy all kept, Generate,
+  Content mix; muted "N hidden — format switched off". Old workspace hidden (body.aw-on).
+- Idea detail: Hook/Script/Shot list/Caption sections with copy, Show all, ⋯ (old tools + Assign…), sticky Film it (keeps once →
+  openTeleprompter(id), Mark done → Posted). Carousel/image: sticky = "Make slides"/"Make the image", never the teleprompter.
+- Pipeline: To film / Posted groups (NO "filmed" status exists — needs server+DB), "Film next" skips carousel/image; long-press → Assign.
+- Main chat: typed text in an empty thread → idea pills (My take, Myth buster, Story, Quick tip, Q&A, Series) = existing remix modes
+  + an "ANGLE:" line in the concept text (no separate field in /api/remix); links keep the remix set.
+- Menu (drawer, sidebar, ⌘K): Make it yours, Ideas, Pipeline, Trends, What people search, Notebook, Creators, Coach, Settings;
+  "Classic tools" collapsed; credits last; drawer scrolls whole.
+Gate appwide-p1-v716 (15 mutations). Updated: desktop-layout, desktop-native, remix-first-v712, hybrid-v714. Review: no blockers; fixed.
+NEXT: phase 2 Trends + What people search; phase 3 Notebook, Creators, Settings. Server wishes: filmed status, real idea date, idea modes.
+
 ## ▶▶ 2026-11-07 — v715. FACT SEARCH BUDGET 60 s → 150 s.
 Live evidence (Vercel logs 2026-11-07 03:21 UTC): "grok-search: cut off at the 60000ms budget with 736 chars of partial text —
 it is WORKING, just slower" → search_empty → fact-pack heartbeat 'error' → health 25/26. xAI key confirmed working (stream 390 KB).

@@ -1847,6 +1847,147 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
 .progress-bar-fill, .sp-plan-bar-fill, .cs-onb-bar-fill { background: var(--cs-text); }
 hr { border-color: var(--cs-line); }
 
+/* ============ v716 APP-WIDE phase 1 — ONE set of list + chat pieces for every screen (owner-approved mockups design-options/appwide/) ============
+   The shared pieces: group header (.aw-gh), list row (.aw-row + .aw-rt title + .aw-rm meta line), chip (.aw-tag, .aw-tag.ghost),
+   big pill (.aw-pill), sticky bar (.aw-bar + .aw-film + .aw-sq) and the floating pill (.aw-fab). The v714 main screen's hy-* names are
+   aliases in the same rules (its markup and its gate keep those names), so Make it yours, Ideas, the idea page and Pipeline share one
+   spacing and type scale: screen title 28/600, group 14/500 muted, row 16/500, meta 14, chips 26 px, pills 48 px, bars 52 px.
+   Gate: scripts/verify/appwide-p1-v716.mjs. Tokens only. */
+.aw-gh,
+.hy-day { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 0 2px; font-size: 14px; font-weight: 500; line-height: 1.4; color: var(--cs-muted); }
+.aw-row,
+.hy-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; box-sizing: border-box; margin: 0; padding: 11px 0;
+  border: 0; border-bottom: 1px solid var(--cs-line); border-radius: 0; background: none; font: inherit; text-align: left; color: var(--cs-text); }
+.aw-rt,
+.hy-rt { display: block; min-width: 0; font-size: 16px; font-weight: 500; letter-spacing: -.1px; line-height: 1.35; color: var(--cs-text); overflow-wrap: anywhere; }
+.aw-rm,
+.hy-rm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; margin-top: 7px; font-size: 14px; line-height: 1.3; color: var(--cs-muted); }
+.aw-tag,
+.hy-tag { display: inline-flex; align-items: center; height: 26px; box-sizing: border-box; padding: 0 10px; border: 1px solid transparent; border-radius: 999px;
+  background: var(--cs-chip); font-size: 14px; font-weight: 400; color: var(--cs-text); white-space: nowrap; }
+.aw-tag.ghost { background: transparent; border-color: var(--cs-line-strong); color: var(--cs-muted); }
+.aw-pill,
+.hy-pill { min-height: 48px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--cs-line-strong); background: var(--cs-chip); color: var(--cs-text);
+  font: inherit; font-size: 16px; font-weight: 500; line-height: 1.2; cursor: pointer; }
+.aw-pill:hover, .hy-pill:hover { border-color: var(--cs-muted); }
+.aw-pill.on, .hy-pill.on { background: var(--cs-primary); color: var(--cs-on-primary); border-color: var(--cs-primary); }
+.aw-pill:disabled, .hy-pill:disabled { opacity: .55; cursor: progress; }
+.aw-bar,
+.hy-bar { display: flex; gap: 10px; border-top: 1px solid var(--cs-line); }
+.aw-film,
+.hy-film { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; height: 52px; border: 0; border-radius: 999px; background: var(--cs-primary); color: var(--cs-on-primary);
+  font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
+.aw-sq,
+.hy-copy { flex: none; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; padding: 0; border: 0; border-radius: 26px; background: var(--cs-chip); color: var(--cs-text); cursor: pointer; }
+.aw-fab { display: inline-flex; align-items: center; justify-content: center; gap: 9px; height: 52px; padding: 0 24px 0 20px; border: 0; border-radius: 999px;
+  background: var(--cs-primary); color: var(--cs-on-primary); font: inherit; font-size: 16px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 10px 30px var(--cs-overlay); }
+.aw-fab:disabled { cursor: progress; opacity: .85; }
+.aw-rb:focus-visible, .aw-ib:focus-visible, .aw-row:focus-visible, .aw-fab:focus-visible, .aw-film:focus-visible, .aw-sq:focus-visible, .aw-cp:focus-visible,
+.csd-fold:focus-visible, .ds-fold:focus-visible { outline: 2px solid var(--cs-text); outline-offset: 2px; }
+
+/* ---- the calm list screens (Ideas, Pipeline): the old markup stays in the page, hidden ---- */
+body:not(.aw-on) .aw-screen, body:not(.aw-on) .aw-detail, body:not(.aw-on) .aw-dock { display: none !important; }
+body.aw-on #view-ideas > :not(#awIdeas), body.aw-on #view-pipeline > :not(#awPipe) { display: none !important; }
+body.aw-on[data-csx-md="ideas"] #csxDetail, body.aw-on[data-csx-md="pipeline"] #csxDetail { display: none !important; }
+body.aw-on[data-cs-view="ideas"] .cs-composer { display: none !important; }   /* Ideas: the floating "Plan my week" takes its place (mockup 3) */
+body.aw-on[data-cs-view="ideas"] #mainViews > .footer, body.aw-on[data-cs-view="pipeline"] #mainViews > .footer { display: none; }
+body.aw-on[data-cs-view="ideas"] #view-ideas, body.aw-on[data-cs-view="pipeline"] #view-pipeline { padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important; }
+body.aw-on #mainViews > .view > .aw-screen { width: auto; max-width: 760px !important; margin-left: auto !important; margin-right: auto !important; box-sizing: border-box; }
+.aw-screen { display: block; padding: 0 4px; color: var(--cs-text); font-family: var(--cs-font); }
+.aw-head { padding: 2px 0 4px; }
+.aw-title { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.5px; line-height: 1.2; color: var(--cs-text); }
+.aw-sub { margin: 4px 0 0; font-size: 14px; line-height: 1.4; color: var(--cs-muted); }
+.aw-list { display: flex; flex-direction: column; }
+.aw-list > .aw-row:last-child { border-bottom: 0; }
+.aw-rb, .aw-rtx { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; }
+.aw-rb { padding: 0; margin: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.aw-acts { flex: none; display: flex; margin-right: -6px; }
+.aw-ib { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px;
+  background: none; color: var(--cs-muted); cursor: pointer; }
+.aw-acts .aw-ib svg { box-sizing: border-box; width: 32px; height: 32px; padding: 7px; border: 1px solid var(--cs-line-strong); border-radius: 16px; }
+.aw-ib:hover { color: var(--cs-text); }
+.aw-acts .aw-ib:hover svg { border-color: var(--cs-muted); }
+.aw-irow { position: relative; touch-action: pan-y; transition: transform .18s ease; }
+.aw-irow.aw-moving { transition: none; }
+.aw-irow.aw-sw-keep .aw-ib:last-child svg, .aw-irow.aw-sw-skip .aw-ib:first-child svg { background: var(--cs-primary); border-color: var(--cs-primary); color: var(--cs-on-primary); }
+@media (prefers-reduced-motion: reduce) { .aw-irow { transition: none; } }
+.aw-prow { cursor: pointer; }
+.aw-dim .aw-rt { color: var(--cs-muted); }
+.aw-go { flex: none; display: flex; color: var(--cs-muted); }
+.aw-av { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; background: var(--cs-chip); font-size: 13px; font-weight: 600; color: var(--cs-text); }
+.aw-note, .aw-empty { padding: 12px 0 0; font-size: 14px; line-height: 1.45; color: var(--cs-muted); }
+.aw-empty { padding: 10px 0 4px; font-size: 15px; }
+
+/* ---- the idea page (mockup 3b) ---- */
+.aw-detail { display: none; }
+body[data-aw-detail="ideas"][data-cs-view="ideas"] .aw-detail:not([hidden]), body[data-aw-detail="pipeline"][data-cs-view="pipeline"] .aw-detail:not([hidden]) { display: block; }
+body[data-aw-detail="ideas"][data-cs-view="ideas"] #view-ideas, body[data-aw-detail="pipeline"][data-cs-view="pipeline"] #view-pipeline { display: none !important; }
+.aw-detail { position: relative; max-width: 760px; margin: 0 auto; box-sizing: border-box; padding: 0 16px calc(112px + env(safe-area-inset-bottom)); color: var(--cs-text); font-family: var(--cs-font); }
+.aw-dtop { display: flex; align-items: center; justify-content: space-between; min-height: 52px; margin: 0 -10px 0 -12px; }
+.aw-back { color: var(--cs-text); }
+.aw-dtop .aw-dots { margin: 0; }
+.aw-menu { position: absolute; right: 12px; top: 48px; z-index: 30; max-width: calc(100% - 24px); }
+.aw-h1 { margin: 2px 0 0; font-size: 26px; font-weight: 600; letter-spacing: -.5px; line-height: 1.22; overflow-wrap: anywhere; }
+.aw-dmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 14px; color: var(--cs-muted); }
+.aw-sec { margin-top: 18px; }
+.aw-sech { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.aw-secl { margin: 0; font-size: 14px; font-weight: 500; color: var(--cs-muted); }
+.aw-cp { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -6px -12px -6px 0; padding: 0; border: 0; border-radius: 22px;
+  background: none; color: var(--cs-muted); cursor: pointer; }
+.aw-cp:hover { color: var(--cs-text); }
+.aw-p { margin: 4px 0 0; font-size: 16px; line-height: 1.5; color: var(--cs-text); overflow-wrap: anywhere; }
+.aw-clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.aw-shots { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.aw-shots li { display: flex; gap: 10px; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.aw-n { flex: none; width: 16px; color: var(--cs-muted); }
+.aw-detail .viral-twist-result:not(:empty), .aw-detail .idea-redo-box:not(:empty), .aw-detail .rv2-rw:not(:empty) { margin-top: 16px; }
+
+/* ---- the dock: floating pill, or the idea page's sticky bar ---- */
+.aw-dock { display: none; }
+body.aw-on[data-cs-view="ideas"] .aw-dock, body.aw-on[data-cs-view="pipeline"] .aw-dock { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 150;
+  box-sizing: border-box; padding: 0 16px max(24px, env(safe-area-inset-bottom)); pointer-events: none; }
+.aw-dock-in { max-width: 760px; margin: 0 auto; display: flex; justify-content: center; }
+.aw-dock-in > * { pointer-events: auto; }
+body[data-aw-detail] .aw-dock { padding-bottom: max(16px, env(safe-area-inset-bottom)); background: var(--cs-bg); pointer-events: auto; }
+.aw-bar { flex: 1; margin: 0 -16px; padding: 12px 16px 0; background: var(--cs-bg); }
+@media (min-width: 900px) {
+  body.aw-on[data-cs-view="ideas"] .aw-dock, body.aw-on[data-cs-view="pipeline"] .aw-dock { left: 260px; }
+  .aw-bar { margin: 0; padding: 12px 0 0; }
+  .aw-detail { padding-top: 12px; }
+}
+
+/* ---- review fixes: the Ideas header ⋯, the hidden-format note, picking several, the drawer scroll ---- */
+.aw-screen { position: relative; }
+.aw-headrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.aw-headtx { min-width: 0; }
+.aw-headrow .aw-dots { flex: none; margin: -6px -10px 0 0; }
+.aw-imenu { position: absolute; right: 4px; top: 44px; z-index: 30; max-width: calc(100% - 8px); }
+.aw-hidnote { display: block; margin: 2px 0 0; padding: 4px 0; border: 0; background: none; font: inherit; font-size: 14px; line-height: 1.4; color: var(--cs-muted); text-align: left; cursor: pointer; }
+.aw-hidnote:hover { color: var(--cs-text); }
+.aw-picking.on .aw-pick svg { background: var(--cs-primary); border-color: var(--cs-primary); color: var(--cs-on-primary); }
+.aw-film:disabled { opacity: .5; cursor: default; }
+.aw-prow { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.aw-detail .aw-assign { position: static !important; margin-top: 10px; }
+.csd-panel.csd-classic-open { overflow-y: auto; overscroll-behavior: contain; }
+.csd-panel.csd-classic-open .csd-body { flex: none; overflow: visible; min-height: auto; }
+
+/* ---- the menu (mockup 12): Classic tools folded at the bottom, the credits line last ---- */
+.csd-foot .csd-classic { margin: 0 -10px; }
+.csd-fold { color: var(--cs-muted); }
+.csd-fold .cs-chev, .ds-fold .cs-chev { width: 18px; height: 18px; margin-left: auto; flex: none; transition: transform .15s ease; }
+.csd-fold[aria-expanded="true"] .cs-chev, .ds-fold[aria-expanded="true"] .cs-chev { transform: rotate(90deg); }
+.csd-classic-body { padding: 0 0 4px; }
+.csd-classic-body[hidden], .ds-classic[hidden] { display: none; }
+.csd-classic-body .csd-item { color: var(--cs-muted); }
+.csd-legal { padding: 8px 10px 0; font-size: 13px; color: var(--cs-muted); }
+.csd-legal a { color: var(--cs-muted); }
+.csd-classic-body .csd-ver { padding-left: 10px; }
+.csd-credits { padding: 8px 0 2px; font-size: 14px; color: var(--cs-muted); }
+#desktopSidebar .ds-sep { height: 1px; margin: 8px 11px; background: var(--cs-line); }
+#desktopSidebar .ds-fold { color: var(--cs-muted); }
+#desktopSidebar .ds-classic .ds-item { color: var(--cs-muted); }
+
 /* ============ v714 HYBRID main screen — "Make it yours" (view 'create'), mockup H-hybrid.png. Tokens only. ============
    The old layout (#createRemix) shows only in "Classic Make it yours" (body.hy-classic). Gate: scripts/verify/hybrid-v714.mjs */
 body:not(.hy-classic) #view-create > #createRemix { display: none !important; }
@@ -1881,15 +2022,13 @@ body.hy-has-bar[data-cs-view="create"]:not(.hy-classic) .mascot-wrap { bottom: c
 .hy-more { min-height: 44px; padding: 0 2px; border: 0; background: none; font: inherit; font-size: 14px; color: var(--cs-muted); cursor: pointer; }
 .hy-more:hover { color: var(--cs-text); }
 .hy-fnote { font-size: 14px; color: var(--cs-muted); padding: 0 0 2px; }
-.hy-day { font-size: 14px; font-weight: 500; color: var(--cs-muted); padding: 12px 0 0; }
-.hy-row { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; min-height: 56px; box-sizing: border-box; padding: 11px 0;
-  border: 0; border-bottom: 1px solid var(--cs-line); border-radius: 0; background: none; font: inherit; text-align: left; color: var(--cs-text); cursor: pointer; }
+.hy-day { padding: 12px 0 0; }   /* v716: the shared group header (.aw-gh); H1's day labels sit a little higher */
+.hy-row { flex-direction: column; align-items: stretch; gap: 6px; cursor: pointer; }   /* v716: the shared list row (.aw-row), title over meta */
 .hy-row:last-child, .hy-row:has(+ .hy-day), .hy-row:has(+ .hy-rerr:last-child) { border-bottom: 0; }
 .hy-row:disabled { cursor: progress; opacity: .8; }
-.hy-rt { display: block; min-width: 0; font-size: 16px; font-weight: 500; letter-spacing: -.1px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hy-rm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; font-size: 14px; color: var(--cs-muted); }
+.hy-rt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }   /* v716: shared .aw-rt, one line here */
+.hy-rm { gap: 6px 10px; margin-top: 0; }   /* v716: shared .aw-rm (the row's own gap spaces it) */
 .hy-rh { min-width: 0; max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hy-tag { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--cs-chip); font-size: 14px; font-weight: 400; color: var(--cs-text); white-space: nowrap; }
 .hy-w { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .hy-dot { display: inline-block; width: 7px; height: 7px; border-radius: 4px; background: var(--cs-ok); flex: none; }
 .hy-add { min-height: 44px; margin-top: 2px; padding: 0 2px; border: 0; background: none; font: inherit; font-size: 15px; font-weight: 500; color: var(--cs-muted); cursor: pointer; }
@@ -1934,11 +2073,6 @@ body.hy-has-bar[data-cs-view="create"]:not(.hy-classic) .mascot-wrap { bottom: c
 .hy-srcnote { font-size: 14px; line-height: 1.45; color: var(--cs-muted); }
 .hy-note { padding: 0 4px; font-size: 14px; line-height: 1.45; color: var(--cs-muted); }
 .hy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
-.hy-pill { min-height: 48px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--cs-line-strong); background: var(--cs-chip); color: var(--cs-text);
-  font: inherit; font-size: 16px; font-weight: 500; line-height: 1.2; cursor: pointer; }
-.hy-pill:hover { border-color: var(--cs-muted); }
-.hy-pill.on { background: var(--cs-primary); color: var(--cs-on-primary); border-color: var(--cs-primary); }
-.hy-pill:disabled { opacity: .55; cursor: progress; }
 .hy-hook { font-weight: 600; }
 .hy-card .hy-cap, .hy-card .hy-tags { margin-top: 10px; font-size: 14px; color: var(--cs-muted); }
 .hy-card .hy-cap + .hy-tags { margin-top: 4px; }
@@ -1960,11 +2094,8 @@ body.hy-has-bar[data-cs-view="create"]:not(.hy-classic) .mascot-wrap { bottom: c
 body[data-cs-view="create"]:not(.hy-classic) .hy-dock { display: block; }
 .hy-dock { position: fixed; left: 0; right: 0; bottom: var(--hy-kb, 0px); z-index: 160; box-sizing: border-box; padding: 8px 16px max(12px, env(safe-area-inset-bottom)); background: var(--cs-bg); }
 .hy-dock-in { max-width: 760px; margin: 0 auto; }
-.hy-bar { display: flex; gap: 10px; margin: -8px -16px 8px; padding: 10px 16px 0; border-top: 1px solid var(--cs-line); }
+.hy-bar { margin: -8px -16px 8px; padding: 10px 16px 0; }   /* v716: the shared sticky bar (.aw-bar) */
 .hy-bar[hidden] { display: none; }
-.hy-film { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; height: 52px; border: 0; border-radius: 999px; background: var(--cs-primary); color: var(--cs-on-primary);
-  font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
-.hy-copy { flex: none; display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border: 0; border-radius: 26px; background: var(--cs-chip); color: var(--cs-text); cursor: pointer; }
 .hy-hint { padding: 0 10px 6px; font-size: 14px; line-height: 1.4; color: var(--cs-muted); }
 .hy-hint:empty { display: none; }
 .hy-input { display: flex; align-items: center; gap: 6px; height: 56px; box-sizing: border-box; margin: 0; padding: 0 6px 0 4px; border-radius: 28px; background: var(--cs-input); border: 1px solid var(--cs-line-strong); }

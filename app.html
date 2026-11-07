@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v715';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v716';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6588,7 +6588,12 @@ if (!window.supabase) {
   <div class="cs-page-head" id="csPageHead" aria-hidden="true"><h1 class="cs-page-title" id="csPageTitle"></h1></div>
   <nav class="nav-tabs" id="navTabs"></nav>
 
+  <!-- v716 app-wide: the idea detail page (Ideas and Pipeline rows open it; awRender fills it). Before the views on purpose: the ids the
+       ⋯ tools write into (viralTwist-N, ideaRedo-N, rv2Rw-N) resolve here first, not in the hidden old cards. -->
+  <section class="aw-detail" id="awDetail" aria-label="Idea" hidden></section>
   <div class="view" id="view-ideas">
+    <!-- v716: the calm Ideas list (awRender). The old markup below stays in the page (hidden by body.aw-on) for the code that reads it. -->
+    <section class="aw-screen" id="awIdeas" aria-label="Ideas"></section>
 
     <div id="filmingQueueContainer"></div>
 
@@ -6652,6 +6657,8 @@ if (!window.supabase) {
   </div>
 
   <div class="view" id="view-pipeline">
+    <!-- v716: the calm Pipeline (To film / Posted groups, awRender); the old tabs and cards below stay hidden -->
+    <section class="aw-screen" id="awPipe" aria-label="Pipeline"></section>
     <div class="pipeline-stages" id="pipelineStages"></div>
     <div id="pipelineContent"></div>
   </div>
@@ -7048,6 +7055,9 @@ if (!window.supabase) {
       </form>
     </div>
   </div>
+  <!-- v716 app-wide dock: the floating pill (Plan my week / Film next) or the detail's sticky [Film it][copy]. Outside .view for the
+       same reason as #hyDock. Shown on Ideas and Pipeline only (body.aw-on[data-cs-view]). -->
+  <div class="aw-dock" id="awDock"></div>
 </div>
 
 <div class="settings-overlay" id="settingsOverlay"></div>
@@ -9328,6 +9338,7 @@ async function csOpenPushIdeas(brandId) {
   if (!gate()) return false;
   ideaStatusFilter = 'pending'; activeFilter = 'all'; activeFormat = 'all';
   if (typeof activePostType !== 'undefined') activePostType = 'all';
+  try { if (typeof awReset === 'function') awReset(); } catch (e) {}   // v716: the push lands on the plain list (no idea page left open)
   switchView('ideas');
   setTimeout(() => {
     try { window.scrollTo(0, 0); } catch (e) {}   // the page top = the top of Ideas
@@ -10098,15 +10109,18 @@ const VIEW_ORDER = ['today','ideas','pipeline','create','notebook','viral','idea
 // ===== DESKTOP SIDEBAR (≥900px) — injected once; the mobile bottom nav is untouched =====
 var DS_ICONS = {
   today:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>',
-  ideas:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
-  pipeline:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
-  create:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>',
+  ideas:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 00-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0012 3z"/></svg>',
+  pipeline:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5z"/><path d="m3 13 9 5 9-5"/></svg>',
+  create:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>',
   idea:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 014 10c-1 1-1 2-1 3H9c0-1 0-2-1-3a6 6 0 014-10z"/></svg>',
-  viral:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s5 3 5 8a5 5 0 01-10 0c0-2 1-3 1-3s0 2 2 2c1 0 1-2 0-4 0-2 2-3 2-3z"/></svg>',
-  notebook:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',
+  viral:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+  notebook:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M14 3v5h5"/></svg>',
   questions:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
-  coach:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg>',
+  coach:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 01-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1121 12z"/></svg>',
   settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.3l2-1.6-2-3.4-2.4 1a7 7 0 00-2.2-1.3L14 2h-4l-.3 2.4a7 7 0 00-2.2 1.3l-2.4-1-2 3.4 2 1.6A7 7 0 005 12a7 7 0 00.1 1.3l-2 1.6 2 3.4 2.4-1a7 7 0 002.2 1.3L10 22h4l.3-2.4a7 7 0 002.2-1.3l2.4 1 2-3.4-2-1.6z"/></svg>',
+  creators:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><path d="M16 4.5a3.5 3.5 0 010 7M18 14.5a6.5 6.5 0 013.5 5.5"/></svg>',
+  classic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg>',
+  chev:'<svg class="cs-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
   shrimp:'<svg viewBox="0 0 24 24" fill="none" stroke="#16130F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12c0-4 3-7 7-7s7 3 7 7-3 5-7 5c-3 0-4 2-4 2"/><circle cx="15" cy="10" r="1" fill="#16130F"/></svg>'
 };
 function _dsItem(v,label){ return '<button class="ds-item" data-view="'+v+'" onclick="switchView(\''+v+'\')">'+(DS_ICONS[v]||'')+'<span>'+label+'</span></button>'; }
@@ -10124,23 +10138,33 @@ function buildDesktopSidebar(){
     h += '<div class="brand-switcher-wrap ds-brand-wrap"><button type="button" class="ds-brand" id="dsBrand" aria-haspopup="true" onclick="toggleBrandSwitcher()">'
       + '<span class="ds-brand-name" id="dsBrandName">' + escHtml(_bn || 'Your Brand') + '</span>'
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></div>';
-    // v712: Remix is the first screen in every menu; everything else keeps its order
-    h += _dsItem('create',CS_REMIX_NAME)+_dsItem('today','Quick Post')+_dsItem('ideas','Ideas')+_dsItem('pipeline','Pipeline');
-    h += '<div class="ds-lbl">Create</div>'+_dsItem('idea','Idea Catcher')+_dsItem('viral','Trends')+'<button class="ds-item" data-act="hyClassic" onclick="hyClassic()">'+DS_ICONS.create+'<span>Classic Make it yours</span></button>';   // v714
-    h += '<div class="ds-lbl">Tools</div>'+_dsItem('notebook','Notebook')+_dsItem('questions','What people search')+
-      '<button class="ds-item" data-act="toggleBookmarkBar" onclick="toggleBookmarkBar()">'+CS_DRAWER_ICONS.bookmarks+'<span>Bookmarks</span></button>'+
-      '<button class="ds-item" data-act="openBrain" onclick="openBrain()">'+CS_DRAWER_ICONS.brain+'<span>Brand brain</span></button>';
+    // v716 (mockup 12): the owner's order — Make it yours, Ideas, Pipeline, Trends, What people search, Notebook, Creators (= Bookmarks),
+    // Coach, Settings; everything else folds under "Classic tools" at the bottom; the plan / credits line last
+    h += _dsItem('create',CS_REMIX_NAME)+_dsItem('ideas','Ideas')+_dsItem('pipeline','Pipeline')+_dsItem('viral','Trends')+_dsItem('questions','What people search')+_dsItem('notebook','Notebook')+
+      '<button class="ds-item" data-act="toggleBookmarkBar" onclick="toggleBookmarkBar()">'+DS_ICONS.creators+'<span>Creators</span></button>';
+    h += '<div class="ds-sep" aria-hidden="true"></div>'+
+      '<button class="ds-item ds-coach" onclick="bvTabClick()">'+DS_ICONS.coach+'<span>Coach</span></button>'+
+      '<button class="ds-item" data-act="openSettings" onclick="openSettings()">'+DS_ICONS.settings+'<span>Settings</span></button>';
     h += '<div class="ds-spring"></div><div class="ds-bottom">'+
-      '<button class="ds-item ds-coach" onclick="bvTabClick()">'+DS_ICONS.coach+'<span>Talk to your coach</span></button>'+
-      '<button class="ds-item" data-act="openSettings" onclick="openSettings()">'+DS_ICONS.settings+'<span>Settings</span></button>'+
+      '<button type="button" class="ds-item ds-fold" id="dsClassicBtn" aria-expanded="false" aria-controls="dsClassic" onclick="dsClassic()">'+DS_ICONS.classic+'<span>Classic tools</span>'+DS_ICONS.chev+'</button>'+
+      '<div class="ds-classic" id="dsClassic" hidden>'+_dsItem('today','Quick Post')+_dsItem('idea','Idea Catcher')+
+      '<button class="ds-item" data-act="hyClassic" onclick="hyClassic()">'+DS_ICONS.create+'<span>Classic Make it yours</span></button>'+   // v714
+      '<button class="ds-item" data-act="openBrain" onclick="openBrain()">'+CS_DRAWER_ICONS.brain+'<span>Brand brain</span></button>'+
       '<button class="ds-item" data-act="startTour" onclick="startTour()">'+CS_DRAWER_ICONS.help+'<span>Help</span></button>'+
-      '<div class="ds-plan" id="dsPlan"></div>'+
-      '<div class="ds-foot">Content Shrimp · '+(window.APP_VERSION||'')+' · <span style="text-decoration:underline;cursor:pointer;" onclick="csCheckUpdate(this)">check for update</span><br><a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="/refunds.html" target="_blank" rel="noopener">Refunds</a></div></div>';
+      '<div class="ds-foot">Content Shrimp · '+(window.APP_VERSION||'')+' · <span style="text-decoration:underline;cursor:pointer;" onclick="csCheckUpdate(this)">check for update</span><br><a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="/refunds.html" target="_blank" rel="noopener">Refunds</a></div></div>'+
+      '<div class="ds-plan" id="dsPlan"></div></div>';
     var el=document.createElement('aside'); el.id='desktopSidebar'; el.innerHTML=h;
     document.body.appendChild(el);
     syncDesktopNav();
     try{ if(typeof renderUsagePill==='function') renderUsagePill(); }catch(e){}
   }catch(e){}
+}
+// v716: the sidebar's "Classic tools" fold (collapsed until tapped)
+function dsClassic(){
+  var b = document.getElementById('dsClassicBtn'), p = document.getElementById('dsClassic'); if (!b || !p) return false;
+  var open = b.getAttribute('aria-expanded') !== 'true';
+  b.setAttribute('aria-expanded', open ? 'true' : 'false'); p.hidden = !open;
+  return open;
 }
 function syncDesktopNav(){
   var sb=document.getElementById('desktopSidebar'); if(!sb) return;
@@ -10148,7 +10172,6 @@ function syncDesktopNav(){
     var counts={
       ideas:(typeof getPendingIdeas==='function'?getPendingIdeas().length:0),
       pipeline:(typeof state!=='undefined'?state.filter(function(i){return i&&i.status==='filming';}).length:0),
-      create:(typeof remixes!=='undefined'?remixes.length:0),
       notebook:(typeof notebookNotes!=='undefined'?notebookNotes.length:0)
     };
     sb.querySelectorAll('[data-view]').forEach(function(b){
@@ -10241,53 +10264,74 @@ var CS_DRAWER_ICONS = {
 var CS_LOCKED_VIEWS = ['pipeline', 'create'];
 function csNavLocked(view){ return CS_LOCKED_VIEWS.indexOf(view) !== -1 && !(typeof isBrandMinimumMet === 'function' && isBrandMinimumMet()); }
 // groups: a row is a screen ({view}) or an action ({act}: the exact function the old control called)
+// v716 (mockup 12): one order for the drawer, the desktop sidebar and the ⌘K palette. Creators = the Bookmarks list (label only).
+// Everything else folds under "Classic tools" (collapsed) at the bottom, above the credits line.
 var CS_DRAWER_GROUPS = [
-  { label: '', rows: [ { view: 'create', label: CS_REMIX_NAME }, { view: 'today', label: 'Quick Post' }, { view: 'ideas', label: 'Ideas' }, { view: 'pipeline', label: 'Pipeline' } ] },   // v712: Remix first
-  { label: 'Create', rows: [ { view: 'idea', label: 'Idea Catcher' }, { view: 'viral', label: 'Trends' }, { act: 'hyClassic', icon: 'create', label: 'Classic Make it yours' } ] },   // v714: the old layout
-  { label: 'Tools', rows: [ { view: 'notebook', label: 'Notebook' }, { view: 'questions', label: 'What people search' }, { act: 'toggleBookmarkBar', icon: 'bookmarks', label: 'Bookmarks' } ] },
-  { label: '', rows: [ { act: 'bvTabClick', icon: 'coach', label: 'Assistant', hold: true }, { act: 'openBrain', icon: 'brain', label: 'Brand brain' }, { act: 'openSettings', icon: 'settings', label: 'Settings' }, { act: 'startTour', icon: 'help', label: 'Help' } ] }
+  { label: '', rows: [ { view: 'create', label: CS_REMIX_NAME }, { view: 'ideas', label: 'Ideas' }, { view: 'pipeline', label: 'Pipeline' }, { view: 'viral', label: 'Trends' },
+    { view: 'questions', label: 'What people search' }, { view: 'notebook', label: 'Notebook' }, { act: 'toggleBookmarkBar', icon: 'creators', label: 'Creators', count: 'creators' } ] },
+  { label: '', rows: [ { act: 'bvTabClick', icon: 'coach', label: 'Coach', hold: true }, { act: 'openSettings', icon: 'settings', label: 'Settings' } ] },
+  { label: 'Classic tools', classic: true, rows: [ { view: 'today', label: 'Quick Post' }, { view: 'idea', label: 'Idea Catcher' },
+    { act: 'hyClassic', icon: 'create', label: 'Classic Make it yours' },   // v714: the old layout
+    { act: 'openBrain', icon: 'brain', label: 'Brand brain' }, { act: 'startTour', icon: 'help', label: 'Help' } ] }
 ];
 function csDrawerCounts(){
   var c = {};
   try { c.ideas = (typeof getPendingIdeas === 'function') ? getPendingIdeas().length : 0; } catch (e) {}
   try { c.pipeline = (state || []).filter(function(i){ return i && i.status === 'filming'; }).length; } catch (e) {}
-  try { c.create = (typeof remixes !== 'undefined' && remixes) ? remixes.length : 0; } catch (e) {}
+  try { var _bn = 0; (bookmarkCategories || []).forEach(function(g){ _bn += (g && Array.isArray(g.entries)) ? g.entries.length : 0; }); c.creators = _bn; } catch (e) {}
   try { c.notebook = (typeof notebookNotes !== 'undefined' && notebookNotes) ? notebookNotes.length : 0; } catch (e) {}
   return c;
 }
 function csDrawerHtml(){
+  // one row (screen or action); local so csDrawerHtml stays self-contained
+  function csDrawerRow(r, counts, icons){
+    var ic = (r.view ? icons[r.view] : (icons[r.icon] || CS_DRAWER_ICONS[r.icon])) || '';
+    if (r.view && csNavLocked(r.view)) {
+      return '<button type="button" class="csd-item locked" data-view="' + r.view + '" aria-disabled="true" onclick="csDrawerClose();showLockedToast()">'
+        + ic + '<span class="csd-label">' + r.label + '</span>' + CS_DRAWER_ICONS.lock + '<span class="csd-sr">(locked)</span></button>';
+    }
+    if (r.view) {
+      var n = counts[r.view] || 0, on = typeof activeView !== 'undefined' && activeView === r.view;
+      return '<button type="button" class="csd-item' + (on ? ' active' : '') + '" data-view="' + r.view + '"' + (on ? ' aria-current="page"' : '')
+        + ' onclick="csDrawerGo(\'' + r.view + '\')">' + ic + '<span class="csd-label">' + r.label + '</span>'
+        + (n ? '<span class="csd-count">' + n + '</span>' : '') + '</button>';
+    }
+    // hold: the old Assistant tab's press-and-hold (450 ms → opens already listening), same handlers
+    var hold = r.hold ? ' onpointerdown="bvTabDown();csDrawerHoldWatch()" onpointerup="bvTabUp();csDrawerHoldStop()" onpointercancel="bvTabUp();csDrawerHoldStop()" onpointerleave="bvTabUp();csDrawerHoldStop()"' : '';
+    var cn = r.count ? (counts[r.count] || 0) : 0;
+    return '<button type="button" class="csd-item" data-act="' + r.act + '"' + hold + ' onclick="csDrawerClose();' + r.act + '()">' + ic + '<span class="csd-label">' + r.label + '</span>'
+      + (cn ? '<span class="csd-count">' + cn + '</span>' : '') + '</button>';
+  }
   var counts = csDrawerCounts();
   var icons = (typeof DS_ICONS !== 'undefined') ? DS_ICONS : {};
-  var h = '<div class="csd-head"><span class="csd-title">Content Shrimp</span>'
-    + '<button type="button" class="csd-x" aria-label="Close menu" onclick="csDrawerClose()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'
-    + '<div class="csd-body">';
+  var body = '', classic = '';
   CS_DRAWER_GROUPS.forEach(function(g){
     var rows = g.rows.filter(function(r){ return !(r.view && typeof csShelved === 'function' && csShelved(r.view)); });
     if (!rows.length) return;
-    h += '<div class="csd-group">' + (g.label ? '<div class="csd-lbl">' + g.label + '</div>' : '');
-    rows.forEach(function(r){
-      var ic = (r.view ? icons[r.view] : (icons[r.icon] || CS_DRAWER_ICONS[r.icon])) || '';
-      if (r.view && csNavLocked(r.view)) {
-        h += '<button type="button" class="csd-item locked" data-view="' + r.view + '" aria-disabled="true" onclick="csDrawerClose();showLockedToast()">'
-          + ic + '<span class="csd-label">' + r.label + '</span>' + CS_DRAWER_ICONS.lock + '<span class="csd-sr">(locked)</span></button>';
-      } else if (r.view) {
-        var n = counts[r.view] || 0;
-        h += '<button type="button" class="csd-item' + (typeof activeView !== 'undefined' && activeView === r.view ? ' active' : '') + '" data-view="' + r.view + '"'
-          + (typeof activeView !== 'undefined' && activeView === r.view ? ' aria-current="page"' : '')
-          + ' onclick="csDrawerGo(\'' + r.view + '\')">' + ic + '<span class="csd-label">' + r.label + '</span>'
-          + (n ? '<span class="csd-count">' + n + '</span>' : '') + '</button>';
-      } else {
-        // hold: the old Assistant tab's press-and-hold (450 ms → opens already listening), same handlers
-        var hold = r.hold ? ' onpointerdown="bvTabDown();csDrawerHoldWatch()" onpointerup="bvTabUp();csDrawerHoldStop()" onpointercancel="bvTabUp();csDrawerHoldStop()" onpointerleave="bvTabUp();csDrawerHoldStop()"' : '';
-        h += '<button type="button" class="csd-item" data-act="' + r.act + '"' + hold + ' onclick="csDrawerClose();' + r.act + '()">' + ic + '<span class="csd-label">' + r.label + '</span></button>';
-      }
-    });
-    h += '</div>';
+    var inner = rows.map(function(r){ return csDrawerRow(r, counts, icons); }).join('');
+    if (g.classic) {
+      // v716: collapsed until tapped (csDrawerClassic); the legal links and the update check live inside it too
+      classic = '<div class="csd-classic"><button type="button" class="csd-item csd-fold" id="csdClassicBtn" aria-expanded="false" aria-controls="csdClassic" onclick="csDrawerClassic()">'
+        + (icons.classic || '') + '<span class="csd-label">' + g.label + '</span>' + (icons.chev || '') + '</button>'
+        + '<div class="csd-classic-body" id="csdClassic" hidden>' + inner
+        + '<div class="csd-legal"><a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="/refunds.html" target="_blank" rel="noopener">Refunds</a></div>'
+        + '<button type="button" class="csd-ver" onclick="csCheckUpdate(this)">Content Shrimp · ' + (window.APP_VERSION || '') + ' · check for update</button></div></div>';
+      return;
+    }
+    body += '<div class="csd-group">' + (g.label ? '<div class="csd-lbl">' + g.label + '</div>' : '') + inner + '</div>';
   });
-  h += '</div><div class="csd-foot">'
-    + '<a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="/refunds.html" target="_blank" rel="noopener">Refunds</a>'
-    + '<button type="button" class="csd-ver" onclick="csCheckUpdate(this)">Content Shrimp · ' + (window.APP_VERSION || '') + ' · check for update</button></div>';
-  return h;
+  var credits = ''; try { credits = (typeof csUsageText === 'function') ? (csUsageText() || '') : ''; } catch (e) {}
+  return '<div class="csd-head"><span class="csd-title">Content Shrimp</span>'
+    + '<button type="button" class="csd-x" aria-label="Close menu" onclick="csDrawerClose()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'
+    + '<div class="csd-body">' + body + '</div><div class="csd-foot">' + classic
+    + (credits ? '<div class="csd-credits" id="csdCredits">' + escHtml(credits) + '</div>' : '') + '</div>';
+}
+function csDrawerClassic(){
+  var b = document.getElementById('csdClassicBtn'), p = document.getElementById('csdClassic'); if (!b || !p) return false;
+  var open = b.getAttribute('aria-expanded') !== 'true';
+  b.setAttribute('aria-expanded', open ? 'true' : 'false'); p.hidden = !open;
+  try { var pn = document.getElementById('csDrawer'); if (pn && pn.classList) pn.classList.toggle('csd-classic-open', open); } catch (e) {}   // the whole menu scrolls (landscape phone)
+  return open;
 }
 var _csDrawerLastFocus = null;
 function csDrawerIsOpen(){ var w = document.getElementById('csDrawerWrap'); return !!(w && !w.hidden); }
@@ -24375,6 +24419,16 @@ const HY_TWIST_FB = "Couldn't make your version — try again.";
 const HY_REVISE_FB = "Couldn't change your version — try again.";
 const HY_READ_FB = "Couldn't get the words from that link — try again in a minute.";
 const HY_ONE = 'One at a time — wait for this one to finish.';
+// v716 (mockup 2): a TYPED idea gets its own six twists. /api/remix knows only RX_MODES' six modes, so each idea twist runs one
+// of them, plus one short angle line after the idea ("ANGLE: …"). A link keeps the remix set (RX_MODES) exactly as before.
+const HY_IDEA_TWISTS = [
+  { id: 'remix', label: 'My take', mode: 'remix', angle: '' },
+  { id: 'myth', label: 'Myth buster', mode: 'flip', angle: 'Make it a myth buster: name the common belief, then show why it is wrong.' },
+  { id: 'story', label: 'Story', mode: 'remix', angle: 'Tell it as a short first-person story with a clear before and after.' },
+  { id: 'tip', label: 'Quick tip', mode: 'simplify', angle: 'Make it one quick, practical tip someone can try today.' },
+  { id: 'qna', label: 'Q&A', mode: 'format-swap', angle: 'Open with the question people ask, then answer it straight away.' },
+  { id: 'series', label: 'Series', mode: 'series', angle: '' }
+];
 let _hy = { brandId: '', t: null, seq: 0, busy: '', classic: false, classicReq: false, feedAll: false, rows: [], rowBusy: '', rowErr: {}, menu: false, adding: false, addVal: '', addErr: '' };
 let _hyWired = false;
 const HY_IC = {
@@ -24391,7 +24445,11 @@ function hyLater(f){ try { if (typeof window.requestAnimationFrame === 'function
 function hyBrand(){ return (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) ? String(currentBrand.id) : ''; }
 function hyActive(){ return typeof activeView !== 'undefined' && activeView === 'create' && !_hy.classic && !!document.getElementById('hyApp'); }
 function hyHint(t){ const h = hyEl('hyHint'); if (h) h.textContent = String(t || ''); }
-function hyModeLabel(id){ const m = RX_MODES.find(x => x.id === id); return m ? m.label : 'My take'; }
+function hyModeLabel(id){ const m = RX_MODES.find(x => x.id === id) || HY_IDEA_TWISTS.find(x => x.id === id); return m ? m.label : 'My take'; }
+// v716: which six pills a thread shows — your own typed idea → HY_IDEA_TWISTS; a link (or a hand-off) → RX_MODES
+function hyTwists(s){ return (s && s.kind === 'text') ? HY_IDEA_TWISTS : RX_MODES; }
+function hyTwistOf(id, s){ return hyTwists(s).find(m => m.id === id) || null; }
+function hyServerMode(id, s){ const m = hyTwistOf(id, s); return (m && m.mode) || id; }   // the /api/remix mode a pill runs
 // ---- storage (per brand, best effort) ----
 function hyLoad(bid){
   if (!bid) return null;
@@ -24781,8 +24839,8 @@ function hyThreadHtml(){
   }
   if (!s.reading) {
     const lastB = t.blocks.length ? t.blocks[t.blocks.length - 1] : null;
-    h += '<div class="hy-label">Make it yours</div><div class="hy-grid">'
-      + RX_MODES.map(m => '<button type="button" class="hy-pill' + (lastB && lastB.twist === m.id ? ' on' : '') + '" data-twist="' + m.id + '"'
+    h += (s.kind === 'text' ? '<div class="hy-say">Good one. Pick a twist</div>' : '') + '<div class="hy-label">Make it yours</div><div class="hy-grid">'
+      + hyTwists(s).map(m => '<button type="button" class="hy-pill' + (lastB && lastB.twist === m.id ? ' on' : '') + '" data-twist="' + m.id + '"'
         + (busy ? ' disabled aria-disabled="true"' : '') + ' onclick="hyTwist(\'' + m.id + '\')">' + hyE(m.label) + '</button>').join('') + '</div>';
   }
   const lastIdx = t.blocks.length - 1;
@@ -24820,16 +24878,18 @@ function hyThreadHtml(){
 }
 // ---- a twist: the same /api/remix request the classic screen's buttons send (leanBrandFetch, brand hydrated server-side) ----
 function hyRemixBody(mode, s){
-  const idea = s.kind === 'text';
+  const idea = s.kind === 'text', tw = idea ? hyTwistOf(mode, s) : null, angle = (tw && tw.angle) || '';
+  let words = idea ? ((typeof csComposerSource === 'function') ? csComposerSource(s.text).text : String(s.text || '')) : String(s.text || '');
+  if (angle) words = words.slice(0, 12000 - angle.length - 9) + '\n\nANGLE: ' + angle;   // v716: the idea twist's angle, after your words
   return { postUrl: idea ? '' : String(s.url || ''),
-    postDescription: idea ? ((typeof csComposerSource === 'function') ? csComposerSource(s.text).text : String(s.text || '')) : String(s.text || ''),
-    creatorName: String(s.creator || ''), platform: s.platform || 'tiktok', remixMode: mode,
+    postDescription: words,
+    creatorName: String(s.creator || ''), platform: s.platform || 'tiktok', remixMode: tw ? tw.mode : mode,
     delivery: (typeof deliveryReq === 'function') ? deliveryReq(window._remixDelivery) : (window._remixDelivery === 'faceless' ? 'faceless' : 'face') };
 }
 async function hyTwist(mode){
   const t = _hy.t; if (!t || t.src.reading) return false;
   if (_hy.busy) { hyHint(HY_ONE); return false; }
-  if (!RX_MODES.some(m => m.id === mode)) return false;
+  if (!hyTwistOf(mode, t.src)) return false;   // v716: only the pills this thread shows (a typed idea has its own six)
   if (!String(t.src.text || '').trim()) { t.open = true; hyHint(t.src.kind === 'text' ? 'Type your idea first.' : 'Paste or type their words first.'); hyRender(); return false; }
   const seq = _hy.seq, gate = brandGate();
   const blk = { twist: mode, versions: [], sel: 0, pending: '', pendingTwist: true };
@@ -24859,7 +24919,7 @@ async function hyTwist(mode){
 function hyDecorate(v, mode, s){
   const r = Object.assign({}, v.result);
   r.creatorName = s.creator || 'unknown'; r.platform = s.platform || 'tiktok'; r.postUrl = s.url || '';
-  r.inputDescription = String(s.text || ''); r.remixMode = mode; r.createdAt = v.at || Date.now();
+  r.inputDescription = String(s.text || ''); r.remixMode = hyServerMode(mode, s); r.createdAt = v.at || Date.now();
   try { r.delivery = (((typeof deliveryUi === 'function') ? deliveryUi(window._remixDelivery) : window._remixDelivery) === 'faceless' && DELIVERY_FORMATS.has(r.remixFormat)) ? 'faceless' : 'faceon'; } catch (e) { r.delivery = 'faceon'; }
   return r;
 }
@@ -24979,7 +25039,7 @@ function hyMenu(){
 function hySaveIdeas(btn){
   const sel = hySelected(); if (!sel || !_hy.t) return false;
   const v = sel.v, mode = sel.blk.twist;
-  let idx = remixes.findIndex(r => r && r.createdAt === v.at && r.remixMode === mode && v.at);
+  let idx = remixes.findIndex(r => r && r.createdAt === v.at && r.remixMode === hyServerMode(mode, _hy.t.src) && v.at);
   if (idx < 0) { const r = hyKeepRemix(v, mode, _hy.t.src); idx = r ? remixes.indexOf(r) : -1; }
   _hy.menu = false;
   if (idx < 0) { hyRender(); return false; }
@@ -24988,6 +25048,475 @@ function hySaveIdeas(btn){
   return p;
 }
 // ===== end v714 hybrid =====
+
+// ===== v716 APP-WIDE phase 1 (owner-approved mockups design-options/appwide/, 2026-11-07) =====
+// One style for the whole app: the CHAT for making things, the CALM LIST for browsing. Phase 1 = Ideas (mockup 3),
+// Idea detail (3b), Pipeline (4), typed ideas in the main chat (2, in the hy* block above) and the menu (12).
+// PRESENTATION ONLY: every keep / skip / plan / film / move still runs the function it ran before (quickApprove,
+// showDismissPopupFn, ideasQuickGo, openTeleprompter, moveStage, sharpenIdea …). The old Ideas / Pipeline markup stays
+// in the page, hidden while body.aw-on, so everything that reads it (desktop panes, gates, ideasQuickGo) keeps working.
+// Pipeline shows To film / Posted only: nothing records "filmed" today (a finished take asks "Mark as filmed?" and that
+// moves the post straight to Done), so a Filmed group needs a new status first.
+// Gate: scripts/verify/appwide-p1-v716.mjs ("APPWIDE P1 OK").
+const AW_SWIPE = 96;                       // px a row must travel before a swipe counts (review: 72 fired too easily)
+const AW_LOCK = 16;                        // px sideways before a touch becomes a swipe (and only when sideways > 2× down)
+const AW_DRIFT = 24;                       // px of up/down movement after that cancels the swipe
+const AW_HOLD = 500;                       // ms: a long press on a Pipeline row opens "Assign…"
+const AW_GROUPS = ['Today', 'This week', 'Earlier'];
+const AW_POSTED_DAYS = 30;                 // the Posted group shows the last 30 days (the old Done tab's rule)
+let _aw = { idea: null, from: 'ideas', view: '', menu: false, imenu: false, skipped: false, showAll: false, plan: '', planBusy: false, sw: null, items: [], iitems: [], quiet: 0 };
+let _awWired = false;
+const _awSv = (d, s) => '<svg width="' + (s || 20) + '" height="' + (s || 20) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+const AW_IC = {
+  x: _awSv('<path d="M6 6l12 12M18 6 6 18"/>', 16),
+  check: _awSv('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 16),
+  right: _awSv('<path d="m9 6 6 6-6 6"/>', 18),
+  back: _awSv('<path d="m15 6-6 6 6 6"/>', 22),
+  spark: _awSv('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>', 20),
+  film: _awSv('<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 6-3v10l-6-3"/>', 20),
+  copy: _awSv('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', 18),
+  down: _awSv('<path d="m6 9 6 6 6-6"/>', 14),
+  undo: _awSv('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>', 16),
+  ring: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"></svg>',
+  slides: _awSv('<rect x="3" y="5" width="13" height="14" rx="2"/><path d="M19 7v10M22 9v6"/>', 20),
+  dots: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>'
+};
+function awE(s){ return escAttr(s == null ? '' : s); }   // text AND attributes: & < > " ' all escaped
+function awEl(id){ return document.getElementById(id); }
+function awTxt(v){ const t = (typeof asText === 'function') ? asText(v) : v; return String(t == null ? '' : t); }
+function awState(){ return (typeof state !== 'undefined' && Array.isArray(state)) ? state : []; }
+function awType(i){ try { return POST_TYPE_LABELS[typesOf(i)] || ''; } catch (e) { return ''; } }
+function awFormat(i){ const f = i && i.format; return (typeof FORMAT_LABELS !== 'undefined' && FORMAT_LABELS[f]) || (f ? String(f) : ''); }
+// chips: the type (filled) and the format (outlined) — the same two pieces on every list row
+function awChips(i, withType){
+  const t = withType ? awType(i) : '', f0 = awFormat(i), f = (t && f0.toLowerCase() === t.toLowerCase()) ? '' : f0;   // a Q&A that is a Q&A: one chip
+  return (t ? '<span class="aw-tag">' + awE(t) + '</span>' : '') + (f ? '<span class="aw-tag ghost">' + awE(f) + '</span>' : '');
+}
+// when an idea arrived: this session's freshAt, else the first time this device saw it (saveState's statusAt), else its row time
+function awWhen(i){ return Number(i && i.freshAt) || Number(i && i.statusAt) || Number(i && i._rowAt) || 0; }
+function awGroup(t, now){
+  if (!t) return 2;
+  const n = new Date(now == null ? Date.now() : now), d = new Date(t);
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(n) - day(d)) / 86400000);
+  return diff <= 0 ? 0 : (diff < 7 ? 1 : 2);
+}
+function awDay(d){
+  const s = String(d || ''); if (!s) return '';
+  try {
+    const today = (typeof getTodayName === 'function') ? getTodayName() : '';
+    if (s === today) return 'Today';
+    const i = DAYS.indexOf(today);
+    if (i >= 0 && i < 7 && s === DAYS[(i + 1) % 7]) return 'Tomorrow';
+  } catch (e) {}
+  return s === 'Bonus' ? s : s.slice(0, 3);
+}
+function awInitials(n){ const p = String(n || '').trim().split(/\s+/).filter(Boolean); return ((p[0] || '').charAt(0) + (p.length > 1 ? p[p.length - 1].charAt(0) : '')).toUpperCase(); }
+// a phone or a touch screen swipes; a desktop with a mouse uses the buttons (the hint says which)
+function awTouch(){ try { return (window.innerWidth || 0) < 900 || !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) { return true; } }
+
+// ---- Ideas (mockup 3): title + count, Today / This week / Earlier, quiet rows, ✕ skip / ✓ keep, swipe, Plan my week ----
+function awHiddenN(){ try { return Math.max(0, awState().length - getVisibleIdeas().length); } catch (e) { return 0; } }
+function awSelecting(){ return typeof _ideaSelectMode !== 'undefined' && !!_ideaSelectMode; }
+// the header's ⋯: the old Ideas workspace's tools (Filters / Actions / stat squares), each the function it always called
+function awIdeasItems(){
+  const it = [], add = (label, fn) => it.push({ label: label, fn: fn });
+  let n = 0; try { n = getPendingIdeas().length; } catch (e) {}
+  if (!_aw.skipped && n >= 2) add('Select several', () => awSelectStart());
+  add(_aw.skipped ? 'Back to ideas' : 'Show skipped', () => awShowSkipped(!_aw.skipped));
+  add('Restore skipped ideas', () => resetAll());
+  add('Copy all kept', () => exportApproved());
+  add('Generate ideas', () => awGenerate());
+  add('Content mix', () => openContentMix());
+  return it;
+}
+function awIdeasMenu(){ _aw.imenu = !_aw.imenu; _aw.menu = false; awRender(); return _aw.imenu; }
+function awIAct(k){ const m = _aw.iitems[k]; _aw.imenu = false; awRender(); if (!m) return false; try { m.fn(); } catch (e) { try { showToast(humanErr((e && e.message) || '', 'That didn’t work — try again.')); } catch (_) {} } return true; }
+function awShowSkipped(on){ _aw.skipped = !!on; try { _ideaSelectMode = false; _ideaSelected.clear(); } catch (e) {} awRender(); try { window.scrollTo(0, 0); } catch (e) {} return _aw.skipped; }
+function awSelectStart(){ _aw.skipped = false; try { _ideaSelectMode = true; _ideaSelected.clear(); } catch (e) { return false; } awRender(); return true; }
+function awSelectEnd(){ try { _ideaSelectMode = false; _ideaSelected.clear(); } catch (e) {} awRender(); return true; }
+function awPick(id){ if (!awSelecting()) return false; const on = !_ideaSelected.has(id); if (on) _ideaSelected.add(id); else _ideaSelected.delete(id); awRender(); return on; }
+// Generate ideas = the classic module's own button (generateNewIdeas); its outcome line is mirrored under the list
+async function awGenerate(){
+  if (_aw.planBusy) return false;
+  _aw.planBusy = true; _aw.plan = ''; awRender();
+  try { await generateNewIdeas(); } catch (e) {}
+  finally { _aw.planBusy = false; }
+  const st = awEl('generateStatus'); _aw.plan = st ? String(st.textContent || '').trim() : '';
+  awRender();
+  return true;
+}
+function awIdeasHead(title, sub){
+  _aw.iitems = awIdeasItems();
+  const hid = awHiddenN();
+  return '<header class="aw-head aw-headrow"><div class="aw-headtx"><h1 class="aw-title">' + title + '</h1><p class="aw-sub">' + sub + '</p>'
+    + (hid ? '<button type="button" class="aw-hidnote" onclick="openContentMix()">' + hid + ' hidden — format switched off</button>' : '') + '</div>'
+    + '<button type="button" class="hy-dots aw-dots" id="awIdeasDots" aria-label="Ideas tools" aria-haspopup="menu" aria-expanded="' + (_aw.imenu ? 'true' : 'false') + '" onclick="awIdeasMenu()">' + AW_IC.dots + '</button></header>'
+    + (_aw.imenu ? '<div class="hy-menu aw-menu aw-imenu" role="menu">' + _aw.iitems.map((m, k) => '<button type="button" role="menuitem" onclick="event.stopPropagation();awIAct(' + k + ')">' + awE(m.label) + '</button>').join('') + '</div>' : '');
+}
+function awIdeasHtml(){
+  if (_aw.skipped) return awSkippedHtml();
+  let list = [];
+  try { list = getPendingIdeas().slice(); } catch (e) { list = []; }
+  const now = Date.now(), n = list.length, sel = awSelecting();
+  list.sort((a, b) => awWhen(b) - awWhen(a));
+  const sub = sel ? (_ideaSelected.size + ' picked · choose the ones to keep')
+    : (n ? n + ' waiting · ' + (awTouch() ? 'swipe right to keep, left to skip' : '✓ keeps, ✕ skips') : 'Nothing waiting. Plan your week for fresh ideas.');
+  let h = awIdeasHead('Ideas', sub);
+  const groups = [[], [], []];
+  list.forEach(i => groups[awGroup(awWhen(i), now)].push(i));
+  groups.forEach((g, gi) => {
+    if (!g.length) return;
+    h += '<div class="aw-gh"><span>' + AW_GROUPS[gi] + '</span><span>' + g.length + '</span></div><div class="aw-list">' + g.map(awIdeaRow).join('') + '</div>';
+  });
+  if (_aw.plan) h += '<div class="aw-note" role="status">' + awE(_aw.plan) + '</div>';
+  return h;
+}
+// "Show skipped" (the old Dismissed filter): the skipped ideas, each with the old ↺ (undoStatus → back to Ideas)
+function awSkippedHtml(){
+  const list = (function () { try { return getVisibleIdeas().filter(i => i && i.status === 'dismissed'); } catch (e) { return []; } })();
+  let h = awIdeasHead('Skipped', list.length + ' skipped · bring one back with ↺');
+  h += '<button type="button" class="hy-showall aw-more" onclick="awShowSkipped(false)">' + AW_IC.back.replace(/width="22" height="22"/, 'width="16" height="16"') + 'Back to ideas</button>';
+  h += list.length ? '<div class="aw-list">' + list.map(i => {
+    const id = Number(i.id), t = String(i.title || 'Untitled idea');
+    return '<div class="aw-row" data-aw-id="' + id + '"><span class="aw-rtx"><span class="aw-rt">' + awE(t) + '</span><span class="aw-rm">' + awChips(i, true)
+      + (i.dismissReason ? '<span>' + awE(String(i.dismissReason).slice(0, 80)) + '</span>' : '') + '</span></span>'
+      + '<span class="aw-acts"><button type="button" class="aw-ib" aria-label="' + awE('Bring back ' + t) + '" title="Bring back" onclick="event.stopPropagation();undoStatus(' + id + ')">' + AW_IC.undo + '</button></span></div>';
+  }).join('') + '</div>' : '<div class="aw-empty">Nothing skipped.</div>';
+  return h;
+}
+function awIdeaRow(i){
+  const id = Number(i.id), t = String(i.title || 'Untitled idea');
+  if (awSelecting()) {
+    const on = _ideaSelected.has(id);
+    return '<div class="aw-row aw-irow aw-picking' + (on ? ' on' : '') + '" data-aw-id="' + id + '">'
+      + '<button type="button" class="aw-rb" aria-pressed="' + (on ? 'true' : 'false') + '" onclick="event.stopPropagation();awPick(' + id + ')"><span class="aw-rt">' + awE(t) + '</span><span class="aw-rm">' + awChips(i, true) + '</span></button>'
+      + '<span class="aw-acts"><button type="button" class="aw-ib aw-pick" aria-label="' + awE((on ? 'Unpick ' : 'Pick ') + t) + '" aria-pressed="' + (on ? 'true' : 'false') + '" onclick="event.stopPropagation();awPick(' + id + ')">' + (on ? AW_IC.check : AW_IC.ring) + '</button></span></div>';
+  }
+  return '<div class="aw-row aw-irow" data-aw-id="' + id + '">'
+    + '<button type="button" class="aw-rb" onclick="awOpen(' + id + ',\'ideas\')"><span class="aw-rt">' + awE(t) + '</span><span class="aw-rm">' + awChips(i, true) + '</span></button>'
+    + '<span class="aw-acts"><button type="button" class="aw-ib" aria-label="' + awE('Skip ' + t) + '" title="Skip" onclick="event.stopPropagation();awSkip(' + id + ')">' + AW_IC.x + '</button>'
+    + '<button type="button" class="aw-ib" aria-label="' + awE('Keep ' + t) + '" title="Keep" onclick="event.stopPropagation();awKeep(' + id + ')">' + AW_IC.check + '</button></span></div>';
+}
+// keep / skip = the existing paths, unchanged: quickApprove (→ Film & Post + the "why" sheet), showDismissPopupFn (reasons)
+function awKeep(id){ const i = awState()[id]; if (!i || i.status !== 'pending') return false; if (_aw.idea === i) awBack(); quickApprove(id); return true; }
+function awSkip(id){ const i = awState()[id]; if (!i || i.status !== 'pending') return false; showDismissPopupFn(id); return true; }
+function awSwipeAct(dx){ const d = Number(dx) || 0; return d >= AW_SWIPE ? 'keep' : (d <= -AW_SWIPE ? 'skip' : ''); }
+// a touch becomes a swipe only when it is clearly sideways; once it is one, drifting up or down cancels it
+function awSwipeLock(dx, dy){ return Math.abs(dx) > AW_LOCK && Math.abs(dx) > 2 * Math.abs(dy); }
+function awSwipeDrift(dy){ return Math.abs(dy) > AW_DRIFT; }
+function awSwipeEnd(id, dx){
+  const a = awSwipeAct(dx), i = awState()[id];
+  if (!a || !i) return '';
+  if (!(a === 'keep' ? awKeep(id) : awSkip(id))) return '';
+  // a swipe is easy to do by accident: 5 seconds to take it back
+  try { showToast(a === 'keep' ? 'Kept' : 'Skipping', 5000, () => awSwipeUndo(a, i), 'Undo'); } catch (e) {}
+  return a;
+}
+// Undo, through the existing paths: a keep goes back with undoStatus (and its "why" sheet closes); a skip whose reasons
+// sheet is still open is cancelled (cancelDismissPopup), one already saved goes back with undoStatus
+function awSwipeUndo(a, idea){
+  const id = awState().indexOf(idea); if (id < 0) return false;
+  if (a === 'keep') { try { closeApproveSheet(); } catch (e) {} try { openApprovePopup = null; } catch (e) {} if (idea.status === 'filming') { undoStatus(id); return true; } return false; }
+  if (idea.status === 'pending') { cancelDismissPopup(); return true; }
+  if (idea.status === 'dismissed') { undoStatus(id); return true; }
+  return false;
+}
+function awSwipeReset(s){ if (!s || !s.r) return; s.r.style.transform = ''; s.r.classList.remove('aw-moving', 'aw-sw-keep', 'aw-sw-skip'); }
+function awWireSwipe(host){
+  if (!host || host._awSwipe || !host.addEventListener) return;
+  host._awSwipe = true;
+  host.addEventListener('touchstart', function (e) {
+    const r = (!awSelecting() && e.target && e.target.closest) ? e.target.closest('.aw-irow') : null;
+    _aw.sw = (r && e.touches && e.touches.length === 1) ? { r: r, x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, on: false } : null;
+  }, { passive: true });
+  host.addEventListener('touchmove', function (e) {
+    const s = _aw.sw; if (!s || !e.touches || !e.touches.length) return;
+    const dx = e.touches[0].clientX - s.x, dy = e.touches[0].clientY - s.y;
+    if (!s.on) {
+      if (Math.abs(dy) > AW_LOCK && Math.abs(dy) >= Math.abs(dx)) { _aw.sw = null; return; }   // a scroll, not a swipe
+      if (!awSwipeLock(dx, dy)) return;
+      s.on = true; s.r.classList.add('aw-moving');
+    } else if (awSwipeDrift(dy)) { awSwipeReset(s); _aw.sw = null; return; }                  // drifted: cancelled
+    s.dx = dx; s.r.style.transform = 'translateX(' + Math.round(dx) + 'px)';
+    s.r.classList.toggle('aw-sw-keep', dx >= AW_SWIPE); s.r.classList.toggle('aw-sw-skip', dx <= -AW_SWIPE);
+  }, { passive: true });
+  host.addEventListener('touchend', function (e) {
+    const s = _aw.sw; _aw.sw = null; if (!s) return;
+    awSwipeReset(s);
+    if (!s.on) return;
+    // no click after a swipe: it would open the row, and the app's outside-click closer would shut the reasons sheet
+    try { if (e && e.cancelable) e.preventDefault(); } catch (er) {}
+    _aw.quiet = Date.now() + 600; awSwipeEnd(Number(s.r.getAttribute('data-aw-id')), s.dx);
+  });
+  host.addEventListener('touchcancel', function () { awSwipeReset(_aw.sw); _aw.sw = null; });
+}
+// Plan my week = the existing one-tap plan (ideasQuickGo); its outcome line is mirrored under the list
+async function awPlanWeek(){
+  if (_aw.planBusy) return false;
+  _aw.planBusy = true; _aw.plan = ''; awRender();
+  try { await ideasQuickGo(awEl('ideasQuickBtn')); } catch (e) {}
+  finally { _aw.planBusy = false; }
+  const st = awEl('ideasQuickStatus');
+  _aw.plan = st ? String(st.textContent || '').trim().replace(/\s+— under .*$/, '') : '';
+  awRender();
+  return true;
+}
+
+// ---- Pipeline (mockup 4): To film / Posted as calm groups (no tabs); Film next ----
+function awToFilm(){ return awState().filter(i => i && i.status === 'filming').sort((a, b) => (b.approvedAt || 0) - (a.approvedAt || 0)); }
+function awPipeRow(i, posted){
+  const id = Number(i.id);
+  const when = posted ? (i.doneAt ? 'Posted ' + new Date(i.doneAt).toLocaleDateString(undefined, (Date.now() - i.doneAt < 6 * 864e5) ? { weekday: 'short' } : { day: 'numeric', month: 'short' }) : 'Posted') : awDay(i.day);
+  return '<button type="button" class="aw-row aw-prow' + (posted ? ' aw-dim' : '') + '" data-aw-id="' + id + '" onclick="awOpen(' + id + ',\'pipeline\')">'
+    + '<span class="aw-rtx"><span class="aw-rt">' + awE(i.title || 'Untitled post') + '</span><span class="aw-rm">' + awChips(i, false)
+    + (i.assignee ? '<span class="aw-av" title="' + awE(i.assignee) + '">' + awE(awInitials(i.assignee)) + '</span>' : '')
+    + (when ? '<span>' + awE(when) + '</span>' : '') + '</span></span><span class="aw-go">' + AW_IC.right + '</span></button>';
+}
+function awPipeHtml(){
+  const now = Date.now(), cut = now - AW_POSTED_DAYS * 864e5, wk = now - 7 * 864e5;
+  const film = awToFilm();
+  const done = awState().filter(i => i && i.status === 'done');
+  const posted = done.filter(i => !i.doneAt || i.doneAt > cut).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+  const older = done.length - posted.length, week = posted.filter(i => i.doneAt && i.doneAt > wk).length;
+  let h = '<header class="aw-head"><h1 class="aw-title">Pipeline</h1><p class="aw-sub">' + film.length + ' to film · ' + week + ' posted this week</p></header>';
+  h += '<div class="aw-gh"><span>To film</span><span>' + film.length + '</span></div>';
+  h += film.length ? '<div class="aw-list">' + film.map(i => awPipeRow(i, false)).join('') + '</div>' : '<div class="aw-empty">Nothing to film. Keep an idea and it lands here.</div>';
+  if (posted.length || older) {
+    h += '<div class="aw-gh"><span>Posted</span><span>' + posted.length + '</span></div>';
+    if (posted.length) h += '<div class="aw-list">' + posted.map(i => awPipeRow(i, true)).join('') + '</div>';
+    if (older) h += '<div class="aw-note">' + older + ' older post' + (older === 1 ? ' is' : 's are') + ' kept — this list shows the last ' + AW_POSTED_DAYS + ' days.</div>';
+  }
+  return h;
+}
+// the top "To film" post that can be filmed (a carousel or image is skipped: the teleprompter has nothing to read for it)
+// long press on a Pipeline row (the mockup's rows carry no ⋯): the idea page opens with "Assign…" already open
+function awAssign(id){
+  const i = awState()[id]; if (!i) return false;
+  if (awDetailId() !== id) awOpen(id, _aw.from === 'pipeline' || activeView === 'pipeline' ? 'pipeline' : 'ideas');
+  try { if (typeof openAssignId !== 'undefined' && openAssignId === id) openAssignId = null; } catch (e) {}
+  toggleAssignPopup(id);
+  return true;
+}
+function awWireHold(host){
+  if (!host || host._awHold || !host.addEventListener) return;
+  host._awHold = true;
+  let t = null, x = 0, y = 0;
+  const stop = () => { if (t) { clearTimeout(t); t = null; } };
+  host.addEventListener('pointerdown', function (e) {
+    const r = e.target && e.target.closest ? e.target.closest('.aw-prow') : null; if (!r) return;
+    x = e.clientX; y = e.clientY; stop();
+    t = setTimeout(function () { t = null; awAssign(Number(r.getAttribute('data-aw-id'))); _aw.quiet = Date.now() + 700; }, AW_HOLD);   // quiet: the click that ends the press
+  });
+  host.addEventListener('pointermove', function (e) { if (t && (Math.abs(e.clientX - x) > 10 || Math.abs(e.clientY - y) > 10)) stop(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => host.addEventListener(ev, stop));
+  host.addEventListener('contextmenu', function (e) { if (e.target && e.target.closest && e.target.closest('.aw-prow')) e.preventDefault(); });
+}
+function awFilmNextId(){
+  const f = awToFilm(), read = (typeof CS_READ_FORMATS !== 'undefined') ? CS_READ_FORMATS : ['video', 'micro', 'qna', 'statement'];
+  const p = f.find(i => read.indexOf(i.format) >= 0);
+  return p ? Number(p.id) : null;
+}
+function awFilmNext(){
+  const id = awFilmNextId();
+  if (id == null) { try { showToast('Nothing to film yet — keep an idea first.'); } catch (e) {} return false; }
+  openTeleprompter(id);
+  return id;
+}
+
+// ---- Idea detail (mockup 3b): back, title, chips, Hook / Script / Shot list / Caption & tags, ⋯ menu, sticky Film it ----
+function awDetailId(){ const i = _aw.idea, s = awState(); if (!i) return null; const k = s.indexOf(i); return k >= 0 ? k : null; }
+function awOpen(id, from){
+  if (Date.now() < _aw.quiet) return false;   // the tap that ended a swipe or a long press
+  const i = awState()[id]; if (!i) return false;
+  _aw.idea = i; _aw.from = from === 'pipeline' ? 'pipeline' : 'ideas'; _aw.menu = false; _aw.showAll = false;
+  awRender();
+  try { window.scrollTo(0, 0); } catch (e) {}
+  return true;
+}
+function awBack(){ _aw.idea = null; _aw.menu = false; _aw.showAll = false; awRender(); return true; }
+// a push link (the morning batch) lands on the plain Ideas list: no idea page, no Skipped view, no picking
+function awReset(){ _aw.idea = null; _aw.menu = false; _aw.imenu = false; _aw.skipped = false; _aw.showAll = false; try { _ideaSelectMode = false; _ideaSelected.clear(); } catch (e) {} awRender(); return true; }
+function awSecs(i){
+  const film = ['video', 'micro', 'qna', 'statement']; if (film.indexOf(i.format) < 0) return '';
+  const w = awTxt(i.format === 'statement' ? (i.boldText || i.title) : (i.script || i.hook)).split(/\s+/).filter(Boolean).length;
+  if (!w) return '';
+  const s = Math.max(5, Math.round(w / 2.5 / 5) * 5);
+  return s >= 90 ? 'about ' + (Math.round(s / 30) / 2) + ' min' : 'about ' + s + ' sec';
+}
+function awShots(t){ return awTxt(t).split(/\n+/).map(x => x.replace(/^\s*(?:(?:shot\s*)?\d+\s*[.):\-]|[-*•–])\s*/i, '').trim()).filter(Boolean); }
+function awCopyText(i, key){
+  const t = v => awTxt(v).trim();
+  if (key === 'hook') return t(i.hook);
+  if (key === 'script') return i.format === 'statement' ? t(i.boldText || i.title) : (t(i.script) || t(i.hook) || t(i.title));
+  if (key === 'slides') return t(i.boldText);
+  if (key === 'shots') return awShots(i.shots).map((s, k) => (k + 1) + '. ' + s).join('\n');
+  if (key === 'caption') { const c0 = t(i.caption); return [c0, awNewTags(c0, t(i.tags))].filter(Boolean).join('\n\n'); }
+  if (key === 'all') return [t(i.title), t(i.hook), i.format !== 'statement' && t(i.boldText) ? t(i.boldText) : '', awCopyText(i, 'script'), awCopyText(i, 'shots'), awCopyText(i, 'caption')].filter(Boolean).join('\n\n');
+  return '';
+}
+function awNewTags(cap, tags){ const have = new Set(String(cap || '').toLowerCase().split(/\s+/)); return String(tags || '').split(/\s+/).filter(x => x && !have.has(x.toLowerCase())).join(' '); }
+function awSec(key, label, body){
+  return '<section class="aw-sec"><div class="aw-sech"><h2 class="aw-secl">' + label + '</h2>'
+    + '<button type="button" class="aw-cp" aria-label="Copy ' + awE(label.toLowerCase()) + '" title="Copy" onclick="awCopy(\'' + key + '\')">' + AW_IC.copy + '</button></div>' + body + '</section>';
+}
+function awMenuItems(i){
+  const id = Number(i.id), st = i.status, f = i.format, film = ['video', 'micro', 'qna'].indexOf(f) >= 0, it = [];
+  const add = (label, fn) => it.push({ label: label, fn: fn });
+  if (st === 'pending') { add('Keep', () => awKeep(id)); add('Skip', () => awSkip(id)); }
+  if (st === 'filming') { add('Mark as posted', () => moveStage(id, 'done')); add('Back to Ideas', () => { awBack(); moveStage(id, 'pending'); }); }
+  if (st === 'done') add('Back to To film', () => moveStage(id, 'filming'));
+  if (st !== 'dismissed') add('Assign…', () => awAssign(id));
+  if (f === 'statement') add('Edit the statement', () => openStatementEditor(id));
+  if (film && st !== 'done') add('B-roll preview', () => openBroll(id));
+  if (st !== 'done') add('Sharpen', () => sharpenIdea(id, null));
+  if (st === 'pending') {
+    add('Viral twist', () => viralTwist(id, null));
+    add('Redo with notes', () => ideaRedoOpen(id));
+    add('Write 3 more like this', () => generateMore(id, null));
+  }
+  if (typeof rv2CanRewrite === 'function' && rv2CanRewrite(i)) add('Rewrite as spoken script', () => rv2RewriteIdea(id, null));
+  add('Copy everything', () => awCopy('all'));
+  return it;
+}
+function awDetailHtml(i){
+  const id = Number(i.id), t = v => awTxt(v).trim();
+  _aw.items = awMenuItems(i);
+  let h = '<div class="aw-dtop"><button type="button" class="aw-ib aw-back" aria-label="Back" title="Back" onclick="awBack()">' + AW_IC.back + '</button>'
+    + '<button type="button" class="hy-dots aw-dots" id="awDots" aria-label="More" aria-haspopup="menu" aria-expanded="' + (_aw.menu ? 'true' : 'false') + '" onclick="awMenu()">' + AW_IC.dots + '</button></div>';
+  if (_aw.menu) h += '<div class="hy-menu aw-menu" role="menu">' + _aw.items.map((m, k) => '<button type="button" role="menuitem" onclick="event.stopPropagation();awAct(' + k + ')">' + awE(m.label) + '</button>').join('') + '</div>';
+  const secs = awSecs(i);
+  h += '<h1 class="aw-h1">' + awE(i.title || 'Untitled idea') + '</h1><div class="aw-dmeta">' + awChips(i, true)
+    + (i.assignee ? '<span class="aw-av" title="' + awE(i.assignee) + '">' + awE(awInitials(i.assignee)) + '</span>' : '') + (secs ? '<span>· ' + secs + '</span>' : '') + '</div>'
+    + '<div id="assignPopup-' + id + '" class="assign-popup aw-assign" style="display:none"></div>';   // toggleAssignPopup fills it
+  const hook = t(i.hook);
+  if (hook && hook.toLowerCase() !== t(i.title).toLowerCase()) h += awSec('hook', 'Hook', '<p class="aw-p">' + nl2br(hook) + '</p>');
+  const pre = t(i.boldText) && t(i.boldText) !== 'undefined' ? t(i.boldText) : '';
+  if (pre) h += awSec('slides', i.format === 'statement' ? 'Text' : 'Slides', '<p class="aw-p">' + nl2br(pre) + '</p>');
+  if (i.format !== 'statement') {
+    const sc = t(i.script);
+    if (sc) {
+      const long = sc.length > 260 || sc.split('\n').length > 4;
+      h += awSec('script', pre ? 'Design notes' : 'Script', '<p class="aw-p' + (long && !_aw.showAll ? ' aw-clamp' : '') + '">' + nl2br(sc) + '</p>'
+        + (long ? '<button type="button" class="hy-showall aw-more" aria-expanded="' + (_aw.showAll ? 'true' : 'false') + '" onclick="awShowAll()">' + (_aw.showAll ? 'Show less' : 'Show all') + AW_IC.down + '</button>' : ''));
+    }
+    const sh = awShots(i.shots);
+    if (sh.length) h += awSec('shots', 'Shot list', '<ol class="aw-shots">' + sh.map((s, k) => '<li><span class="aw-n">' + (k + 1) + '</span><span>' + awE(s) + '</span></li>').join('') + '</ol>');
+  }
+  const cap = t(i.caption) !== 'undefined' ? t(i.caption) : '', tags = awNewTags(cap, t(i.tags));   // a tag the caption already has: once
+  if (cap || tags) h += awSec('caption', 'Caption &amp; tags', '<p class="aw-p">' + nl2br([cap, tags].filter(Boolean).join('\n')) + '</p>');
+  // where the ⋯ tools write their answers (the same ids renderDetailContent gives them)
+  h += '<div class="rv2-rw" id="rv2Rw-' + id + '">' + ((typeof rv2RwHtml === 'function') ? rv2RwHtml(id) : '') + '</div>'
+    + '<div class="viral-twist-result" id="viralTwist-' + id + '"></div><div class="idea-redo-box" id="ideaRedo-' + id + '"></div>';
+  return h;
+}
+function awShowAll(){ _aw.showAll = !_aw.showAll; awRender(); return _aw.showAll; }
+function awMenu(){
+  _aw.menu = !_aw.menu; awRender();
+  if (_aw.menu) { try { const f = document.querySelector('.aw-menu button'); if (f && f.focus) f.focus(); } catch (e) {} }
+  return _aw.menu;
+}
+function awAct(k){ const m = _aw.items[k]; _aw.menu = false; awRender(); if (!m) return false; try { m.fn(); } catch (e) { try { showToast(humanErr((e && e.message) || '', 'That didn’t work — try again.')); } catch (_) {} } return true; }
+function awCopy(key){
+  const k = awDetailId(); const i = k == null ? null : awState()[k];
+  if (!i) return false;
+  const text = awCopyText(i, key);
+  if (!text) { try { showToast('Nothing to copy here'); } catch (e) {} return false; }
+  if (_aw.menu) { _aw.menu = false; awRender(); }
+  try { navigator.clipboard.writeText(text).then(() => { try { showToast('Copied'); } catch (e) {} }).catch(() => copyFallback(text)); }
+  catch (e) { copyFallback(text); }
+  return text;
+}
+// Film it = keep the idea (the same state change quickApprove makes, without its "why" sheet over the camera) and open
+// the real teleprompter on it: openTeleprompter(id) reads its script and keeps Mark done / "Mark as filmed?" for this post.
+function awKeepQuiet(id){
+  reindexIdeas();
+  const i = awState()[id]; if (!i || i.status !== 'pending') return false;
+  i.status = 'filming'; i.approvedAt = Date.now(); i.dismissReason = null;
+  saveState();
+  try { renderNav(); } catch (e) {}
+  return true;
+}
+function awDesign(i){ return !!i && (i.format === 'carousel' || i.format === 'static'); }
+// carousel / image: the sticky button is the slide maker (openCarouselMaker), never the teleprompter on design notes
+function awSlides(){ const id = awDetailId(); if (id == null) return false; openCarouselMaker(id); return true; }
+function awFilm(){
+  const id = awDetailId(); if (id == null) return false;
+  const i = awState()[id];
+  if (awDesign(i)) return awSlides();
+  if (i.status === 'pending') awKeepQuiet(id);
+  openTeleprompter(id);
+  awRender();
+  return true;
+}
+
+// ---- the dock: Plan my week / Film next (floating pill) or the detail's sticky [Film it][copy] ----
+function awDockHtml(){
+  const v = (typeof activeView !== 'undefined') ? activeView : '';
+  const did = awDetailId();
+  if (did != null && v === _aw.from) {
+    const di = awState()[did];
+    if (awDesign(di)) return '<div class="aw-bar"><button type="button" class="aw-film" onclick="awSlides()">' + AW_IC.slides + '<span>' + (di.format === 'static' ? 'Make the image' : 'Make slides') + '</span></button>'
+      + '<button type="button" class="aw-sq" aria-label="Copy the slide text" title="Copy the slide text" onclick="awCopy(\'' + (awTxt(di.boldText).trim() ? 'slides' : 'script') + '\')">' + AW_IC.copy + '</button></div>';
+    return '<div class="aw-bar"><button type="button" class="aw-film" onclick="awFilm()">' + AW_IC.film + '<span>Film it</span></button>'
+      + '<button type="button" class="aw-sq" aria-label="Copy the script" title="Copy the script" onclick="awCopy(\'script\')">' + AW_IC.copy + '</button></div>';
+  }
+  if (v === 'ideas' && awSelecting()) {
+    const k = _ideaSelected.size;
+    return '<div class="aw-bar"><button type="button" class="aw-film" onclick="batchApprove()"' + (k ? '' : ' disabled') + '>' + AW_IC.check + '<span>Keep ' + (k || '') + '</span></button>'
+      + '<button type="button" class="aw-sq" aria-label="Cancel" title="Cancel" onclick="awSelectEnd()">' + AW_IC.x + '</button></div>';
+  }
+  if (v === 'ideas' && _aw.skipped) return '';
+  if (v === 'ideas') return '<button type="button" class="aw-fab" id="awPlan" onclick="awPlanWeek()"' + (_aw.planBusy ? ' disabled aria-busy="true"' : '') + '>' + AW_IC.spark + '<span>' + (_aw.planBusy ? 'Planning your week…' : 'Plan my week') + '</span></button>';
+  if (v === 'pipeline' && awFilmNextId() != null) return '<button type="button" class="aw-fab" id="awFilmNext" onclick="awFilmNext()">' + AW_IC.film + '<span>Film next</span></button>';
+  return '';
+}
+function awWire(){
+  if (_awWired) return; _awWired = true;
+  try {
+    document.addEventListener('click', function (e) {
+      if (!_aw.menu && !_aw.imenu) return; const t = e && e.target;
+      if (t && t.closest && t.closest('.aw-menu, .aw-dots')) return;
+      _aw.menu = false; _aw.imenu = false; awRender();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (!e || e.key !== 'Escape') return;
+      if (_aw.menu || _aw.imenu) { _aw.menu = false; _aw.imenu = false; awRender(); return; }
+      const tp = awEl('teleprompterOverlay');
+      if (awDetailId() != null && !(tp && tp.classList.contains('open')) && !document.querySelector('.dp-backdrop, .br-backdrop, .csx-backdrop')) awBack();
+    });
+  } catch (e) {}
+}
+function awRender(){
+  const ideas = awEl('awIdeas'); if (!ideas) return;
+  awWire();
+  try { document.body.classList.add('aw-on'); } catch (e) {}
+  const v = (typeof activeView !== 'undefined') ? activeView : '';
+  if (_aw.view !== v) { _aw.view = v; _aw.imenu = false; if (v !== _aw.from) { _aw.idea = null; _aw.menu = false; } }   // another screen closes the detail
+  ideas.innerHTML = awIdeasHtml(); awWireSwipe(ideas);
+  const pipe = awEl('awPipe'); if (pipe) { pipe.innerHTML = awPipeHtml(); awWireHold(pipe); }
+  const det = awEl('awDetail'), id = awDetailId(), open = id != null && v === _aw.from;
+  if (det) {
+    if (open) {
+      const keep = ['viralTwist-', 'ideaRedo-'].map(p => { const b = awEl(p + id); return b ? { p: p, h: b.innerHTML, o: b.getAttribute('data-open') } : null; });
+      det.innerHTML = awDetailHtml(awState()[id]); det.hidden = false;
+      keep.forEach(k => { if (!k) return; const b = awEl(k.p + id); if (b) { b.innerHTML = k.h; if (k.o) b.setAttribute('data-open', k.o); } });
+    } else { det.innerHTML = ''; det.hidden = true; }
+  }
+  try { if (open) document.body.setAttribute('data-aw-detail', _aw.from); else document.body.removeAttribute('data-aw-detail'); } catch (e) {}
+  const dock = awEl('awDock'); if (dock) dock.innerHTML = '<div class="aw-dock-in">' + awDockHtml() + '</div>';
+}
+// every redraw of the old lists redraws the calm ones from the same state (switchView, refreshCurrentView, saves, moves)
+['renderIdeas', 'renderPipeline'].forEach(function (nm) {
+  try {
+    const orig = window[nm];
+    if (typeof orig !== 'function' || orig.__awWrapped) return;
+    const w = function () { const r = orig.apply(this, arguments); try { awRender(); } catch (e) {} return r; };
+    w.__awWrapped = true;
+    window[nm] = w;
+  } catch (e) {}
+});
+// ===== end v716 app-wide =====
 
 // ===== follow-panels: "Creators you follow" (bottom of Remix, owner 2026-10-04) =====
 // The creators are the saved Bookmarks (bookmarkCategories → entries { id, name, links, note }), stored
@@ -28878,7 +29407,7 @@ function showLockedToast() {
 }
 
 let _lastToastMsg = '', _lastToastAt = 0, _toastQueue = [], _toastShowing = false;
-function showToast(message, duration = 3000, onTap) {
+function showToast(message, duration = 3000, onTap, cta) {   // v716: cta = the tappable word (default "View ›"; the swipe's "Undo")
   if (typeof duration === 'string') duration = 3000; // fix callers passing type string instead of ms
   // Dedupe rapid repeats — the QA pass caught the same toast firing 2-3x in a row.
   const _now = Date.now();
@@ -28886,14 +29415,14 @@ function showToast(message, duration = 3000, onTap) {
   _lastToastMsg = message; _lastToastAt = _now;
   if (_toastQueue.some(t => t.message === message)) return; // already queued — don't double up
   if (_toastQueue.length >= 4) _toastQueue.shift();          // cap the backlog
-  _toastQueue.push({ message, duration, onTap });
+  _toastQueue.push({ message, duration, onTap, cta });
   if (!_toastShowing) _drainToasts();
 }
 function _drainToasts() {
   const next = _toastQueue.shift();
   if (!next) { _toastShowing = false; return; }
   _toastShowing = true;
-  const message = next.message, duration = next.duration, onTap = next.onTap;
+  const message = next.message, duration = next.duration, onTap = next.onTap, cta = next.cta;
   const old = document.querySelector('.generic-toast');
   if (old) old.remove();
   const toast = document.createElement('div');
@@ -28903,7 +29432,7 @@ function _drainToasts() {
      title. None of the 251 passes markup on purpose (checked), so escaping costs nothing and
      closes the whole surface. The CTA is the one piece of markup, and it is ours. */
   const _safe = (typeof escHtml === 'function') ? escHtml(message) : String(message == null ? '' : message);
-  toast.innerHTML = onTap ? `${_safe} <span class="toast-cta">View \u203A</span>` : _safe;
+  toast.innerHTML = onTap ? `${_safe} <span class="toast-cta">${cta ? ((typeof escHtml === 'function') ? escHtml(cta) : '') : 'View \u203A'}</span>` : _safe;
   if (onTap) {
     toast.onclick = () => { toast.remove(); try { onTap(); } catch(e){} };
   }
@@ -31777,6 +32306,7 @@ function csxOnKey(e){
   if (k === '?') { e.preventDefault(); csxShortcutsOpen(); return; }
   if (k === 'n' || k === 'N') { e.preventDefault(); csxComposerOpen(); return; }
   var scr = csxScreen(); if (CSX_MD_VIEWS.indexOf(scr) < 0) return;
+  try { if (document.body.classList.contains('aw-on') && (scr === 'ideas' || scr === 'pipeline')) return; } catch (e) {}   // v716: calm lists, no hidden row to approve
   var pane = document.getElementById('csxDetail');
   if ((k === 'ArrowDown' || k === 'ArrowUp') && pane && pane.contains(e.target)) return;   // arrows scroll the detail
   if (_L.length && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'Enter')) return;          // …and inside the detail dialog
@@ -31801,14 +32331,20 @@ function csxTrapTab(e){
 function csxPaletteItems(){
   // v712: Remix is the first item; "New post" leads the Actions group (one Actions heading, not two)
   var it = [];
-  [['create', CS_REMIX_NAME], ['today', 'Quick Post'], ['ideas', 'Ideas'], ['pipeline', 'Pipeline'], ['idea', 'Idea Catcher'], ['viral', 'Trends'], ['notebook', 'Notebook'], ['questions', 'What people search']].forEach(function(v){
+  // v716: the menu's order (CS_DRAWER_GROUPS), then the Classic tools
+  [['create', CS_REMIX_NAME], ['ideas', 'Ideas'], ['pipeline', 'Pipeline'], ['viral', 'Trends'], ['questions', 'What people search'], ['notebook', 'Notebook']].forEach(function(v){
     if (typeof csShelved === 'function' && csShelved(v[0])) return;
     it.push({ g: 'Go to', label: v[1], call: ['switchView', v[0]] });
   });
-  it.push({ g: 'Go to', label: 'Bookmarks', call: ['toggleBookmarkBar'] });
-  it.push({ g: 'Go to', label: 'Brand brain', call: ['openBrain'] });
-  it.push({ g: 'Go to', label: 'Assistant', call: ['bvTabClick'] });
+  it.push({ g: 'Go to', label: 'Creators', call: ['toggleBookmarkBar'] });
+  it.push({ g: 'Go to', label: 'Coach', call: ['bvTabClick'] });
   it.push({ g: 'Go to', label: 'Settings', call: ['openSettings'] });
+  [['today', 'Quick Post'], ['idea', 'Idea Catcher']].forEach(function(v){
+    if (typeof csShelved === 'function' && csShelved(v[0])) return;
+    it.push({ g: 'Classic tools', label: v[1], call: ['switchView', v[0]] });
+  });
+  it.push({ g: 'Classic tools', label: 'Classic Make it yours', call: ['hyClassic'] });
+  it.push({ g: 'Classic tools', label: 'Brand brain', call: ['openBrain'] });
   try { (allBrands || []).forEach(function(b){
     if (currentBrand && b.id === currentBrand.id) return;
     it.push({ g: 'Switch brand', label: String(b.brand_name || 'Unnamed brand').replace(/\s+/g, ' ').trim().slice(0, 60), call: ['switchBrand', b.id] });

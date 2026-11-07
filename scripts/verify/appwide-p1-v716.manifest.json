@@ -1,0 +1,139 @@
+{
+  "mutations": [
+    {
+      "id": "M1",
+      "finding": "v716-keep-path",
+      "file": "app.html",
+      "find": "if (_aw.idea === i) awBack(); quickApprove(id); return true; }",
+      "replace": "if (_aw.idea === i) awBack(); awKeepQuiet(id); return true; }",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "keep skips the existing approve path (quickApprove: the why-sheet that teaches the brand brain)"
+    },
+    {
+      "id": "M2",
+      "finding": "v716-swipe-direction",
+      "file": "app.html",
+      "find": "return d >= AW_SWIPE ? 'keep' : (d <= -AW_SWIPE ? 'skip' : '');",
+      "replace": "return d >= AW_SWIPE ? 'skip' : (d <= -AW_SWIPE ? 'keep' : '');",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "swipe right skips and left keeps (the mockup says right keeps)"
+    },
+    {
+      "id": "M3",
+      "finding": "v716-ideas-groups",
+      "file": "app.html",
+      "find": "return diff <= 0 ? 0 : (diff < 7 ? 1 : 2);",
+      "replace": "return diff <= 0 ? 0 : 2;",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "ideas from this week fall into Earlier (no This week group)"
+    },
+    {
+      "id": "M4",
+      "finding": "v716-xss-title",
+      "file": "app.html",
+      "find": "\\'ideas\\')\"><span class=\"aw-rt\">' + awE(t) + '</span>",
+      "replace": "\\'ideas\\')\"><span class=\"aw-rt\">' + t + '</span>",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "an idea title is written into the list unescaped"
+    },
+    {
+      "id": "M5",
+      "finding": "v716-film-keeps",
+      "file": "app.html",
+      "find": "  if (i.status === 'pending') awKeepQuiet(id);\n",
+      "replace": "",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "Film it opens the teleprompter but the idea is never kept (it stays in Ideas)"
+    },
+    {
+      "id": "M6",
+      "finding": "v716-pipeline-map",
+      "file": "app.html",
+      "find": "function awToFilm(){ return awState().filter(i => i && i.status === 'filming')",
+      "replace": "function awToFilm(){ return awState().filter(i => i && (i.status === 'filming' || i.status === 'pending'))",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "To film also lists ideas that were never kept"
+    },
+    {
+      "id": "M7",
+      "finding": "v716-menu-order",
+      "file": "app.html",
+      "find": "{ view: 'viral', label: 'Trends' },\n    { view: 'questions', label: 'What people search' },",
+      "replace": "{ view: 'questions', label: 'What people search' },\n    { view: 'viral', label: 'Trends' },",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "the menu drops the owner's order (What people search before Trends)"
+    },
+    {
+      "id": "M8",
+      "finding": "v716-idea-pills",
+      "file": "app.html",
+      "find": "function hyTwists(s){ return (s && s.kind === 'text') ? HY_IDEA_TWISTS : RX_MODES; }",
+      "replace": "function hyTwists(s){ return RX_MODES; }",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "typed ideas get the remix pills instead of the idea set"
+    },
+    {
+      "id": "M9",
+      "finding": "v716-ideas-tools",
+      "file": "app.html",
+      "find": "  add('Restore skipped ideas', () => resetAll());",
+      "replace": "  add('Restore skipped ideas', () => undoStatus(0));",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "the Ideas ⋯ 'Restore skipped ideas' stops calling the existing resetAll"
+    },
+    {
+      "id": "M10",
+      "finding": "v716-hidden-note",
+      "file": "app.html",
+      "find": "    + (hid ? '<button type=\"button\" class=\"aw-hidnote\"",
+      "replace": "    + (false ? '<button type=\"button\" class=\"aw-hidnote\"",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "ideas hidden by a switched-off format vanish without the one-line note"
+    },
+    {
+      "id": "M11",
+      "finding": "v716-assign",
+      "file": "app.html",
+      "find": "  if (st !== 'dismissed') add('Assign…', () => awAssign(id));",
+      "replace": "",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "the idea page loses Assign… (team assignment unreachable)"
+    },
+    {
+      "id": "M12",
+      "finding": "v716-design-film",
+      "file": "app.html",
+      "find": "  if (awDesign(i)) return awSlides();",
+      "replace": "",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "a carousel's sticky button opens the teleprompter on its design notes"
+    },
+    {
+      "id": "M13",
+      "finding": "v716-swipe-commit",
+      "file": "app.html",
+      "find": "const AW_SWIPE = 96;",
+      "replace": "const AW_SWIPE = 72;",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "a short swipe (72 px) commits a keep / skip"
+    },
+    {
+      "id": "M14",
+      "finding": "v716-swipe-lock",
+      "file": "app.html",
+      "find": "function awSwipeLock(dx, dy){ return Math.abs(dx) > AW_LOCK && Math.abs(dx) > 2 * Math.abs(dy); }",
+      "replace": "function awSwipeLock(dx, dy){ return Math.abs(dx) > AW_LOCK && Math.abs(dx) > Math.abs(dy); }",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "a diagonal scroll locks into a swipe"
+    },
+    {
+      "id": "M15",
+      "finding": "v716-swipe-undo",
+      "file": "app.html",
+      "find": "  try { showToast(a === 'keep' ? 'Kept' : 'Skipping', 5000, () => awSwipeUndo(a, i), 'Undo'); } catch (e) {}",
+      "replace": "",
+      "gate": "appwide-p1-v716.mjs",
+      "why": "a swipe keep / skip has no Undo"
+    }
+  ]
+}

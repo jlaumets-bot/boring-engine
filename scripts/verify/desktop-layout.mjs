@@ -59,10 +59,12 @@ let sidebar = '';
     && ['/terms.html', '/privacy.html', '/refunds.html'].every(h => sidebar.includes('href="' + h + '"')), '1 every screen, the coach, the update check and the legal links are there');
   ok(/<button type="button" class="ds-brand" id="dsBrand"[^>]*onclick="toggleBrandSwitcher\(\)">[\s\S]*?id="dsBrandName">Acme Co</.test(sidebar) && sidebar.indexOf('id="dsBrand"') < sidebar.indexOf('ds-item'), '1 the brand switcher is the first row and calls the SAME toggleBrandSwitcher, showing the brand name');
   ok(/class="brand-switcher-wrap ds-brand-wrap"/.test(sidebar), '1 it sits in a .brand-switcher-wrap, so the dropdown\'s outside-click closer ignores it');
-  const toolsIdx = sidebar.indexOf('>Tools<'), springIdx = sidebar.indexOf('ds-spring');
-  ok(toolsIdx > 0 && sidebar.indexOf('data-act="toggleBookmarkBar"') > toolsIdx && sidebar.indexOf('data-act="openBrain"') > toolsIdx && sidebar.indexOf('data-act="openBrain"') < springIdx, '1 Bookmarks and Brand brain are in the Tools group');
+  // v716 (owner-approved menu, mockup 12): Creators (= Bookmarks) and Coach / Settings above the spring; Brand brain and Help fold under
+  // "Classic tools" at the bottom; the plan row is last
+  const springIdx = sidebar.indexOf('ds-spring'), clsIdx = sidebar.indexOf('id="dsClassic"');
+  ok(sidebar.indexOf('data-act="toggleBookmarkBar"') > 0 && sidebar.indexOf('data-act="toggleBookmarkBar"') < springIdx && /ds-coach/.test(sidebar.slice(0, springIdx)) && /data-act="openSettings"/.test(sidebar.slice(0, springIdx)), '1 Creators (Bookmarks), Coach and Settings are in the main list');
   const bottom = sidebar.slice(springIdx);
-  ok(/ds-coach/.test(bottom) && /data-act="openSettings"/.test(bottom) && /data-act="startTour"/.test(bottom) && /id="dsPlan"/.test(bottom), '1 bottom: coach, Settings, Help, plan row');
+  ok(clsIdx > springIdx && /data-act="openBrain"/.test(bottom) && /data-act="startTour"/.test(bottom) && bottom.lastIndexOf('id="dsPlan"') > bottom.indexOf('data-act="startTour"'), '1 bottom: Classic tools (Brand brain, Help), then the plan row');
   // the dropdown anchors to the sidebar row on desktop, to the header brand on phones
   const pos = (dsW) => {
     const dd = { offsetWidth: 240, style: {} };

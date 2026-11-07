@@ -371,8 +371,8 @@ function feedReady() { V('_cf.brandId = "b1"'); c.cfApply(FEED()); }
   await c.hySend();
   ok(calls.length === 0 && st().t && st().t.src.kind === 'text' && !/Here’s what they said/.test(main()) && /class="hy-grid"/.test(main()) && main().includes('&lt;svg onload=x&gt;'), 'plain words → your idea goes straight to the twists (no read call, escaped)');
   route = async (url) => resp(200, { remix: Object.assign({}, R1) }); calls = [];
-  await c.hyTwist('simplify');
-  ok(calls[0].body.postDescription.indexOf('MY IDEA: Why I stopped') === 0 && calls[0].body.postUrl === '', '…and is sent the way the composer sends an idea ("MY IDEA: …")');
+  await c.hyTwist('tip');   // v716: a typed idea shows the idea twists (Quick tip = mode 'simplify' + its angle line)
+  ok(calls[0] && calls[0].body.postDescription.indexOf('MY IDEA: Why I stopped') === 0 && calls[0].body.postUrl === '' && calls[0].body.remixMode === 'simplify', '…and is sent the way the composer sends an idea ("MY IDEA: …")');
   c.hyNew(); els.hyIn.value = 'https://www.instagram.com/reel/abc'; calls = [];
   ok(await c.hySend() === false && calls.length === 0 && /Instagram/.test(els.hyHint.textContent), 'an Instagram link is refused in words, no call');
   ok(c.hyTakeOriginal({ kind: 'trend', url: '', text: 'trend words' }) === true && st().t.src.text === 'trend words', 'a hand-off (Trends → Make it yours) opens a fresh thread here');

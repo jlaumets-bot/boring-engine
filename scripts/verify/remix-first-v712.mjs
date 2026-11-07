@@ -47,7 +47,7 @@ const NAME_JS = line(/\nvar CS_REMIX_NAME = '[^'\n]+';/);
 const NAME = /'([^']+)'/.exec(NAME_JS)[1];
 const START_JS = line(/\nvar CS_START_VIEW = '[^'\n]+';/);
 const LOCK_JS = line(/\nvar CS_LOCKED_VIEWS = \[[^\]\n]*\];/);
-const ORDER_REST = ['today', 'ideas', 'pipeline', 'idea', 'viral', 'notebook', 'questions'];   // v711 order, unchanged
+const ORDER_REST = ['ideas', 'pipeline', 'viral', 'questions', 'notebook', 'today', 'idea'];   // v716 owner order (mockup 12); Quick Post + Idea Catcher under Classic tools
 
 /* ═══ 1. the start screen ═══ */
 {
@@ -99,7 +99,7 @@ const ORDER_REST = ['today', 'ideas', 'pipeline', 'idea', 'viral', 'notebook', '
   const go = items.filter(i => i.call[0] === 'switchView').map(i => i.call[1]);
   ok(J(go) === J(['create'].concat(ORDER_REST)), '2 command palette: the other screens keep their order');
   const groups = items.map(i => i.g).filter((g, i, a) => i === 0 || a[i - 1] !== g);
-  ok(J(groups) === J(['Go to', 'Switch brand', 'Actions']) && items.some(i => i.label === 'New post' && i.kbd === 'N'), '2 command palette: one heading per group, "New post" (N) kept, now leading Actions');
+  ok(J(groups) === J(['Go to', 'Classic tools', 'Switch brand', 'Actions']) && items.some(i => i.label === 'New post' && i.kbd === 'N'), '2 command palette: one heading per group, "New post" (N) kept, now leading Actions');
   ok(p.CSX_TITLES.create === NAME, '2 desktop toolbar title = CS_REMIX_NAME');
 
   for (const fn of ['renderNavWithLocks', 'renderNav']) {
