@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v717';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v718';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6422,6 +6422,20 @@ if (!window.supabase) {
 
 <!-- ===== ONBOARDING WIZARD (v2: 3 screens) ===== -->
 <div id="onboardingOverlay" class="onboarding-overlay hidden">
+  <!-- v718: onboarding as a chat (mockups design-options/desktop-onboarding/ O1–O5, O2-desktop). obcRender draws #obcThread; the input is
+       static so typing survives redraws. The old step markup below stays (hidden by .obc-on): it is still where every answer is kept. -->
+  <div class="obc" id="obChat" role="region" aria-label="Set up Content Shrimp">
+    <div class="obc-top"><button type="button" class="obc-back" id="obcBack" aria-label="Back" onclick="obcBack()" hidden><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+      <span class="obc-logo"><i aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg></i>Content Shrimp</span><span class="obc-st" id="obcStep">1 of 5</span></div>
+    <div class="obc-thread" id="obcThread" role="log" aria-live="polite"></div>
+    <div class="obc-dock" id="obcDock"><div class="obc-dock-in"><div class="hy-hint obc-hint" id="obcHint" role="status" aria-live="polite"></div>
+      <form class="hy-input obc-input" id="obcForm" onsubmit="event.preventDefault();obcSend();">
+        <button type="button" class="hy-pst" aria-label="Paste from clipboard" title="Paste from clipboard" onclick="obcPasteIn()"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
+        <label for="obcIn" class="cs-sr" id="obcInLbl">yourbrand.com</label>
+        <input type="text" class="hy-in" id="obcIn" placeholder="yourbrand.com" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send">
+        <button type="submit" class="hy-send" aria-label="Send"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+      </form></div></div>
+  </div>
   <div class="onboarding-progress" id="obProgress"></div>
   <div class="onboarding-container">
 
@@ -6509,7 +6523,7 @@ if (!window.supabase) {
         <h2>Now let me hear you</h2>
         <p class="ob-sub" style="margin-bottom:14px;">Your site told me what you sell. It can't tell me how you talk — and that's the whole difference between a post that sounds like you and one that sounds like AI.</p>
       </div>
-      <div class="ob-voice-prompt">Use the mic and talk for a minute or two. Rough is fine. Ums are fine.<br><b>Try:</b> explain what you sell like you're telling a friend at a bar. What do people get wrong about it? What annoys you about how everyone else does it?</div>
+      <div class="ob-voice-prompt">Use the mic and talk for a minute. Rough is fine. Ums are fine.<br><b>Try:</b> explain what you sell like you're telling a friend at a bar. What do people get wrong about it? What annoys you about how everyone else does it?</div>
       <button class="vl-mic ob-voice-mic" id="obVoiceMic" onclick="dictateInto('obVoiceSample', this, 'Talking')" title="Talk" aria-label="Record by voice"><svg class="btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/></svg> Talk</button>
       <textarea id="obVoiceSample" placeholder="Your words land here as you talk. Fix anything you like — but the rougher it stays, the more it sounds like you." oninput="obVoiceCount()" style="min-height:150px;"></textarea>
       <div class="ob-voice-count" id="obVoiceCount"></div>
@@ -28117,7 +28131,7 @@ function renderSettingsPanel() {
                mic and is never routed through the coach (which would tidy the speech into prose). -->
           <div class="sp-field"><label class="sp-label">How You Actually Talk</label>
             ${spRenderFieldExtras('voiceSample')}
-            <textarea class="sp-textarea" data-sp-field="voiceSample" id="spVoiceSample" placeholder="Use the mic and talk for a minute or two — about what you sell, what people get wrong about it, what annoys you about how everyone else does it. Rough is fine. Ums are fine. This is the only place the app hears how you sound, and it is kept exactly as you say it." oninput="updateSetting('voiceSample',this.value)">${escHtml(settings.voiceSample)}</textarea>
+            <textarea class="sp-textarea" data-sp-field="voiceSample" id="spVoiceSample" placeholder="Use the mic and talk for a minute — about what you sell, what people get wrong about it, what annoys you about how everyone else does it. Rough is fine. Ums are fine. This is the only place the app hears how you sound, and it is kept exactly as you say it." oninput="updateSetting('voiceSample',this.value)">${escHtml(settings.voiceSample)}</textarea>
             <button class="vl-mic" id="spVoiceMic" onclick="dictateInto('spVoiceSample', this, 'Talking')" style="margin-top:8px;" title="Talk" aria-label="Record by voice">${ICO.mic} Talk</button>
             <!-- deliberately NO spRenderFieldActions here: "Make it better" runs the field through the
                  LLM and would polish out the ums, repeats and run-ons that make this a voice. -->
@@ -29707,7 +29721,7 @@ async function obSaveCreators(urls, freshBrand){
   if (!_saved || _saved.ok === false) return 0;
   return added;
 }
-// v649 — live word count under the onboarding mic, so "a minute or two" has a visible target.
+// v649 — live word count under the onboarding mic, so "a minute" has a visible target.
 function obVoiceWords(){
   const t = ((document.getElementById('obVoiceSample')||{}).value || '').trim();
   return t ? t.split(/\s+/).filter(Boolean).length : 0;
@@ -29923,7 +29937,14 @@ async function obFinish() {
     try { _obFollowed = await obSaveCreators(obPendingCreators, _obFreshBrand); } catch(e) { console.error('Saving the creators failed:', e); }
   }
   obPendingCreators = [];
-  if (_obFollowed > 0) {
+  // v718: the chat's last step ("Paste a TikTok to try it"): what they pasted or typed goes straight into the main chat thread
+  // (creators saved above first, so the rail's feed has them). Nothing pasted → the v712 endings below, unchanged.
+  const _obLand = (typeof obcTakeLanding === 'function') ? obcTakeLanding() : '';
+  if (_obLand) {
+    try { if (currentBrand) await saveIdeasToDB(); } catch(e) { console.error('Ideas save error:', e); }
+    switchView('create');
+    try { hyStart(_obLand); } catch(e) { console.error('First paste failed:', e); }
+  } else if (_obFollowed > 0) {
     try {
       if (currentBrand) await saveIdeasToDB();
     } catch(e) { console.error('Ideas save error:', e); }
@@ -32405,6 +32426,8 @@ function csxToolbarModel(screen){
       var w = b.getAttribute('data-vt'); if (w) vt.push({ label: csxEsc(b.textContent.trim()), on: b.classList.contains('active'), onclick: "vlTab('" + w + "');csxToolbarSync()" });
     }); } catch (e) {}
     if (vt.length) m.ctx += csxSeg('Trends view', vt);
+  } else if (screen === 'create' && !(typeof _hy !== 'undefined' && _hy.classic)) {
+    m.actions += csxBtn(CSX_SVG.pencil + '<span>New chat</span>', 'hyNew()', 'secondary', ' data-k="New chat"');   // v718 (mockup D1)
   } else if (screen === 'settings') {
     m.actions += csxBtn('Close', 'toggleSettings()', 'ghost');
   } else if (screen === 'assistant') {
@@ -33219,6 +33242,772 @@ function csxInit(){
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', csxInit); else csxInit();
 /* ===== end v703 desktop-native structure ===== */
+/* ===== v718 DESKTOP LAYOUT (≥1100px) + ONBOARDING AS A CHAT — owner-approved mockups design-options/desktop-onboarding/ (2026-11-07) =====
+   Gates: scripts/verify/desktop-v718.mjs ("DESKTOP V718 OK"), scripts/verify/onboarding-chat-v718.mjs ("ONBOARDING CHAT V718 OK").
+   PART A (≥1100 only; phones and 900–1099 keep v717): main chat = centre column + a RIGHT rail ("New from your creators" from the same
+   _cf feed + "Your creators"); Ideas / Pipeline / Notebook = list left, the SAME detail on the right (auto-selected, arrows move it);
+   Settings = rows left, the picked section's existing panel right. "Ask for changes" on the idea detail (desktop bar, phone ⋯) posts
+   kind:'idea' to /api/revise (.unlazy/hybrid/CONTRACT.md "v718 addition") and keeps a version through the existing idea save path
+   (_saveThenDropRenamedRow → saveIdeasToDB). PRESENTATION ONLY: every list / detail / save is the function that already did it.
+   PART B: the onboarding screens become one chat (#obChat). The old step markup stays in the page, hidden, and is still the data store:
+   every answer lands in the old fields (obWebsiteUrl, obBrandName, obTagline, obAudience, obUsps, obSelectedTones, obCommunities,
+   obVoiceSample, obCreators) and every step runs the old function (obCrawlWebsite, obNext, obSkipCrawl, obSkipCreators, dictateInto,
+   obFinish), so the brand row, voice sample, bookmarks, crawl review and the v712 endings are unchanged. */
+var V18_MQ = '(min-width: 1100px)';
+function v18Wide(){ try { return !!(window.matchMedia && window.matchMedia(V18_MQ).matches); } catch (e) { return false; } }
+function v18View(){ return (typeof activeView !== 'undefined') ? activeView : ''; }
+let _v18 = { order: { ideas: [], pipeline: [], notebook: [] }, depth: 0, auto: false, ask: null, wasWide: false };
+const V18_IC = {
+  chat: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z"/></svg>',
+  send: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  check: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  mic: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  stop: '<svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  back: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
+  mark: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>'
+};
+
+// ---------- A1 · the main chat's right rail ----------
+function v18RailEl(){
+  let r = document.getElementById('v18Rail');
+  if (!r) { const mv = document.getElementById('mainViews'); if (!mv || !document.createElement) return null;
+    r = document.createElement('aside'); r.id = 'v18Rail'; r.className = 'v18-rail'; r.setAttribute('aria-label', 'Your creators'); mv.appendChild(r); }
+  return r;
+}
+function v18RailOn(){ return v18Wide() && v18View() === 'create' && typeof _hy !== 'undefined' && !_hy.classic; }
+// "N new" = that creator's videos in the feed from today or yesterday (the same day keys the list groups by)
+function v18NewCount(h){
+  const d = (typeof _cf !== 'undefined' && _cf.brandId === cfBrandNow() && _cf.status === 'ready' && _cf.data) ? _cf.data : null;
+  if (!d) return -1;
+  const now = Date.now();
+  return (Array.isArray(d.videos) ? d.videos : []).filter(v => cfHandle(v.handle).toLowerCase() === h && hyDayKey(v.postedAt, now) <= 1).length;
+}
+function v18CreatorsHtml(){
+  try { if (typeof listLoadFailed === 'function' && listLoadFailed('bookmarks')) return ''; } catch (e) {}
+  let hs = []; try { hs = cfFollowedHandles(null).slice(0, CF_MAX_CREATORS); } catch (e) { hs = []; }
+  let h = '<div class="hy-lh v18-rh"><h2 class="hy-lt">Your creators</h2><span class="v18-of">' + hs.length + ' of ' + CF_MAX_CREATORS + '</span></div>';
+  if (!hs.length) return h + '<div class="hy-empty">Follow up to 5 TikTok creators to see their new videos here.</div><button type="button" class="hy-add" onclick="v18AddCreator()">+ Add creator</button>';
+  h += '<div class="v18-cl">' + hs.map(x => {
+    const n = v18NewCount(x);
+    return '<button type="button" class="v18-cr" onclick="toggleBookmarkBar()"><span class="v18-av" aria-hidden="true">' + hyE(x.charAt(0).toUpperCase()) + '</span>'
+      + '<span class="v18-ch">@' + hyE(x) + '</span><span class="v18-cn' + (n > 0 ? ' on' : '') + '">' + (n > 0 ? '<span class="hy-dot" aria-hidden="true"></span>' + n + ' new' : (n === 0 ? 'Nothing new' : '')) + '</span></button>';
+  }).join('') + '</div>';
+  if (hs.length < CF_MAX_CREATORS) h += '<button type="button" class="hy-add" onclick="v18AddCreator()">+ Add creator</button>';
+  return h;
+}
+function v18AddCreator(){ try { toggleBookmarkBar(); } catch (e) {} try { return aw2AddOpen(); } catch (e) { return false; } }
+function v18RailHtml(){
+  let f = ''; try { f = hyFeedHtml(); } catch (e) { f = ''; }   // the SAME list (and the same _hy.rows hyFeedPick reads) as the phone start screen
+  if (!f) {
+    let n = 0; try { n = cfFollowedHandles(null).length; } catch (e) {}
+    f = '<div class="hy-lh"><h2 class="hy-lt">New from your creators</h2></div>'
+      + '<div class="hy-empty">' + (n ? 'No new videos from them yet.' : 'Their new TikToks show up here.') + '</div>';
+  }
+  return '<div class="v18-feed">' + f + '</div><div class="v18-crs">' + v18CreatorsHtml() + '</div>';
+}
+function v18RailRender(){
+  const r = v18RailEl(); if (!r) return;
+  if (!v18RailOn()) { if (r._h) { r.innerHTML = ''; r._h = ''; } return; }
+  const html = v18RailHtml();
+  if (r._h !== html) { r.innerHTML = html; r._h = html; }
+}
+function v18AfterHy(){
+  try {
+    const on = v18RailOn();
+    document.body.classList.toggle('v18-hystart', on && !_hy.t);
+    if (on && !_hy.t) {
+      const hero = document.querySelector('#hyMain .hy-hero');
+      let n = 0; try { n = (_cf && _cf.data && Array.isArray(_cf.data.videos)) ? _cf.data.videos.length : 0; } catch (e) {}
+      if (hero && n && !document.querySelector('#hyMain .v18-or')) hero.insertAdjacentHTML('afterend', '<p class="v18-or">or pick a video on the right</p>');
+    }
+  } catch (e) {}
+  v18RailRender();
+}
+
+// ---------- A2 · Ideas / Pipeline master-detail ----------
+function v18MdView(){ const v = v18View(); return (v === 'ideas' || v === 'pipeline') ? v : ''; }
+function v18MdIds(v){
+  const host = awEl(v === 'ideas' ? 'awIdeas' : 'awPipe'); if (!host) return [];
+  return Array.prototype.map.call(host.querySelectorAll(v === 'ideas' ? '.aw-irow[data-aw-id]' : '.aw-prow[data-aw-id]'), r => Number(r.getAttribute('data-aw-id')));
+}
+// which idea the right pane shows: the open one while it is still in the list, else the one after it (csxPickAfter), else the first
+function v18MdPick(v){
+  if (v === 'ideas' && (_aw.skipped || awSelecting())) return null;
+  const ids = v18MdIds(v), cur = awDetailId(), open = cur != null && _aw.from === v;
+  let want = open ? csxPickAfter(_v18.order[v], ids, cur) : null;
+  if (want == null && ids.length) want = ids[0];
+  _v18.order[v] = ids;
+  return want;
+}
+function v18AfterAw(){
+  const wide = v18Wide();
+  try { document.body.classList.toggle('v18-wide', wide); } catch (e) {}
+  v18AskPaint();
+  const v = v18MdView();
+  if (!wide || !v) return;
+  const want = v18MdPick(v), cur = awDetailId(), open = cur != null && _aw.from === v;
+  if ((want == null && open) || (want != null && (!open || want !== cur))) {
+    if (_v18.depth > 1) return;
+    _aw.idea = want == null ? null : awState()[want]; _aw.from = v; _aw.menu = false; _aw.showAll = false; _v18.auto = want != null;
+    _v18.depth++; try { awRender(); } finally { _v18.depth--; }
+    return;
+  }
+  v18MdDecorate(v);
+}
+function v18MdDecorate(v){
+  const host = awEl(v === 'ideas' ? 'awIdeas' : 'awPipe'); if (!host) return;
+  const cur = awDetailId();
+  host.querySelectorAll('.aw-row[data-aw-id]').forEach(r => {
+    const on = cur != null && Number(r.getAttribute('data-aw-id')) === cur;
+    r.classList.toggle('v18-sel', on); if (on) r.setAttribute('aria-current', 'true'); else r.removeAttribute('aria-current');
+  });
+  // the toolbar's one primary (mockup D2): Plan my week on Ideas, Film next on Pipeline — the same functions as the phone's floating pill
+  const head = host.querySelector('.aw-head');
+  if (head && !head.querySelector('.v18-tbbtn')) {
+    if (v === 'ideas' && !_aw.skipped && !awSelecting()) head.insertAdjacentHTML('beforeend', '<button type="button" class="v18-tbbtn" onclick="awPlanWeek()"' + (_aw.planBusy ? ' disabled aria-busy="true"' : '') + '>' + AW_IC.spark.replace(/width="20" height="20"/, 'width="16" height="16"') + '<span>' + (_aw.planBusy ? 'Planning your week…' : 'Plan my week') + '</span></button>');
+    if (v === 'pipeline' && awFilmNextId() != null) head.insertAdjacentHTML('beforeend', '<button type="button" class="v18-tbbtn" onclick="awFilmNext()">' + AW_IC.film.replace(/width="20" height="20"/, 'width="16" height="16"') + '<span>Film next</span></button>');
+  }
+  // the detail's sticky bar (mockup D2): [Film it] [Ask for changes] … [copy] [⋯]
+  const bar = document.querySelector('#awDock .aw-bar');
+  if (bar && cur != null && !bar.querySelector('.v18-askb')) {
+    const film = bar.querySelector('.aw-film');
+    if (film) film.insertAdjacentHTML('afterend', '<button type="button" class="aw-pill v18-askb" onclick="v18AskOpen()"' + (_v18.ask && _v18.ask.open ? ' aria-expanded="true"' : ' aria-expanded="false"') + '>' + V18_IC.chat + '<span>Ask for changes</span></button><span class="v18-sp"></span>');
+    bar.insertAdjacentHTML('beforeend', '<button type="button" class="aw-sq aw-dots v18-more" aria-label="More" title="More" aria-haspopup="menu" aria-expanded="' + (_aw.menu ? 'true' : 'false') + '" onclick="awMenu()">' + AW_IC.dots + '</button>');
+  }
+}
+// ↑ / ↓ (and J / K) move the selection on the master-detail lists; Enter puts focus in the detail
+function v18Move(v, d){
+  const ids = v === 'notebook' ? v18NoteIds() : v18MdIds(v); if (!ids.length) return false;
+  if (v === 'notebook') {
+    const at = Math.max(0, _aw2.nrows.indexOf(_aw2.note)), k = Math.min(ids.length - 1, Math.max(0, at + d));
+    aw2NoteOpen(k); const r = document.querySelectorAll('#awNotesBody .aw2-nrow')[k]; if (r) { try { r.focus({ preventScroll: false }); } catch (e) {} } return true;
+  }
+  const cur = awDetailId(), at = ids.indexOf(cur), k = Math.min(ids.length - 1, Math.max(0, (at < 0 ? 0 : at + d)));
+  _aw.idea = awState()[ids[k]]; _aw.from = v; _aw.menu = false; _aw.showAll = false; awRender();
+  const row = document.querySelector('#' + (v === 'ideas' ? 'awIdeas' : 'awPipe') + ' .aw-row[data-aw-id="' + ids[k] + '"]');
+  if (row) { const b = row.querySelector('.aw-rb') || row; try { b.focus({ preventScroll: true }); row.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
+  return true;
+}
+function v18Key(e){
+  if (!v18Wide() || !e || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key; if (['ArrowDown', 'ArrowUp', 'j', 'J', 'k', 'K'].indexOf(k) < 0) return;
+  const ob = document.getElementById('onboardingOverlay'); if (ob && !ob.classList.contains('hidden')) return;
+  const tp = document.getElementById('teleprompterOverlay'); if (tp && tp.classList.contains('open')) return;
+  if (typeof csxTyping === 'function' && csxTyping(e.target)) return;
+  if (typeof csxLayers === 'function' && csxLayers().length) return;
+  if (typeof csxScreen === 'function' && csxScreen() !== v18View()) return;   // Settings / Coach on top
+  const v = v18View();
+  if (v !== 'ideas' && v !== 'pipeline' && !(v === 'notebook' && _aw2.classic !== 'notebook')) return;
+  if (document.getElementById('awDetail') && document.getElementById('awDetail').contains(e.target)) return;   // arrows scroll the detail
+  if (_aw.menu || _aw.imenu || _aw2.menu) return;
+  e.preventDefault();
+  v18Move(v, (k === 'ArrowDown' || k === 'j' || k === 'J') ? 1 : -1);
+}
+
+// ---------- A2 · "Ask for changes" on the idea detail (desktop bar + phone ⋯) ----------
+function v18AskOpen(){
+  const id = awDetailId(); if (id == null) return false;
+  const i = awState()[id];
+  if (!_v18.ask || _v18.ask.ref !== i) _v18.ask = { ref: i, open: true, text: '', busy: false, err: '', note: '', sel: 0, instr: '', gate: brandGate(), versions: [v18IdeaSnap(i)] };
+  else _v18.ask.open = true;
+  _aw.menu = false; awRender();
+  try { const f = awEl('v18AskIn'); if (f) { f.focus(); f.scrollIntoView({ block: 'nearest' }); } } catch (e) {}
+  return true;
+}
+function v18AskClose(){ _v18.ask = null; awRender(); return true; }
+function v18AskPick(k){ const a = _v18.ask; if (!a || !a.versions[k]) return false; a.sel = k; awRender(); return k; }
+function v18IdeaSnap(i){
+  const t = v => awTxt(v);
+  return { title: t(i.title), hook: t(i.hook), script: t(i.script), boldText: t(i.boldText), shots: t(i.shots), screen: t(i.screen), caption: t(i.caption), tags: t(i.tags),
+    format: String(i.format || ''), postType: (function () { try { return typesOf(i); } catch (e) { return ''; } })(), delivery: i.delivery || '',
+    emphasis: Array.isArray(i.emphasis) ? i.emphasis.slice(0, 30) : [] };
+}
+// the idea as /api/revise reads it — app.html's own names (CONTRACT.md "Server notes v718": title, hook, script, boldText, shots, screen,
+// caption, tags, emphasis, format, postType, delivery; the status / day / id stay here)
+function v18IdeaOut(s){
+  const o = { title: s.title, hook: s.hook, script: s.script, caption: s.caption, tags: s.tags, format: s.format || 'video', postType: s.postType || 'tip' };
+  if (s.boldText && s.boldText !== 'undefined') o.boldText = s.boldText;
+  if (s.shots) o.shots = s.shots;
+  if (s.screen) o.screen = s.screen;
+  if (s.delivery) o.delivery = s.delivery;
+  if (Array.isArray(s.emphasis) && s.emphasis.length) o.emphasis = s.emphasis;
+  return o;
+}
+// the server's revised idea (title, hook, script, boldText, shots, screen, caption, tags, emphasis[], format, postType) → a version;
+// a field it leaves out keeps the base; the type never changes here (the server keeps it too)
+function v18IdeaIn(r, base){
+  const n = Object.assign({}, base), str = v => (v == null ? null : (Array.isArray(v) ? v.map(x => String(x == null ? '' : x)).join('\n') : String(v)));
+  ['title', 'hook', 'script', 'caption'].forEach(f => { const v = str(r[f]); if (v != null && v.trim()) n[f] = v; });
+  ['boldText', 'shots', 'screen'].forEach(f => { const v = str(r[f]); if (v != null) n[f] = v; });
+  let tg = r.tags != null ? r.tags : r.hashtags; if (Array.isArray(tg)) tg = tg.join(' '); if (tg != null && String(tg).trim()) n.tags = String(tg);
+  if (Array.isArray(r.emphasis)) n.emphasis = r.emphasis.map(x => String(x == null ? '' : x)).filter(Boolean).slice(0, 30);
+  if (typeof r.format === 'string' && typeof FORMAT_LABELS !== 'undefined' && FORMAT_LABELS[r.format]) n.format = r.format;
+  return n;
+}
+async function v18AskSend(){
+  const a = _v18.ask; if (!a || a.busy) return false;
+  const inp = awEl('v18AskIn');
+  const text = String((inp ? inp.value : a.text) || '').trim().slice(0, HY_INSTR_MAX);
+  if (!text) { a.err = 'Say what to change — for example “shorter” or “more casual”.'; awRender(); return false; }
+  const brandId = hyBrand();
+  if (!brandId) { a.err = 'Pick a brand first.'; awRender(); return false; }
+  const base = a.versions[a.sel];
+  a.busy = true; a.err = ''; a.text = text; awRender();
+  try {
+    let resp, data = null;
+    try { resp = await fetch('/api/revise', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brandId: brandId, kind: 'idea', idea: v18IdeaOut(base), instruction: text }) }); }
+    catch (e) { throw new Error('Your connection dropped — try again.'); }
+    try { data = JSON.parse(await resp.text()); } catch (e) { data = null; }
+    if (!resp.ok || !data || data.ok !== true || !data.idea || typeof data.idea !== 'object') {
+      const code = (data && typeof data.code === 'string') ? data.code : '';
+      throw new Error((typeof humanErrCode === 'function' && humanErrCode(code)) || humanErr((data && (data.message || data.error)) || code, HY_REVISE_FB));
+    }
+    if (_v18.ask !== a || !a.gate()) return false;   // closed, another idea, or another brand meanwhile: drop it
+    a.versions.push(v18IdeaIn(data.idea, base)); a.sel = a.versions.length - 1;
+    a.note = typeof data.note === 'string' ? data.note.slice(0, 300) : ''; a.instr = text; a.text = '';
+    return true;
+  } catch (e) {
+    if (_v18.ask === a) a.err = humanErr((e && e.message) || '', HY_REVISE_FB);
+    return false;
+  } finally {
+    if (_v18.ask === a) { a.busy = false; awRender(); }
+  }
+}
+// Keep = the idea's own fields change, then the existing save path for a reworded idea (write first, then drop the old title's row)
+function v18AskKeep(){
+  const a = _v18.ask; if (!a || a.busy || a.sel === 0 || !a.versions[a.sel]) return false;
+  if (!a.gate()) { try { showToast('You switched brand — nothing was changed.'); } catch (e) {} v18AskClose(); return false; }
+  const s = awState(), k = s.indexOf(a.ref);
+  if (k < 0) { try { showToast('That idea is gone — nothing was changed.'); } catch (e) {} v18AskClose(); return false; }
+  // review fix: merge onto the CURRENT idea object, and only the fields the revision changed (v1 = the snapshot it started from), so an
+  // edit made meanwhile on another field (Sharpen, the statement editor, Assign…) is never overwritten by stale snapshot text.
+  // (A Redo replaces the idea object: the box closes on its own, see v18AskPaint.)
+  const keep = s[k], nv = a.versions[a.sel], v1 = a.versions[0], oldTitle = String(keep.title || '').trim();
+  const changed = f => JSON.stringify(nv[f] == null ? '' : nv[f]) !== JSON.stringify(v1[f] == null ? '' : v1[f]);
+  ['title', 'hook', 'script', 'boldText', 'shots', 'screen', 'caption', 'tags', 'emphasis', 'format'].forEach(f => { if (nv[f] != null && changed(f)) keep[f] = nv[f]; });
+  try { const taken = new Set(s.filter((x, j) => j !== k && x).map(x => String(x.title || '').toLowerCase().trim())); if (typeof uniqueIdeaTitle === 'function') keep.title = uniqueIdeaTitle(keep.title, taken); } catch (e) {}
+  _v18.ask = null;
+  try { _saveThenDropRenamedRow(oldTitle, keep.title); } catch (e) {}
+  try { showToast('Saved your new version'); } catch (e) {}
+  try { if (typeof renderIdeas === 'function') renderIdeas(); } catch (e) {}
+  try { if (v18View() === 'pipeline' && typeof renderPipeline === 'function') renderPipeline(); } catch (e) {}
+  awRender();
+  return true;
+}
+function v18IdeaCardHtml(i){
+  const t = v => String(v == null ? '' : v).trim();
+  let h = '<p class="hy-hook">' + hyE(t(i.title) || 'Untitled idea') + '</p>';
+  if (t(i.hook) && t(i.hook).toLowerCase() !== t(i.title).toLowerCase()) h += '<div class="hy-vt v18-vl">Hook</div><p>' + nl2br(t(i.hook)) + '</p>';
+  if (t(i.boldText) && t(i.boldText) !== 'undefined') h += '<div class="hy-vt v18-vl">' + (i.format === 'statement' ? 'Text' : 'Slides') + '</div><p>' + nl2br(t(i.boldText)) + '</p>';
+  if (t(i.script) && i.format !== 'statement') h += '<div class="hy-vt v18-vl">Script</div><p>' + nl2br(t(i.script)) + '</p>';
+  const sh = awShots(i.shots); if (sh.length && i.format !== 'statement') h += '<div class="hy-vt v18-vl">Shot list</div><p>' + sh.map((x, k) => (k + 1) + '. ' + hyE(x)).join('<br>') + '</p>';
+  const cap = [t(i.caption), awNewTags(t(i.caption), t(i.tags))].filter(Boolean).join('\n');
+  if (cap) h += '<div class="hy-vt v18-vl">Caption &amp; tags</div><p>' + nl2br(cap) + '</p>';
+  return h;
+}
+function v18AskHtml(){
+  const a = _v18.ask; if (!a || !a.open) return '';
+  let h = '<section class="v18-ask" id="v18Ask" aria-label="Ask for changes"><div class="aw-sech"><h2 class="aw-secl">Ask for changes</h2>'
+    + '<button type="button" class="aw-cp" aria-label="Close" title="Close" onclick="v18AskClose()">' + AW_IC.x + '</button></div>'
+    + '<form class="hy-input v18-askf" onsubmit="event.preventDefault();v18AskSend();"><label for="v18AskIn" class="cs-sr">What should change?</label>'
+    + '<input type="text" class="hy-in" id="v18AskIn" maxlength="' + HY_INSTR_MAX + '" placeholder="e.g. shorter and more casual" autocomplete="off" enterkeyhint="send" oninput="if(_v18.ask)_v18.ask.text=this.value"' + (a.busy ? ' disabled' : '') + '>'
+    + '<button type="submit" class="hy-send" aria-label="Send"' + (a.busy ? ' aria-disabled="true"' : '') + '>' + V18_IC.send + '</button></form>';
+  if (a.busy) h += '<div class="hy-note v18-busy" role="status">Changing your idea…</div>';
+  if (a.err) h += '<div class="hy-err" role="alert">' + hyE(a.err) + '</div>';
+  if (a.versions.length > 1) {
+    h += '<div class="hy-say v18-vh"><span>Your version · v' + (a.sel + 1) + '</span><span class="hy-sp"></span><div class="hy-seg" role="group" aria-label="Version">'
+      + a.versions.map((x, k) => '<button type="button" class="hy-segb' + (k === a.sel ? ' on' : '') + '" aria-pressed="' + (k === a.sel ? 'true' : 'false') + '" onclick="v18AskPick(' + k + ')">v' + (k + 1) + '</button>').join('') + '</div></div>';
+    if (a.note && a.sel === a.versions.length - 1) h += '<div class="hy-note" role="status">' + hyE(a.note) + '</div>';
+    h += '<div class="hy-card v18-vc">' + v18IdeaCardHtml(a.versions[a.sel]) + '</div>';
+    h += '<div class="v18-keep"><button type="button" class="aw-film v18-keepb" onclick="v18AskKeep()"' + (a.sel === 0 || a.busy ? ' disabled' : '') + '>' + V18_IC.check + '<span>' + (a.sel === 0 ? 'This is the saved one' : 'Keep v' + (a.sel + 1)) + '</span></button>'
+      + '<button type="button" class="aw-pill" onclick="v18AskClose()">' + (a.sel === 0 ? 'Close' : 'Discard') + '</button></div>';
+  }
+  return h + '</section>';
+}
+// after every awRender: the box sits under the idea it belongs to (another idea open = it closes); what was typed survives the redraw
+function v18AskPaint(){
+  const a = _v18.ask, det = awEl('awDetail');
+  if (!det) return;
+  const id = awDetailId(), open = id != null && !det.hidden;
+  if (a && (!open || awState()[id] !== a.ref)) { _v18.ask = null; return; }
+  if (!a || !a.open) return;
+  const had = document.activeElement && document.activeElement.id === 'v18AskIn';
+  const box = document.createElement('div'); box.innerHTML = v18AskHtml();
+  const sec = box.firstChild; if (!sec) return;
+  const anchor = det.querySelector('.rv2-rw');
+  if (anchor) det.insertBefore(sec, anchor); else det.appendChild(sec);
+  const inp = awEl('v18AskIn'); if (inp) { inp.value = a.text || ''; if (had) { try { inp.focus(); } catch (e) {} } }
+}
+
+// ---------- A4 · Notebook master-detail (the note's page on the right) ----------
+function v18NoteIds(){ return (typeof _aw2 !== 'undefined' && Array.isArray(_aw2.nrows)) ? _aw2.nrows.slice() : []; }
+function v18NotePane(){
+  let p = document.getElementById('v18NotePane');
+  if (!p) { const mv = document.getElementById('mainViews'); if (!mv || !document.createElement) return null;
+    p = document.createElement('section'); p.id = 'v18NotePane'; p.className = 'v18-npane'; p.setAttribute('aria-label', 'Note'); mv.appendChild(p); }
+  return p;
+}
+function v18AfterNotes(){
+  const pane = v18NotePane(); if (!pane) return;
+  const on = v18Wide() && v18View() === 'notebook' && _aw2.classic !== 'notebook';
+  if (!on) { if (pane.innerHTML) pane.innerHTML = ''; try { document.body.removeAttribute('data-v18-note'); } catch (e) {} return; }
+  if (!_aw2.note && !_aw2.capOpen) {
+    const first = aw2Notes().filter(n => n && String(n.text || '').trim()).sort((x, y) => aw2NbTs(y) - aw2NbTs(x))[0];
+    if (first && _v18.depth < 2) { _aw2.note = String(first.id); _v18.depth++; try { aw2NotesRender(); } finally { _v18.depth--; } return; }
+  }
+  const n = aw2NoteObj(), head = awEl('awNotesHead'), body = awEl('awNotesBody');
+  if (!n || !head || !body) { pane.innerHTML = ''; try { document.body.removeAttribute('data-v18-note'); } catch (e) {} return; }
+  // the original drew the note's page into the list's place: the page moves to the right pane, the list comes back on the left
+  const keepTa = document.activeElement && document.activeElement.id === 'aw2NbEdit';
+  pane.innerHTML = aw2NoteDetailHtml(n);   // drawn again here (not copied), so a second pass never puts the list in the pane
+  const cnt = aw2Notes().filter(x => x && String(x.text || '').trim()).length;
+  head.innerHTML = aw2Head('Notebook', cnt ? cnt + (cnt === 1 ? ' note' : ' notes') : '', 'nh', () => [{ label: 'Classic view', fn: () => aw2Classic('notebook') }]);
+  body.innerHTML = aw2NotesListHtml();
+  const k = _aw2.nrows.indexOf(_aw2.note), rows = body.querySelectorAll('.aw2-nrow');
+  if (rows[k]) { rows[k].classList.add('v18-sel'); rows[k].setAttribute('aria-current', 'true'); }
+  const ta = document.getElementById('aw2NbEdit'); if (ta) { ta.value = _aw2.editVal; if (keepTa) { try { ta.focus(); } catch (e) {} } }
+  try { document.body.setAttribute('data-v18-note', '1'); } catch (e) {}
+}
+
+// ---------- A3 · Settings: rows left, the picked section right ----------
+function v18SpKey(){ const k = _aw2.sp || ''; return (typeof AW2_SP_VOICE !== 'undefined' && AW2_SP_VOICE.indexOf(k) >= 0) ? 'brain' : k; }
+function v18SpRows(){
+  const ov = awEl('settingsOverlay'); if (!ov || !aw2SpOpen() || !v18Wide() || !_aw2.sp) { if (ov) ov.classList.remove('v18-spmd'); return false; }
+  let nav = ov.querySelector(':scope > .v18-sprows');
+  if (!nav) { nav = document.createElement('nav'); nav.className = 'v18-sprows'; nav.setAttribute('aria-label', 'Settings'); ov.insertBefore(nav, ov.querySelector(':scope > .sp-body') || null); }
+  nav.innerHTML = aw2SettingsHtml();
+  const sel = v18SpKey();
+  nav.querySelectorAll('.aw2-srow').forEach(b => {
+    const on = (b.getAttribute('onclick') || '').indexOf("aw2SpGo('" + sel + "')") >= 0;
+    b.classList.toggle('v18-on', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  ov.classList.add('v18-spmd');
+  return true;
+}
+function v18SpRender(orig, self, args){
+  if (v18Wide() && !_aw2.sp) _aw2.sp = 'brain';   // a desktop opens on the first row's section (rows stay on the left)
+  const r = orig.apply(self, args);
+  try { v18SpRows(); } catch (e) {}
+  return r;
+}
+
+// ---------- wiring (after the v703 csxInit wrappers, so these run outermost) ----------
+function v18Wrap(name, make){ try { const o = window[name]; if (typeof o !== 'function' || o.__v18) return; const w = make(o); w.__v18 = true; window[name] = w; } catch (e) {} }
+function v18Init(){
+  if (window.__v18Init) return; window.__v18Init = true;
+  v18Wrap('hyRender', o => function () { const r = o.apply(this, arguments); v18AfterHy(); return r; });
+  v18Wrap('hyFeedSoon', o => function () { const r = o.apply(this, arguments); try { Promise.resolve().then(v18RailRender); } catch (e) {} return r; });
+  v18Wrap('awRender', o => function () { const r = o.apply(this, arguments); try { v18AfterAw(); } catch (e) {} return r; });
+  v18Wrap('aw2NotesRender', o => function () { const r = o.apply(this, arguments); try { v18AfterNotes(); } catch (e) {} return r; });
+  v18Wrap('aw2Render', o => function () { const r = o.apply(this, arguments); try { v18SpRows(); } catch (e) {} return r; });
+  v18Wrap('renderSettingsPanel', o => function () { return v18SpRender(o, this, arguments); });
+  v18Wrap('switchView', o => function () { const r = o.apply(this, arguments); try { v18RailRender(); v18AfterNotes(); } catch (e) {} return r; });
+  // phone ⋯ on the idea page: "Ask for changes" (desktop has it on the sticky bar)
+  v18Wrap('awMenuItems', o => function (i) { const it = o.apply(this, arguments); try { if (i && i.status !== 'dismissed') it.splice(Math.max(0, it.length - 1), 0, { label: 'Ask for changes', fn: () => v18AskOpen() }); } catch (e) {} return it; });
+  // desktop Esc: the note's page is the right pane, not a page over the list — Esc goes on to the next layer instead of closing it
+  v18Wrap('aw2Esc', o => function () {
+    if (v18Wide() && v18View() === 'notebook' && _aw2.note && !_aw2.menu && !_aw2.edit && !(_aw && (_aw.menu || _aw.imenu))) return false;
+    return o.apply(this, arguments);
+  });
+  window.addEventListener('keydown', v18Key, true);
+  try {
+    const mq = window.matchMedia(V18_MQ), f = function () {
+      const w = v18Wide();
+      if (!w && _v18.auto && awDetailId() != null) { _v18.auto = false; try { awBack(); } catch (e) {} }   // a phone-width window gets the list back, not an auto-opened page
+      if (!w && _aw2.note && v18View() === 'notebook') { try { aw2NoteBack(); } catch (e) {} }
+      try { awRender(); aw2Render(); hyRender(); if (aw2SpOpen()) renderSettingsPanel(); } catch (e) {}
+    };
+    if (mq.addEventListener) mq.addEventListener('change', f); else if (mq.addListener) mq.addListener(f);
+  } catch (e) {}
+  obcInit();
+}
+
+// ================= PART B · onboarding as a chat =================
+const OBC_TOTAL = 5;
+const OBC_MIC_MAX = 60000;   // the 60-second cap (dictateInto's own default) — the timer reads "0:00 / 1:00"
+let _obc = null, _obcLanding = '', _obcPoll = null, _obcTick = null;
+function obcFresh(){ return { step: 1, phase: '', url: '', err: '', line: '', hint: '', noSite: false, thin: false, fix: false, addTone: false, addTopic: false, ask: '', log: [],
+  typeVoice: false, rec: 0, recStart: 0, before: 0, voiceSecs: 0, voiceMeta: '', voiceErr: '', voiceSkipped: false, creators: [], cErr: '', cDone: '', finishing: false }; }
+function obcEl(id){ return document.getElementById(id); }
+function obcVal(id){ const e = obcEl(id); return e ? String(e.value || '').trim() : ''; }
+function obcSet(id, v){ const e = obcEl(id); if (!e) return; e.value = String(v == null ? '' : v); try { e.dispatchEvent(new Event('input')); } catch (_) {} }
+function obcShown(id){ const e = obcEl(id); return !!(e && e.style.display !== 'none' && String(e.textContent || '').trim()); }
+function obcErrText(id){ return obcShown(id) ? String(obcEl(id).textContent || '').trim() : ''; }
+function obcE(s){ return escAttr(s == null ? '' : s); }
+function obcApp(t, q){ return '<div class="' + (q ? 'obc-q' : 'obc-app') + '">' + obcE(t) + '</div>'; }
+function obcHint(t){ return '<div class="obc-hint2">' + obcE(t) + '</div>'; }
+function obcMe(t, meta){ return '<div class="hy-me obc-me">' + (meta ? '<span class="obc-mm">' + obcE(meta) + '</span>' : '') + obcE(t) + '</div>'; }
+function obcBtns(a, b){ return '<div class="obc-btns">' + a + (b || '') + '</div>'; }
+function obcBtn(label, on, pri, extra){ return '<button type="button" class="obc-b ' + (pri ? 'pri' : 'sec') + '" onclick="' + on + '"' + (extra || '') + '>' + label + '</button>'; }
+function obcGentle(t){ return t ? '<p class="obc-gentle" role="alert">' + obcE(t) + '</p>' : ''; }
+function obcClock(s){ s = Math.max(0, Math.min(60, Math.floor(s))); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function obcToneLabel(id){ const t = OB_TONE_OPTIONS.find(x => x.id === id); return t ? t.label : String(id); }
+function obcHandle(u){ const h = (typeof cfTtLink === 'function') ? cfTtLink(u) : null; return h && h.handle ? '@' + h.handle : String(u); }
+
+function obcHistory(){
+  const s = _obc.step; let h = '';
+  if (s >= 2) h += obcApp('Hi! I’m Content Shrimp. I write posts that sound like you.') + obcApp('What’s your brand’s website?', 1)
+    + obcMe(_obc.noSite ? 'No website — I’ll tell you about it' : (_obc.url || obcVal('obWebsiteUrl') || 'My website'));
+  if (s >= 3) h += obcApp((_obc.noSite ? 'Your brand: ' : 'Here’s what I found: ') + (obcVal('obBrandName') || 'your brand') + '.') + obcMe('Looks right');
+  if (s >= 4) h += obcApp('Talk to me for a minute about your brand', 1) + (_obc.voiceSkipped || !obVoiceWords() ? obcMe('Skip for now')
+    : obcMe(String(obcVal('obVoiceSample')).split(/\s+/).slice(0, 14).join(' ') + (obVoiceWords() > 14 ? '…' : ''), _obc.voiceMeta || 'Typed'));
+  if (s >= 5) h += obcApp('Who do you follow on TikTok?', 1) + obcMe(_obc.cDone || 'Skip for now');
+  return h ? '<div class="obc-hist">' + h + '</div>' : '';
+}
+function obcCardHtml(){
+  const nm = obcVal('obBrandName'), tg = obcVal('obTagline'), au = obcVal('obAudience'), us = obcVal('obUsps');
+  let h = '<div class="hy-card obc-found">';
+  if (_obc.fix) {
+    const fld = (id, lb, ph, ta) => '<label class="obc-fl" for="obcF-' + id + '">' + lb + '</label>' + (ta
+      ? '<textarea class="obc-fin" id="obcF-' + id + '" rows="2" placeholder="' + obcE(ph) + '" oninput="obcSet(\'' + id + '\',this.value)">' + obcE(obcVal(id)) + '</textarea>'
+      : '<input type="text" class="obc-fin" id="obcF-' + id + '" placeholder="' + obcE(ph) + '" value="' + obcE(obcVal(id)) + '" autocomplete="off" oninput="obcSet(\'' + id + '\',this.value)">');
+    h += fld('obBrandName', 'Brand name', 'Your brand name') + fld('obTagline', 'What you sell', 'e.g. Electrolyte powder with no sugar')
+      + fld('obAudience', 'Who it’s for', 'e.g. People who forget to drink water', 1) + fld('obUsps', 'What makes you different', 'e.g. Tastes like water that works', 1);
+  } else {
+    h += '<h3' + (nm ? '' : ' class="obc-mt"') + '>' + obcE(nm || 'Add your brand name') + '</h3>';
+    const sell = tg || us; if (sell) h += '<div class="obc-sell">' + obcE(sell) + '</div>';
+    if (au) h += '<div class="obc-for">For ' + obcE(au.charAt(0).toLowerCase() + au.slice(1)) + '</div>';
+    if (tg && us) h += '<div class="obc-for">Different: ' + obcE(us) + '</div>';
+  }
+  h += '<div class="obc-lb">How you sound</div><div class="obc-chips">' + obSelectedTones.map(id => '<span class="obc-x">' + obcE(obcToneLabel(id))
+    + '<button type="button" aria-label="' + obcE('Remove ' + obcToneLabel(id)) + '" onclick="obcTone(\'' + obcE(id) + '\')">' + V18_IC.x + '</button></span>').join('')
+    + (obSelectedTones.length < 3 ? '<button type="button" class="obc-add" aria-expanded="' + (_obc.addTone ? 'true' : 'false') + '" onclick="obcAddTone()">+ add</button>' : '') + '</div>';
+  if (_obc.addTone) h += '<div class="obc-chips obc-opts">' + OB_TONE_OPTIONS.filter(t => obSelectedTones.indexOf(t.id) < 0).map(t => '<button type="button" class="obc-opt" onclick="obcTone(\'' + t.id + '\')">' + obcE(t.label) + '</button>').join('') + '</div>';
+  h += '<div class="obc-lb">Topics</div><div class="obc-chips">' + obCommunities.map((c, k) => '<span class="obc-x">' + obcE(c)
+    + '<button type="button" aria-label="' + obcE('Remove ' + c) + '" onclick="obcTopicX(' + k + ')">' + V18_IC.x + '</button></span>').join('')
+    + '<button type="button" class="obc-add" aria-expanded="' + (_obc.addTopic ? 'true' : 'false') + '" onclick="obcAddTopic()">+ add</button></div>';
+  if (_obc.addTopic) h += '<form class="obc-tadd" onsubmit="event.preventDefault();obcTopicAdd();"><label for="obcTopicIn" class="cs-sr">New topic</label><input type="text" class="obc-fin" id="obcTopicIn" placeholder="A topic your audience talks about" autocomplete="off"><button type="submit" class="obc-b sec">Add</button></form>';
+  if (obSelectedTones.length < 2 || obCommunities.length < 2) h += '<p class="obc-gentle obc-min">Keep at least 2 of each — that’s what stops your posts sounding like generic AI.</p>';
+  return h + '</div>';
+}
+function obcStepHtml(){
+  const s = _obc.step; let h = '';
+  if (s === 1) {
+    if (_obc.phase === 'crawling' || _obc.phase === 'done') {
+      h += obcMe(_obc.url) + '<div class="obc-app obc-work"><span class="obc-spin" aria-hidden="true"></span><span id="obcCrawlLine">' + obcE(_obc.phase === 'done' ? 'Putting it all together…' : obcCrawlLabel()) + '</span></div>'
+        + obcHint('About a minute. I’m reading every page and the web around it.');
+      return h;
+    }
+    h += '<div class="obc-mark" aria-hidden="true">' + V18_IC.mark + '</div>' + obcApp('Hi! I’m Content Shrimp. I write posts that sound like you.') + obcApp('What’s your brand’s website?', 1)
+      + obcHint('I’ll read it and set up your brand brain. About a minute.');
+    if (_obc.err) h += obcMe(_obc.url || obcVal('obWebsiteUrl')) + '<div class="obc-err" role="alert"><p>' + obcE(_obc.err) + '</p>'
+      + obcBtns(obcBtn('Try again', 'obcCrawl()', 1), obcBtn('Set it up by talking', 'obcNoSite()')) + '</div>';
+    h += obcGentle(_obc.line);
+    h += '<div class="obc-links"><button type="button" class="obc-link" onclick="obcNoSite()"><b>No website?</b> Set it up by talking</button></div>';
+    return h;
+  }
+  if (s === 2) {
+    h += obcApp(_obc.noSite ? 'No problem. Tell me the basics and I’ll take it from there.' : (_obc.thin ? 'I couldn’t pull much from that site. Fill in the gaps below.' : 'I read your site.'));
+    h += obcApp(_obc.noSite ? 'Tell me about your brand' : 'Here’s what I found', 1);
+    h += obcCardHtml();
+    _obc.log.forEach(l => { h += obcMe(l.me); if (l.app) h += obcApp(l.app); });
+    if (_obc.ask) h += '<div class="obc-chips obc-which">' + [['obBrandName', 'Brand name'], ['obTagline', 'What you sell'], ['obAudience', 'Who it’s for'], ['obUsps', 'What makes you different'], ['topic', 'A topic']]
+      .map(p => '<button type="button" class="obc-opt" onclick="obcPut(\'' + p[0] + '\')">' + p[1] + '</button>').join('') + '</div>';
+    h += obcGentle(_obc.line);
+    h += obcBtns(obcBtn(V18_IC.check + '<span>Looks right</span>', 'obcLooksRight()', 1), obcBtn(_obc.fix ? 'Done' : 'Fix something', 'obcFixToggle()', 0, ' aria-pressed="' + (_obc.fix ? 'true' : 'false') + '"'));
+    return h;
+  }
+  if (s === 3) {
+    h += obcApp('Talk to me for a minute about your brand', 1) + obcHint('Like you’d tell a friend. What do people get wrong about it? Rough is fine.');
+    if (_obc.typeVoice) {
+      h += '<div class="hy-card obc-type"><label for="obcVoiceTa" class="cs-sr">Your words</label><textarea class="obc-fin obc-ta" id="obcVoiceTa" rows="6" placeholder="Type it like you’d say it…" oninput="obcSet(\'obVoiceSample\',this.value)">' + obcE(obcVal('obVoiceSample')) + '</textarea>'
+        + '<div class="obc-count" id="obcCount">' + obcE((obcEl('obVoiceCount') || {}).textContent || '') + '</div></div>'
+        + obcGentle(_obc.line) + obcBtns(obcBtn('Sounds like me', 'obcVoiceDone()', 1), obcBtn('Use the mic', 'obcUseMic()'));
+      h += '<div class="obc-links"><button type="button" class="obc-link" onclick="obcVoiceSkip()">Skip for now</button></div>';
+      return h;
+    }
+    const st = _obc.rec, secs = st === 2 && _obc.recStart ? (Date.now() - _obc.recStart) / 1000 : 0;
+    const lbl = st === 1 ? 'Starting…' : (st === 2 ? 'Stop' : (st === 3 ? 'Hearing you…' : (obVoiceWords() ? 'Talk some more' : 'Start talking')));
+    h += '<div class="obc-mic"><div class="hy-ring obc-ring' + (st === 2 ? ' on' : '') + '"><button type="button" class="hy-paste obc-micb" id="obcMic" onclick="obcMic()"' + (st === 1 || st === 3 ? ' disabled aria-busy="true"' : '') + ' aria-pressed="' + (st === 2 ? 'true' : 'false') + '">'
+      + (st === 2 ? V18_IC.stop : V18_IC.mic) + '<span>' + lbl + '</span></button></div>'
+      + '<div class="obc-tm" id="obcTimer" aria-live="off">' + obcClock(secs) + ' <span>/ 1:00</span></div></div>';
+    const cnt = (obcEl('obVoiceCount') || {}).textContent || '';
+    if (cnt) h += '<div class="obc-count obc-c2">' + obcE(cnt) + '</div>';
+    if (_obc.voiceErr) h += '<div class="obc-err" role="alert"><p>' + obcE(_obc.voiceErr) + '</p>' + obcBtns(obcBtn('Try again', 'obcMic()', 1), obcBtn('Type instead', 'obcTypeVoice()')) + '</div>';
+    h += obcGentle(_obc.line);
+    if (obVoiceWords() && !st) h += obcBtns(obcBtn('Sounds like me', 'obcVoiceDone()', 1));
+    h += '<div class="obc-links"><button type="button" class="obc-link" onclick="obcTypeVoice()"><b>or type instead</b></button><span aria-hidden="true">·</span><button type="button" class="obc-link" onclick="obcVoiceSkip()">Skip for now</button></div>';
+    return h;
+  }
+  if (s === 4) {
+    h += obcApp(_obc.voiceSkipped || !obVoiceWords() ? 'No problem — you can record it any time in Settings.' : 'Got it. That’s how you’ll sound.');
+    h += obcApp('Who do you follow on TikTok?', 1) + obcHint('Up to 5. Their new videos will wait for you, ready to make yours.');
+    if (_obc.creators.length) h += '<div class="obc-chips">' + _obc.creators.map((u, k) => '<span class="obc-x">' + obcE(obcHandle(u))
+      + '<button type="button" aria-label="' + obcE('Remove ' + obcHandle(u)) + '" onclick="obcCreatorX(' + k + ')">' + V18_IC.x + '</button></span>').join('') + '</div>'
+      + '<div class="obc-count">' + _obc.creators.length + ' of ' + CF_MAX_CREATORS + '</div>';
+    h += obcGentle(_obc.cErr || _obc.line);
+    h += obcBtns(obcBtn('Follow them', 'obcFollow()', 1, _obc.creators.length ? '' : ' aria-disabled="true"'), obcBtn('Skip for now', 'obcCreatorsSkip()'));
+    return h;
+  }
+  // step 5
+  const feed = obFinaleMode() === 'feed', busy = _obc.finishing;
+  h += obcApp('Your brand brain is ready.') + obcApp('Paste a TikTok to try it', 1);
+  h += '<div class="hy-hero obc-hero"><div class="hy-ring"><button type="button" class="hy-paste" id="obcPaste" onclick="obcPaste()"' + (busy ? ' disabled aria-busy="true"' : '') + '>' + HY_IC.clip(28) + '<span>Paste a TikTok</span></button></div></div>';
+  // (no feed rows here: the brand — and so its feed — only exists once obFinish has saved it; the creators show as plain chips)
+  if (feed) h += '<div class="obc-x2">Their newest videos will be waiting for you.</div>'
+    + '<div class="obc-chips obc-cl">' + (Array.isArray(obPendingCreators) ? obPendingCreators : []).map(u => '<span class="obc-x obc-xs">' + obcE(obcHandle(u)) + '</span>').join('') + '</div>' + obcBtns(obcBtn(busy ? 'Setting up…' : 'Show their videos', 'obcFinish()', 0, busy ? ' disabled' : ''));
+  else h += '<div class="obc-x2">Or let me write your first post.</div>' + obcBtns(obcBtn(busy ? 'Writing…' : 'Write my first post', 'obcFinish()', 0, busy ? ' disabled' : ''));
+  return h;
+}
+const OBC_PH = { 1: 'yourbrand.com', 2: 'Or tell me what to fix…', 3: '', 4: 'Paste @handles or links…', 5: 'Paste a link or type an idea…' };
+function obcRender(){
+  const th = obcEl('obcThread'); if (!th || !_obc) return;
+  const s = _obc.step;
+  const st = obcEl('obcStep'); if (st) st.textContent = s + ' of ' + OBC_TOTAL;
+  const bk = obcEl('obcBack'); if (bk) bk.hidden = s === 1 || _obc.finishing || _obc.rec === 1 || _obc.rec === 3;
+  const keep = document.activeElement && document.activeElement.id && /^obc(F-|TopicIn|VoiceTa)/.test(document.activeElement.id) ? document.activeElement.id : '';
+  th.innerHTML = '<div class="obc-col">' + obcHistory() + '<div class="obc-now">' + obcStepHtml() + '</div></div>';
+  const dock = obcEl('obcDock'), inp = obcEl('obcIn');
+  const dockOn = s !== 3 && !(s === 1 && (_obc.phase === 'crawling' || _obc.phase === 'done'));
+  if (dock) dock.hidden = !dockOn;
+  if (inp) { if (inp.getAttribute('placeholder') !== OBC_PH[s]) inp.setAttribute('placeholder', OBC_PH[s]); inp.disabled = !!_obc.finishing; inp.setAttribute('inputmode', s === 1 ? 'url' : 'text'); }
+  const lb = obcEl('obcInLbl'); if (lb) lb.textContent = OBC_PH[s] ? OBC_PH[s].replace(/…$/, '') : 'Your answer';
+  const hn = obcEl('obcHint'); if (hn) hn.textContent = _obc.hint || '';
+  if (keep) { const f = obcEl(keep); if (f) { try { f.focus(); const n = String(f.value || '').length; if (f.setSelectionRange) f.setSelectionRange(n, n); } catch (e) {} } }
+  try { th.scrollTop = th.scrollHeight; } catch (e) {}
+}
+function obcOn(){ const o = obcEl('onboardingOverlay'); return !!(o && !o.classList.contains('hidden') && o.classList.contains('obc-on')); }
+// every step change in the old wizard (obNext, obSkipCrawl, the crawl's own success, obBack, obSkipCreators) moves the chat
+function obcOnStep(step){
+  if (!_obc) _obc = obcFresh();
+  const prev = _obc.step;
+  _obc.step = step; _obc.line = ''; _obc.hint = ''; _obc.ask = '';
+  if (step === 1) { _obc.phase = ''; _obc.noSite = false; _obc.fix = false; _obc.log = []; }
+  if (step === 2 && prev === 1) {
+    _obc.phase = ''; _obc.err = ''; _obc.log = []; _obc.addTone = false; _obc.addTopic = false;
+    const t = (obcEl('obStepsTitle') || {}).textContent || '';
+    _obc.thin = !_obc.noSite && /couldn/i.test(t);
+    _obc.fix = _obc.noSite || _obc.thin;
+  }
+  if (step === 3) { _obc.typeVoice = false; _obc.voiceErr = ''; _obc.voiceSkipped = false; _obc.fix = false; }
+  if (step === 4) { _obc.cErr = ''; if (prev === 5) _obc.cDone = ''; }
+  if (step === 5) { _obc.finishing = false; }
+  obcRender();
+}
+function obcReset(){
+  obcPollStop(); obcTickStop();
+  _obc = obcFresh(); _obcLanding = '';
+  const inp = obcEl('obcIn'); if (inp) inp.value = '';
+  const o = obcEl('onboardingOverlay'); if (o && obcEl('obChat')) o.classList.add('obc-on');
+  obcRender();
+}
+// ---- step 1: the website (and an optional social link after it) → the existing crawl ----
+function obcCrawlLabel(){ const a = document.querySelector('#obSteps .ob-step.active .ob-step-label'); return a ? String(a.textContent || '').trim() + '…' : 'Reading your site…'; }
+function obcPollStart(){ obcPollStop(); _obcPoll = setInterval(function () { const l = obcEl('obcCrawlLine'); if (l && _obc && _obc.phase === 'crawling') l.textContent = obcCrawlLabel(); }, 400); }
+function obcPollStop(){ if (_obcPoll) { clearInterval(_obcPoll); _obcPoll = null; } }
+function obcWebsite(text){
+  const toks = String(text || '').split(/[\s,]+/).filter(Boolean);
+  const soc = toks.find(t => /(^|\/\/|\.)(instagram\.com|tiktok\.com|x\.com|twitter\.com|facebook\.com|linkedin\.com|youtube\.com)/i.test(t));
+  const site = toks.find(t => t !== soc) || '';
+  if (!site) { _obc.line = 'Paste your website address first — or set it up by talking below.'; obcRender(); return false; }
+  obcSet('obWebsiteUrl', site);
+  if (soc) obcSet('obSocialUrl', soc);
+  return obcCrawl();
+}
+async function obcCrawl(){
+  if (_obc.phase === 'crawling') return false;
+  const site = obcVal('obWebsiteUrl');
+  if (!site) { _obc.err = ''; _obc.line = 'Paste your website address first — or set it up by talking below.'; obcRender(); try { obcEl('obcIn').focus(); } catch (e) {} return false; }
+  _obc.url = site.replace(/^https?:\/\//i, '').replace(/\/$/, ''); _obc.err = ''; _obc.line = ''; _obc.noSite = false; _obc.phase = 'crawling';
+  obcRender(); obcPollStart();
+  try { await obCrawlWebsite(); } catch (e) {}
+  obcPollStop();
+  if (!_obc || _obc.step !== 1) return true;
+  const eb = obcEl('obCrawlError');
+  if (eb && eb.style.display === 'block') {   // the crawl's own error (failed, too slow, out of credits): say it, offer a retry and the no-website way
+    _obc.phase = ''; _obc.err = String((obcEl('obCrawlErrorMsg') || {}).textContent || '').trim() || 'Couldn’t read that site. Try again, or set it up by talking.';
+    obcRender(); return false;
+  }
+  const e1 = obcErrText('obStep1Err');
+  if (e1) { _obc.phase = ''; _obc.line = e1; obcRender(); return false; }
+  _obc.phase = 'done'; obcRender();   // obCompleteSteps → obGoToStep(2) moves on in a moment
+  return true;
+}
+function obcNoSite(){ _obc.noSite = true; _obc.err = ''; _obc.line = ''; obcPollStop(); obSkipCrawl(); return true; }
+// ---- step 2: the card; chips; typed fixes land in the old fields ----
+function obcTone(id){
+  if (obSelectedTones.indexOf(id) < 0 && obSelectedTones.length >= 3) { _obc.line = 'Up to 3 — remove one first.'; obcRender(); return false; }
+  obToggleTone(id); _obc.line = ''; if (obSelectedTones.length >= 3) _obc.addTone = false; obcRender(); return true;
+}
+function obcAddTone(){ _obc.addTone = !_obc.addTone; _obc.addTopic = false; obcRender(); return _obc.addTone; }
+function obcTopicX(k){ const c = obCommunities[k]; if (c == null) return false; obRemoveCommunity(c); _obc.line = ''; obcRender(); return true; }
+function obcAddTopic(){ _obc.addTopic = !_obc.addTopic; _obc.addTone = false; obcRender(); if (_obc.addTopic) { try { obcEl('obcTopicIn').focus(); } catch (e) {} } return _obc.addTopic; }
+function obcTopicPush(v){ const t = String(v || '').trim().slice(0, 60); if (!t) return false; const i = obcEl('obCommunityInput'); if (!i) return false; i.value = t; obAddCommunity(); return true; }
+function obcTopicAdd(){ const f = obcEl('obcTopicIn'); const ok = obcTopicPush(f ? f.value : ''); obcRender(); if (_obc.addTopic) { try { obcEl('obcTopicIn').focus(); } catch (e) {} } return ok; }
+function obcFixToggle(){ _obc.fix = !_obc.fix; _obc.addTone = false; _obc.addTopic = false; obcRender(); if (_obc.fix) { try { obcEl('obcF-obBrandName').focus(); } catch (e) {} } return _obc.fix; }
+function obcLooksRight(){
+  _obc.addTone = false; _obc.addTopic = false;
+  obNext(2);   // the existing minimum: brand name, 2 tones, who for, what makes you different, 2 topics
+  if (_obc.step !== 2) return true;
+  const e = obcErrText('obStep2Err');
+  _obc.line = e || 'Something’s missing — take another look.';
+  if (/brand name|who you sell|different/i.test(e)) _obc.fix = true;
+  obcRender(); return false;
+}
+function obcMatch(list, q){ q = String(q || '').trim().toLowerCase().replace(/^["'“]|["'”]$/g, ''); return list.find(x => String(x).toLowerCase() === q) || list.find(x => String(x).toLowerCase().indexOf(q) === 0) || null; }
+function obcFix(text){
+  const t = String(text || '').trim().slice(0, 300); if (!t) return false;
+  const entry = { me: t, app: '' }; _obc.log.push(entry); _obc.ask = ''; _obc.line = '';
+  const set = (id, v, what) => { obcSet(id, String(v).trim()); entry.app = 'Changed ' + what + '.'; };
+  let m;
+  if ((m = /^(?:(?:the|my|our)\s+)?(?:brand\s+)?name\s*(?:is|:|=|should be)?\s*(.+)$/i.exec(t))) set('obBrandName', m[1], 'your brand name');
+  else if ((m = /^(?:(?:it'?s\s+)?for|audience\s*(?:is|:)?|who\s+it'?s\s+for\s*(?:is|:)?|(?:we|i)\s+sell\s+to|customers?\s*(?:are|is|:))\s+(.+)$/i.exec(t))) set('obAudience', m[1], 'who it’s for');
+  else if ((m = /^(?:(?:we|i)\s+(?:sell|make)|what\s+(?:we|i|you)\s+sell\s*(?:is|:)?|tagline\s*(?:is|:)?)\s+(.+)$/i.exec(t))) set('obTagline', m[1], 'what you sell');
+  else if ((m = /^(?:different|usp|what\s+makes\s+(?:us|me|you|it)\s+different\s*(?:is|:)?)\s*:?\s*(.+)$/i.exec(t))) set('obUsps', m[1], 'what makes you different');
+  else if ((m = /^(?:remove|drop|delete|no|not|without)\s+(.+)$/i.exec(t))) {
+    const q = m[1], tone = OB_TONE_OPTIONS.find(o => obSelectedTones.indexOf(o.id) >= 0 && (o.label.toLowerCase() === q.toLowerCase() || o.id === q.toLowerCase()));
+    const topic = obcMatch(obCommunities, q);
+    if (tone) { obToggleTone(tone.id); entry.app = 'Removed “' + tone.label + '”.'; }
+    else if (topic) { obRemoveCommunity(topic); entry.app = 'Removed “' + topic + '”.'; }
+    else entry.app = 'I couldn’t find “' + q.slice(0, 40) + '” on the card.';
+  } else if ((m = /^(?:add\s+)?(?:a\s+)?tone\s*:?\s+(.+)$/i.exec(t)) || (m = /^(?:sound|sounds|more)\s+(.+)$/i.exec(t))) {
+    const q = m[1].toLowerCase(), o = OB_TONE_OPTIONS.find(x => x.label.toLowerCase() === q || x.id === q) || OB_TONE_OPTIONS.find(x => x.label.toLowerCase().indexOf(q) === 0);
+    if (!o) entry.app = 'I know these tones: ' + OB_TONE_OPTIONS.map(x => x.label).join(', ') + '.';
+    else if (obSelectedTones.indexOf(o.id) >= 0) entry.app = '“' + o.label + '” is already on.';
+    else if (obSelectedTones.length >= 3) entry.app = 'Up to 3 tones — remove one first.';
+    else { obToggleTone(o.id); entry.app = 'Added “' + o.label + '”.'; }
+  } else if ((m = /^(?:add\s+)?(?:a\s+)?topics?\s*:?\s+(.+)$/i.exec(t)) || (m = /^add\s+(.+)$/i.exec(t))) {
+    const add = m[1].split(/\s*[,;]\s*/).filter(Boolean); add.forEach(obcTopicPush);
+    entry.app = 'Added ' + add.map(x => '“' + x + '”').join(', ') + '.';
+  } else { _obc.ask = t; entry.app = 'Which part is that?'; }
+  return true;
+}
+function obcPut(field){
+  const t = _obc.ask; if (!t) return false;
+  _obc.ask = '';
+  const last = _obc.log[_obc.log.length - 1];
+  if (field === 'topic') { obcTopicPush(t); if (last) last.app = 'Added “' + t + '” as a topic.'; }
+  else { obcSet(field, t); if (last) last.app = 'Changed ' + ({ obBrandName: 'your brand name', obTagline: 'what you sell', obAudience: 'who it’s for', obUsps: 'what makes you different' }[field] || 'that') + '.'; }
+  obcRender(); return true;
+}
+// ---- step 3: the voice talk (dictateInto → /api/transcribe-voice, the same 60 s cap) / type instead / skip ----
+function obcTickStart(){ obcTickStop(); _obcTick = setInterval(function () {
+  if (!_obc) return;
+  if (_obc.rec === 1 && typeof _dictRec !== 'undefined' && _dictRec) { _obc.rec = 2; _obc.recStart = Date.now(); obcRender(); }
+  else if (_obc.rec === 2 && typeof _dictRec !== 'undefined' && !_dictRec) { _obc.voiceSecs += Math.min(60, (Date.now() - _obc.recStart) / 1000); _obc.rec = 3; obcRender(); }
+  const tm = obcEl('obcTimer'); if (tm && _obc.rec === 2) tm.innerHTML = obcClock((Date.now() - _obc.recStart) / 1000) + ' <span>/ 1:00</span>';
+}, 250); }
+function obcTickStop(){ if (_obcTick) { clearInterval(_obcTick); _obcTick = null; } }
+function obcMic(){
+  if (_obc.rec === 2) { try { dictateInto('obVoiceSample', obcEl('obVoiceMic'), 'Talking'); } catch (e) {} return true; }   // a second press stops (dictateInto's own toggle)
+  if (_obc.rec) return false;
+  _obc.voiceErr = ''; _obc.line = ''; _obc.rec = 1; _obc.recStart = 0; _obc.before = obVoiceWords();
+  obcRender(); obcTickStart();
+  try { dictateInto('obVoiceSample', obcEl('obVoiceMic'), 'Talking', { maxMs: OBC_MIC_MAX, onEnd: obcMicEnd }); }
+  catch (e) { obcMicEnd(); }
+  return true;
+}
+function obcMicEnd(){
+  obcTickStop();
+  if (!_obc) return false;
+  if (_obc.step !== 3) { _obc.rec = 0; _obc.recStart = 0; return false; }   // review fix: Back / Skip left step 3 while it was recording or transcribing
+  const started = _obc.recStart > 0;
+  if (_obc.rec === 2 && started) _obc.voiceSecs += Math.min(60, (Date.now() - _obc.recStart) / 1000);
+  _obc.rec = 0; _obc.recStart = 0;
+  if (!started) { _obc.voiceErr = 'I can’t reach your microphone. Check the permission and try again — or type it instead.'; obcRender(); return false; }
+  if (obVoiceWords() <= _obc.before) { _obc.voiceErr = 'I couldn’t make out any words that time. Try again, or type it instead.'; obcRender(); return false; }
+  _obc.voiceMeta = 'Voice · ' + obcClock(_obc.voiceSecs);
+  return obcVoiceDone();
+}
+function obcVoiceDone(){
+  obNext(3);   // the existing check (25+ words, "Skip for now" right beside it)
+  if (_obc.step !== 3) return true;
+  _obc.line = obcErrText('obStep3Err') || 'A bit more, please.';
+  obcRender(); return false;
+}
+function obcTypeVoice(){ _obc.typeVoice = true; _obc.voiceErr = ''; _obc.line = ''; if (!_obc.voiceMeta || /^Voice/.test(_obc.voiceMeta) === false) _obc.voiceMeta = 'Typed'; obcRender(); try { obcEl('obcVoiceTa').focus(); } catch (e) {} return true; }
+function obcUseMic(){ _obc.typeVoice = false; _obc.line = ''; obcRender(); return true; }
+function obcVoiceSkip(){
+  if (_obc.rec === 2) { try { dictateInto('obVoiceSample', obcEl('obVoiceMic'), 'Talking'); } catch (e) {} }
+  obcTickStop(); _obc.rec = 0; _obc.recStart = 0; _obc.voiceSkipped = true;
+  obGoToStep(4);   // the old "Skip for now" (nothing saved unless 25+ words are in the box)
+  _obc.voiceSkipped = true; obcRender();
+  return true;
+}
+// ---- step 4: creators → chips (the ONE creator rule: obCreatorUrl / cfTtLink, max 5) ----
+function obcCreatorsAdd(text){
+  _obc.cErr = '';
+  const toks = String(text || '').split(/[\s,;]+/).filter(Boolean);
+  for (const t of toks) {
+    const u = obCreatorUrl(t);
+    if (!u) { _obc.cErr = '“' + t.slice(0, 60) + '” isn’t a TikTok profile. Use a link like tiktok.com/@name or an @handle.'; break; }
+    if (_obc.creators.indexOf(u) >= 0) continue;
+    if (_obc.creators.length >= CF_MAX_CREATORS) { _obc.cErr = CF_MAX_MSG; break; }
+    _obc.creators.push(u);
+  }
+  obcRender(); return !_obc.cErr;
+}
+function obcCreatorX(k){ _obc.creators.splice(k, 1); _obc.cErr = ''; obcRender(); return true; }
+function obcFollow(){
+  const inp = obcEl('obcIn');
+  if (inp && inp.value.trim()) { if (!obcCreatorsAdd(inp.value)) return false; inp.value = ''; }
+  if (!_obc.creators.length) { _obc.cErr = 'Paste an @handle or a TikTok link first — or skip for now.'; obcRender(); return false; }
+  obcSet('obCreators', _obc.creators.join('\n'));
+  const cd = _obc.creators.map(obcHandle).join(', ');
+  obNext(4);   // the existing parse (obParseCreators) → obPendingCreators
+  if (_obc.step === 4) { _obc.cErr = obcErrText('obStep4Err') || 'Check those handles and try again.'; obcRender(); return false; }
+  _obc.cDone = cd; obcRender();
+  return true;
+}
+function obcCreatorsSkip(){ _obc.creators = []; _obc.cErr = ''; _obc.cDone = ''; obcSet('obCreators', ''); obSkipCreators(); return true; }
+// ---- step 5: paste → the main chat; creators → their feed; skipped → the first post (v712) ----
+function obcHintFocus(msg){ _obc.hint = msg; obcRender(); try { obcEl('obcIn').focus(); } catch (e) {} return false; }
+async function obcPaste(){
+  if (!_obc || _obc.finishing) return false;
+  let t = '';
+  try { if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') throw new Error('no clipboard'); t = String((await navigator.clipboard.readText()) || '').trim(); }
+  catch (e) { return obcHintFocus('Paste the link here.'); }
+  if (!t) return obcHintFocus('Your clipboard is empty — paste a link here.');
+  if (remixPickLink(t).kind === 'text') return obcHintFocus('No link on your clipboard — paste one here.');
+  return obcLand(t);
+}
+async function obcPasteIn(){
+  if (_obc && _obc.step === 5) return obcPaste();
+  try { const t = String((await navigator.clipboard.readText()) || '').trim(); if (t) { const i = obcEl('obcIn'); if (i) { i.value = t; i.focus(); } } }
+  catch (e) { try { obcEl('obcIn').focus(); } catch (_) {} }
+  return true;
+}
+function obcLand(text){ const t = String(text || '').trim(); if (!t || !_obc || _obc.finishing) return false; _obcLanding = t.slice(0, 2000); return obcFinish(); }
+function obcTakeLanding(){ const t = _obcLanding; _obcLanding = ''; return t; }
+function obcFinish(){
+  const b = obcEl('obFinishBtn'); if (!b || b.disabled || !_obc) return false;
+  _obc.finishing = true; obcRender();
+  b.click();   // the old button's wiring: busy label, obFinish (brand row, voice sample, creators, the ending), its error path
+  return true;
+}
+function obcSend(){
+  const inp = obcEl('obcIn'); if (!inp || !_obc) return false;
+  const t = String(inp.value || '').trim(); if (!t) return false;
+  _obc.hint = '';
+  const s = _obc.step;
+  if (s === 1) { inp.value = ''; return obcWebsite(t); }
+  if (s === 2) { inp.value = ''; obcFix(t); obcRender(); return true; }
+  if (s === 4) { if (obcCreatorsAdd(t)) inp.value = ''; return true; }
+  if (s === 5) { inp.value = ''; return obcLand(t); }
+  return false;
+}
+function obcBack(){
+  if (!_obc || _obc.finishing) return false;
+  const s = _obc.step;
+  if (_obc.rec === 2) { try { dictateInto('obVoiceSample', obcEl('obVoiceMic'), 'Talking'); } catch (e) {} }
+  obcTickStop(); _obc.rec = 0; _obc.recStart = 0;
+  if (s === 2) { obBack(2); return true; }
+  if (s > 2) { obGoToStep(s - 1); return true; }
+  return false;
+}
+function obcInit(){
+  if (!obcEl('obChat')) return;
+  v18Wrap('obGoToStep', o => function (step) { const r = o.apply(this, arguments); try { obcOnStep(step); } catch (e) {} return r; });
+  v18Wrap('obShowWizard', o => function () { const r = o.apply(this, arguments); try { obcReset(); } catch (e) {} return r; });
+  v18Wrap('obResetFinishBtn', o => function () { const r = o.apply(this, arguments); try { if (_obc && _obc.finishing) { _obc.finishing = false; obcRender(); } } catch (e) {} return r; });
+  v18Wrap('obVoiceCount', o => function () { const r = o.apply(this, arguments); try { const c = obcEl('obcCount'); if (c) c.textContent = (obcEl('obVoiceCount') || {}).textContent || ''; } catch (e) {} return r; });
+  if (!_obc) _obc = obcFresh();
+  const o = obcEl('onboardingOverlay'); if (o) o.classList.add('obc-on');
+  if (o && !o.classList.contains('hidden')) obcRender();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', v18Init); else v18Init();
+/* ===== end v718 ===== */
 </script>
 <style id="csx-layout">
 /* v703 desktop-native STRUCTURE (D2): LAYOUT properties only (display, grid/flex, position, size, overflow, z-index, gap).

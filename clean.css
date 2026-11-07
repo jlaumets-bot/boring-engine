@@ -2250,6 +2250,114 @@ body[data-cs-view="create"]:not(.hy-classic) .hy-dock { display: block; }
 .hy-send[aria-disabled="true"], body.hy-has-bar .hy-input:has(.hy-in:placeholder-shown) .hy-send { background: transparent; color: var(--cs-muted); }
 @media (min-width: 900px) { .hy-dock { padding-left: 0; padding-right: 0; } .hy-bar { margin: -8px 0 8px; padding: 10px 0 0; } }
 
+/* ============ v718 — onboarding as a chat (every width) + the ≥1100px desktop layout. Mockups design-options/desktop-onboarding/.
+   Tokens only. This part is every width (the onboarding chat + hidden-by-default desktop pieces); the desktop rules are
+   the "v718 desktop" blocks at the end of §7 (min-width 900 for the chat's top bar, min-width 1100 for the layout).
+   Gates: scripts/verify/onboarding-chat-v718.mjs, scripts/verify/desktop-v718.mjs ============ */
+/* ---- B · the chat: top bar (back · N of 5), the thread (bottom-anchored), the static input ---- */
+.obc { display: none; }
+#onboardingOverlay.obc-on > .onboarding-container, #onboardingOverlay.obc-on > .onboarding-progress { display: none !important; }
+#onboardingOverlay.obc-on { overflow: hidden; align-items: stretch; background: var(--cs-bg); }
+#onboardingOverlay.obc-on > .obc { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; color: var(--cs-text); font-family: var(--cs-font); }
+.obc-top { flex: none; position: relative; display: flex; align-items: center; justify-content: center; height: 56px; padding: 0 12px; box-sizing: border-box; }
+.obc-back { position: absolute; left: 8px; top: 6px; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: none; color: var(--cs-text); cursor: pointer; }
+.obc-back[hidden] { display: none; }
+.obc-logo { display: none; }
+.obc-st { font-size: 15px; color: var(--cs-muted); }
+.obc-thread { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.obc-col { display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; min-height: 100%; max-width: 640px; margin: 0 auto; padding: 8px 16px 12px; box-sizing: border-box; }
+.obc-hist, .obc-now { display: flex; flex-direction: column; gap: 12px; }
+.obc-mark { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin: 0 4px 2px; border-radius: 14px; background: var(--cs-chip); border: 1px solid var(--cs-line-strong); color: var(--cs-muted); }
+.obc-app { padding: 0 4px; font-size: 16px; line-height: 1.45; color: var(--cs-text); overflow-wrap: anywhere; }
+.obc-q { padding: 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -.3px; line-height: 1.25; color: var(--cs-text); overflow-wrap: anywhere; }
+.obc-hist .obc-q { font-size: 16px; font-weight: 500; letter-spacing: 0; }
+.obc-hist { opacity: .72; }
+.obc-hint2 { margin-top: -6px; padding: 0 4px; font-size: 15px; line-height: 1.45; color: var(--cs-muted); }
+.obc-me { white-space: pre-line; }
+.obc-mm { display: block; margin-bottom: 2px; font-size: 13px; color: var(--cs-muted); }
+.obc-work { display: flex; align-items: center; gap: 10px; }
+.obc-spin { flex: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--cs-line-strong); border-top-color: var(--cs-text); animation: obcSpin .9s linear infinite; }
+@keyframes obcSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .obc-spin { animation: none; } }
+.obc-links { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 6px 0 2px; font-size: 14px; color: var(--cs-muted); }
+.obc-link { min-height: 44px; padding: 0 4px; border: 0; background: none; font: inherit; font-size: 14px; color: var(--cs-muted); cursor: pointer; }
+.obc-link b { color: var(--cs-text); font-weight: 500; }
+.obc-link:hover { color: var(--cs-text); }
+.obc-btns { display: flex; gap: 8px; }
+.obc-b { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 16px; border: 0; border-radius: 999px; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
+.obc-b.pri { background: var(--cs-primary); color: var(--cs-on-primary); }
+.obc-b.sec { background: var(--cs-chip); color: var(--cs-text); }
+.obc-b:disabled, .obc-b[aria-disabled="true"] { opacity: .55; cursor: default; }
+.obc-gentle { margin: 0; padding: 0 4px; font-size: 15px; line-height: 1.45; color: var(--cs-text); }
+.obc-found .obc-gentle { padding: 10px 0 0; font-size: 14px; color: var(--cs-muted); }
+.obc-err { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; border-radius: 18px; border: 1px solid var(--cs-line); background: var(--cs-raise); }
+.obc-err p { margin: 0; font-size: 16px; line-height: 1.45; color: var(--cs-text); }
+.obc-err .obc-b { min-height: 44px; font-size: 15px; }
+/* the "Here's what I found" card */
+.obc-found { padding: 14px 16px 16px; }
+.obc-found h3 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.2px; line-height: 1.3; color: var(--cs-text); overflow-wrap: anywhere; }
+.obc-found h3.obc-mt { color: var(--cs-muted); }
+.obc-sell { margin-top: 4px; font-size: 16px; line-height: 1.45; color: var(--cs-text); overflow-wrap: anywhere; }
+.obc-for { margin-top: 4px; font-size: 14px; line-height: 1.4; color: var(--cs-muted); overflow-wrap: anywhere; }
+.obc-lb { margin-top: 14px; font-size: 14px; font-weight: 500; color: var(--cs-muted); }
+.obc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.obc-x { display: inline-flex; align-items: center; gap: 2px; height: 34px; box-sizing: border-box; padding: 0 2px 0 13px; border-radius: 999px; background: var(--cs-chip); font-size: 15px; color: var(--cs-text); white-space: nowrap; max-width: 100%; }
+.obc-x button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -5px -6px -5px -10px; padding: 0; border: 0; border-radius: 22px; background: none; color: var(--cs-muted); cursor: pointer; }
+.obc-x button:hover { color: var(--cs-text); }
+.obc-add, .obc-opt { display: inline-flex; align-items: center; height: 34px; box-sizing: border-box; padding: 0 13px; border-radius: 999px; border: 1px dashed var(--cs-line-strong); background: none; font: inherit; font-size: 15px; color: var(--cs-muted); cursor: pointer; white-space: nowrap; }
+.obc-opt { border-style: solid; color: var(--cs-text); }
+.obc-add:hover, .obc-opt:hover { border-color: var(--cs-muted); color: var(--cs-text); }
+.obc-opts { margin-top: 6px; }
+.obc-which { margin-top: -4px; padding: 0 4px; }
+.obc-fl { display: block; margin: 12px 0 4px; font-size: 14px; font-weight: 500; color: var(--cs-muted); }
+.obc-fl:first-child { margin-top: 0; }
+:root .obc .obc-fin { display: block; width: 100%; box-sizing: border-box; height: auto !important; min-height: 44px !important; padding: 10px 12px !important; border: 1px solid var(--cs-line-strong) !important;
+  border-radius: 12px !important; background: var(--cs-input) !important; background-color: var(--cs-input) !important; color: var(--cs-text); font: inherit; font-size: 16px !important; line-height: 1.4; resize: vertical; }
+:root .obc .obc-ta { min-height: 150px !important; }
+.obc-tadd { display: flex; gap: 8px; margin-top: 8px; }
+.obc-tadd .obc-fin { flex: 1; min-width: 0; }
+.obc-tadd .obc-b { flex: none; min-height: 44px; font-size: 15px; }
+/* step 3: the big mic, the timer */
+.obc-mic { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px 0 8px; }
+.obc-ring { width: 200px; height: 200px; }
+.obc-ring.on { border-color: var(--cs-text); }
+.obc-micb { width: 156px; height: 156px; gap: 8px; }
+.obc-micb:disabled { opacity: .8; cursor: progress; }
+.obc-tm { font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: .3px; color: var(--cs-text); }
+.obc-tm span { color: var(--cs-muted); }
+.obc-count { padding: 0 4px; font-size: 14px; color: var(--cs-muted); }
+.obc-count:empty { display: none; }
+.obc-c2 { text-align: center; }
+.obc-type { padding: 12px; }
+.obc-type .obc-count { padding: 8px 2px 0; }
+/* step 5 */
+.obc-hero { padding: 6px 0 2px; }
+.obc-x2 { padding: 4px 4px 0; font-size: 14px; font-weight: 500; color: var(--cs-muted); }
+.obc-xs { padding: 0 13px; }
+.obc-cl { margin-top: 0; padding: 0 4px; }
+/* the input */
+.obc-dock { flex: none; padding: 8px 16px max(12px, env(safe-area-inset-bottom)); background: var(--cs-bg); }
+.obc-dock[hidden] { display: none; }
+.obc-dock-in { max-width: 640px; margin: 0 auto; }
+.obc-hint:empty { display: none; }
+.obc-input:has(.hy-in:placeholder-shown) .hy-send { background: transparent; color: var(--cs-muted); }
+.obc-back:focus-visible, .obc-link:focus-visible, .obc-b:focus-visible, .obc-x button:focus-visible, .obc-add:focus-visible, .obc-opt:focus-visible { outline: 2px solid var(--cs-text); outline-offset: 2px; }
+/* ---- A · the ≥1100px desktop layout. Under 1100 nothing below applies (phones and 900–1099 stay as v717). ---- */
+.v18-rail, .v18-npane { display: none; }
+.v18-tbbtn, .v18-askb, .v18-more, .v18-sp { display: none; }
+.v18-ask { margin-top: 20px; padding-top: 4px; border-top: 1px solid var(--cs-line); }
+.v18-ask .v18-askf { margin-top: 4px; }
+.v18-ask .hy-err, .v18-ask .hy-note { padding: 8px 4px 0; }
+.v18-vh { margin-top: 12px; }
+.v18-vc { margin-top: 4px; }
+.v18-vl { margin-top: 10px; }
+.v18-vl:first-of-type { margin-top: 8px; }
+.v18-keep { display: flex; gap: 10px; margin-top: 10px; }
+.v18-keep .aw-film { flex: 1; }
+.v18-keep .aw-pill { flex: none; padding: 0 20px; }
+.v18-keepb svg { flex: none; }
+/* ============ end v718 (every width) ============ */
+
 /* ============ 6. inline style="" that hard-codes the old palette ============
    An inline style beats every stylesheet rule that is not !important, so each override here needs !important.
    Matching is on the literal text the app writes (case-insensitive). Agent S is moving the main screens'
@@ -2388,6 +2496,133 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
   #desktopSidebar .ds-item:focus-visible, #desktopSidebar .ds-brand:focus-visible, .list-card :focus-visible, .pipeline-card :focus-visible,
   .cs-pill-btn:focus-visible, .cs-primary-btn:focus-visible { outline: 2px solid var(--cs-muted); outline-offset: 2px; }
 }
+
+/* ============ v718 desktop — the onboarding chat's desktop top bar (≥900) and the ≥1100px layout: D1 rail, D2 master-detail, D3 Settings.
+   Under 1100 nothing in the second block applies (phones and 900–1099 stay as v717). Gate: scripts/verify/desktop-v718.mjs ============ */
+@media (min-width: 900px) {
+  .obc-top { justify-content: space-between; padding: 0 32px; border-bottom: 1px solid var(--cs-line); }
+  .obc-back { position: static; margin-left: -12px; }
+  .obc-logo { display: flex; align-items: center; gap: 10px; margin-right: auto; font-size: 16px; font-weight: 600; color: var(--cs-text); }
+  .obc-logo i { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: var(--cs-chip); border: 1px solid var(--cs-line-strong); color: var(--cs-muted); }
+  .obc-col { padding: 20px 0 16px; }
+  .obc-btns { max-width: 400px; }
+  .obc-dock { padding: 8px 0 20px; }
+}
+@media (min-width: 1100px) {
+  /* D1 · main chat: centre column (720) + the right rail (320) under the toolbar */
+  body[data-cs-view="create"]:not(.hy-classic) .v18-rail { display: block; position: fixed; top: 56px; right: 0; bottom: 0; z-index: 55; width: 320px; box-sizing: border-box;
+    padding: 12px 20px 24px; overflow-y: auto; overscroll-behavior: contain; border-left: 1px solid var(--cs-line); background: var(--cs-bg); color: var(--cs-text); }
+  body[data-cs-view="create"]:not(.hy-classic) #view-create { padding-right: 320px !important; }
+  :root body[data-cs-view="create"]:not(.hy-classic) #mainViews > #view-create > #hyApp { max-width: 720px !important; margin-left: auto !important; margin-right: auto !important; padding: 0; box-sizing: border-box; }
+  body[data-cs-view="create"]:not(.hy-classic) #hyApp .hy-feed { display: none; }
+  body[data-cs-view="create"]:not(.hy-classic) #hyApp .hy-new { display: none !important; }   /* the toolbar's "New chat" */
+  body.v18-hystart[data-cs-view="create"] #hyMain { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(100vh - 56px - 24px - 128px); }
+  body.v18-hystart[data-cs-view="create"] .hy-hero { padding: 0; }
+  .v18-or { margin: 4px 0 0; font-size: 14px; color: var(--cs-muted); text-align: center; }
+  .v18-rail .hy-feed, .v18-rail .v18-feed { padding: 0; }
+  .v18-rail .hy-lh { min-height: 40px; }
+  .v18-rail .hy-lt { font-size: 15px; }
+  .v18-rail .hy-row { min-height: 0; padding: 9px 0; gap: 4px; }
+  .v18-rail .hy-rt { font-size: 14px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .v18-rail .hy-rm { font-size: 13px; }
+  .v18-rail .hy-tag { height: 22px; padding: 0 8px; font-size: 13px; }
+  .v18-rail .hy-day { padding: 10px 0 0; font-size: 13px; }
+  .v18-rail .hy-more { min-height: 32px; font-size: 13px; }
+  .v18-rail .hy-row:hover { background: var(--cs-hover); }
+  .v18-crs { margin-top: 18px; }
+  .v18-of { font-size: 13px; color: var(--cs-muted); }
+  .v18-cl { display: flex; flex-direction: column; }
+  .v18-cr { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 4px 6px; margin: 0 -6px; box-sizing: content-box; border: 0; border-radius: 10px; background: none;
+    font: inherit; font-size: 14px; color: var(--cs-text); text-align: left; cursor: pointer; }
+  .v18-cr:hover { background: var(--cs-hover); }
+  .v18-av { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 12px; background: var(--cs-chip); font-size: 13px; font-weight: 600; }
+  .v18-ch { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .v18-cn { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--cs-muted); }
+  .v18-cn.on { color: var(--cs-text); }
+  .v18-rail .hy-add { min-height: 36px; font-size: 14px; }
+  .v18-cr:focus-visible, .v18-tbbtn:focus-visible, .v18-askb:focus-visible, .v18-more:focus-visible { outline: 2px solid var(--cs-text); outline-offset: 2px; }
+
+  /* D2 · Ideas / Pipeline: the list (420) left, the SAME idea page right; the list's head is the toolbar */
+  body.aw-on.v18-wide:is([data-cs-view="ideas"], [data-cs-view="pipeline"]) :is(#awIdeas, #awPipe) { max-width: 420px !important; margin-left: 0 !important; margin-right: 0 !important;
+    min-height: 100vh; margin-top: 0 !important; padding: 0 16px 112px; border-right: 1px solid var(--cs-line); box-sizing: border-box; }
+  /* the list's head is the screen's toolbar: sticky (a fixed child would pin to the view's fade-in transform), as wide as the window */
+  body.aw-on.v18-wide:is([data-cs-view="ideas"], [data-cs-view="pipeline"]) :is(#awIdeas, #awPipe) > .aw-head { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 12px;
+    width: calc(100vw - 260px); height: 56px; margin: 0 -16px 8px; padding: 0 32px; box-sizing: border-box; border-bottom: 1px solid var(--cs-line); background: var(--cs-bg); }
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) > .aw-head .aw-headtx { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) > .aw-head .aw-title { font-size: 20px; letter-spacing: -.2px; white-space: nowrap; }
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) > .aw-head .aw-sub { margin: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) > .aw-head .aw-hidnote { margin: 0; font-size: 13px; white-space: nowrap; }
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) > .aw-head .aw-dots { margin: 0; }
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) > .aw-imenu { position: absolute; top: 52px; left: auto; right: calc(420px - 100vw + 260px + 24px); z-index: 70; max-width: none; }
+  .v18-tbbtn { display: inline-flex; align-items: center; gap: 8px; flex: none; margin-left: auto; height: 36px; padding: 0 16px 0 14px; border: 0; border-radius: 999px; background: var(--cs-primary); color: var(--cs-on-primary);
+    font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+  .v18-tbbtn:disabled { opacity: .7; cursor: progress; }
+  body.aw-on.v18-wide :is(#awPlan, #awFilmNext) { display: none !important; }   /* the floating pill: the toolbar button above is the same function */
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) .aw-row { padding-left: 10px; padding-right: 6px; border-radius: 10px; }
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) .aw-row:hover { background: var(--cs-hover); }
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) .aw-row.v18-sel { background: var(--cs-chip); box-shadow: inset 0 0 0 1px var(--cs-line-strong); border-bottom-color: transparent; }
+  body.aw-on.v18-wide :is(#awIdeas, #awPipe) .aw-gh { padding-left: 2px; padding-right: 6px; }
+  /* the detail stays beside the list (phones swap the list for it) */
+  :root body.v18-wide[data-aw-detail="ideas"][data-cs-view="ideas"] #mainViews > #view-ideas,
+  :root body.v18-wide[data-aw-detail="pipeline"][data-cs-view="pipeline"] #mainViews > #view-pipeline { display: block !important; }
+  body.v18-wide:is([data-aw-detail="ideas"][data-cs-view="ideas"], [data-aw-detail="pipeline"][data-cs-view="pipeline"]) .aw-detail:not([hidden]) { position: fixed; top: 56px; left: 680px; right: 0; bottom: 0; z-index: 50;
+    max-width: none; margin: 0; padding: 24px 40px 112px; overflow-y: auto; overscroll-behavior: contain; }
+  body.v18-wide[data-aw-detail] .aw-detail > * { max-width: 760px; }
+  body.v18-wide[data-aw-detail] .aw-detail > .aw-dtop { display: none; }
+  body.v18-wide[data-aw-detail] .aw-detail > .aw-menu { position: fixed; top: auto; bottom: 80px; right: 40px; z-index: 160; }
+  body.v18-wide[data-aw-detail] .aw-detail .aw-h1 { font-size: 24px; }
+  body.aw-on.v18-wide[data-aw-detail]:is([data-cs-view="ideas"], [data-cs-view="pipeline"]) .aw-dock { left: 680px; padding: 0 40px 16px; }
+  body.v18-wide[data-aw-detail] .aw-dock-in { max-width: 760px; margin: 0; }
+  body.v18-wide[data-aw-detail] .aw-bar { align-items: center; gap: 8px; }
+  body.v18-wide[data-aw-detail] .aw-bar .aw-film { flex: 0 1 320px; height: 44px; font-size: 15px; }
+  body.v18-wide[data-aw-detail] .aw-bar .aw-sq { width: 40px; height: 40px; border-radius: 20px; background: transparent; color: var(--cs-muted); }
+  body.v18-wide[data-aw-detail] .aw-bar .aw-sq:hover { background: var(--cs-hover); color: var(--cs-text); }
+  .v18-askb { display: inline-flex; align-items: center; gap: 8px; flex: none; min-height: 44px; padding: 0 16px; font-size: 15px; }
+  .v18-askb[aria-expanded="true"] { border-color: var(--cs-muted); }
+  .v18-sp { display: block; flex: 1; }
+  .v18-more { display: flex; }
+  /* Notebook: the note list left, the note's page right */
+  body.aw-on.v18-wide[data-cs-view="notebook"]:not([data-aw2-classic]) #awNotes { max-width: 420px !important; margin-left: 0 !important; margin-right: 0 !important; min-height: calc(100vh - 56px);
+    padding: 0 16px 112px; border-right: 1px solid var(--cs-line); box-sizing: border-box; }
+  body.aw-on.v18-wide[data-cs-view="notebook"][data-v18-note]:not([data-aw2-classic]) .v18-npane { display: block; position: fixed; top: 56px; left: 680px; right: 0; bottom: 0; z-index: 50; box-sizing: border-box;
+    padding: 12px 40px 112px; overflow-y: auto; color: var(--cs-text); font-family: var(--cs-font); background: var(--cs-bg); }
+  .v18-npane > * { max-width: 760px; }
+  .v18-npane .aw-dtop .aw-back { visibility: hidden; }
+  .v18-npane .aw2-dmenu { position: absolute; right: 40px; top: 56px; z-index: 30; }
+  body.aw-on.v18-wide[data-cs-view="notebook"] .aw2-nrow { padding-left: 10px; padding-right: 6px; border-radius: 10px; }
+  body.aw-on.v18-wide[data-cs-view="notebook"] .aw2-nrow:hover { background: var(--cs-hover); }
+  body.aw-on.v18-wide[data-cs-view="notebook"] .aw2-nrow.v18-sel { background: var(--cs-chip); box-shadow: inset 0 0 0 1px var(--cs-line-strong); border-bottom-color: transparent; }
+  body.aw-on.v18-wide[data-cs-view="notebook"][data-v18-note] .aw-dock { left: 680px; padding: 0 40px 16px; }
+  body.aw-on.v18-wide[data-cs-view="notebook"][data-v18-note] .aw-dock-in { max-width: 760px; margin: 0; }
+  /* Coach: one centred chat column */
+  #bvOverlay.csx-assist > :not(.csx-toolbar) { margin-left: auto !important; margin-right: auto !important; }
+  /* D3 · Settings: the rows left (360), the picked section's panel right */
+  #settingsOverlay.v18-spmd.open { display: grid !important; grid-template-columns: 360px minmax(0, 1fr) !important; grid-template-rows: auto auto 1fr !important; align-items: start; column-gap: 0; }   /* !important: the v703 subnav grid (an id + :has) */
+  #settingsOverlay.v18-spmd > .csx-toolbar { grid-column: 1 / -1; grid-row: 1; }
+  #settingsOverlay.v18-spmd > .sp-header, #settingsOverlay.v18-spmd .sp-tabs { display: none !important; }
+  #settingsOverlay.v18-spmd > .v18-sprows { grid-column: 1; grid-row: 2 / span 2; align-self: stretch; position: sticky; top: 56px; min-height: calc(100vh - 56px); max-height: calc(100vh - 56px); overflow-y: auto;
+    padding: 4px 16px 24px; border-right: 1px solid var(--cs-line); box-sizing: border-box; }
+  #settingsOverlay.v18-spmd > .csx-subnav { grid-column: 2; grid-row: 2; position: static; flex-direction: row; flex-wrap: wrap; gap: 4px; padding: 16px 32px 0; border-right: 0; }
+  #settingsOverlay.v18-spmd > .csx-subnav .csx-subnav-item { width: auto !important; }
+  #settingsOverlay.v18-spmd > .sp-body { grid-column: 2; grid-row: 3; width: 100%; max-width: 820px !important; margin: 0 !important; padding: 20px 40px 48px !important; box-sizing: border-box; }
+  #settingsOverlay.v18-spmd .sp-body > .aw2-spdback { display: none !important; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-sp { max-width: none; margin: 0; padding: 0; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-sphead { min-height: 0; padding: 4px 0 0; justify-content: flex-end; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-sphead .aw-headtx { display: none; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-sphead + .aw-gh, #settingsOverlay.v18-spmd .v18-sprows .aw2-sp > .aw-gh:first-of-type { padding-top: 0; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw-gh { padding: 14px 4px 2px; font-size: 13px; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-srow { min-height: 40px; padding: 0 10px; border-bottom: 0; border-radius: 10px; gap: 10px; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-srow:hover { background: var(--cs-hover); }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-srow.v18-on { background: var(--cs-chip); box-shadow: inset 0 0 0 1px var(--cs-line-strong); }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-lb { font-size: 14px; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-v { font-size: 13px; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw-go { display: none; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-ic svg { width: 16px; height: 16px; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-tog { transform: scale(.85); }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-foot { text-align: left; padding: 20px 10px 8px; font-size: 13px; }
+  #settingsOverlay.v18-spmd .v18-sprows .aw2-spmenu { top: 36px; right: 0; }
+}
+/* ============ end v718 desktop ============ */
 
 /* ============ 8. desktop system (v703, hand-written; ≥900px only — phones and tablets under 900px are untouched) ============
    Contract: .unlazy/desktop/SPEC.md ("one of each — use these sizes everywhere on D"). Gate: scripts/verify/desktop-system.mjs.
@@ -3005,4 +3240,3 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     :root input, :root textarea, :root select, :root .csx-toolbar select { font-size: 16px !important; }
   }
 }
-

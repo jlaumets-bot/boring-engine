@@ -1,0 +1,112 @@
+{
+ "mutations": [
+  {
+   "id": "D1",
+   "finding": "v718-rail-shown",
+   "file": "clean.css",
+   "find": "body[data-cs-view=\"create\"]:not(.hy-classic) .v18-rail { display: block;",
+   "replace": "body[data-cs-view=\"create\"]:not(.hy-classic) .v18-rail { display: none;",
+   "gate": "desktop-v718.mjs",
+   "why": "the right rail never shows on the desktop main chat"
+  },
+  {
+   "id": "D2",
+   "finding": "v718-rail-new-count",
+   "file": "app.html",
+   "find": "hyDayKey(v.postedAt, now) <= 1).length;",
+   "replace": "hyDayKey(v.postedAt, now) <= 2).length;",
+   "gate": "desktop-v718.mjs",
+   "why": "\"N new\" counts every video in the feed, not today's and yesterday's"
+  },
+  {
+   "id": "D3",
+   "finding": "v718-md-autoselect",
+   "file": "app.html",
+   "find": "if (want == null && ids.length) want = ids[0];",
+   "replace": "if (false) want = ids[0];",
+   "gate": "desktop-v718.mjs",
+   "why": "Ideas at 1440 opens with an empty right pane"
+  },
+  {
+   "id": "D4",
+   "finding": "v718-ask-kind",
+   "file": "app.html",
+   "find": "body: JSON.stringify({ brandId: brandId, kind: 'idea', idea: v18IdeaOut(base), instruction: text })",
+   "replace": "body: JSON.stringify({ brandId: brandId, kind: 'remix', idea: v18IdeaOut(base), instruction: text })",
+   "gate": "desktop-v718.mjs",
+   "why": "Ask for changes posts the remix kind"
+  },
+  {
+   "id": "D5",
+   "finding": "v718-ask-keep-save-path",
+   "file": "app.html",
+   "find": "try { _saveThenDropRenamedRow(oldTitle, keep.title); } catch (e) {}",
+   "replace": "try { saveState(); } catch (e) {}",
+   "gate": "desktop-v718.mjs",
+   "why": "Keep skips the reworded-idea save path (the old title's row is never dropped)"
+  },
+  {
+   "id": "D6",
+   "finding": "v718-ask-empty",
+   "file": "app.html",
+   "find": "if (!text) { a.err = 'Say what to change",
+   "replace": "if (false) { a.err = 'Say what to change",
+   "gate": "desktop-v718.mjs",
+   "why": "an empty ask is sent to the server (and charged)"
+  },
+  {
+   "id": "D7",
+   "finding": "v718-ask-uses-answer",
+   "file": "app.html",
+   "find": "a.versions.push(v18IdeaIn(data.idea, base));",
+   "replace": "a.versions.push(base);",
+   "gate": "desktop-v718.mjs",
+   "why": "the server's revised idea is dropped; v2 repeats v1"
+  },
+  {
+   "id": "D8",
+   "finding": "v718-settings-md",
+   "file": "app.html",
+   "find": "if (v18Wide() && !_aw2.sp) _aw2.sp = 'brain';",
+   "replace": "if (false) _aw2.sp = 'brain';",
+   "gate": "desktop-v718.mjs",
+   "why": "desktop Settings opens on the old single column of rows (no right pane)"
+  },
+  {
+   "id": "D9",
+   "finding": "v718-phone-untouched",
+   "file": "clean.css",
+   "find": ".v18-tbbtn, .v18-askb, .v18-more, .v18-sp { display: none; }",
+   "replace": ".v18-tbbtn, .v18-askb, .v18-more, .v18-sp { display: none; }\n#awIdeas .aw-row { padding-top: 13px; }",
+   "gate": "desktop-v718.mjs",
+   "why": "a v718 rule outside the 1100px block moves the phone Ideas rows"
+  },
+  {
+   "id": "D10",
+   "finding": "v718-breakpoint",
+   "file": "app.html",
+   "find": "var V18_MQ = '(min-width: 1100px)';",
+   "replace": "var V18_MQ = '(min-width: 900px)';",
+   "gate": "desktop-v718.mjs",
+   "why": "the 900–1099 window gets the master-detail auto-select"
+  },
+  {
+   "id": "D11",
+   "finding": "v718-phone-ask",
+   "file": "app.html",
+   "find": "{ label: 'Ask for changes', fn: () => v18AskOpen() }",
+   "replace": "{ label: 'Change it', fn: () => v18AskOpen() }",
+   "gate": "desktop-v718.mjs",
+   "why": "the phone idea page's ⋯ has no \"Ask for changes\""
+  },
+  {
+   "id": "D12",
+   "finding": "v718-review-keep-merge",
+   "file": "app.html",
+   "find": "if (nv[f] != null && changed(f)) keep[f] = nv[f];",
+   "replace": "if (nv[f] != null) keep[f] = nv[f];",
+   "gate": "desktop-v718.mjs",
+   "why": "Keep overwrites an edit made meanwhile with the stale snapshot"
+  }
+ ]
+}

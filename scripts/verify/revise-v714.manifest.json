@@ -28,16 +28,16 @@
    "id": "R4",
    "finding": "v714 brand access: a brand the user cannot access -> 403 forbidden",
    "file": "api/revise.js",
-   "find": "if (reason === 'forbidden' || reason === 'no_user') return fail(res, 403, 'forbidden'",
-   "replace": "if (false) return fail(res, 403, 'forbidden'",
+   "find": "      if (reason === 'forbidden' || reason === 'no_user') return fail(res, 403, 'forbidden'",
+   "replace": "      if (false) return fail(res, 403, 'forbidden'",
    "gate": "revise-v714.mjs"
   },
   {
    "id": "R5",
    "finding": "v714 input: the change request is 1..300 characters",
    "file": "api/revise.js",
-   "find": "if (instruction.length > MAX_INSTRUCTION) return",
-   "replace": "if (instruction.length > 3000) return",
+   "find": "    if (instruction.length > MAX_INSTRUCTION) return",
+   "replace": "    if (instruction.length > 3000) return",
    "gate": "revise-v714.mjs"
   },
   {
@@ -52,8 +52,8 @@
    "id": "R7",
    "finding": "v714 refusal: a forbidden request (discount, health claim, rules) gets a plain note",
    "file": "api/revise.js",
-   "find": "const notes = refusals.map(r => NOTE[r]);",
-   "replace": "const notes = [];",
+   "find": "    const notes = refusals.map(r => NOTE[r]);",
+   "replace": "    const notes = [];",
    "gate": "revise-v714.mjs"
   },
   {

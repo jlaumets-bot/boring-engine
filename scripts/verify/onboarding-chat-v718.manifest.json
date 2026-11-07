@@ -1,0 +1,121 @@
+{
+ "mutations": [
+  {
+   "id": "O1",
+   "finding": "v718-chat-replaces",
+   "file": "clean.css",
+   "find": "#onboardingOverlay.obc-on > .onboarding-container, #onboardingOverlay.obc-on > .onboarding-progress { display: none !important; }",
+   "replace": "#onboardingOverlay.obc-on > .onboarding-progress { display: none !important; }",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "the old screens show under the chat"
+  },
+  {
+   "id": "O2",
+   "finding": "v718-min-chips",
+   "file": "app.html",
+   "find": "  obNext(2);   // the existing minimum: brand name, 2 tones, who for, what makes you different, 2 topics",
+   "replace": "  obGoToStep(3);",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "\"Looks right\" skips the existing 2-tones / 2-topics minimum"
+  },
+  {
+   "id": "O3",
+   "finding": "v718-mic-cap",
+   "file": "app.html",
+   "find": "const OBC_MIC_MAX = 60000;",
+   "replace": "const OBC_MIC_MAX = 120000;",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "the voice talk runs two minutes"
+  },
+  {
+   "id": "O4",
+   "finding": "v718-mic-denied",
+   "file": "app.html",
+   "find": "if (!started) { _obc.voiceErr =",
+   "replace": "if (!started) { obcRender(); return false; _obc.voiceErr =",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "mic denied leaves a silent mic button (no message, no way on)"
+  },
+  {
+   "id": "O5",
+   "finding": "v718-creator-cap",
+   "file": "app.html",
+   "find": "if (_obc.creators.length >= CF_MAX_CREATORS) { _obc.cErr = CF_MAX_MSG; break; }",
+   "replace": "if (_obc.creators.length >= 6) { _obc.cErr = CF_MAX_MSG; break; }",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "a 6th creator chip is accepted"
+  },
+  {
+   "id": "O6",
+   "finding": "v718-paste-lands",
+   "file": "app.html",
+   "find": "  if (_obLand) {\n",
+   "replace": "  if (false) {\n",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "a TikTok pasted on step 5 is dropped for the first-post ending"
+  },
+  {
+   "id": "O7",
+   "finding": "v718-skip-old-ending",
+   "file": "app.html",
+   "find": "} else if (_obFollowed > 0) {",
+   "replace": "} else if (_obFollowed >= 0) {",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "skipped creators land on an empty feed instead of the pre-v712 first post"
+  },
+  {
+   "id": "O8",
+   "finding": "v718-crawl-error",
+   "file": "app.html",
+   "find": "if (eb && eb.style.display === 'block') {",
+   "replace": "if (false) {",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "a failed crawl leaves the chat waiting forever"
+  },
+  {
+   "id": "O9",
+   "finding": "v718-typed-fix",
+   "file": "app.html",
+   "find": "set('obBrandName', m[1], 'your brand name');",
+   "replace": "set('obTagline', m[1], 'your brand name');",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "a typed name fix lands in the wrong field"
+  },
+  {
+   "id": "O10",
+   "finding": "v718-copy-minute",
+   "file": "app.html",
+   "find": "Use the mic and talk for a minute. Rough is fine.",
+   "replace": "Use the mic and talk for a minute or two. Rough is fine.",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "\"a minute or two\" comes back"
+  },
+  {
+   "id": "O11",
+   "finding": "v718-no-site",
+   "file": "app.html",
+   "find": "function obcNoSite(){ _obc.noSite = true;",
+   "replace": "function obcNoSite(){ return false; _obc.noSite = true;",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "\"Set it up by talking\" does nothing (dead end after a failed crawl)"
+  },
+  {
+   "id": "O12",
+   "finding": "v718-voice-check",
+   "file": "app.html",
+   "find": "  obNext(3);   // the existing check",
+   "replace": "  obGoToStep(4);",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "three typed words pass as a voice sample"
+  },
+  {
+   "id": "O13",
+   "finding": "v718-review-late-mic",
+   "file": "app.html",
+   "find": "  if (_obc.step !== 3) { _obc.rec = 0; _obc.recStart = 0; return false; }",
+   "replace": "",
+   "gate": "onboarding-chat-v718.mjs",
+   "why": "a transcription that lands after Back jumps the user past step 2's minimum (obNext(3))"
+  }
+ ]
+}

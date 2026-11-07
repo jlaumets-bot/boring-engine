@@ -2,6 +2,21 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-07 — v718. DESKTOP LAYOUT + ONBOARDING AS A CHAT + Ask for changes on saved ideas.
+Mockups: cloud /mnt/user-data/outputs/design-options/desktop-onboarding/. Contract .unlazy/hybrid/CONTRACT.md "v718 addition" + Server notes v718.
+- Desktop ≥1100px: main chat = centre 720px + right rail 320px (feed + "Your creators", redraw only on change, no fetch); "New chat"
+  in toolbar. Ideas/Pipeline/Notebook/Settings master-detail (first item auto-selected = draw only; arrows/J/K skip inputs).
+  Coach centred. Phone pixel-identical to v717 (gate snapshot).
+- Ask for changes on an idea: /api/revise kind:'idea' (fields title, hook, script, boldText, shots, screen, caption, tags, emphasis,
+  format, postType; type never changes; format only on a clear ask); v1/v2; Keep merges only changed fields onto the CURRENT idea
+  (by id) via the existing save; a Redo closes the box. Phone: in the idea ⋯ menu.
+- Onboarding = 5-step chat (website → "Here's what I found" chips with the 2+2 minimum → voice 0:00/1:00 (cap 60 s; "a minute or
+  two" copy removed app-wide) → TikTok creators chips → "Paste a TikTok to try it"). Every error path has retry/type/skip; brand row
+  still created once in obFinish; Back/Skip stop a take and a late transcript can't move the chat. Step 5 shows just-added creators
+  as chips. Creators added → main chat; skipped → pre-v712 first-post ending.
+Gates desktop-v718 (12 mutations), onboarding-chat-v718 (13; ran once flaky right after mutation runs, then passed twice), revise-idea-v718 (15).
+Browser gates run real Chromium on the Mac; fixtures in scripts/verify/fixtures/ (scripts/ is .vercelignored). Review: no blockers; fixed.
+
 ## ▶▶ 2026-11-07 — v717. APP-WIDE STYLE, PHASES 2+3: Trends, What people search, Notebook, Creators, Settings, Coach.
 - Trends / What people search / Notebook = calm lists (shared aw-*); a row tap opens the MAIN CHAT as a typed idea (idea pills;
   a search question highlights Q&A). NOTHING is sent until a pill is picked. Secondary actions in row/header ⋯; every list ⋯ has
