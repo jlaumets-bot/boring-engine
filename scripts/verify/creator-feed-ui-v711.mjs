@@ -128,9 +128,10 @@ const tt = (i) => ({ id: 'e' + i, name: 'C' + i, links: { tt: 'https://www.tikto
 (async () => {
   // ═══ 1. first on Remix; 'list' once per open ═══
   { const v = html.indexOf('<div class="create-section active" id="createRemix">'), f = html.indexOf('<div id="creatorFeed" class="cf-wrap"></div>', v),
-      b = html.indexOf('<div class="al-banner">', v), q = html.indexOf('<div id="remixQuick"', v), o = html.indexOf('<div id="remixOrigCard"></div>', v);
-    ok(v > 0 && f > v && f < b && f < q && f < o && html.slice(v, f).replace(/<div class="create-section active" id="createRemix">/, '').trim() === '' && (html.match(/id="creatorFeed"/g) || []).length === 1,
-      '1 the list is the very first thing in Remix, above the banner, the paste box and the Step 1 card'); }
+      q = html.indexOf('<div id="remixQuick"', v), o = html.indexOf('<div id="remixOrigCard"></div>', v);
+    // v714: the "Start from what's proven" banner is gone (owner: "so much text") — the feed still comes first
+    ok(v > 0 && f > v && f < q && f < o && html.indexOf('<div class="al-banner">', v) < 0 && html.slice(v, f).replace(/<div class="create-section active" id="createRemix">/, '').trim() === '' && (html.match(/id="creatorFeed"/g) || []).length === 1,
+      '1 the list is the very first thing in Remix, above the paste box and the Step 1 card'); }
   resetFeed(); calls = []; route = FEED();
   c.switchView('create'); await tick();
   ok(feedCalls().length === 1 && feedCalls('list').length === 1 && J(feedCalls()[0].body) === J({ brandId: 'brand-1', action: 'list' }), '1 opening Remix sends ONE {brandId, action:"list"} (' + J(calls.map(x => x.body)) + ')');

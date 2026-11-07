@@ -1,0 +1,67 @@
+{
+  "mutations": [
+    {
+      "id": "M1",
+      "finding": "v714-declutter",
+      "file": "app.html",
+      "find": "<div class=\"rx-sub\">Paste a TikTok. Get your version.</div>",
+      "replace": "<div class=\"rx-sub\">Paste a TikTok, YouTube or article link &mdash; or any text. You see the exact words first, then pick how to make it yours.</div>",
+      "gate": "myours-clean-v714.mjs",
+      "why": "the long paste-box helper comes back"
+    },
+    {
+      "id": "M2",
+      "finding": "v714-declutter",
+      "file": "app.html",
+      "find": "  if (view === 'create') return;   // v714",
+      "replace": "  // v714",
+      "gate": "myours-clean-v714.mjs",
+      "why": "the 'How this works' link comes back on Make it yours"
+    },
+    {
+      "id": "M3",
+      "finding": "v714-bigger-cards",
+      "file": "app.html",
+      "find": "#followPanels .fp-handle,#followPanels .fp-add-lbl{display:block;font-size:17px;",
+      "replace": "#followPanels .fp-handle,#followPanels .fp-add-lbl{display:block;font-size:14px;",
+      "gate": "myours-clean-v714.mjs",
+      "why": "the @handle shrinks back to small text"
+    },
+    {
+      "id": "M4",
+      "finding": "v714-add-cap",
+      "file": "app.html",
+      "find": "cfFollowedHandles(null).length < CF_MAX_CREATORS)",
+      "replace": "cfFollowedHandles(null).length <= CF_MAX_CREATORS)",
+      "gate": "myours-clean-v714.mjs",
+      "why": "the add card shows at 5 creators"
+    },
+    {
+      "id": "M5",
+      "finding": "v714-menu",
+      "file": "app.html",
+      "find": "  _fpMenu = _fpMenu === key ? '' : key;",
+      "replace": "  _fpMenu = key;",
+      "gate": "myours-clean-v714.mjs",
+      "why": "the second tap on the menu button no longer closes it"
+    },
+    {
+      "id": "M6",
+      "finding": "v714-feed-targets",
+      "file": "app.html",
+      "find": "      #creatorFeed .cf-open{min-height:56px;}",
+      "replace": "      #creatorFeed .cf-open{min-height:44px;}",
+      "gate": "myours-clean-v714.mjs",
+      "why": "feed Open link back to a 44 px target"
+    },
+    {
+      "id": "M7",
+      "finding": "v714-hybrid-supersedes",
+      "file": "clean.css",
+      "find": "body:not(.hy-classic) #view-create > #createRemix { display: none !important; }\n",
+      "replace": "",
+      "gate": "myours-clean-v714.mjs",
+      "why": "the old layout shows under the hybrid main screen again"
+    }
+  ]
+}

@@ -308,9 +308,13 @@ const ideaSites = allIdeaSites.filter(e => /window\._ideaDelivery/.test(e));
 const remixSites = leanCallSites('/api/remix');
 check('the Ideas tab no longer goes through leanBrandFetch — the lean path, the brand-save gate, the 424 fallback and the network retry are all gone with it',
   ideaSites.length === 1, ideaSites.length + ' Ideas-tab call sites found among ' + allIdeaSites.length + ' lean /api/generate-ideas callers');
-check('Remix does not have both of its lanes on the lean path (remixContent + the 6-parallel Try-all-modes lane)',
-  remixSites.length === 2, remixSites.length + ' call sites found');
-if (ideaSites.length !== 1 || remixSites.length !== 2) {
+// v714: a third lane — the hybrid "Make it yours" screen's twist (hyTwist). Its body is built by hyRemixBody (the same
+// fields remixContent sends) and checked behaviourally by scripts/verify/hybrid-v714.mjs; here it must be the lean call
+// with the full-brand fallback, after the two classic lanes.
+const HY_REMIX_SITE = "leanBrandFetch('/api/remix', body, () => getBrandContext())";
+check('Remix does not have all three of its lanes on the lean path (remixContent + the 6-parallel Try-all-modes lane + the v714 hybrid twist)',
+  remixSites.length === 3 && remixSites[2].replace(/\s+/g, ' ') === HY_REMIX_SITE, remixSites.length + ' call sites found');
+if (ideaSites.length !== 1 || remixSites.length !== 3) {
   console.error('FAIL: lean-payload-all —');
   for (const f of fails) console.error('  ✗ ' + f);
   process.exit(1);

@@ -1,0 +1,121 @@
+{
+  "mutations": [
+    {
+      "id": "M1",
+      "finding": "v714-paste",
+      "file": "app.html",
+      "find": "  hyHint('');\n  return hyStart(txt);",
+      "replace": "  return hyPasteFallback('Paste the link here.');",
+      "gate": "hybrid-v714.mjs",
+      "why": "the paste button reads the clipboard but never starts the flow"
+    },
+    {
+      "id": "M2",
+      "finding": "v714-paste-denied",
+      "file": "app.html",
+      "find": "} catch (e) { return hyPasteFallback('Paste the link here.'); }",
+      "replace": "} catch (e) { return false; }",
+      "gate": "hybrid-v714.mjs",
+      "why": "a denied clipboard does nothing (no focus, no hint)"
+    },
+    {
+      "id": "M3",
+      "finding": "v714-feed-ready",
+      "file": "app.html",
+      "find": "  if (cfReady(v)) return hyFromVideo(v, v.transcript);",
+      "replace": "  if (false) return hyFromVideo(v, v.transcript);",
+      "gate": "hybrid-v714.mjs",
+      "why": "a feed row whose words are ready is fetched again"
+    },
+    {
+      "id": "M4",
+      "finding": "v714-twist-adds",
+      "file": "app.html",
+      "find": "  t.blocks.push(blk); t.err = ''; _hy.busy = 'twist';",
+      "replace": "  t.blocks = [blk]; t.err = ''; _hy.busy = 'twist';",
+      "gate": "hybrid-v714.mjs",
+      "why": "a second twist replaces the first version instead of adding a block"
+    },
+    {
+      "id": "M5",
+      "finding": "v714-revise-body",
+      "file": "app.html",
+      "find": "      twist: blk.twist };",
+      "replace": "      twist: 'remix' };",
+      "gate": "hybrid-v714.mjs",
+      "why": "/api/revise is told the wrong twist (not the one that produced `current`)"
+    },
+    {
+      "id": "M6",
+      "finding": "v714-film-selected",
+      "file": "app.html",
+      "find": "  const r = sel.v.result, text = hyScriptOf(r);",
+      "replace": "  const r = sel.blk.versions[sel.blk.versions.length - 1].result, text = hyScriptOf(r);",
+      "gate": "hybrid-v714.mjs",
+      "why": "Film it ignores the v1/v2 toggle and always reads the newest version"
+    },
+    {
+      "id": "M7",
+      "finding": "v714-brand-keyed",
+      "file": "app.html",
+      "find": "  if (typeof _cf === 'undefined' || _cf.brandId !== cfBrandNow()) { _hy.rows = []; return ''; }",
+      "replace": "  if (typeof _cf === 'undefined') { _hy.rows = []; return ''; }",
+      "gate": "hybrid-v714.mjs",
+      "why": "after a brand switch the old brand's feed rows can draw"
+    },
+    {
+      "id": "M8",
+      "finding": "v714-escape",
+      "file": "app.html",
+      "find": "function hyE(s){ return escAttr(s == null ? '' : s); }",
+      "replace": "function hyE(s){ return String(s == null ? '' : s); }",
+      "gate": "hybrid-v714.mjs",
+      "why": "server and user text (transcript, instruction, note, versions) is no longer escaped"
+    },
+    {
+      "id": "M9",
+      "finding": "v714-row-vs-newer-thread",
+      "file": "app.html",
+      "find": "    if (seq !== _hy.seq) return false;   // never replace a newer thread (and never drop a twist running in it)\n",
+      "replace": "",
+      "gate": "hybrid-v714.mjs",
+      "why": "a creator row's late words replace a newer thread and drop its charged version"
+    },
+    {
+      "id": "M10",
+      "finding": "v714-paste-waits-for-row",
+      "file": "app.html",
+      "find": "  if (_hy.busy || _hy.rowBusy) { hyHint(HY_ONE); return false; }   // a creator row is being read: one at a time",
+      "replace": "  if (_hy.busy) { hyHint(HY_ONE); return false; }",
+      "gate": "hybrid-v714.mjs",
+      "why": "a paste or a sent link starts a second read while a creator row is still being read"
+    },
+    {
+      "id": "M11",
+      "finding": "v714-add-creator-5",
+      "file": "app.html",
+      "find": "  if (n >= CF_MAX_CREATORS) return '';",
+      "replace": "  if (n > CF_MAX_CREATORS) return '';",
+      "gate": "hybrid-v714.mjs",
+      "why": "the start screen offers '+ Add creator' at 5 followed"
+    },
+    {
+      "id": "M12",
+      "finding": "v714-restore-mid-read",
+      "file": "app.html",
+      "find": "    if (d.src.reading) { d.src.reading = false; d.src.interrupted = true; d.open = true; }",
+      "replace": "    if (d.src.reading) { d.src.reading = false; d.open = true; }",
+      "gate": "hybrid-v714.mjs",
+      "why": "a thread saved mid-read says 'No spoken words' instead of offering a retry"
+    },
+    {
+      "id": "M13",
+      "finding": "v714-pick-twist-first",
+      "file": "app.html",
+      "find": "hyHint('Pick a twist first.'); return false; }",
+      "replace": "return hyStart(raw); }",
+      "gate": "hybrid-v714.mjs",
+      "why": "plain text before a twist replaces the thread with an idea thread"
+    }
+  ]
+}

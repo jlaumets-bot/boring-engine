@@ -1392,24 +1392,9 @@ function guardPost(post, bc, opts) {
   const fallback = new Set();
   const onScreenBody = f === 'statement' || f === 'static' || f === 'carousel';
 
-  // 1 — FACT GUARD
-  for (const k of ['script', 'boldText']) {
-    const v = toStr(p[k]);
-    if (!v.trim() || !invents(v)) continue;
-    p[k] = slotifyInvented(v, AF); reasons.push('facts_slotted_' + k);
-  }
-  if (toStr(p.caption).trim() && invents(p.caption)) { p.caption = dropInventedLines(p.caption, AF); reasons.push('facts_caption_trimmed'); }
-  if (Array.isArray(p.slides)) p.slides = p.slides.map(x => (invents(x) ? (reasons.push('facts_slotted_slide'), slotifyInvented(toStr(x), AF)) : toStr(x)));
-  if (f === 'carousel' && Array.isArray(p.onScreen)) p.onScreen = p.onScreen.map(x => (invents(x) ? (reasons.push('facts_slotted_slide'), slotifyInvented(toStr(x), AF)) : toStr(x)));
-  for (const k of (f === 'carousel' ? ['overlays'] : ['overlays', 'onScreen'])) {
-    if (!Array.isArray(p[k])) continue;
-    const left = p[k].filter(x => !invents(x));
-    if (left.length !== p[k].length) { p[k] = left; reasons.push('facts_' + k + '_removed'); }
-  }
-  for (const k of ['title', 'hook', 'reelTitle']) if (toStr(p[k]).trim() && invents(p[k])) { fallback.add(k); reasons.push('facts_' + k); }
-  if (toStr(p.belief).trim() && invents(p.belief)) { p.belief = ''; reasons.push('facts_belief_cleared'); }
-
-  // 2 — NO SELL
+  // 1 — NO SELL (v714: BEFORE the fact guard. The fact guard turns an unchecked sentence into a
+  // [your story: "..."] slot that quotes it, and the no-sell cut never looks inside a slot, so a sentence
+  // that only sold and held an unchecked token ("Use code SAVE20") survived as a slot. Cut first, then check.)
   const ns = guardIdeaNoSell(p);
   Object.assign(p, ns.idea);
   if (ns.hits.length) reasons.push('sales_removed');
@@ -1425,6 +1410,31 @@ function guardPost(post, bc, opts) {
     for (const x of p[k]) { const g = guardNoSell(x); if (g.ok && hasWords(g.text)) left.push(g.text); }
     if (left.length !== p[k].length || left.some((x, i) => x !== p[k][i])) { p[k] = left; reasons.push('sales_' + k + '_removed'); }
   }
+  // A slot the writer wrote around a sales ask ("[your story: use code SAVE20]") is a sales ask too: guardNoSell
+  // never cuts inside a slot (it must not rewrite the creator's prompt), so such a slot is removed here whole.
+  for (const k of ['script', 'boldText', 'caption', 'remixScript', 'remixCaption']) {
+    if (typeof p[k] !== 'string' || p[k].indexOf('[') < 0) continue;
+    const v = p[k].replace(SLOT_RE, (m, inner) => (guardNoSell(inner).hits.length ? '' : m)).replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/gm, '');
+    SLOT_RE.lastIndex = 0;
+    if (v !== p[k]) { p[k] = v; reasons.push('sales_slot_removed'); }
+  }
+
+  // 2 — FACT GUARD
+  for (const k of ['script', 'boldText']) {
+    const v = toStr(p[k]);
+    if (!v.trim() || !invents(v)) continue;
+    p[k] = slotifyInvented(v, AF); reasons.push('facts_slotted_' + k);
+  }
+  if (toStr(p.caption).trim() && invents(p.caption)) { p.caption = dropInventedLines(p.caption, AF); reasons.push('facts_caption_trimmed'); }
+  if (Array.isArray(p.slides)) p.slides = p.slides.map(x => (invents(x) ? (reasons.push('facts_slotted_slide'), slotifyInvented(toStr(x), AF)) : toStr(x)));
+  if (f === 'carousel' && Array.isArray(p.onScreen)) p.onScreen = p.onScreen.map(x => (invents(x) ? (reasons.push('facts_slotted_slide'), slotifyInvented(toStr(x), AF)) : toStr(x)));
+  for (const k of (f === 'carousel' ? ['overlays'] : ['overlays', 'onScreen'])) {
+    if (!Array.isArray(p[k])) continue;
+    const left = p[k].filter(x => !invents(x));
+    if (left.length !== p[k].length) { p[k] = left; reasons.push('facts_' + k + '_removed'); }
+  }
+  for (const k of ['title', 'hook', 'reelTitle']) if (toStr(p[k]).trim() && invents(p[k])) { fallback.add(k); reasons.push('facts_' + k); }
+  if (toStr(p.belief).trim() && invents(p.belief)) { p.belief = ''; reasons.push('facts_belief_cleared'); }
 
   // 3 — ON-SCREEN SAFETY
   for (const k of ['title', 'hook', 'reelTitle']) if (hasSlotText(p[k])) fallback.add(k);

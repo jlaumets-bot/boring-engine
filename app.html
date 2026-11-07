@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v713';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v714';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -5807,6 +5807,14 @@ body, body * {
 .teleprompter-overlay.recording .tp-read-line { top: 14%; }
 /* timer + mode chip stay above the fixed body */
 .teleprompter-overlay.recording .tp-rec-timer, .teleprompter-overlay.recording .tp-mode { z-index: 7; }
+/* v714: while recording the timer and the mode chip sit on the LEFT, where the (hidden) title was. On the right they
+   covered "Mark done" and "Close" — the timer pill sat on top of the button you need to stop. Left and right never meet. */
+.teleprompter-overlay.recording .tp-rec-timer { left: 16px; right: auto; top: 19px; z-index: 9; pointer-events: none; }
+.teleprompter-overlay.recording .tp-mode { left: 16px; right: auto; top: 44px; z-index: 9; pointer-events: none; }
+/* v714: and the bar itself rides ABOVE the full-screen script while recording. The script body is position:fixed
+   at z-index 3 and the bar sat at 2, so "Mark done" and "Close" were drawn but every tap landed on the script.
+   The bar stays pointer-events:none (only its buttons take taps), so the script still scrolls everywhere else. */
+.teleprompter-overlay.recording .teleprompter-top { position: relative; z-index: 8; }
 /* ══ v524: carets CENTRED STRUCTURALLY. A fixed vertical-align nudge can't be
    right at every font size — the chip is taller than the text, grows the line
    box downward and dips under the underline. Flex-centring the link against
@@ -6650,11 +6658,19 @@ if (!window.supabase) {
 
   <div class="view" id="view-create">
 
+    <!-- v714 HYBRID: the main "Make it yours" screen (owner-approved mockup H-hybrid.png). hyRender draws #hyMain and #hyBar;
+         the input below is static, so what you type survives every redraw. The old layout (#createRemix) is kept whole and
+         opens from the menu's "Classic Make it yours" (hyClassic). -->
+    <section class="hy-app" id="hyApp" aria-label="Make it yours">
+      <button type="button" class="hy-new" id="hyNewBtn" aria-label="New chat" title="New chat" onclick="hyNew()" hidden><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 8 16l1.2-4z"/></svg></button>
+      <div class="hy-main" id="hyMain"></div>
+    </section>
+
     <div class="create-section active" id="createRemix">
       <div id="creatorFeed" class="cf-wrap"></div>
-      <div class="al-banner"><!-- v699: decorative emoji animation removed -->
-        <div class="al-banner-text"><strong>Start from what's proven.</strong> The smartest creators study what already works. We rebuild the idea in your voice with your facts baked in — inspired by, never copied.</div>
-      </div>
+      <!-- v714: the creators you follow sit right under their new posts (one block: who + what's new); the old
+           banner paragraph above the paste box is gone — the screen explains itself -->
+      <div id="followPanels" class="fp-wrap"></div>
 
       <style>
       /* follow-panels: "Creators you follow" — bottom of Remix; the row scrolls sideways on its own, the page never does */
@@ -6746,6 +6762,38 @@ if (!window.supabase) {
       .cf-skel i+i{width:78%;}
       @keyframes cfPulse{0%,100%{opacity:.45;}50%{opacity:1;}}
       @media (prefers-reduced-motion: reduce){.cf-skel i{animation:none;}}
+      /* ===== v714 "Make it yours" calm pass (owner: "so much text… the boxes who I follow maybe bigger") =====
+         feed rows: whole-row targets ≥56px, every word ≥16px */
+      #creatorFeed .cf-handle,#creatorFeed .cf-cap,#creatorFeed .cf-age,#creatorFeed .cf-views,#creatorFeed .cf-chip,#creatorFeed .cf-open,#creatorFeed .cf-row-err,#creatorFeed .cf-cerr{font-size:16px;}
+      #creatorFeed .cf-handle{font-size:17px;}
+      #creatorFeed .cf-open{min-height:56px;}
+      /* the creators you follow: big tap-to-open cards, ~2 per row on a phone, 4 on desktop (2 ids beat the desktop grid rule) */
+      #view-create #followPanels .fp-row{display:grid !important;grid-template-columns:repeat(auto-fill,minmax(150px,1fr)) !important;gap:10px;overflow:visible !important;scroll-snap-type:none !important;padding:2px 0 4px;}
+      #view-create #followPanels .fp-row>.fp-panel{width:auto !important;max-width:none !important;flex:none !important;min-width:0;}
+      #followPanels .fp-panel.fp-editing{grid-column:1/-1;}
+      #followPanels .fp-card{position:relative;min-height:56px;padding:0 !important;gap:0;border-radius:16px !important;}
+      #followPanels .fp-add .fp-add-btn{border:0 !important;border-radius:16px !important;background:none !important;font-size:17px !important;font-weight:700 !important;}
+      #followPanels .fp-card.fp-menu-on{z-index:3;}
+      #followPanels .fp-card .fp-open,#followPanels .fp-add .fp-add-btn{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:10px;width:100%;min-height:112px;box-sizing:border-box;padding:14px;margin:0;background:none;border:0;border-radius:16px;font-family:inherit;text-align:left;color:var(--text);text-decoration:none;cursor:pointer;}
+      #followPanels .fp-card .fp-open::after{content:none;}
+      #followPanels .fp-card .fp-open:focus-visible,#followPanels .fp-add-btn:focus-visible,#followPanels .fp-more:focus-visible{outline:2px solid var(--text);outline-offset:-2px;}
+      #followPanels .fp-card .fp-open:hover,#followPanels .fp-add .fp-add-btn:hover{background:var(--surface2);}
+      #followPanels .fp-av{flex:none;width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface3);color:var(--text);font-size:20px;font-weight:700;line-height:1;}
+      #followPanels .fp-av-add{background:none;border:1.5px dashed var(--border2);font-size:24px;font-weight:500;box-sizing:border-box;}
+      #followPanels .fp-id{display:flex;flex-direction:column;gap:2px;width:100%;min-width:0;}
+      #followPanels .fp-handle,#followPanels .fp-add-lbl{display:block;font-size:17px;font-weight:700;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:100%;}
+      #followPanels .fp-card .fp-note{display:block;-webkit-line-clamp:unset;font-size:14px;line-height:1.4;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:100%;}
+      #followPanels .fp-more{position:absolute;top:8px;right:8px;z-index:2;width:44px;height:44px;display:flex;align-items:center;justify-content:center;padding:0;background:none;border:0;border-radius:12px;font-family:inherit;font-size:20px;line-height:1;color:var(--text3);cursor:pointer;}
+      #followPanels .fp-more:hover,#followPanels .fp-more[aria-expanded="true"]{background:var(--surface2);color:var(--text);}
+      #followPanels .fp-menu{position:absolute;top:54px;right:8px;z-index:5;display:flex;flex-direction:column;min-width:140px;padding:4px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.28);}
+      #followPanels .fp-menu button{min-height:44px;padding:0 12px;background:none;border:0;border-radius:8px;text-align:left;font-family:inherit;font-size:16px;font-weight:600;color:var(--text);cursor:pointer;}
+      #followPanels .fp-menu button:hover,#followPanels .fp-menu button:focus-visible{background:var(--surface2);outline:none;}
+      #followPanels .fp-menu .fp-menu-danger{color:var(--red);}
+      #followPanels .fp-confirm-row{position:relative;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0;padding:0 14px 14px;}
+      #followPanels .fp-confirm-row .fp-confirm{margin:0;padding:0 4px 0 0;}
+      .rx-sub{font-size:15px;line-height:1.4;color:var(--text3);margin:0 0 10px;}
+      .rx-orig-hint:empty{display:none;}
+      .rx-manual-link{font-size:13px;}
       /* v450: classic remix form folds behind "set it up manually" (beats the desktop display:flex !important) */
       #remixManualPanel.remix-manual-hidden{display:none !important;}
       /* remix-tt: Step 1 "The original" (exact words) + Step 2 "Make it yours" */
@@ -6800,12 +6848,12 @@ if (!window.supabase) {
       </style>
 
       <div id="remixQuick" style="background:var(--surface,#fff);border:1.5px solid #16130F;border-radius:16px;padding:16px;margin:0 0 14px;">
-        <div class="cs-rx-title" style="font-size:19px;font-weight:800;letter-spacing:-0.01em;line-height:1.25;margin-bottom:4px;">Seen something that works? Make it yours.</div>
-        <div style="font-size:12.5px;color:var(--text3);line-height:1.5;margin-bottom:10px;">Paste a TikTok, YouTube or article link &mdash; or any text. You see the exact words first, then pick how to make it yours.</div>
-        <textarea class="gen-textarea" id="remixQuickIn" placeholder="Paste a link or text&hellip;" style="min-height:64px;"></textarea>
+        <div class="cs-rx-title" style="font-size:19px;font-weight:800;letter-spacing:-0.01em;line-height:1.25;margin-bottom:4px;">Make it yours</div>
+        <div class="rx-sub">Paste a TikTok. Get your version.</div>
+        <textarea class="gen-textarea" id="remixQuickIn" placeholder="Paste a TikTok link" title="A TikTok, YouTube or article link, or any text" style="min-height:64px;"></textarea>
         <div id="remixQuickStatus" style="font-size:12px;color:var(--text3);margin-top:6px;min-height:15px;"></div>
         <button class="gen-btn" style="width:100%;margin-top:8px;" id="remixQuickBtn" onclick="remixQuickGo(this)">Make it yours</button>
-        <button class="tp-shz-angle" style="margin-top:6px;padding:6px 10px;" onclick="remixToggleManual()">or set it up manually<span class="fold-caret" aria-hidden="true"><svg class="cs-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>
+        <button class="tp-shz-angle rx-manual-link" style="margin-top:6px;padding:6px 10px;" onclick="remixToggleManual()" title="Upload a file, or describe the original yourself">or set it up manually<span class="fold-caret" aria-hidden="true"><svg class="cs-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>
       </div>
       <div id="remixOrigCard"></div>
 
@@ -6902,7 +6950,6 @@ if (!window.supabase) {
 
       <div id="rv2Panel"></div>
       <div id="remixResults"></div>
-      <div id="followPanels" class="fp-wrap"></div>
     </div>
 
 
@@ -6987,6 +7034,20 @@ if (!window.supabase) {
       <button type="submit" class="cs-composer-send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg></button>
     </div>
   </form>
+  <!-- v714 hybrid: the "Make it yours" dock — [Film it][copy] + the input. Outside .view on purpose: the view's fade-in transform
+       would pin a fixed child to the view instead of the screen. Shown by body[data-cs-view="create"]:not(.hy-classic). -->
+  <div class="hy-dock" id="hyDock">
+    <div class="hy-dock-in">
+      <div class="hy-bar" id="hyBar" hidden></div>
+      <div class="hy-hint" id="hyHint" role="status" aria-live="polite"></div>
+      <form class="hy-input" id="hyForm" onsubmit="event.preventDefault();hySend();">
+        <button type="button" class="hy-pst" aria-label="Paste from clipboard" title="Paste from clipboard" onclick="hyPaste()"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
+        <label for="hyIn" class="cs-sr" id="hyInLbl">Paste a link or type an idea</label>
+        <input type="text" class="hy-in" id="hyIn" placeholder="Paste a link or type an idea…" autocomplete="off" enterkeyhint="send" oninput="hyInput()">
+        <button type="submit" class="hy-send" id="hySend" aria-label="Send"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+      </form>
+    </div>
+  </div>
 </div>
 
 <div class="settings-overlay" id="settingsOverlay"></div>
@@ -7700,6 +7761,7 @@ async function switchBrand(brandId) {
     // shown a Save button for a brand they are no longer in.
     try { _brainFills = null; _brainReviewOpts = null; _brainReviewGate = null; _brainReviewBrandName = ''; const _brv = document.getElementById('brvOverlay'); if (_brv) _brv.remove(); } catch(e) {}
     try { const _ta = document.getElementById('tryAllResults'); if (_ta) _ta.remove(); } catch(e) {}
+    try { if (typeof hyBrandReset === 'function') hyBrandReset(); } catch(e) {}   // v714: the hybrid thread + feed belong to the old brand
     // v643 — the Ideas and Remix face-on/faceless toggles were plain globals that survived the
     // switch, while their Quick Post twin `_tvDelivery` is correctly re-read per brand (that
     // asymmetry is what showed this was an omission). Switching from a faceless B2B brand to a
@@ -10064,7 +10126,7 @@ function buildDesktopSidebar(){
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></div>';
     // v712: Remix is the first screen in every menu; everything else keeps its order
     h += _dsItem('create',CS_REMIX_NAME)+_dsItem('today','Quick Post')+_dsItem('ideas','Ideas')+_dsItem('pipeline','Pipeline');
-    h += '<div class="ds-lbl">Create</div>'+_dsItem('idea','Idea Catcher')+_dsItem('viral','Trends');
+    h += '<div class="ds-lbl">Create</div>'+_dsItem('idea','Idea Catcher')+_dsItem('viral','Trends')+'<button class="ds-item" data-act="hyClassic" onclick="hyClassic()">'+DS_ICONS.create+'<span>Classic Make it yours</span></button>';   // v714
     h += '<div class="ds-lbl">Tools</div>'+_dsItem('notebook','Notebook')+_dsItem('questions','What people search')+
       '<button class="ds-item" data-act="toggleBookmarkBar" onclick="toggleBookmarkBar()">'+CS_DRAWER_ICONS.bookmarks+'<span>Bookmarks</span></button>'+
       '<button class="ds-item" data-act="openBrain" onclick="openBrain()">'+CS_DRAWER_ICONS.brain+'<span>Brand brain</span></button>';
@@ -10181,7 +10243,7 @@ function csNavLocked(view){ return CS_LOCKED_VIEWS.indexOf(view) !== -1 && !(typ
 // groups: a row is a screen ({view}) or an action ({act}: the exact function the old control called)
 var CS_DRAWER_GROUPS = [
   { label: '', rows: [ { view: 'create', label: CS_REMIX_NAME }, { view: 'today', label: 'Quick Post' }, { view: 'ideas', label: 'Ideas' }, { view: 'pipeline', label: 'Pipeline' } ] },   // v712: Remix first
-  { label: 'Create', rows: [ { view: 'idea', label: 'Idea Catcher' }, { view: 'viral', label: 'Trends' } ] },
+  { label: 'Create', rows: [ { view: 'idea', label: 'Idea Catcher' }, { view: 'viral', label: 'Trends' }, { act: 'hyClassic', icon: 'create', label: 'Classic Make it yours' } ] },   // v714: the old layout
   { label: 'Tools', rows: [ { view: 'notebook', label: 'Notebook' }, { view: 'questions', label: 'What people search' }, { act: 'toggleBookmarkBar', icon: 'bookmarks', label: 'Bookmarks' } ] },
   { label: '', rows: [ { act: 'bvTabClick', icon: 'coach', label: 'Assistant', hold: true }, { act: 'openBrain', icon: 'brain', label: 'Brand brain' }, { act: 'openSettings', icon: 'settings', label: 'Settings' }, { act: 'startTour', icon: 'help', label: 'Help' } ] }
 ];
@@ -10278,7 +10340,7 @@ try {
   if (_csMq) { if (_csMq.addEventListener) _csMq.addEventListener('change', _csMqOn); else if (_csMq.addListener) _csMq.addListener(_csMqOn); }
 } catch (e) {}
 // The pencil: a new post = Quick Post.
-function csNewPost(){ csDrawerClose(); switchView('today'); }
+function csNewPost(){ csDrawerClose(); if (typeof hyActive === 'function' && hyActive()) { hyNew(); return; } switchView('today'); }   // v714: on Make it yours = a new chat
 // Called by switchView after every screen change: closes the drawer, tells the CSS which screen is up
 // (the composer shows on Ideas and Quick Post only).
 var CS_PAGE_TITLES = { today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: CS_REMIX_NAME, idea: 'Idea Catcher',
@@ -10328,6 +10390,7 @@ function csComposerSend(){
       return;
     }
     switchView('create');
+    if (typeof hyActive === 'function' && hyActive()) { if (box) box.value = ''; return hyStart(raw); }   // v714: into the hybrid thread
     var q = document.getElementById('remixQuickIn');
     if (!q) return;
     q.value = raw;
@@ -10448,6 +10511,7 @@ const FN_FAQ = {
 function renderFnFaq(view, el){
   if(!el) return;
   const prev = el.querySelector('.fn-faq'); if(prev) prev.remove();
+  if (view === 'create') return;   // v714: "Make it yours" explains itself — no "How this works" link (owner: "so much text")
   const items = FN_FAQ[view]; if(!items || !items.length) return;
   if(!document.getElementById('fn-faq-style')){
     const st = document.createElement('style'); st.id='fn-faq-style';
@@ -10490,7 +10554,7 @@ function switchView(view) {
   else if(view==='ideas') { renderFilmingQueue(); restoreProToolsState(); renderStats(); renderIdeaFilters(); renderIdeas(); try{ renderIdeaDelivery(); }catch(e){} }
   else if(view==='questions') renderPAASection();
   else if(view==='pipeline') { renderPipeline(); }
-  else if(view==='create') { renderCreate(); try{ renderFollowPanels(); }catch(e){} try{ renderRemixDelivery(); }catch(e){} if(_cfPrevView!=='create'){ try{ cfOpen(); }catch(e){} } }
+  else if(view==='create') { renderCreate(); try{ renderFollowPanels(); }catch(e){} try{ renderRemixDelivery(); }catch(e){} if(_cfPrevView!=='create'){ try{ cfOpen(); }catch(e){} } try{ hyOnView(); }catch(e){} }
   else if(view==='notebook') renderNotebook();
   else if(view==='viral') renderViralLab();
   else if(view==='idea') renderIdeaCatcher();
@@ -13758,19 +13822,43 @@ function tpVoiceMatch(heard){
      may overrule it only by a clear margin of content words. A real skip still works — when the
      speaker genuinely jumps ahead the near candidate scores nothing and does not qualify. */
   const need = (tpVoiceCursor === 0 && !tpVoiceLastAdvanceDone) ? 1 : 2;
-  const cands = [];
-  const lastHeard = tail[tail.length - 1];
-  for (let i = from; i < to; i++) {
-    let cur = i, hits = 0, last = -1, endsAtTail = false;
+  /* v714: A REPEATED WORD STILL SKIPPED A SENTENCE ("…your first cup. It sets the pace… one cup you never skip").
+     The recogniser re-delivers words the speaker was ALREADY credited for (every interim result repeats the
+     phrase so far). With the cursor just past "cup", that old "cup" could only score AHEAD — at the next
+     "cup", a sentence down — and the prompter jumped there while they were still on the line after it.
+     Two rules now:
+       1. NEAR FIRST: a candidate ending within the next TP_NEAR words is the place to look. One further away
+          is allowed only on a run of >=3 heard words matching >=3 script words in a row ("romeo sierra tango"),
+          i.e. real evidence they jumped — never on one repeated word.
+       2. STALE HEARING: if the same words fit at least as well just BEHIND the cursor (already said), the
+          speaker has not moved: stay put. A new word they really reached scores ahead and wins. */
+  const TP_NEAR = 12, TP_BACK = 12, TP_FAR_RUN = 3;
+  const align = (i) => {
+    let cur = i, hits = 0, last = -1, endsAtTail = false, run = 0, best = 0, pk = -2, pj = -2;
     for (let j = 0; j < tail.length; j++) {
       for (let k = cur; k < Math.min(cur + 3, tpVoiceWords.length); k++) {
         if (tpWordNear(tpVoiceWords[k].key, tail[j])) {
           if (TP_CONTENT_WORD(tail[j])) hits++;    // filler matches don't earn a jump
           if (j === tail.length - 1) endsAtTail = true;
+          run = (k === pk + 1 && j === pj + 1) ? run + 1 : 1; if (run > best) best = run; pk = k; pj = j;
           last = k; cur = k + 1; break;
         }
       }
     }
+    return { hits: hits, last: last, endsAtTail: endsAtTail, run: best };
+  };
+  const cands = [];
+  const lastHeard = tail[tail.length - 1];
+  let back = 0;   // the best fit of the heard words ENDING before the cursor (words already said)
+  for (let i = Math.max(0, from - TP_BACK); i < from; i++) {
+    const a = align(i);
+    if (a.last < 0 || a.last >= from) continue;
+    const h = a.hits + ((a.endsAtTail && TP_CONTENT_WORD(lastHeard)) ? 1 : 0);
+    if (h > back) back = h;
+  }
+  for (let i = from; i < to; i++) {
+    const a = align(i);
+    let hits = a.hits; const last = a.last, endsAtTail = a.endsAtTail;
     if (last < 0) continue;
     // v660: THE LAST WORD SPOKEN IS THE BEST EVIDENCE OF WHERE THEY ARE NOW, so a candidate
     // that reaches it counts for one more. Without this the matcher lost on scripts whose
@@ -13781,6 +13869,7 @@ function tpVoiceMatch(heard){
     // The right place was the one that matched the word they had just said.
     if (endsAtTail && TP_CONTENT_WORD(lastHeard)) hits++;
     const dist = last - from;
+    if (dist >= TP_NEAR && a.run < TP_FAR_RUN) continue;   // v714: far away needs >=3 words in a row
     // v603: a big leap forward must be earned — 3+ content words, not 2. Judged PER CANDIDATE
     // now, so a far candidate cannot borrow a near candidate's lower bar.
     if (hits >= ((dist > 18) ? Math.max(need, 3) : need)) cands.push({ end: last + 1, hits: hits, dist: dist });
@@ -13794,6 +13883,7 @@ function tpVoiceMatch(heard){
     if (c.hits < near.hits + TP_LEAP_MARGIN) continue;   // not decisive enough to move their eyes
     if (c.hits > win.hits || (c.hits === win.hits && c.dist < win.dist)) win = c;
   }
+  if (back >= win.hits) return -1;   // v714: the words fit where they already are at least as well — stale, stay
   return win.end > 0 ? win.end : -1;
 }
 // A word's top inside the scrolling body, whatever sits between them: offsetTop is measured from the
@@ -16698,12 +16788,13 @@ function tvMakeSlides() {
   tvNoIdea('make slides from');                    // never leave the tap unanswered
 }
 
-function tvOpenTeleprompter() {
+function tvOpenTeleprompter(ideaArg) {
   // v625: same class as the v623 dead buttons, and reachable by the MOST ordinary flow —
   // tvApprove() nulls _todayTabIdea but never clears #tvResult, so the whole card stays on
   // screen. Approve then tap Teleprompter and nothing happened at all, while Viral Twist and
   // Post it (already on tvActiveIdea) worked. Same row, same tap, different outcome.
-  const idea = tvActiveIdea();
+  // v714: the Make it yours screen hands its selected version in (hyFilm) — same overlay, same tpOpenMode
+  const idea = (ideaArg && typeof ideaArg === 'object' && typeof ideaArg.script === 'string') ? ideaArg : tvActiveIdea();
   if (!idea) { tvNoIdea('film'); return; }
   if (!idea.script && idea.format !== 'statement') { tvNoIdea('film'); return; }
   // v527: split-screen after filming uses THIS post's cached beats — and never a
@@ -21771,6 +21862,7 @@ const RX_MODES = [
 function rxWordCount(t){ return String(t == null ? '' : t).split(/\s+/).filter(Boolean).length; }
 function rxWordsLabel(t){ const n = rxWordCount(t); return n + (n === 1 ? ' word' : ' words'); }
 function remixShowOriginal(o){
+  if (typeof hyTakeOriginal === 'function' && hyTakeOriginal(o)) return;   // v714: the hybrid screen is up → a fresh thread there
   const kind = (o && o.kind) || 'text';
   const text = String((o && o.text) == null ? '' : o.text);
   _rxOrig = { kind: kind, url: (o && o.url) || '', creator: (o && o.creator) || '',
@@ -21796,7 +21888,8 @@ function remixOrigRender(){
     : '';
   const busy = _rxBusy;
   const modes = RX_MODES.map(m => '<button type="button" class="search-tag rx-mode' + (m.id === 'remix' ? ' rx-mode-main' : '') + '" data-rxmode="' + m.id + '"'
-    + (busy ? ' disabled aria-disabled="true"' : '') + ' onclick="remixRunMode(\'' + m.id + '\', this)">' + (busy === m.id ? 'Working…' : escapeHtml(m.label)) + '</button>').join('');
+    + (busy ? ' disabled aria-disabled="true"' : '')
+    + (m.id === 'remix' ? ' title="Written from a point you pick"' : ' title="Rewrites the original in your voice"') + ' onclick="remixRunMode(\'' + m.id + '\', this)">' + (busy === m.id ? 'Working…' : escapeHtml(m.label)) + '</button>').join('');
   el.innerHTML = '<div class="rx-orig">'
     + '<div class="rx-step">Step 1 · The original</div>'
     + ((who || link) ? '<div class="rx-orig-meta">' + who + link + '</div>' : '')
@@ -21806,11 +21899,10 @@ function remixOrigRender(){
     + '<div class="rx-orig-tools"><span id="rxOrigWords">' + rxWordsLabel(o.text) + '</span><button type="button" class="search-tag" onclick="remixOrigCopy()">Copy</button></div>'
     + '<div class="rx-step rx-step-2">Step 2 · Make it yours</div>'
     + '<div class="rx-modes">' + modes + '</div>'
-    + '<div class="rx-orig-hint">My take writes it from a point you pick. The other five rewrite the original in your voice.</div>'
     + '<details class="rx-opts" id="rxOrigOpts"' + (_rxOptsOpen ? ' open' : '') + ' ontoggle="remixOptsToggle(this)"><summary>Options · Face-on / Faceless, screenshot</summary><div class="rx-opts-body">'
     + '<div id="rxOrigDelivery"></div>'
-    + '<button type="button" class="search-tag" onclick="remixOrigShot()">' + (remixRefImage ? 'Change the screenshot' : 'Add a screenshot (optional)') + '</button>'
-    + '<div class="rx-orig-hint" id="rxOrigShotNote">' + (remixRefImage ? 'Screenshot attached — the five rewrite styles look at it (My take does not).' : 'A screenshot helps the five rewrite styles see the original (My take does not use it).') + '</div>'
+    + '<button type="button" class="search-tag" title="Helps the rewrite styles see the original. My take does not use it." onclick="remixOrigShot()">' + (remixRefImage ? 'Change the screenshot' : 'Add a screenshot (optional)') + '</button>'
+    + '<div class="rx-orig-hint" id="rxOrigShotNote">' + (remixRefImage ? 'Screenshot attached' : '') + '</div>'
     + '</div></details>'
     + '<div id="rxOrigStatus" class="rx-orig-status">' + escapeHtml(o.note || '') + '</div>'
     + '</div>';
@@ -24204,6 +24296,7 @@ async function cfPick(i){
   }
 }
 function cfRender(){
+  try { if (typeof hyFeedSoon === 'function') hyFeedSoon(); } catch (e) {}   // v714: the hybrid start screen draws the same feed
   const el = document.getElementById('creatorFeed'); if (!el) return;
   // another brand than the one on screen: never draw its rows. On Remix that is a new feed → load it now
   // (cfLoad shows the skeleton); elsewhere just clear — the next open loads it. A plain re-render never loads.
@@ -24267,6 +24360,635 @@ function cfRender(){
     + cerr;
 }
 
+// ===== v714 HYBRID main screen — "Make it yours" (view 'create'), owner-approved mockup H-hybrid.png =====
+// Contract: .unlazy/hybrid/CONTRACT.md. Gate: scripts/verify/hybrid-v714.mjs ("HYBRID OK").
+// H1 start: the big "Paste a TikTok" button (clipboard), "New from your creators" (the cf* feed data, brand-keyed),
+//    the bottom input. H2 thread: your link → "Here's what they said" → the 6 twists → one "Your version" block per
+//    pick (/api/remix, the same request the classic screen sends) → sticky [Film it][copy]. H3: "Ask for changes…"
+//    posts /api/revise and adds v2, v3… to the latest block with a v1/v2 toggle; Film it / copy use the selected one.
+// One thread per brand, kept in memory across screens and lightly in localStorage (cs_hy_thread::<brandId>).
+// The old layout (#createRemix) stays whole: the menu's "Classic Make it yours" (hyClassic) shows it.
+const HY_LS = 'cs_hy_thread::';
+const HY_FEED_ROWS = 4;           // rows on the start screen; "See all" shows the rest
+const HY_INSTR_MAX = 300;         // /api/revise: instruction 1..300 chars
+const HY_TWIST_FB = "Couldn't make your version — try again.";
+const HY_REVISE_FB = "Couldn't change your version — try again.";
+const HY_READ_FB = "Couldn't get the words from that link — try again in a minute.";
+const HY_ONE = 'One at a time — wait for this one to finish.';
+let _hy = { brandId: '', t: null, seq: 0, busy: '', classic: false, classicReq: false, feedAll: false, rows: [], rowBusy: '', rowErr: {}, menu: false, adding: false, addVal: '', addErr: '' };
+let _hyWired = false;
+const HY_IC = {
+  clip: (s) => '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
+  film: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 6-3v10l-6-3"/></svg>',
+  copy: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  down: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+  dots: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>'
+};
+function hyE(s){ return escAttr(s == null ? '' : s); }   // text AND attributes: & < > " ' all escaped
+function hyEl(id){ return document.getElementById(id); }
+// next frame (requestAnimationFrame must be called on window — an unbound call throws "Illegal invocation")
+function hyLater(f){ try { if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(f); else setTimeout(f, 16); } catch (e) {} }
+function hyBrand(){ return (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) ? String(currentBrand.id) : ''; }
+function hyActive(){ return typeof activeView !== 'undefined' && activeView === 'create' && !_hy.classic && !!document.getElementById('hyApp'); }
+function hyHint(t){ const h = hyEl('hyHint'); if (h) h.textContent = String(t || ''); }
+function hyModeLabel(id){ const m = RX_MODES.find(x => x.id === id); return m ? m.label : 'My take'; }
+// ---- storage (per brand, best effort) ----
+function hyLoad(bid){
+  if (!bid) return null;
+  try {
+    const d = JSON.parse(localStorage.getItem(HY_LS + bid) || 'null');
+    if (!d || typeof d !== 'object' || !d.src || typeof d.src !== 'object' || !Array.isArray(d.blocks)) return null;
+    d.blocks = d.blocks.filter(b => b && typeof b === 'object' && Array.isArray(b.versions) && b.versions.length)
+      .map(b => ({ twist: String(b.twist || 'remix'), sel: Math.min(Math.max(0, b.sel | 0), b.versions.length - 1), pending: '',
+        versions: b.versions.filter(v => v && v.result && typeof v.result === 'object') }))
+      .filter(b => b.versions.length);
+    d.err = ''; d.open = !!d.open;
+    // saved while its words were still being read: say so and offer a retry — never re-fetch on its own
+    if (d.src.reading) { d.src.reading = false; d.src.interrupted = true; d.open = true; }
+    return d;
+  } catch (e) { return null; }
+}
+function hySave(){
+  const bid = _hy.brandId; if (!bid) return false;
+  try {
+    if (!_hy.t) { localStorage.removeItem(HY_LS + bid); return true; }
+    const t = _hy.t;
+    const keep = { src: Object.assign({}, t.src), open: !!t.open, at: t.at || Date.now(),
+      blocks: t.blocks.filter(b => b.versions.length).map(b => ({ twist: b.twist, sel: b.sel,
+        versions: b.versions.map(v => ({ result: v.result, instruction: v.instruction || '', note: v.note || '', at: v.at || 0 })) })) };
+    let s = JSON.stringify(keep);
+    if (s.length > 250000) { keep.src.text = String(keep.src.text || '').slice(0, 20000); keep.blocks = keep.blocks.slice(-4); s = JSON.stringify(keep); }
+    localStorage.setItem(HY_LS + bid, s);
+    return true;
+  } catch (e) { return false; }
+}
+// the thread belongs to ONE brand: another brand on screen = that brand's own (saved) thread, never this one
+function hyEnsureBrand(){
+  const bid = hyBrand();
+  if (_hy.brandId === bid) return;
+  _hy.seq++; _hy.brandId = bid; _hy.busy = ''; _hy.feedAll = false; _hy.rows = []; _hy.rowBusy = ''; _hy.rowErr = {}; _hy.menu = false;
+  _hy.t = hyLoad(bid);
+}
+// switchBrand: the thread and the feed are cleared (a reply still on its way for the old brand is dropped by the seq bump)
+function hyBrandReset(){
+  _hy.seq++; _hy.t = null; _hy.brandId = ''; _hy.busy = ''; _hy.feedAll = false; _hy.rows = []; _hy.rowBusy = ''; _hy.rowErr = {}; _hy.menu = false;
+  try { if (typeof cfReset === 'function') cfReset(hyBrand()); } catch (e) {}
+  hyHint('');
+  try { const b = hyEl('hyIn'); if (b) b.value = ''; } catch (e) {}
+  hyRender();
+}
+// ---- screens ----
+function hyOnView(){
+  _hy.classic = !!_hy.classicReq; _hy.classicReq = false;
+  try { document.body.classList.toggle('hy-classic', _hy.classic); } catch (e) {}
+  hyWire();
+  hyRender();
+  hyLater(hyAlignDock);
+}
+// the menu's "Classic Make it yours": the old layout, whole (paste box, Step 1/2 card, creators, saved versions)
+function hyClassic(){ _hy.classicReq = true; switchView('create'); return true; }
+function hyWire(){
+  if (_hyWired) return; _hyWired = true;
+  try { window.addEventListener('resize', hyAlignDock); } catch (e) {}
+  try {
+    const vv = window.visualViewport;
+    if (vv && vv.addEventListener) {
+      const f = () => { try { const kb = Math.max(0, (window.innerHeight || 0) - vv.height - vv.offsetTop); document.documentElement.style.setProperty('--hy-kb', Math.round(kb) + 'px'); } catch (e) {} };
+      vv.addEventListener('resize', f); vv.addEventListener('scroll', f); f();
+    }
+  } catch (e) {}
+  try {
+    document.addEventListener('click', function (e) {
+      if (!_hy.menu) return; const t = e && e.target;
+      if (t && t.closest && t.closest('.hy-menu, .hy-dots')) return;
+      _hy.menu = false; hyRender();
+    });
+    document.addEventListener('keydown', function (e) { if (e && e.key === 'Escape' && _hy.menu) { _hy.menu = false; hyRender(); } });
+  } catch (e) {}
+}
+function hyRender(){
+  const main = hyEl('hyMain'); if (!main) return;
+  hyEnsureBrand();
+  const a = document.activeElement, keepTa = a && a.id === 'hySrcTa', ss = keepTa ? a.selectionStart : 0, se = keepTa ? a.selectionEnd : 0;
+  main.innerHTML = _hy.t ? hyThreadHtml() : hyStartHtml();
+  const ta = hyEl('hySrcTa');
+  if (ta && _hy.t) { ta.value = String(_hy.t.src.text || ''); if (keepTa) { try { ta.focus(); ta.setSelectionRange(ss, se); } catch (e) {} } }
+  const sel = hySelected();
+  const bar = hyEl('hyBar');
+  if (bar) {
+    bar.innerHTML = sel ? '<button type="button" class="hy-film" onclick="hyFilm()">' + HY_IC.film + '<span>Film it</span></button>'
+      + '<button type="button" class="hy-copy" aria-label="Copy the script" title="Copy the script" onclick="hyCopy(this)">' + HY_IC.copy + '</button>' : '';
+    bar.hidden = !sel;
+  }
+  const inp = hyEl('hyIn'), ph = sel ? 'Ask for changes\u2026' : (_hy.t ? 'Paste another link\u2026' : 'Paste a link or type an idea\u2026');
+  if (inp && inp.getAttribute('placeholder') !== ph) inp.setAttribute('placeholder', ph);
+  const lbl = hyEl('hyInLbl'); if (lbl) lbl.textContent = sel ? 'Ask for changes' : (_hy.t ? 'Paste another link' : 'Paste a link or type an idea');
+  const al = hyEl('hyAddLink'); if (al) al.value = _hy.addVal;
+  const send = hyEl('hySend'); if (send) send.setAttribute('aria-disabled', _hy.busy ? 'true' : 'false');
+  const nb = hyEl('hyNewBtn'); if (nb) nb.hidden = !_hy.t;
+  try { document.body.classList.toggle('hy-has-bar', !!sel); } catch (e) {}
+  hyAlignDock();
+}
+// desktop: the fixed dock sits exactly under the thread's column (the column moves with the sidebar and the window)
+function hyAlignDock(){
+  try {
+    const d = hyEl('hyDock'), a = hyEl('hyApp'); if (!d || !a) return;
+    if ((window.innerWidth || 0) < 900) { d.style.left = ''; d.style.width = ''; d.style.right = ''; return; }
+    const r = a.getBoundingClientRect(); if (!r || !r.width) return;
+    d.style.left = Math.round(r.left) + 'px'; d.style.width = Math.round(r.width) + 'px'; d.style.right = 'auto';
+  } catch (e) {}
+}
+function hyStartHtml(){
+  return '<div class="hy-hero"><div class="hy-ring"><button type="button" class="hy-paste" id="hyPasteBig" onclick="hyPaste()">'
+    + HY_IC.clip(28) + '<span>Paste a TikTok</span></button></div></div>'
+    + '<div class="hy-feed" id="hyFeed">' + hyFeedHtml() + hyFollowHtml() + '</div>';
+}
+// "+ Add creator" under the list while fewer than 5 TikTok creators are followed (the one creator rule, cfFollowedHandles);
+// nobody followed → just one line + the same button. Adding goes through the existing add path (fpAdd, max 5).
+function hyFollowCount(){ try { return cfFollowedHandles(null).length; } catch (e) { return 0; } }
+function hyFollowHtml(){
+  try { if (typeof listLoadFailed === 'function' && listLoadFailed('bookmarks')) return ''; } catch (e) {}
+  const n = hyFollowCount();
+  if (n >= CF_MAX_CREATORS) return '';
+  const add = _hy.adding
+    ? '<form class="hy-addf" onsubmit="event.preventDefault();hyAddCreator();"><label for="hyAddLink" class="cs-sr">TikTok profile link</label>'
+      + '<input type="text" class="hy-addin" id="hyAddLink" placeholder="tiktok.com/@name" autocomplete="off" enterkeyhint="done" oninput="_hy.addVal=this.value">'
+      + '<button type="submit" class="hy-addgo">Add</button><button type="button" class="hy-addx" aria-label="Cancel" onclick="hyAddClose()">\u00d7</button></form>'
+      + '<div class="hy-adderr" id="hyAddErr" role="alert">' + hyE(_hy.addErr) + '</div>'
+    : '<button type="button" class="hy-add" onclick="hyAddOpen()">+ Add creator</button>';
+  return (n ? '' : '<div class="hy-empty">Follow up to 5 TikTok creators to see their new videos here</div>') + add;
+}
+function hyAddOpen(){ _hy.adding = true; _hy.addVal = ''; _hy.addErr = ''; hyRender(); try { const f = hyEl('hyAddLink'); if (f) f.focus(); } catch (e) {} return true; }
+function hyAddClose(){ _hy.adding = false; _hy.addErr = ''; hyRender(); return true; }
+function hyAddCreator(){
+  const okAdd = fpAdd('hyAdd');
+  if (!okAdd) { const er = hyEl('hyAddErr'); _hy.addErr = er ? String(er.textContent || '') : ''; return false; }
+  _hy.adding = false; _hy.addVal = ''; _hy.addErr = '';
+  hyRender();
+  try { cfRefresh(); } catch (e) {}   // their videos: the feed's own refresh (server-guarded)
+  return true;
+}
+// ---- "New from your creators" (the calm list) — the SAME _cf data the classic feed draws, never another brand's ----
+function hyUsual(score){ const s = Number(score); return s >= 1.5 ? (Math.round(s * 10) / 10).toFixed(1) + '× usual' : ''; }
+function hyDayKey(iso, now){
+  const t = Date.parse(iso || ''); if (!isFinite(t)) return 2;
+  const d = new Date(t), n = new Date(now == null ? Date.now() : now);
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(n) - day(d)) / 86400000);
+  return diff <= 0 ? 0 : (diff === 1 ? 1 : 2);
+}
+const HY_DAYS = ['Today', 'Yesterday', 'Earlier'];
+function hyFeedHtml(){
+  if (typeof _cf === 'undefined' || _cf.brandId !== cfBrandNow()) { _hy.rows = []; return ''; }
+  const d = _cf.data, st = _cf.status;
+  const head = (more) => '<div class="hy-lh"><h2 class="hy-lt">New from your creators</h2>' + (more || '') + '</div>';
+  if (st === 'loading' && !(d && d.videos && d.videos.length)) {
+    const sk = '<div class="hy-skrow" aria-hidden="true"><i></i><i></i></div>';
+    _hy.rows = []; return head('') + '<div class="hy-list" aria-busy="true">' + sk + sk + sk + '</div>';
+  }
+  if (st === 'error') { _hy.rows = []; return head('') + '<div class="hy-ferr" role="alert">' + hyE(_cf.err) + '</div>'; }
+  const all = (d && Array.isArray(d.videos)) ? d.videos : [];
+  if (!all.length) { _hy.rows = []; return ''; }
+  const shown = (_hy.feedAll ? all : all.slice(0, HY_FEED_ROWS)).slice();
+  const now = Date.now();
+  const groups = [[], [], []];
+  shown.forEach(v => groups[hyDayKey(v.postedAt, now)].push(v));
+  _hy.rows = groups[0].concat(groups[1], groups[2]);
+  let i = 0, rows = '';
+  groups.forEach((g, gi) => {
+    if (!g.length) return;
+    rows += '<div class="hy-day">' + HY_DAYS[gi] + '</div>';
+    g.forEach(v => {
+      const id = String(v.videoId), h = cfHandle(v.handle), busy = _hy.rowBusy === id;
+      const cap = String(v.caption == null ? '' : v.caption).replace(/\s+/g, ' ').trim();
+      const x = hyUsual(v.score);
+      rows += '<button type="button" class="hy-row" data-vid="' + hyE(id) + '" onclick="hyFeedPick(' + (i++) + ')"' + (busy ? ' disabled aria-busy="true"' : '') + '>'
+        + '<span class="hy-rt">' + hyE(cap || ('@' + h)) + '</span>'
+        + '<span class="hy-rm"><span class="hy-rh">@' + hyE(h) + '</span>'
+        + (x ? '<span class="hy-tag">' + hyE(x) + '</span>' : '')
+        + (busy ? '<span class="hy-w">Getting the words…</span>' : (cfReady(v) ? '<span class="hy-w"><span class="hy-dot" aria-hidden="true"></span>Words ready</span>' : ''))
+        + '</span></button>'
+        + (_hy.rowErr[id] ? '<div class="hy-rerr" role="alert">' + hyE(_hy.rowErr[id]) + '</div>' : '');
+    });
+  });
+  const more = _hy.feedAll
+    ? '<span class="hy-lacts"><button type="button" class="hy-more" onclick="cfRefresh()"' + (_cf.refreshing ? ' disabled aria-busy="true">Refreshing…' : '>Refresh') + '</button>'
+      + '<button type="button" class="hy-more" aria-expanded="true" onclick="hyFeedAll()">Show fewer</button></span>'
+    : '<button type="button" class="hy-more" aria-expanded="false" onclick="hyFeedAll()">See all</button>';
+  const note = _hy.feedAll ? (_cf.note || (d.fetchedAt ? 'Updated ' + cfAge(d.fetchedAt) : '')) : '';
+  return head(more) + (note ? '<div class="hy-fnote" role="status">' + hyE(note) + '</div>' : '') + '<div class="hy-list">' + rows + '</div>';
+}
+function hyFeedAll(){ _hy.feedAll = !_hy.feedAll; hyRender(); return _hy.feedAll; }
+// cfRender calls this: the start screen redraws its list from the same data (never while a thread is on screen)
+function hyFeedSoon(){ try { Promise.resolve().then(() => { if (!_hy.t && hyEl('hyFeed')) hyRender(); }); } catch (e) {} }
+function hyVideoUrl(v){
+  const h = cfHandle(v.handle);
+  return (typeof fpHttps === 'function' ? fpHttps(v.url) : '') || (h ? 'https://www.tiktok.com/@' + h + '/video/' + encodeURIComponent(String(v.videoId)) : '');
+}
+function hyFromVideo(v, text, failed, note){
+  const url = hyVideoUrl(v);
+  return hyNewThread({ kind: 'tiktok', url: url, creator: remixCreatorFromUrl(url) || cfHandle(v.handle), text: String(text == null ? '' : text),
+    failed: !!failed, note: note || '', views: v.views, score: v.score });
+}
+// a row: words already read → straight into the thread (no call, nothing charged); else the feed's 'transcript' call
+async function hyFeedPick(i){
+  const v = _hy.rows[i]; if (!v) return false;
+  if (_hy.busy || _hy.rowBusy || (typeof _cf !== 'undefined' && _cf.busy)) { hyHint(HY_ONE); return false; }
+  if (cfReady(v)) return hyFromVideo(v, v.transcript);
+  if (v.transcriptStatus === 'working') { hyHint('Already transcribing — try again in a minute.'); return false; }
+  const bid = cfBrandNow(), id = String(v.videoId), seq = _hy.seq;   // a thread started meanwhile (hand-off, new chat) wins
+  _hy.rowBusy = id; _cf.busy = id; delete _hy.rowErr[id];
+  hyRender();
+  try {
+    const d = await cfCall('transcript', id);
+    if (bid !== cfBrandNow()) return false;
+    cfApply(d);
+    if (seq !== _hy.seq) return false;   // never replace a newer thread (and never drop a twist running in it)
+    const nv = _cf.data.videos.find(x => String(x.videoId) === id) || v;
+    if (typeof nv.transcript === 'string') return hyFromVideo(nv, nv.transcript);
+    if (nv.transcriptStatus === 'working') { hyHint('Already transcribing — try again in a minute.'); return false; }
+    return hyFromVideo(nv, '', true, "Couldn't get the words from this one — paste what they say.");
+  } catch (e) {
+    if (bid === cfBrandNow() && seq === _hy.seq) {
+      const msg = humanErr((e && e.message) || '', "Couldn't get the words from that TikTok — try again in a minute.");
+      if (e && typeof CF_PASTE_CODES !== 'undefined' && CF_PASTE_CODES.indexOf(e.code) >= 0) return hyFromVideo(v, '', true, msg);
+      _hy.rowErr[id] = msg;
+    }
+    return false;
+  } finally {
+    if (_hy.rowBusy === id) _hy.rowBusy = '';
+    if (_cf.busy === id) _cf.busy = '';
+    hyRender();
+  }
+}
+// ---- the thread ----
+function hyNewThread(src){
+  const s = src || {};
+  const kind = s.kind || 'text', text = String(s.text == null ? '' : s.text);
+  _hy.seq++; _hy.busy = ''; _hy.menu = false;
+  hyEnsureBrandQuiet();
+  _hy.t = { at: Date.now(), err: '', blocks: [], open: false,
+    src: { kind: kind, url: String(s.url || ''), creator: String(s.creator || ''), platform: kind === 'youtube' ? 'youtube' : (kind === 'tiktok' ? 'tiktok' : ''),
+      text: text, failed: !!s.failed, empty: !text.trim(), note: String(s.note || ''), reading: !!s.reading,
+      views: (s.views == null ? null : Number(s.views)), score: (s.score == null ? null : Number(s.score)) } };
+  _hy.t.open = !_hy.t.src.reading && kind !== 'text' && _hy.t.src.empty;
+  hySave(); hyRender(); hyScrollEnd();
+  return true;
+}
+function hyEnsureBrandQuiet(){ const bid = hyBrand(); if (_hy.brandId !== bid) { _hy.brandId = bid; _hy.feedAll = false; _hy.rows = []; _hy.rowErr = {}; } }
+// remixShowOriginal routes here while this screen is up (Trends "Make it yours", any other hand-off)
+function hyTakeOriginal(o){
+  if (!hyActive()) return false;
+  const kind = (o && o.kind) || 'text';
+  return hyNewThread({ kind: kind, url: (o && o.url) || '', creator: (o && o.creator) || '', text: (o && o.text) || '', failed: !!(o && o.failed) });
+}
+// the new-chat icon: a fresh, empty start screen (a reply still on its way is dropped)
+function hyNew(){
+  _hy.seq++; _hy.t = null; _hy.busy = ''; _hy.menu = false; _hy.feedAll = false;
+  hySave(); hyHint('');
+  try { const b = hyEl('hyIn'); if (b) b.value = ''; } catch (e) {}
+  hyRender();
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+  return true;
+}
+function hyScrollEnd(){
+  hyLater(() => { try { window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); } catch (e) {} });
+}
+// the paste button: the clipboard's link runs the same path as pasting it; denied / empty / not a link → the input
+async function hyPaste(){
+  if (_hy.busy) { hyHint(HY_ONE); return false; }   // (a creator row being read: hyStart refuses, one at a time)
+  let txt = '';
+  try {
+    if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') throw new Error('no clipboard');
+    txt = String((await navigator.clipboard.readText()) || '').trim();
+  } catch (e) { return hyPasteFallback('Paste the link here.'); }
+  if (!txt) return hyPasteFallback('Your clipboard is empty — paste a link here.');
+  if (remixPickLink(txt).kind === 'text') return hyPasteFallback('No link on your clipboard — paste one here.');
+  hyHint('');
+  return hyStart(txt);
+}
+function hyPasteFallback(msg){ hyHint(msg); try { const b = hyEl('hyIn'); if (b) b.focus(); } catch (e) {} return false; }
+function hyInput(){ hyHint(''); }
+// a link → read its words (TikTok / YouTube: the paste path's remixFetchWords; article: the classic reader);
+// plain words → your idea is the source the twists work from
+async function hyStart(raw){
+  const text = String(raw == null ? '' : raw).trim();
+  if (!text) return false;
+  if (_hy.busy || _hy.rowBusy) { hyHint(HY_ONE); return false; }   // a creator row is being read: one at a time
+  const pick = remixPickLink(text);
+  if (pick.kind === 'instagram') { hyHint(RX_IG_MSG); return false; }
+  if (pick.kind === 'text') return hyNewThread({ kind: 'text', text: text });
+  hyNewThread({ kind: pick.kind, url: pick.url, creator: remixCreatorFromUrl(pick.url), text: '', reading: true });
+  const seq = _hy.seq, t = _hy.t;
+  _hy.busy = 'read';
+  let tookFetch = false;
+  try { if (!_rxFetching) { _rxFetching = true; tookFetch = true; } } catch (e) {}
+  hyRender();
+  try {
+    const words = (pick.kind === 'tiktok' || pick.kind === 'youtube') ? await remixFetchWords(pick.kind, pick.url) : await hyReadArticle(pick.url);
+    if (seq !== _hy.seq) return false;
+    t.src.text = String(words == null ? '' : words); t.src.empty = !t.src.text.trim();
+    t.open = t.src.empty;
+    return true;
+  } catch (e) {
+    if (seq !== _hy.seq) return false;
+    t.src.failed = true; t.src.empty = !String(t.src.text || '').trim(); t.open = true;
+    t.src.note = humanErr((e && e.message) || '', HY_READ_FB);
+    return false;
+  } finally {
+    if (tookFetch) { try { _rxFetching = false; } catch (e) {} }
+    if (seq === _hy.seq) { t.src.reading = false; _hy.busy = ''; hySave(); hyRender(); hyScrollEnd(); }
+  }
+}
+async function hyReadArticle(url){
+  remixSetSource(null, '');
+  try { setRemixSource('article'); } catch (e) {}
+  const au = hyEl('articleUrl'); if (au) au.value = url;
+  await extractArticle({ target: document.createElement('button') });
+  const d = hyEl('remixDescription'), words = String((d && d.value) || '').trim();
+  remixSetSource(null, '');
+  if (!words) throw new Error("Couldn't read that page — paste the words instead.");
+  return words;
+}
+// a thread restored mid-read: one tap reads the same link again (a fresh thread, the paste path)
+function hyRetryRead(){ const t = _hy.t; if (!t || !t.src.url || _hy.busy || _hy.rowBusy) return false; return hyStart(t.src.url); }
+function hySrcToggle(){ if (!_hy.t) return false; _hy.t.open = !_hy.t.open; hySave(); hyRender(); return _hy.t.open; }
+function hySrcEdit(v){ if (!_hy.t) return; const s = _hy.t.src; s.text = String(v == null ? '' : v); s.empty = !s.text.trim(); hySave(); }
+function hySrcMeta(s){
+  const bits = [];
+  if (s.creator) bits.push('@' + s.creator);
+  if (s.views != null && isFinite(s.views)) bits.push(cfShortNum(s.views) + ' views');
+  const sc = cfScoreLabel(s.score); if (sc) bits.push(sc);
+  return bits.join(' · ');
+}
+function hySrcCardHtml(){
+  const t = _hy.t, s = t.src, meta = hySrcMeta(s);
+  const metaHtml = meta ? '<div class="hy-m">' + hyE(meta) + '</div>' : '';
+  const link = /^https?:\/\//i.test(safeUrl(s.url)) ? '<a class="hy-watch" href="' + escAttr(safeUrl(s.url)) + '" target="_blank" rel="noopener noreferrer">Watch ↗</a>' : '';
+  if (!t.open && !s.empty) {
+    return '<div class="hy-card hy-src">' + metaHtml + '<p class="hy-clamp">' + hyE(s.text) + '</p>'
+      + '<div class="hy-srcacts"><button type="button" class="hy-showall" aria-expanded="false" onclick="hySrcToggle()">Show all' + HY_IC.down + '</button>' + link + '</div></div>';
+  }
+  const cut = !!(s.interrupted && s.empty && !s.failed);
+  const why = s.note || (cut ? 'Words didn\u2019t finish loading \u2014 paste the link again.' : '') || (s.failed ? '' : (s.empty ? (s.kind === 'tiktok' ? 'No spoken words in this one — type what it shows instead.' : 'No words to pick up — type what it shows instead.') : ''));
+  return '<div class="hy-card hy-src">' + metaHtml
+    + (why ? '<div class="hy-srcnote">' + hyE(why) + '</div>' : '')
+    + '<textarea id="hySrcTa" class="hy-srcta" aria-label="Their words" oninput="hySrcEdit(this.value)" placeholder="' + (s.failed ? 'Paste or type what they say' : 'Their words') + '"></textarea>'
+    + '<div class="hy-srcacts">' + (s.empty ? (cut && s.url ? '<button type="button" class="hy-showall" onclick="hyRetryRead()">Try again</button>' : '') : '<button type="button" class="hy-showall" aria-expanded="true" onclick="hySrcToggle()">Show less</button>') + link + '</div></div>';
+}
+function hyBubble(s){
+  if (s.kind === 'text') return s.text;
+  if (s.url) return String(s.url).replace(/^https?:\/\/(www\.)?/i, '');
+  return s.kind === 'trend' ? 'A trending post' : s.text;
+}
+function hyParas(t){
+  return String(t == null ? '' : t).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map(p => '<p>' + hyE(p).replace(/\n/g, '<br>') + '</p>').join('');
+}
+// a version's card: the same fields the classic result renderer shows (series parts, hook, script, caption, hashtags)
+function hyVersionHtml(r){
+  const t = v => String(v == null ? '' : v).trim();
+  const parts = remixParts(r);
+  let h = '';
+  if (parts.length) {
+    if (t(r.remixTitle)) h += '<div class="hy-vt">' + hyE(t(r.remixTitle)) + '</div>';
+    h += parts.map((p, i) => '<div class="hy-part"><div class="hy-pt">Part ' + hyE(t(p.partNumber) || (i + 1)) + (t(p.remixTitle) ? ': ' + hyE(t(p.remixTitle)) : '') + '</div>'
+      + (t(p.remixHook) ? '<p class="hy-hook">' + hyE(t(p.remixHook)) + '</p>' : '') + hyParas(p.remixScript) + '</div>').join('');
+  } else {
+    const hook = t(r.remixHook), script = t(r.remixScript);
+    if (hook && script.indexOf(hook) !== 0) h += '<p class="hy-hook">' + hyE(hook) + '</p>';
+    h += hyParas(script || (hook ? '' : t(r.remixTitle)));
+  }
+  if (t(r.remixCaption)) h += '<p class="hy-cap">' + hyE(t(r.remixCaption)) + '</p>';
+  if (t(r.remixHashtags)) h += '<p class="hy-tags">' + hyE(t(r.remixHashtags)) + '</p>';
+  return h;
+}
+function hySelected(){
+  const t = _hy.t; if (!t) return null;
+  for (let i = t.blocks.length - 1; i >= 0; i--) {
+    const b = t.blocks[i];
+    if (b.versions.length) { const k = Math.min(Math.max(0, b.sel | 0), b.versions.length - 1); return { blk: b, v: b.versions[k], k: k, bi: i }; }
+    if (!b.pendingTwist) break;
+  }
+  return null;
+}
+function hyThreadHtml(){
+  const t = _hy.t, s = t.src, busy = !!_hy.busy;
+  let h = '<div class="hy-thread">';
+  h += '<div class="hy-me' + (s.kind !== 'text' ? ' hy-me-link' : '') + '">' + hyE(hyBubble(s)) + '</div>';
+  if (s.kind !== 'text') {
+    h += '<div class="hy-say">' + (s.reading ? 'Getting the words…' : 'Here’s what they said') + '</div>';
+    h += s.reading ? '<div class="hy-card hy-skel" role="status" aria-label="Getting the words"><i></i><i></i><i></i></div>' : hySrcCardHtml();
+  }
+  if (!s.reading) {
+    const lastB = t.blocks.length ? t.blocks[t.blocks.length - 1] : null;
+    h += '<div class="hy-label">Make it yours</div><div class="hy-grid">'
+      + RX_MODES.map(m => '<button type="button" class="hy-pill' + (lastB && lastB.twist === m.id ? ' on' : '') + '" data-twist="' + m.id + '"'
+        + (busy ? ' disabled aria-disabled="true"' : '') + ' onclick="hyTwist(\'' + m.id + '\')">' + hyE(m.label) + '</button>').join('') + '</div>';
+  }
+  const lastIdx = t.blocks.length - 1;
+  t.blocks.forEach((b, bi) => {
+    const last = bi === lastIdx, n = b.versions.length;
+    h += '<div class="hy-blk">';
+    h += '<div class="hy-say">Your version <span class="hy-tag">' + hyE(hyModeLabel(b.twist)) + '</span>'
+      + (last && n ? '<span class="hy-sp"></span><button type="button" class="hy-dots" aria-label="More" aria-haspopup="menu" aria-expanded="' + (_hy.menu ? 'true' : 'false') + '" onclick="hyMenu()">' + HY_IC.dots + '</button>' : '') + '</div>';
+    if (last && n && _hy.menu) {
+      h += '<div class="hy-menu" role="menu"><button type="button" role="menuitem" onclick="hySaveIdeas(this)">Save to Ideas</button>'
+        + '<button type="button" role="menuitem" onclick="hyCopyAll()">Copy everything</button></div>';
+    }
+    if (!n) { h += '<div class="hy-card hy-skel" role="status" aria-label="Writing your version"><i></i><i></i><i></i></div></div>'; return; }
+    const shown = Math.min(Math.max(0, b.sel | 0), n - 1);
+    h += '<div class="hy-card hy-ver' + (n > 1 ? ' hy-old' : '') + '">' + hyVersionHtml(n > 1 ? b.versions[0].result : b.versions[shown].result) + '</div>';
+    if (n === 1 && b.versions[0].note) h += '<div class="hy-note">' + hyE(b.versions[0].note) + '</div>';
+    for (let k = 1; k < n; k++) {
+      const end = k === n - 1, v = end ? b.versions[shown] : b.versions[k];
+      h += '<div class="hy-me">' + hyE(b.versions[k].instruction) + '</div>';
+      h += '<div class="hy-say">Your version · v' + (end ? shown + 1 : k + 1)
+        + (end && last ? '<span class="hy-sp"></span><span class="hy-seg" role="group" aria-label="Versions">'
+          + b.versions.map((x, j) => '<button type="button" class="hy-segb' + (j === shown ? ' on' : '') + '" aria-pressed="' + (j === shown ? 'true' : 'false') + '" onclick="hyPickVersion(' + j + ')">v' + (j + 1) + '</button>').join('')
+          + '</span>' : '') + '</div>';
+      h += '<div class="hy-card hy-ver' + (end ? '' : ' hy-old') + '">' + hyVersionHtml(v.result) + '</div>';
+      if (v.note) h += '<div class="hy-note">' + hyE(v.note) + '</div>';
+    }
+    if (last && b.pending) {
+      h += '<div class="hy-me">' + hyE(b.pending) + '</div><div class="hy-say">Your version · v' + (n + 1) + '</div>'
+        + '<div class="hy-card hy-skel" role="status" aria-label="Writing the new version"><i></i><i></i><i></i></div>';
+    }
+    h += '</div>';
+  });
+  if (t.err) h += '<div class="hy-err" role="alert">' + hyE(t.err) + '</div>';
+  return h + '</div>';
+}
+// ---- a twist: the same /api/remix request the classic screen's buttons send (leanBrandFetch, brand hydrated server-side) ----
+function hyRemixBody(mode, s){
+  const idea = s.kind === 'text';
+  return { postUrl: idea ? '' : String(s.url || ''),
+    postDescription: idea ? ((typeof csComposerSource === 'function') ? csComposerSource(s.text).text : String(s.text || '')) : String(s.text || ''),
+    creatorName: String(s.creator || ''), platform: s.platform || 'tiktok', remixMode: mode,
+    delivery: (typeof deliveryReq === 'function') ? deliveryReq(window._remixDelivery) : (window._remixDelivery === 'faceless' ? 'faceless' : 'face') };
+}
+async function hyTwist(mode){
+  const t = _hy.t; if (!t || t.src.reading) return false;
+  if (_hy.busy) { hyHint(HY_ONE); return false; }
+  if (!RX_MODES.some(m => m.id === mode)) return false;
+  if (!String(t.src.text || '').trim()) { t.open = true; hyHint(t.src.kind === 'text' ? 'Type your idea first.' : 'Paste or type their words first.'); hyRender(); return false; }
+  const seq = _hy.seq, gate = brandGate();
+  const blk = { twist: mode, versions: [], sel: 0, pending: '', pendingTwist: true };
+  t.blocks.push(blk); t.err = ''; _hy.busy = 'twist'; _hy.menu = false; hyHint('');
+  hyRender(); hyScrollEnd();
+  try {
+    const body = hyRemixBody(mode, t.src);
+    const resp = await leanBrandFetch('/api/remix', body, () => getBrandContext());
+    const data = await readJsonOrThrow(resp, 'Making your version');
+    if (seq !== _hy.seq || !gate()) return false;
+    const remix = data && data.remix;
+    if (!remix || typeof remix !== 'object' || !remixHasContent(remix)) throw new Error(HY_TWIST_FB);
+    const v = { result: remix, instruction: '', note: '', at: Date.now() };
+    blk.versions.push(v); blk.sel = 0; blk.pendingTwist = false;
+    hyKeepRemix(v, mode, t.src);
+    return true;
+  } catch (e) {
+    if (seq !== _hy.seq) return false;
+    const i = t.blocks.indexOf(blk); if (i >= 0) t.blocks.splice(i, 1);
+    t.err = humanErr((typeof _leanErrMsg === 'function') ? _leanErrMsg(e, HY_TWIST_FB) : ((e && e.message) || ''), HY_TWIST_FB);
+    return false;
+  } finally {
+    if (seq === _hy.seq) { blk.pendingTwist = false; _hy.busy = ''; hySave(); hyRender(); hyScrollEnd(); }
+  }
+}
+// every version also goes into the saved versions list (the classic screen's list), exactly as a classic run does
+function hyDecorate(v, mode, s){
+  const r = Object.assign({}, v.result);
+  r.creatorName = s.creator || 'unknown'; r.platform = s.platform || 'tiktok'; r.postUrl = s.url || '';
+  r.inputDescription = String(s.text || ''); r.remixMode = mode; r.createdAt = v.at || Date.now();
+  try { r.delivery = (((typeof deliveryUi === 'function') ? deliveryUi(window._remixDelivery) : window._remixDelivery) === 'faceless' && DELIVERY_FORMATS.has(r.remixFormat)) ? 'faceless' : 'faceon'; } catch (e) { r.delivery = 'faceon'; }
+  return r;
+}
+function hyKeepRemix(v, mode, s){
+  try {
+    const r = hyDecorate(v, mode, s);
+    remixes.unshift(r);
+    if (remixes.length > 30) remixes = remixes.slice(0, 30);
+    saveRemixes();
+    try { renderRemixResults(); } catch (e) {}
+    return r;
+  } catch (e) { return null; }
+}
+// ---- H3: Ask for changes → /api/revise (contract body), the result becomes v2, v3… of the latest block ----
+async function hyRevise(instruction){
+  const sel = hySelected(); if (!sel || !_hy.t) return false;
+  const text = String(instruction == null ? '' : instruction).trim();
+  if (!text) return false;
+  if (text.length > HY_INSTR_MAX) { hyHint('Keep it under ' + HY_INSTR_MAX + ' characters.'); return false; }
+  if (_hy.busy) { hyHint(HY_ONE); return false; }
+  const t = _hy.t, blk = sel.blk, seq = _hy.seq, gate = brandGate(), bid = hyBrand();
+  if (!bid) { hyHint('Pick a brand first.'); return false; }
+  const box = hyEl('hyIn');
+  blk.pending = text; t.err = ''; _hy.busy = 'revise'; _hy.menu = false; hyHint('');
+  if (box) box.value = '';
+  hyRender(); hyScrollEnd();
+  try {
+    const body = { brandId: bid, current: sel.v.result, instruction: text,
+      source: { transcript: String(t.src.text || '').slice(0, 12000), creator: String(t.src.creator || ''), url: String(t.src.url || '') },
+      twist: blk.twist };
+    let resp;
+    try { resp = await fetch('/api/revise', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
+    catch (e0) { throw new Error('Your connection dropped — try again.'); }
+    let data = null;
+    try { data = JSON.parse(await resp.text()); } catch (e1) { data = null; }
+    if (!resp.ok || !data || data.ok !== true || !data.result || typeof data.result !== 'object') {
+      const code = (data && typeof data.code === 'string') ? data.code : '';
+      const said = (data && typeof data.error === 'string') ? data.error : '';
+      const e2 = new Error((typeof humanErrCode === 'function' && humanErrCode(code)) || humanErr(said || code, HY_REVISE_FB)); e2.code = code; throw e2;
+    }
+    if (seq !== _hy.seq || !gate()) return false;
+    if (!remixHasContent(data.result)) throw new Error(HY_REVISE_FB);
+    const v = { result: data.result, instruction: text, note: typeof data.note === 'string' ? data.note.trim().slice(0, 400) : '', at: Date.now() };
+    blk.versions.push(v); blk.sel = blk.versions.length - 1;
+    hyKeepRemix(v, blk.twist, t.src);
+    return true;
+  } catch (e) {
+    if (seq !== _hy.seq) return false;
+    t.err = humanErr((e && e.message) || '', HY_REVISE_FB);
+    if (box && !box.value) box.value = text;   // the words are kept, ready to send again
+    return false;
+  } finally {
+    if (seq === _hy.seq) { blk.pending = ''; _hy.busy = ''; hySave(); hyRender(); hyScrollEnd(); }
+  }
+}
+function hyPickVersion(k){
+  const sel = hySelected(); if (!sel) return false;
+  const b = sel.blk; if (!(k >= 0 && k < b.versions.length)) return false;
+  b.sel = k; hySave(); hyRender(); return true;
+}
+// the bottom input: a version on screen → "Ask for changes"; otherwise (or a fresh link) → a fresh thread
+function hySend(){
+  const box = hyEl('hyIn');
+  const raw = String((box && box.value) || '').trim();
+  if (!raw) { try { if (box) box.focus(); } catch (e) {} return false; }
+  if (_hy.busy || _hy.rowBusy) { hyHint(HY_ONE); return false; }
+  const pick = remixPickLink(raw);
+  // words on screen: plain text asks for changes once there is a version; before that, pick a twist first (a link = fresh thread)
+  if (_hy.t && pick.kind === 'text') { if (hySelected()) return hyRevise(raw); hyHint('Pick a twist first.'); return false; }
+  if (pick.kind === 'instagram') { hyHint(RX_IG_MSG); return false; }
+  if (box) box.value = '';
+  hyHint('');
+  return hyStart(raw);
+}
+// ---- the sticky bar + the "⋯" menu ----
+function hyScriptOf(r){
+  const parts = remixParts(r);
+  if (parts.length) return parts.map(p => String(p.remixScript == null ? '' : p.remixScript).trim()).filter(Boolean).join('\n\n');
+  const t = v => String(v == null ? '' : v).trim();
+  return t(r && r.remixScript) || t(r && r.remixHook) || t(r && r.remixTitle);
+}
+// Film it: the selected version's script in the real teleprompter, through tvOpenTeleprompter (read mode on a desktop,
+// camera on a phone — tpOpenMode decides, as for every other entry point). Not a saved post, so no "Mark done".
+function hyFilm(){
+  const sel = hySelected(); if (!sel) return false;
+  const r = sel.v.result, text = hyScriptOf(r);
+  if (!text) { hyHint('This version has no script to read.'); return false; }
+  const overlay = hyEl('teleprompterOverlay'); if (!overlay) return false;
+  tvOpenTeleprompter({ title: String(r.remixTitle || 'Your version'), script: text, emphasis: r.emphasis, format: 'video' });
+  window._tpSplitIdeaId = null;   // not a Quick Post or a saved post: no split-screen graphics from another post
+  if (!overlay.classList.contains('open')) return false;
+  return text;
+}
+function hyCopyWrite(text, done){
+  try {
+    navigator.clipboard.writeText(text).then(() => { try { showToast(done); } catch (e) {} }).catch(() => copyFallback(text));
+  } catch (e) { copyFallback(text); }
+  return text;
+}
+function hyCopy(){
+  const sel = hySelected(); if (!sel) return false;
+  const text = hyScriptOf(sel.v.result);
+  if (!text) { hyHint('Nothing to copy yet.'); return false; }
+  return hyCopyWrite(text, 'Script copied');
+}
+function hyCopyAll(){
+  const sel = hySelected(); if (!sel) return false;
+  _hy.menu = false; hyRender();
+  return hyCopyWrite(remixCopyText(sel.v.result), 'Your version copied');
+}
+function hyMenu(){
+  _hy.menu = !_hy.menu; hyRender();
+  if (_hy.menu) { try { const f = document.querySelector('.hy-menu button'); if (f && f.focus) f.focus(); } catch (e) {} }
+  return _hy.menu;
+}
+// Save to Ideas: the classic save (saveRemixToIdeas → saveGeneratedIdeas), on the selected version
+function hySaveIdeas(btn){
+  const sel = hySelected(); if (!sel || !_hy.t) return false;
+  const v = sel.v, mode = sel.blk.twist;
+  let idx = remixes.findIndex(r => r && r.createdAt === v.at && r.remixMode === mode && v.at);
+  if (idx < 0) { const r = hyKeepRemix(v, mode, _hy.t.src); idx = r ? remixes.indexOf(r) : -1; }
+  _hy.menu = false;
+  if (idx < 0) { hyRender(); return false; }
+  const p = saveRemixToIdeas(idx, null);
+  hyRender();
+  return p;
+}
+// ===== end v714 hybrid =====
+
 // ===== follow-panels: "Creators you follow" (bottom of Remix, owner 2026-10-04) =====
 // The creators are the saved Bookmarks (bookmarkCategories → entries { id, name, links, note }), stored
 // as ONE JSON blob in competitors.notes (saveBookmarksToDB / loadBookmarksFromDB) — so the per-creator
@@ -24280,6 +25002,35 @@ let _fpEdit = '';        // the entry being edited, as fpKeyAt() ('' = none) —
 let _fpAdding = false;   // the "+ Add creator" panel is open
 let _fpConfirm = '';     // the entry asking "Remove?" (fpKeyAt key, '' = none) — no window.confirm
 let _fpReplaceAsk = '';  // fpSaveEdit: the entry + link the person was told "this replaces your saved … link"
+let _fpMenu = '';        // v714: the card whose "⋯" menu (Edit / Remove) is open (fpKeyAt key, '' = none)
+let _fpMenuWired = false;
+// v714: the big card shows the @handle from the profile link (TikTok / Instagram / YouTube / X), else the saved name
+function fpHandleOf(c){
+  if (!c || !c.best || !/^(tt|ig|yt|x)$/.test(c.best.plat)) return '';
+  const m = /^https:\/\/[^\/]+\/@?([\w.\-]{1,60})$/.exec(fpProfileUrl(c.best.url));
+  return m ? '@' + m[1] : '';
+}
+function fpInitial(label){ const m = /[A-Za-z0-9]/.exec(String(label || '')); return m ? m[0].toUpperCase() : '?'; }
+function fpMenuToggle(i){
+  const key = fpKeyAt(i); if (!key) return false;
+  _fpMenu = _fpMenu === key ? '' : key;
+  _fpConfirm = '';
+  if (!_fpMenuWired) {
+    _fpMenuWired = true;
+    try {
+      document.addEventListener('click', function (e) {
+        if (!_fpMenu) return;
+        const t = e && e.target;
+        if (t && t.closest && t.closest('.fp-menu, .fp-more')) return;
+        _fpMenu = ''; renderFollowPanels();
+      });
+      document.addEventListener('keydown', function (e) { if (e && e.key === 'Escape' && _fpMenu) { _fpMenu = ''; renderFollowPanels(); } });
+    } catch (e) {}
+  }
+  renderFollowPanels();
+  if (_fpMenu) { try { const f = document.querySelector('.fp-menu button'); if (f && f.focus) f.focus(); } catch (e) {} }
+  return true;
+}
 function fpKeyAt(i){ const it = _fpItems[i]; return it ? it.catId + '/' + it.entId : ''; }
 function fpIdx(key){ if (!key) return -1; for (let i = 0; i < _fpItems.length; i++) if (fpKeyAt(i) === key) return i; return -1; }
 // https only: safeUrl drops javascript:/data:, then anything that is not https:// is not opened
@@ -24345,6 +25096,7 @@ function renderFollowPanels(){
   // a reload, a brand switch or a removal can move or drop entries: state follows the entry or is cleared
   if (fpIdx(_fpEdit) < 0) _fpEdit = '';
   if (fpIdx(_fpConfirm) < 0) _fpConfirm = '';
+  if (fpIdx(_fpMenu) < 0 || _fpEdit || _fpAdding) _fpMenu = '';
   const head = '<div class="fp-head"><span class="fp-title">Creators you follow</span><button type="button" class="fp-manage" onclick="toggleBookmarkBar()">Manage all</button></div>';
   if (typeof listLoadFailed === 'function' && listLoadFailed('bookmarks')) {
     el.innerHTML = head + '<div class="fp-hint">Couldn\'t load the creators you follow — nothing has been deleted. Reload when your connection is back.</div>';
@@ -24363,19 +25115,27 @@ function renderFollowPanels(){
         + '<div class="fp-actions"><button type="button" class="fp-save" onclick="fpSaveEdit()">Save</button><button type="button" class="fp-tool" onclick="fpCancel()">Cancel</button></div>'
         + '</div>';
     }
+    // v714: one big tap-to-open card — initial circle, @handle, the "why I follow" note on one line; Edit / Remove
+    // live in a small "⋯" menu (owner: "the boxes who I follow maybe bigger")
+    const label = fpHandleOf(c) || c.name;
+    const plat = c.best ? FP_PLAT[c.best.plat] : '';
+    const body = '<span class="fp-av" aria-hidden="true">' + escapeHtml(fpInitial(label.replace(/^@/, ''))) + '</span>'
+      + '<span class="fp-id"><span class="fp-handle">' + escapeHtml(label) + '</span>'
+      + (c.note ? '<span class="fp-note">' + escapeHtml(c.note) + '</span>' : (c.best ? '' : '<span class="fp-note fp-note-add">Add their link</span>')) + '</span>';
     const top = c.best
-      ? '<a class="fp-open" href="' + escAttr(safeUrl(fpProfileUrl(c.best.url))) + '" target="_blank" rel="noopener noreferrer" aria-label="Open ' + escAttr(c.name) + ' on ' + FP_PLAT[c.best.plat] + '">'
-        + '<span class="fp-toprow"><span class="fp-badge fp-b-' + c.best.plat + '">' + FP_PLAT[c.best.plat] + '</span><span class="fp-go" aria-hidden="true">Open ↗</span></span><span class="fp-name">' + escapeHtml(c.name) + '</span></a>'
-      : '<div class="fp-top"><span class="fp-name">' + escapeHtml(c.name) + '</span></div><button type="button" class="fp-addlink" onclick="fpEditOpen(' + i + ')">Add link</button>';
-    const note = c.note
-      ? '<button type="button" class="fp-notebtn" onclick="fpEditOpen(' + i + ')" title="' + escAttr(c.note) + '" aria-label="Why you follow ' + escAttr(c.name) + ' — edit"><span class="fp-note">' + escapeHtml(c.note) + '</span></button>'
-      : '<button type="button" class="fp-ghost" onclick="fpEditOpen(' + i + ')">Add why you follow them</button>';
-    const tools = fpKeyAt(i) === _fpConfirm
-      ? '<div class="fp-confirm">Remove from this list?</div><div class="fp-tools"><button type="button" class="fp-tool fp-danger" onclick="fpRemove(' + i + ')" aria-label="Yes, remove ' + escAttr(c.name) + '">Remove</button>'
+      ? '<a class="fp-open" href="' + escAttr(safeUrl(fpProfileUrl(c.best.url))) + '" target="_blank" rel="noopener noreferrer" title="' + escAttr((c.note ? c.note + ' \u2014 ' : '') + 'Open on ' + plat) + '" aria-label="Open ' + escAttr(c.name) + ' on ' + plat + '">' + body + '</a>'
+      : '<button type="button" class="fp-open" onclick="fpEditOpen(' + i + ')" aria-label="Add a link for ' + escAttr(c.name) + '">' + body + '</button>';
+    const key = fpKeyAt(i), menuOpen = key === _fpMenu;
+    const more = '<button type="button" class="fp-more" onclick="fpMenuToggle(' + i + ')" aria-haspopup="menu" aria-expanded="' + (menuOpen ? 'true' : 'false') + '" aria-label="More for ' + escAttr(c.name) + '" title="Edit or remove">\u22EF</button>';
+    const menu = menuOpen
+      ? '<div class="fp-menu" role="menu"><button type="button" role="menuitem" onclick="fpEditOpen(' + i + ')">Edit</button>'
+        + '<button type="button" role="menuitem" class="fp-menu-danger" onclick="fpRemove(' + i + ')">Remove</button></div>'
+      : '';
+    const confirm = key === _fpConfirm
+      ? '<div class="fp-tools fp-confirm-row"><span class="fp-confirm">Remove?</span><button type="button" class="fp-tool fp-danger" onclick="fpRemove(' + i + ')" aria-label="Yes, remove ' + escAttr(c.name) + '">Remove</button>'
         + '<button type="button" class="fp-tool" onclick="fpCancel()">Keep</button></div>'
-      : '<div class="fp-tools"><button type="button" class="fp-tool" onclick="fpEditOpen(' + i + ')" aria-label="Edit ' + escAttr(c.name) + '">Edit</button>'
-        + '<button type="button" class="fp-tool" onclick="fpRemove(' + i + ')" aria-label="Remove ' + escAttr(c.name) + '">Remove</button></div>';
-    return '<div class="fp-panel" data-fp="' + i + '">' + top + note + tools + '</div>';
+      : '';
+    return '<div class="fp-panel fp-card' + (menuOpen ? ' fp-menu-on' : '') + '" data-fp="' + i + '">' + top + more + menu + confirm + '</div>';
   });
   panels.push(_fpAdding
     ? '<div class="fp-panel fp-editing fp-add">'
@@ -24387,14 +25147,15 @@ function renderFollowPanels(){
       + '<div class="fp-err" id="fpAddErr"></div>'
       + '<div class="fp-actions"><button type="button" class="fp-save" onclick="fpAdd()">Save</button><button type="button" class="fp-tool" onclick="fpCancel()">Cancel</button></div>'
       + '</div>'
-    : '<div class="fp-panel fp-add"><button type="button" class="fp-add-btn" onclick="fpAddOpen()">+ Add creator</button></div>');
-  el.innerHTML = head
-    + (_fpItems.length ? '' : '<div class="fp-hint">Save the creators you learn from, then open their accounts from here.</div>')
-    + '<div class="fp-row">' + panels.join('') + '</div>';
+    // v714: the "+ Add creator" card shows only while fewer than 5 creators are followed (the one creator rule, cfFollowedHandles)
+    : ((typeof cfFollowedHandles !== 'function' || cfFollowedHandles(null).length < CF_MAX_CREATORS)
+      ? '<div class="fp-panel fp-card fp-add"><button type="button" class="fp-add-btn" onclick="fpAddOpen()"><span class="fp-av fp-av-add" aria-hidden="true">+</span><span class="fp-add-lbl">Add creator</span></button></div>'
+      : ''));
+  el.innerHTML = head + '<div class="fp-row">' + panels.join('') + '</div>';
 }
-function fpEditOpen(i){ _fpAdding = false; _fpConfirm = ''; _fpReplaceAsk = ''; _fpEdit = fpKeyAt(i); renderFollowPanels(); try { const f = document.getElementById(_fpItems[i] && !_fpItems[i].best ? 'fpEditLink' : 'fpEditNote'); if (f) f.focus(); } catch (e) {} }
-function fpAddOpen(){ _fpEdit = ''; _fpConfirm = ''; _fpAdding = true; renderFollowPanels(); try { const f = document.getElementById('fpAddLink'); if (f) f.focus(); } catch (e) {} }
-function fpCancel(){ _fpEdit = ''; _fpAdding = false; _fpConfirm = ''; _fpReplaceAsk = ''; renderFollowPanels(); }
+function fpEditOpen(i){ _fpMenu = ''; _fpAdding = false; _fpConfirm = ''; _fpReplaceAsk = ''; _fpEdit = fpKeyAt(i); renderFollowPanels(); try { const f = document.getElementById(_fpItems[i] && !_fpItems[i].best ? 'fpEditLink' : 'fpEditNote'); if (f) f.focus(); } catch (e) {} }
+function fpAddOpen(){ _fpMenu = ''; _fpEdit = ''; _fpConfirm = ''; _fpAdding = true; renderFollowPanels(); try { const f = document.getElementById('fpAddLink'); if (f) f.focus(); } catch (e) {} }
+function fpCancel(){ _fpMenu = ''; _fpEdit = ''; _fpAdding = false; _fpConfirm = ''; _fpReplaceAsk = ''; renderFollowPanels(); }
 function fpSaveEdit(){
   const f = fpFind(fpIdx(_fpEdit)); if (!f) { fpCancel(); return false; }
   const err = document.getElementById('fpEditErr');
@@ -24427,15 +25188,16 @@ function fpSaveEdit(){
   rerenderBookmarks();
   return true;
 }
-function fpAdd(){
-  const err = document.getElementById('fpAddErr');
-  const raw = String((document.getElementById('fpAddLink') || {}).value || '').trim();
+function fpAdd(pre){
+  const p = (typeof pre === 'string' && pre) ? pre : 'fpAdd';   // v714: the hybrid screen's form uses 'hyAdd'
+  const err = document.getElementById(p + 'Err');
+  const raw = String((document.getElementById(p + 'Link') || {}).value || '').trim();
   const u = fpNormLink(raw);
   const plat = u ? fpPlatOf(u) : '';
   if (!u || !/^(tt|ig|yt)$/.test(plat)) { if (err) err.textContent = 'Paste a TikTok, Instagram or YouTube profile link.'; return false; }
   // v711: at most 5 TikTok creators (the feed at the top of Remix follows them) — the server's one creator rule
   { const _l = {}; _l[plat] = u; if (typeof cfAllowLinks === 'function' && !cfAllowLinks(null, _l)) { if (err) err.textContent = CF_MAX_MSG; return false; } }
-  const note = fpCleanNote((document.getElementById('fpAddNote') || {}).value);
+  const note = fpCleanNote((document.getElementById(p + 'Note') || {}).value);
   let cat = (bookmarkCategories || [])[0];
   if (!cat) { cat = { id: bmId(), name: 'Following', entries: [] }; bookmarkCategories.push(cat); }
   if (!Array.isArray(cat.entries)) cat.entries = [];
@@ -24452,7 +25214,7 @@ function fpRemove(i){
   const f = fpFind(i); if (!f) return false;
   // first tap asks on the panel itself ("Remove from this list?  Remove · Keep"); the second removes
   const key = fpKeyAt(i);
-  if (_fpConfirm !== key) { _fpEdit = ''; _fpAdding = false; _fpConfirm = key; renderFollowPanels(); return false; }
+  if (_fpConfirm !== key) { _fpMenu = ''; _fpEdit = ''; _fpAdding = false; _fpConfirm = key; renderFollowPanels(); return false; }
   f.cat.entries = f.cat.entries.filter(e => e.id !== f.ent.id);
   _fpEdit = ''; _fpConfirm = '';
   saveBookmarks();
@@ -24701,6 +25463,7 @@ function renderCreate() {
   renderRemixResults();
   renderRefGrid();
   try { cfRender(); } catch (e) {}   // v711: redraw only — the feed loads once per open (switchView → cfOpen)
+  try { if (typeof hyRender === 'function') hyRender(); } catch (e) {}   // v714
 }
 
 let activeSceneDay = null;

@@ -365,3 +365,5 @@ async function _legacyRemix(opts) {
   return guarded;
 }
 module.exports._legacyRemix = _legacyRemix;
+// v714 — /api/revise returns the SAME result shape through the SAME normaliser and guard (one place to change).
+module.exports._shape = { normalizeRemix: normalizeRemix, guardRemix: guardRemix };

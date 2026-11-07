@@ -200,7 +200,7 @@ for (const unlocked of [true, false]) {
   ok(/class="header-actions"/.test(hdr) && /onclick="toggleBookmarkBar\(\)"/.test(hdr) && /onclick="startTour\(\)"/.test(hdr), '3 the desktop header buttons are still there (≥900px)');
   ok(/id="csMenuBtn"[^>]*aria-controls="csDrawerWrap"[^>]*aria-expanded="false"[^>]*onclick="csDrawerToggle\(\)"/.test(hdr), '3 ☰ opens the drawer and carries aria-expanded');
   ok(/id="headerBrand" onclick="toggleBrandSwitcher\(\)"/.test(hdr), '3 the brand name still opens the brand switcher');
-  ok(/id="csNewBtn"[^>]*onclick="csNewPost\(\)"/.test(hdr) && /function csNewPost\(\)\{ csDrawerClose\(\); switchView\('today'\); \}/.test(html), '3 the pencil opens Quick Post');
+  ok(/id="csNewBtn"[^>]*onclick="csNewPost\(\)"/.test(hdr) && /function csNewPost\(\)\{ csDrawerClose\(\); if \(typeof hyActive === 'function' && hyActive\(\)\) \{ hyNew\(\); return; \} switchView\('today'\); \}/.test(html), '3 the pencil opens Quick Post (v714: on the Make it yours screen it starts a new chat)');
   const newMarkup = hdr + between('<div class="csd-wrap" id="csDrawerWrap" hidden>', '</div>\n', 0) + between('<form class="cs-composer"', '</form>') + makeCtx(true).c.csDrawerHtml() + makeCtx(false).c.csDrawerHtml();
   const targets = new Set([...newMarkup.matchAll(/on(?:click|submit|keydown|input)="([^"]*)"/g)].flatMap(m => [...m[1].matchAll(/(?:^|[;\s(])([A-Za-z_$][\w$]*)\(/g)].map(x => x[1])).filter(n => !['event', 'preventDefault'].includes(n)));
   const missing = [...targets].filter(n => !fnExists(n));

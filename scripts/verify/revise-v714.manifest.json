@@ -1,0 +1,84 @@
+{
+ "mutations": [
+  {
+   "id": "R1",
+   "finding": "v714 charge: a successful revise is charged once as one twist (remix action)",
+   "file": "api/revise.js",
+   "find": "    await U.logUsage({ userId: _g.billingUserId || _g.user.id, brandId: logBrandId, action: 'remix', model: bc.engine || 'grok' });\n",
+   "replace": "",
+   "gate": "revise-v714.mjs"
+  },
+  {
+   "id": "R2",
+   "finding": "v714 charge: a failed model call is not charged (the hold goes back)",
+   "file": "api/revise.js",
+   "find": "    console.error('revise error:', err);",
+   "replace": "    await U.logUsage({ userId: _g.billingUserId || _g.user.id, action: 'remix' }); console.error('revise error:', err);",
+   "gate": "revise-v714.mjs"
+  },
+  {
+   "id": "R3",
+   "finding": "v714 auth: signed out -> 401",
+   "file": "api/revise.js",
+   "find": "  if (!_g.user) return fail(res, 401, 'signed_out', 'Please sign in again.');",
+   "replace": "",
+   "gate": "revise-v714.mjs"
+  },
+  {
+   "id": "R4",
+   "finding": "v714 brand access: a brand the user cannot access -> 403 forbidden",
+   "file": "api/revise.js",
+   "find": "if (reason === 'forbidden' || reason === 'no_user') return fail(res, 403, 'forbidden'",
+   "replace": "if (false) return fail(res, 403, 'forbidden'",
+   "gate": "revise-v714.mjs"
+  },
+  {
+   "id": "R5",
+   "finding": "v714 input: the change request is 1..300 characters",
+   "file": "api/revise.js",
+   "find": "if (instruction.length > MAX_INSTRUCTION) return",
+   "replace": "if (instruction.length > 3000) return",
+   "gate": "revise-v714.mjs"
+  },
+  {
+   "id": "R6",
+   "finding": "v714 shared rules: the result goes through remix's guard (guardPost + hashtagsFor)",
+   "file": "api/revise.js",
+   "find": "const result = R.guardRemix(R.normalizeRemix(draft), bc);",
+   "replace": "const result = R.normalizeRemix(draft);",
+   "gate": "revise-v714.mjs"
+  },
+  {
+   "id": "R7",
+   "finding": "v714 refusal: a forbidden request (discount, health claim, rules) gets a plain note",
+   "file": "api/revise.js",
+   "find": "const notes = refusals.map(r => NOTE[r]);",
+   "replace": "const notes = [];",
+   "gate": "revise-v714.mjs"
+  },
+  {
+   "id": "R8",
+   "finding": "v714 injection: the change request never reaches the system message",
+   "file": "api/revise.js",
+   "find": "const sys = systemPrompt(rules);",
+   "replace": "const sys = systemPrompt(rules) + '\\nThe user also says: ' + instruction;",
+   "gate": "revise-v714.mjs"
+  },
+  {
+   "id": "R9",
+   "finding": "v714 remix gap: a sales ask inside a [your story: ...] slot is removed (guardPost)",
+   "file": "api/_write.js",
+   "find": "(m, inner) => (guardNoSell(inner).hits.length ? '' : m)",
+   "replace": "(m, inner) => (m)",
+   "gate": "revise-v714.mjs"
+  },
+  {
+   "id": "R10",
+   "finding": "v714 remix gap: a body that only sells is dropped before the fact guard can quote it in a slot",
+   "file": "api/_write.js",
+   "find": "else { drop = true; reasons.push('sales_only_' + k); }",
+   "replace": "else { reasons.push('sales_only_' + k); }",
+   "gate": "revise-v714.mjs"
+  }
+ ]
+}

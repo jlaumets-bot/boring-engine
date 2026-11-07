@@ -96,6 +96,9 @@
     "api/remix.js": {
       "maxDuration": 300
     },
+    "api/revise.js": {
+      "maxDuration": 300
+    },
     "api/pull-trends.js": {
       "maxDuration": 60
     },

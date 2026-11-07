@@ -1,0 +1,58 @@
+{
+  "mutations": [
+    {
+      "id": "T1",
+      "finding": "v714-matcher",
+      "file": "app.html",
+      "find": "  if (back >= win.hits) return -1;",
+      "replace": "  if (false) return -1;",
+      "gate": "tp-fixes-v714.mjs",
+      "why": "no stale guard: a re-delivered 'cup' jumps to the next 'cup'"
+    },
+    {
+      "id": "T2",
+      "finding": "v714-matcher",
+      "file": "app.html",
+      "find": "    if (dist >= TP_NEAR && a.run < TP_FAR_RUN) continue;",
+      "replace": "    if (false) continue;",
+      "gate": "tp-fixes-v714.mjs",
+      "why": "far candidates no longer need 3 words in a row"
+    },
+    {
+      "id": "T3",
+      "finding": "v714-matcher",
+      "file": "app.html",
+      "find": "  const TP_NEAR = 12, TP_BACK = 12, TP_FAR_RUN = 3;",
+      "replace": "  const TP_NEAR = 40, TP_BACK = 12, TP_FAR_RUN = 3;",
+      "gate": "tp-fixes-v714.mjs",
+      "why": "the near window grows to 40 words"
+    },
+    {
+      "id": "T4",
+      "finding": "v714-matcher",
+      "file": "app.html",
+      "find": "  const TP_NEAR = 12, TP_BACK = 12, TP_FAR_RUN = 3;",
+      "replace": "  const TP_NEAR = 12, TP_BACK = 12, TP_FAR_RUN = 1;",
+      "gate": "tp-fixes-v714.mjs",
+      "why": "one word counts as a sequence"
+    },
+    {
+      "id": "T5",
+      "finding": "v714-timer",
+      "file": "app.html",
+      "find": ".teleprompter-overlay.recording .tp-rec-timer { left: 16px; right: auto; top: 19px; z-index: 9; pointer-events: none; }",
+      "replace": ".teleprompter-overlay.recording .tp-rec-timer { top: 19px; z-index: 9; pointer-events: none; }",
+      "gate": "tp-fixes-v714.mjs",
+      "why": "the timer goes back to the right, over Mark done"
+    },
+    {
+      "id": "T6",
+      "finding": "v714-timer",
+      "file": "app.html",
+      "find": ".teleprompter-overlay.recording .teleprompter-top { position: relative; z-index: 8; }",
+      "replace": ".teleprompter-overlay.recording .teleprompter-top { position: relative; }",
+      "gate": "tp-fixes-v714.mjs",
+      "why": "the bar falls under the full-screen script; Mark done can't be tapped"
+    }
+  ]
+}

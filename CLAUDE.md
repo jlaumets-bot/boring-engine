@@ -2,6 +2,26 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-07 — v714. HYBRID MAIN SCREEN: Grok-chat base + Shazam paste button + Granola list (owner picked from 3 mockups).
+
+Owner now uses ONLY "Make it yours". Mockups: cloud /mnt/user-data/outputs/design-options/ (A/B/C + H-hybrid.png). Contract .unlazy/hybrid/CONTRACT.md.
+- View 'create' = hybrid: H1 big round "Paste a TikTok" (clipboard.readText; denied → focus input), "New from your creators"
+  calm list (Today/Yesterday ≤4, "N× usual", "Words ready"), "+ Add creator" under 5 (empty state one line), bottom input.
+  H2 thread: link bubble → transcript card → 6 twist pills (ALL call /api/remix, incl. My take; opinion-first My take still
+  in Classic) → "Your version" blocks (each pick adds one) → sticky [Film it][copy] above "Ask for changes…".
+  H3: /api/revise → v2.. with version toggle + server note. Thread per brand in localStorage (restore never fetches);
+  brand switch clears (seq + brandGate). Row-pick late words dropped if a newer thread started; paste blocked while a row reads.
+  Old layout = "Classic Make it yours" in the menu. tvOpenTeleprompter takes an optional script (Film it reuses it).
+- api/revise.js (new): auth + brand access like remix; charged as one 'remix' (1 credit) on success only; holds released on
+  every path; remix's normaliser/guards via remix.js `_shape` export; instruction/source tagged as data; series ≤12 parts,
+  40k chars; refused asks → top-level `note`. maxDuration 300.
+- api/_write.js guardPost: no-sell cut runs BEFORE the fact guard; a selling [your story: …] slot is removed (all writers).
+- Teleprompter: timer no longer covers Mark done (Mark done/Close were also untappable); voice matcher = nearest match within
+  12 words, far jumps need 3 consecutive words, said words never move it. Declutter: screen words 147 → 53; creator cards 112px.
+Gates: hybrid-v714 (13 mutations), revise-v714 (10), tp-fixes-v714 (6), myours-clean-v714 (7). Independent review: no blockers; fixed.
+NOT DONE: app-wide hybrid style (owner asked: chat for creating, Granola list for browsing) — mockups next. index.html v714 hero
+still uncommitted, waiting for owner's "ship".
+
 ## ▶▶ 2026-11-04 — v713. "REMIX" IS NOW "MAKE IT YOURS" (owner picked it; "remix" read as copying, needs to be ad-friendly).
 
 - CS_REMIX_NAME = 'Make it yours'; 44 visible app strings renamed (default mode "Remix" → "My take", "Remix Mode" → "Pick an angle",

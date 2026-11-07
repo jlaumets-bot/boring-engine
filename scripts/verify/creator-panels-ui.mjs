@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// GATE (creator-panels, owner 2026-10-04): "Creators you follow" panels at the bottom of Remix. EXECUTED —
+// GATE (creator-panels, owner 2026-10-04; v714 big cards): "Creators you follow" on "Make it yours". EXECUTED —
+// v714 (owner: "the boxes who I follow maybe bigger"): the panels became big tap-to-open cards (initial circle,
+// @handle, one-line note), sit directly under the "New from your creators" feed, Edit / Remove moved into a "⋯"
+// menu, no "Add why you follow them" / help paragraph. The checks below were updated for that; the rest stand.
 // the real functions lifted from app.html run in node:vm against a fake DOM and a fake save path.
 //   1  the old "Borrow from" strip is gone (HTML, JS, CSS); the panels sit at the bottom of Remix and
 //      re-render when Remix opens and whenever Bookmarks change.
@@ -97,21 +100,28 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
 (async () => {
   // ═══ 1. the old strip is gone; the panels are at the bottom of Remix ═══
   ok(!/remixBorrowStrip|renderRemixBorrowStrip|_borrowCreators|openBorrow|borrow-chip|borrow-row|borrow-empty|remix-borrow-strip/.test(html), '1 the old "Borrow from" strip is gone (HTML, JS and CSS)');
-  { const v = html.indexOf('<div class="view" id="view-create">'), r = html.indexOf('<div id="remixResults"></div>', v), f = html.indexOf('<div id="followPanels" class="fp-wrap"></div>', v), end = html.indexOf('<!-- /view-create -->', v);
-    ok(v > 0 && r > v && f > r && f < end && (html.match(/id="followPanels"/g) || []).length === 1, '1 the panels sit once, at the bottom of the Remix screen (after the results)'); }
+  { const v = html.indexOf('<div class="view" id="view-create">'), CF = '<div id="creatorFeed" class="cf-wrap"></div>', cf = html.indexOf(CF, v), f = html.indexOf('<div id="followPanels" class="fp-wrap"></div>', v), q = html.indexOf('<div id="remixQuick"', v);
+    ok(v > 0 && cf > v && f > cf && f < q && html.slice(cf + CF.length, f).replace(/<!--[\s\S]*?-->/g, '').trim() === '' && (html.match(/id="followPanels"/g) || []).length === 1,
+      '1 (v714) the cards sit once, directly under the "New from your creators" feed, above the paste box'); }
   ok(/else if\(view==='create'\) \{[^\n]*renderFollowPanels\(\)/.test(html) && /renderFollowPanels\(\)/.test(grab('rerenderBookmarks')), '1 they render when Remix opens and whenever Bookmarks change');
 
   // ═══ 2. one panel per creator; TikTok first; https only; name-only → Add link ═══
   reset(seed());
   const ps = panels();
-  ok(/Creators you follow/.test(P()) && ps.length === 6 && /\+ Add creator/.test(ps[5]), '2 five creator panels + the "+ Add creator" panel (' + ps.length + ')');
-  ok(ps[0].includes('href="https://www.tiktok.com/@ann"') && /fp-b-tt">TikTok</.test(ps[0]) && ps[0].includes('target="_blank" rel="noopener noreferrer"') && />Ann</.test(ps[0]),
-    '2 a creator with TikTok + Instagram + YouTube opens TikTok, badge "TikTok", new tab, noopener');
-  ok(ps[1].includes('href="https://www.instagram.com/bee"') && />Instagram</.test(ps[1]), '2 without TikTok, the next link (Instagram) is used, as the profile');
-  ok(!/href=/.test(ps[2]) && /onclick="fpEditOpen\(2\)">Add link</.test(ps[2]), '2 a creator saved by name only shows "Add link" instead of opening');
-  ok(!/javascript:/i.test(ps[3]) && !/http:\/\/dee/.test(ps[3]) && ps[3].includes('href="https://dee.example.com"') && />Website</.test(ps[3]), '2 javascript: is never opened; a saved http:// link opens upgraded to https://');
-  ok(/>Best hooks in my niche</.test(ps[0]) && /onclick="fpEditOpen\(1\)">Add why you follow them</.test(ps[1]), '2 the note shows; without one a faint "Add why you follow them" opens the editor');
-  ok(ps.slice(0, 5).every((p, i) => p.includes('onclick="fpEditOpen(' + i + ')" aria-label="Edit') && p.includes('onclick="fpRemove(' + i + ')"')), '2 every panel has Edit and Remove');
+  ok(/Creators you follow/.test(P()) && ps.length === 6 && /Add creator/.test(ps[5]) && /class="fp-add-btn" onclick="fpAddOpen\(\)"/.test(ps[5]), '2 five creator cards + the "+ Add creator" card (' + ps.length + ')');
+  ok(ps[0].includes('href="https://www.tiktok.com/@ann"') && /class="fp-handle">@ann</.test(ps[0]) && /class="fp-av" aria-hidden="true">A</.test(ps[0]) && ps[0].includes('target="_blank" rel="noopener noreferrer"') && /aria-label="Open Ann on TikTok"/.test(ps[0]),
+    '2 a creator with TikTok + Instagram + YouTube opens TikTok (@handle, initial circle), new tab, noopener');
+  ok(ps[1].includes('href="https://www.instagram.com/bee"') && /class="fp-handle">@bee</.test(ps[1]) && /aria-label="Open Bee on Instagram"/.test(ps[1]), '2 without TikTok, the next link (Instagram) is used, as the profile');
+  ok(!/href=/.test(ps[2]) && /<button type="button" class="fp-open" onclick="fpEditOpen\(2\)"/.test(ps[2]) && /class="fp-handle">Cee</.test(ps[2]) && /Add their link/.test(ps[2]), '2 a creator saved by name only: the card opens the editor ("Add their link") instead of a page');
+  ok(!/javascript:/i.test(ps[3]) && !/http:\/\/dee/.test(ps[3]) && ps[3].includes('href="https://dee.example.com"') && /on Website"/.test(ps[3]) && /class="fp-handle">Dee</.test(ps[3]), '2 javascript: is never opened; a saved http:// link opens upgraded to https://');
+  ok(/class="fp-note">Best hooks in my niche</.test(ps[0]) && !/fp-note/.test(ps[1]) && !/Add why you follow them/.test(P()), '2 (v714) the note shows; without one the card shows no extra words');
+  ok(ps.slice(0, 5).every((p, i) => p.includes('onclick="fpMenuToggle(' + i + ')" aria-haspopup="menu" aria-expanded="false"') && !/>Edit</.test(p) && !/>Remove</.test(p)),
+    '2 (v714) Edit / Remove are not visible text buttons: every card has a "⋯" menu');
+  c.fpMenuToggle(1);
+  { const p1 = panels()[1];
+    ok(/role="menu"/.test(p1) && /role="menuitem" onclick="fpEditOpen\(1\)">Edit</.test(p1) && /role="menuitem" class="fp-menu-danger" onclick="fpRemove\(1\)">Remove</.test(p1) && /aria-expanded="true"/.test(p1) && !/role="menu"/.test(panels()[0]),
+      '2 (v714) "⋯" opens Edit / Remove on that card only'); }
+  c.fpMenuToggle(1); ok(!/role="menu"/.test(P()), '2 (v714) a second tap on "⋯" closes it');
 
   // ═══ 3. escaping ═══
   ok(!P().includes('<img') && !P().includes('<script') && ps[4].includes('&lt;img src=x onerror=alert(1)&gt;') && ps[4].includes('&quot;&gt;&lt;script&gt;alert(2)&lt;/script&gt; &amp; more'),
@@ -139,7 +149,7 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
     '5 changing the link replaces the shown one (others kept); a long note is cut to 140 (' + J(ent('e2').links) + ')');
   c.fpEditOpen(0); els.fpEditNote.value = '   ';
   c.fpSaveEdit(); await tick();
-  ok(!('note' in ent('e1')) && ent('e1').links.tt === 'https://www.tiktok.com/@ann' && /Add why you follow them/.test(panels()[0]), '5 clearing the note removes it; the link stays');
+  ok(!('note' in ent('e1')) && ent('e1').links.tt === 'https://www.tiktok.com/@ann' && !/fp-note/.test(panels()[0]), '5 clearing the note removes it; the link stays');
 
   // ═══ 5. + Add creator ═══
   c.fpAddOpen();
@@ -151,9 +161,9 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
   { const n = c.bookmarkCategories[0].entries.slice(-1)[0];
     ok(n.name === 'newguy' && J(n.links) === J({ yt: 'https://www.youtube.com/@newguy' }) && n.note === 'Explains things simply' && /^bm_/.test(n.id) && saves.length === 4,
       '5 it is saved into the first category, named from the link, with the note (' + J(n) + ')'); }
-  ok(panels().length === 7 && />newguy</.test(panels()[3]) && panels()[3].includes('href="https://www.youtube.com/@newguy"') && />YouTube</.test(panels()[3]) && /\+ Add creator/.test(panels()[6]), '5 the new panel appears; "+ Add creator" stays last');
+  ok(panels().length === 7 && />@newguy</.test(panels()[3]) && panels()[3].includes('href="https://www.youtube.com/@newguy"') && /on YouTube"/.test(panels()[3]) && /Add creator/.test(panels()[6]), '5 the new card appears; "+ Add creator" stays last');
   reset([]);
-  ok(/Save the creators you learn from/.test(P()) && panels().length === 1, '5 with nobody saved yet: a one-line hint and the add panel');
+  ok(!/Save the creators you learn from/.test(P()) && panels().length === 1 && /Add creator/.test(panels()[0]), '5 (v714) with nobody saved yet: just the add card, no help paragraph');
   c.fpAddOpen(); els.fpAddLink.value = 'http://instagram.com/foo';
   c.fpAdd(); await tick();
   ok(c.bookmarkCategories.length === 1 && c.bookmarkCategories[0].name === 'Following' && J(c.bookmarkCategories[0].entries[0].links) === J({ ig: 'https://instagram.com/foo' }) && !('note' in c.bookmarkCategories[0].entries[0]),
@@ -161,10 +171,10 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
 
   // ═══ 5. remove (asked on the panel itself — no window.confirm) ═══
   reset(seed());
-  ok(c.fpRemove(1) === false && ent('e2') && saves.length === 0 && confirms.length === 0 && /Remove from this list\?/.test(panels()[1])
+  ok(c.fpRemove(1) === false && ent('e2') && saves.length === 0 && confirms.length === 0 && />Remove\?</.test(panels()[1])
     && /onclick="fpRemove\(1\)" aria-label="Yes, remove Bee">Remove</.test(panels()[1]) && /onclick="fpCancel\(\)">Keep</.test(panels()[1]), '5 the first Remove asks on the panel (Remove · Keep), no browser pop-up');
   c.fpCancel();
-  ok(ent('e2') && saves.length === 0 && !/Remove from this list/.test(P()), '5 "Keep" keeps them');
+  ok(ent('e2') && saves.length === 0 && !/>Remove\?</.test(P()), '5 "Keep" keeps them');
   c.fpRemove(1);
   ok(c.fpRemove(1) === true && !ent('e2') && saves.length === 1 && confirms.length === 0, '5 the second Remove removes them and saves'); await tick();
   ok(panels().length === 5 && !/>Bee</.test(P()), '5 the panel is gone');
@@ -191,11 +201,14 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
     ok(used.length && used.every(v => dark.includes(v + ':')), '8 every token has a dark-mode value (' + used.join(' ') + ')');
     const rule = s => (css.find(r => r.sel === s) || {}).body || '';
     const widths = css.flatMap(r => [...r.body.matchAll(/(?:^|;)\s*(?:min-|max-|flex-basis:|flex:0 0 )?width:\s*(\d+)px|flex:0 0 (\d+)px|flex-basis:(\d+)px/g)].map(m => Number(m[1] || m[2] || m[3])));
-    ok(/overflow-x:auto/.test(rule('.fp-row')) && /display:flex/.test(rule('.fp-row')) && /max-width:100%/.test(rule('.fp-row')) && /max-width:100%/.test(rule('.fp-wrap')),
-      '8 the row scrolls sideways inside itself; the wrapper never grows past the screen');
+    const grid = (/#view-create #followPanels \.fp-row\{([^}]*)\}/.exec(html) || [])[1] || '';
+    ok(/display:grid !important/.test(grid) && /repeat\(auto-fill,minmax\(150px,1fr\)\) !important/.test(grid) && /max-width:100%/.test(rule('.fp-row')) && /max-width:100%/.test(rule('.fp-wrap')),
+      '8 (v714) the cards wrap in a grid (2 a row at 375 px: 2×150+10 ≤ 343, 3 do not fit); the wrapper never grows past the screen');
     ok(widths.length >= 2 && widths.every(w => w <= 343) && /max-width:80vw/.test(rule('.fp-panel')), '8 every panel fits a 375 px screen with 16 px gutters (' + widths.join(',') + ' px)');
-    ok(/position:relative/.test(rule('.fp-panel')) && /inset:0/.test(rule('.fp-open::after')) && /z-index:1/.test(rule('.fp-tools')) && /z-index:1/.test(rule('.fp-ghost')),
-      '8 the whole panel is the tap target; Edit / Remove / note sit above it'); }
+    const card = (/#followPanels \.fp-card \.fp-open,#followPanels \.fp-add \.fp-add-btn\{([^}]*)\}/.exec(html) || [])[1] || '';
+    const more = (/#followPanels \.fp-more\{([^}]*)\}/.exec(html) || [])[1] || '';
+    ok(/position:relative/.test(rule('.fp-panel')) && /width:100%/.test(card) && /min-height:112px/.test(card) && /position:absolute/.test(more) && /z-index:2/.test(more) && /width:44px/.test(more) && /height:44px/.test(more),
+      '8 (v714) the whole card is the tap target; the 44 px "⋯" sits above it'); }
 
   // ═══ 9. Open → the PROFILE; the note: 2 lines, one tap to edit ═══
   { const T = [
@@ -217,12 +230,12 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
     { id: 'v1', name: 'Vid', links: { tt: 'https://www.tiktok.com/@vidguy/video/7312345678901234567' }, note: 'Long note '.repeat(13).trim() },
     { id: 'v2', name: 'Old', links: { yt: 'https://www.youtube.com/@old' } } ] }]);
   { const ps2 = panels();
-    ok(ps2[0].includes('href="https://www.tiktok.com/@vidguy"') && !ps2[0].includes('/video/') && ps2[0].includes('target="_blank" rel="noopener noreferrer"') && /<span class="fp-go" aria-hidden="true">Open ↗<\/span>/.test(ps2[0]),
-      '9 a TikTok VIDEO link opens the creator\'s profile in a new tab, with a visible "Open"');
-    ok(/<button type="button" class="fp-notebtn" onclick="fpEditOpen\(0\)"[^>]*><span class="fp-note">Long note/.test(ps2[0]), '9 the note sits under the name and one tap on it opens the editor');
-    ok(!('note' in ent('v2')) && /Add why you follow them/.test(ps2[1]) && ps2[1].includes('href="https://www.youtube.com/@old"'), '9 an old entry without a note still renders and opens');
-    const note = (/^\s*\.fp-note\{([^}]*)\}/m.exec(html) || [])[1] || '';
-    ok(/-webkit-line-clamp:2/.test(note) && /overflow:hidden/.test(note) && /display:-webkit-box/.test(note), '9 the note is clamped to 2 lines');
+    ok(ps2[0].includes('href="https://www.tiktok.com/@vidguy"') && !ps2[0].includes('/video/') && ps2[0].includes('target="_blank" rel="noopener noreferrer"') && /class="fp-handle">@vidguy</.test(ps2[0]),
+      '9 a TikTok VIDEO link opens the creator\'s profile in a new tab; the card shows @vidguy');
+    ok(/<span class="fp-handle">@vidguy<\/span><span class="fp-note">Long note/.test(ps2[0]) && /title="Long note[^"]*Open on TikTok"/.test(ps2[0]), '9 (v714) the note sits under the handle (the full note is the tooltip)');
+    ok(!('note' in ent('v2')) && !/fp-note/.test(ps2[1]) && ps2[1].includes('href="https://www.youtube.com/@old"'), '9 an old entry without a note still renders and opens');
+    const note = (/#followPanels \.fp-card \.fp-note\{([^}]*)\}/.exec(html) || [])[1] || '';
+    ok(/white-space:nowrap/.test(note) && /overflow:hidden/.test(note) && /text-overflow:ellipsis/.test(note), '9 (v714) the note is ONE line with an ellipsis');
     c.fpEditOpen(0);
     ok(els.fpEditLink.value === 'https://www.tiktok.com/@vidguy/video/7312345678901234567', '9 editing keeps the saved link as it was (only Open is turned into the profile)'); c.fpCancel(); }
   { const blk = between('// ===== follow-panels:', '\nfunction saveBookmarks() {');
@@ -235,7 +248,7 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
     { id: 'h2', name: 'Http', links: { ig: 'http://instagram.com/httpguy' } },
     { id: 'h3', name: 'Bad', links: { tt: 'javascript:alert(1)', yt: 'not a link at all' } } ] }]);
   { const ps3 = panels();
-    ok(ps3[0].includes('href="https://www.tiktok.com/@plain"') && ps3[1].includes('href="https://www.instagram.com/httpguy"') && !/href=/.test(ps3[2]) && /Add link/.test(ps3[2]),
+    ok(ps3[0].includes('href="https://www.tiktok.com/@plain"') && ps3[1].includes('href="https://www.instagram.com/httpguy"') && !/href=/.test(ps3[2]) && /Add their link/.test(ps3[2]),
       '11 a scheme-less or http:// saved link opens (as https, as the profile); junk still shows "Add link"'); }
   // the one link box never silently overwrites a different platform's saved link
   reset([{ id: 'c1', name: 'H', entries: [{ id: 'm1', name: 'Multi', links: { tt: 'https://www.tiktok.com/@a', ig: 'https://instagram.com/b' } }] }]);
@@ -255,11 +268,11 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
   ok(/fp-editing/.test(panels()[0]) && />Bee</.test(panels()[0]) && !/fp-editing/.test(panels()[1]), '11 after a reload moves the entries, the editor stays on the same creator');
   c.fpCancel(); c.fpRemove(0);   // arms Bee (slot 0 now)
   c.bookmarkCategories[0].entries.unshift({ id: 'z0', name: 'Zed', links: {} }); c.renderFollowPanels();
-  ok(/Remove from this list\?/.test(panels()[1]) && />Bee</.test(panels()[1]) && !/Remove from this list/.test(panels()[0]), '11 the "Remove?" question moves with the creator');
+  ok(/>Remove\?</.test(panels()[1]) && />@bee</.test(panels()[1]) && !/>Remove\?</.test(panels()[0]), '11 the "Remove?" question moves with the creator');
   ok(c.fpRemove(0) === false && ent('z0') && ent('e2') && saves.length === 0,
     '11 a "Remove?" armed on one creator never removes whoever moves into that slot');
   c.bookmarkCategories = [{ id: 'k9', name: 'Other brand', entries: [{ id: 'q1', name: 'Q', links: {} }] }]; c.renderFollowPanels();
-  ok(!/fp-editing|Remove from this list/.test(P()) && vm.runInContext('_fpEdit === "" && _fpConfirm === ""', c), '11 a brand switch / reload without that creator clears the state');
+  ok(!/fp-editing|>Remove\?</.test(P()) && vm.runInContext('_fpEdit === "" && _fpConfirm === ""', c), '11 a brand switch / reload without that creator clears the state');
 
   // ═══ 10. the note in Bookmarks (Settings) and in the Bookmarks sheet ═══
   reset(seed()); host('bmContainer'); saves = [];
@@ -274,7 +287,7 @@ const ent = id => c.bookmarkCategories.flatMap(k => k.entries).find(e => e.id ==
     els.bmLink_e2_yt.value = 'https://youtube.com/@bee'; els.bmLink_e2_ig.value = 'https://instagram.com/bee';
     c.saveBmLinks('c1', 'e2'); await tick();
     ok(ent('e2').note === 'Short videos, sharp hooks' && saves.length === 1 && JSON.parse(saves[0].rows[0].notes)[0].entries[1].note === 'Short videos, sharp hooks', '10 saving there stores the tidied note on the entry, through the same save');
-    ok(/>Short videos, sharp hooks</.test(panels()[1]), '10 and the Remix panel shows it at once');
+    ok(/>Short videos, sharp hooks</.test(panels()[1]), '10 and the Remix card shows it at once');
     c.editBmLinks('c1', 'e2'); els.bmNote_e2.value = 'z'.repeat(300); c.saveBmLinks('c1', 'e2'); await tick();
     ok(ent('e2').note.length === 140, '10 a long note is cut to 140 there too');
     c.editBmLinks('c1', 'e2'); els.bmNote_e2.value = ''; c.saveBmLinks('c1', 'e2'); await tick();
