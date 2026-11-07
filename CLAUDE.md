@@ -2,6 +2,18 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-07 — v717. APP-WIDE STYLE, PHASES 2+3: Trends, What people search, Notebook, Creators, Settings, Coach.
+- Trends / What people search / Notebook = calm lists (shared aw-*); a row tap opens the MAIN CHAT as a typed idea (idea pills;
+  a search question highlights Q&A). NOTHING is sent until a pill is picked. Secondary actions in row/header ⋯; every list ⋯ has
+  "Classic view" (old screen whole; resets on screen change).
+- Creators: ≤5 TikTok rows with feed stats + "N spots left"; all other bookmark categories under "Other bookmarks"; edit/remove
+  keep other categories intact. Settings: one page of rows (Brand/Content/Account) opening the old panel sections; "All settings";
+  desktop sub-pages get "‹ Settings". Coach: shared chat look + brand-brain strip; send/mic paths unchanged.
+- Notebook: new "edit note" via saveNotebookToDB (live list); Esc on unsaved edit asks "Discard changes?". Desktop Esc closes ⋯ first;
+  arrow-key guard skips the new lists.
+Gate appwide-p23-v717 (120 checks, 18 mutations). Review: no blockers; 4 nits fixed.
+Server wishes: notebook voice-length + "used in a post" columns (per device today); per-brand "answered" flag for search questions.
+
 ## ▶▶ 2026-11-07 — v716. APP-WIDE STYLE, PHASE 1: Ideas, Idea detail, Pipeline, typed ideas, menu (owner approved sheet).
 Mockups: cloud /mnt/user-data/outputs/design-options/appwide/. Two patterns: CHAT (create) / CALM LIST (browse). Shared aw-* CSS.
 - Ideas: calm list Today/This week/Earlier (grouping = device first-seen time; ideas.created_at is the LAST SAVE because every save

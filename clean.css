@@ -1988,6 +1988,148 @@ body[data-aw-detail] .aw-dock { padding-bottom: max(16px, env(safe-area-inset-bo
 #desktopSidebar .ds-fold { color: var(--cs-muted); }
 #desktopSidebar .ds-classic .ds-item { color: var(--cs-muted); }
 
+/* ============ v717 APP-WIDE phases 2+3 — Trends, What people search, Notebook, Creators (calm lists), Settings (one page of rows),
+   Coach (the shared chat look). Mockups design-options/appwide/ 5–10. REUSES the v716 pieces (.aw-gh .aw-row .aw-rt .aw-rm .aw-tag
+   .aw-fab .aw-bar .aw-film .aw-sq .aw-pill .hy-menu .hy-dots); only what they lack is added here (.aw2-*). Tokens only.
+   Gate: scripts/verify/appwide-p23-v717.mjs ---- */
+/* the old screens stay in the page, hidden, unless "Classic view" is on for that screen */
+body.aw-on:not([data-aw2-classic="viral"]) #view-viral > :not(#awTrends),
+body.aw-on:not([data-aw2-classic="questions"]) #view-questions > :not(#awSearch),
+body.aw-on:not([data-aw2-classic="notebook"]) #view-notebook > :not(#awNotes),
+body.aw-on #view-bookmarks > :not(#awCreators) { display: none !important; }
+body.aw-on:not([data-aw2-classic])[data-csx-md="notebook"] #csxDetail, body.aw-on[data-csx-md="bookmarks"] #csxDetail { display: none !important; }
+body.aw-on[data-cs-view="viral"] #mainViews > .footer, body.aw-on[data-cs-view="questions"] #mainViews > .footer,
+body.aw-on[data-cs-view="notebook"] #mainViews > .footer, body.aw-on[data-cs-view="bookmarks"] #mainViews > .footer { display: none; }
+body.aw-on[data-cs-view="viral"] #view-viral, body.aw-on[data-cs-view="questions"] #view-questions,
+body.aw-on[data-cs-view="notebook"] #view-notebook, body.aw-on[data-cs-view="bookmarks"] #view-bookmarks { padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important; }
+/* the dock (floating pill / the note's sticky bar) on these four screens too */
+body.aw-on[data-cs-view="viral"] .aw-dock, body.aw-on[data-cs-view="questions"] .aw-dock,
+body.aw-on[data-cs-view="notebook"] .aw-dock, body.aw-on[data-cs-view="bookmarks"] .aw-dock { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 150;
+  box-sizing: border-box; padding: 0 16px max(24px, env(safe-area-inset-bottom)); pointer-events: none; }
+body[data-aw2-classic] .aw-dock { display: none !important; }
+body[data-aw2-detail] .aw-dock { padding-bottom: max(16px, env(safe-area-inset-bottom)); background: var(--cs-bg); pointer-events: auto; }
+@media (min-width: 900px) {
+  body.aw-on[data-cs-view="viral"] .aw-dock, body.aw-on[data-cs-view="questions"] .aw-dock,
+  body.aw-on[data-cs-view="notebook"] .aw-dock, body.aw-on[data-cs-view="bookmarks"] .aw-dock { left: 260px; }
+}
+.aw-fab.aw2-full { opacity: .55; }
+/* rows: a ⋯ per row, its menu opens under the row; two-line notes; the "Answered" mark; the voice mark */
+.aw2-row .aw-acts { align-self: center; }
+.aw2-row .aw-ib svg { width: 20px; height: 20px; }
+.aw2-row .aw-acts .aw-ib svg, .aw2-crow .aw-acts .aw-ib svg { box-sizing: content-box; padding: 0; border: 0; }
+.aw2-menu a { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; font-size: 16px; color: var(--cs-text); text-decoration: none; }
+.aw2-menu a:hover, .aw2-menu a:focus-visible { background: var(--cs-chip); outline: none; }
+.aw2-menu .aw2-ask { color: var(--cs-text); font-weight: 600; }
+.aw2-rmenu { position: relative; top: auto; right: auto; z-index: 30; align-self: flex-end; margin: -4px 0 8px auto; width: max-content; max-width: 100%; box-sizing: border-box; }
+.aw2-dmenu { right: 4px; top: 48px; }
+.aw2-spmenu { right: 4px; top: 48px; }
+.aw2-nrow { cursor: pointer; }
+.aw2-nt { font-weight: 400; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.aw2-done { display: inline-flex; align-items: center; gap: 6px; }
+.aw2-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--cs-ok); }
+.aw2-voice { display: inline-flex; align-items: center; gap: 4px; }
+.aw2-voice svg { width: 15px; height: 15px; }
+.aw2-go svg { width: 20px; height: 20px; }
+.aw2-back { margin: 4px 0 8px; }
+/* Creators: initial circle + note line */
+.aw2-crow { align-items: flex-start; }
+.aw2-crow .aw-go { align-self: center; }
+.aw2-av { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin-top: 2px; border-radius: 20px; box-sizing: border-box;
+  background: var(--cs-chip); border: 1px solid var(--cs-line-strong); font-size: 15px; font-weight: 600; color: var(--cs-text); }
+.aw2-d { display: block; margin-top: 3px; font-size: 14px; line-height: 1.4; color: var(--cs-muted); overflow-wrap: anywhere; }
+.aw2-left { padding-top: 18px; }
+/* forms: add creator, new note's header, editing a note */
+.aw2-add { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
+.aw2-in, .aw2-ta { width: 100%; box-sizing: border-box; min-height: 48px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--cs-line-strong); background: var(--cs-input);
+  color: var(--cs-text); font: inherit; font-size: 16px; }
+.aw2-ta { min-height: 140px; padding: 12px 16px; line-height: 1.5; resize: vertical; margin-top: 12px; }
+.aw2-in::placeholder, .aw2-ta::placeholder { color: var(--cs-muted); opacity: 1; }
+.aw2-err { min-height: 0; font-size: 14px; color: var(--cs-text); }
+.aw2-err:empty { display: none; }
+.aw2-ed { display: flex; gap: 10px; margin-top: 10px; }
+.aw2-ed .aw-film { flex: 1; }
+.aw2-ed .aw-pill { flex: none; padding: 0 20px; }
+.aw2-caph { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 0; font-size: 14px; font-weight: 500; color: var(--cs-muted); }
+.aw2-cap { margin-top: 8px; }
+.aw2-cap .nb-capture { margin: 0; }
+.aw2-ndmeta { margin-top: 0; }
+.aw2-ntext { margin-top: 14px; font-size: 18px; line-height: 1.5; }
+body[data-aw2-detail="notebook"] #awNotes { padding-top: 0; }
+/* Settings: one page, grouped quiet rows with a value and a chevron; legal links + version in the footer */
+#settingsOverlay.aw2-sp-main { padding: 0 16px calc(32px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.aw2-sp { position: relative; max-width: 760px; margin: 0 auto; padding: 0 4px; }
+.aw2-sptop { display: flex; align-items: center; justify-content: space-between; min-height: 52px; margin: 0 -10px 0 -12px; }
+.aw2-srow { min-height: 52px; padding: 0; cursor: pointer; }
+.aw2-ic { flex: none; display: flex; color: var(--cs-muted); }
+.aw2-lb { flex: 1; min-width: 0; font-size: 16px; color: var(--cs-text); }
+.aw2-v { flex: none; max-width: 52%; font-size: 15px; color: var(--cs-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aw2-tgrow { cursor: pointer; }
+.aw2-tog { -webkit-appearance: none; appearance: none; flex: none; position: relative; width: 46px; height: 28px; margin: 0; border-radius: 14px; border: 1px solid var(--cs-line-strong);
+  background: var(--cs-chip); cursor: pointer; transition: background .15s ease; }
+.aw2-tog::after { content: ''; position: absolute; left: 3px; top: 50%; width: 22px; height: 22px; margin-top: -11px; border-radius: 11px; background: var(--cs-muted); transition: left .15s ease, background .15s ease; }
+.aw2-tog:checked { background: var(--cs-primary); border-color: var(--cs-primary); }
+.aw2-tog:checked::after { left: 19px; background: var(--cs-on-primary); }
+.aw2-tog:focus-visible, .aw2-srow:focus-visible, .aw2-chip:focus-visible { outline: 2px solid var(--cs-text); outline-offset: 2px; }
+.aw2-foot { padding: 20px 0 8px; text-align: center; font-size: 14px; color: var(--cs-muted); }
+.aw2-foot a { color: var(--cs-muted); text-decoration: none; }
+.aw2-foot a:hover { color: var(--cs-text); }
+#settingsOverlay .aw2-sp-hide { display: none !important; }
+#settingsOverlay.aw2-sub .sp-tabs, #settingsOverlay.aw2-sub > .csx-subnav { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .aw2-tog, .aw2-tog::after { transition: none; } }
+
+/* Coach (mockup 6): the brand-brain strip, the coach's lines as plain text, your lines as bubbles, a pill input with the mic */
+body.aw-on .bv-overlay .bv-header { border-bottom: 0 !important; background: var(--cs-bg) !important; padding: 10px 16px 6px; }
+body.aw-on .bv-overlay .bv-header-title { font-size: 20px; font-weight: 600; letter-spacing: -.3px; color: var(--cs-text); }
+body.aw-on .bv-overlay .bv-header-sub { font-size: 14px; color: var(--cs-muted); }
+body.aw-on .bv-overlay .bv-manual-link { font-weight: 500 !important; color: var(--cs-muted) !important; text-decoration: none !important; font-size: 14px !important; }
+body.aw-on .bv-overlay .bv-close { background: transparent !important; width: 44px; height: 44px; }
+body.aw-on #bvHome { padding: 0 16px; }
+.aw2-bb { max-width: 760px; margin: 0 auto 6px; box-sizing: border-box; padding: 12px 16px; border-radius: 18px; border: 1px solid var(--cs-line); background: var(--cs-raise); }
+.aw2-bbr { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 15px; font-weight: 500; color: var(--cs-text); }
+.aw2-bbn { font-size: 14px; font-weight: 400; color: var(--cs-muted); }
+.aw2-bar { height: 6px; margin-top: 9px; border-radius: 3px; background: var(--cs-chip); overflow: hidden; }
+.aw2-bar i { display: block; height: 100%; border-radius: 3px; background: var(--cs-text); }
+.aw2-bbc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.aw2-chip { min-height: 44px; height: auto; cursor: pointer; font: inherit; font-size: 14px; }
+body.aw-on .bv-overlay .bv-messages { gap: 8px; padding: 12px 16px; }
+body.aw-on .bv-overlay .bv-msg { max-width: 84%; font-size: 16px; line-height: 1.45; animation: none; }
+body.aw-on .bv-overlay .bv-msg.ai { align-self: stretch; max-width: none; padding: 2px 4px; background: transparent !important; border: 0 !important; border-radius: 0; color: var(--cs-text); }
+body.aw-on .bv-overlay .bv-msg.user { padding: 9px 16px; border-radius: 22px 22px 6px 22px; background: var(--cs-chip) !important; color: var(--cs-text) !important; }
+body.aw-on .bv-overlay .bv-suggestion { margin-top: 10px; padding: 12px 16px; border-radius: 18px; background: var(--cs-raise) !important; border: 1px solid var(--cs-line) !important; }
+body.aw-on .bv-overlay .bv-suggestion-label, body.aw-on .bv-overlay .bv-suggestion-field { font-size: 14px; color: var(--cs-muted); }
+body.aw-on .bv-overlay .bv-suggestion-value { font-size: 16px; font-weight: 400; color: var(--cs-text); }
+body.aw-on .bv-overlay .bv-suggestion-btn { min-height: 44px; padding: 0 16px; border-radius: 999px; font-size: 14px; }
+body.aw-on .bv-overlay .bv-action-btn { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--cs-line-strong) !important; background: var(--cs-chip) !important; color: var(--cs-text) !important; font-size: 15px; font-weight: 500; }
+body.aw-on .bv-overlay .bv-scan-slot { margin: 0 0 6px; padding: 2px 4px; border: 0 !important; border-radius: 0; background: transparent !important; box-shadow: none !important; }
+body.aw-on .bv-overlay .bv-scan-slot-text { margin-bottom: 8px; font-size: 16px; line-height: 1.45; color: var(--cs-text); }
+body.aw-on .bv-overlay .bv-scan-slot-btns { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+body.aw-on .bv-overlay .bv-scan-slot-btns .bv-action-btn { width: auto !important; flex: none; }
+body.aw-on .bv-overlay .bv-input-bar { gap: 6px; margin: 0 16px max(16px, env(safe-area-inset-bottom)); padding: 0 6px 0 16px; height: 56px; box-sizing: border-box; border: 1px solid var(--cs-line-strong) !important;
+  border-radius: 28px; background: var(--cs-input) !important; }
+body.aw-on .bv-overlay .bv-text-input { flex: 1; min-width: 0; height: 44px; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; color: var(--cs-text); font-size: 16px !important; outline: 0; box-shadow: none !important; }
+body.aw-on .bv-overlay .bv-text-input::placeholder { color: var(--cs-muted); opacity: 1; }
+body.aw-on .bv-overlay .bv-text-input:placeholder-shown ~ .bv-send-btn { display: none !important; }
+body.aw-on .bv-overlay .bv-send-btn { width: 44px !important; height: 44px !important; min-height: 44px !important; padding: 0 !important; border-radius: 22px !important; border: 0 !important; flex: none; }
+body.aw-on .bv-overlay .bv-mic-btn { width: 44px !important; height: 44px !important; min-height: 44px !important; padding: 0 !important; border-radius: 22px !important; border: 0 !important; flex: none; transform: none; }
+body.aw-on .bv-overlay .bv-mic-btn svg { width: 22px; height: 22px; }
+@media (min-width: 900px) { body.aw-on .bv-overlay .bv-input-bar { width: auto !important; max-width: 728px; margin-left: auto; margin-right: auto; } }
+
+/* Settings' title row: back · Settings · ⋯ (on a desktop the toolbar above already says Settings and has Close) */
+.aw2-sphead { align-items: center; padding-top: 6px; }
+.aw2-askrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 15px; color: var(--cs-text); }
+.aw2-askrow span { flex: 1; min-width: 120px; }
+.aw2-spdback { display: none; }
+@media (min-width: 900px) { #settingsOverlay.aw2-sub .aw2-spdback, #settingsOverlay .sp-body > .aw2-spdback { display: inline-flex; margin: 0 0 8px; } }
+.aw2-sphead .aw-headtx { flex: 1; }
+.aw2-spback { margin-left: -12px; color: var(--cs-text); }
+.aw2-sphead .aw-dots { margin: 0 -10px 0 0; }
+.aw2-sp .aw2-spmenu { top: 52px; }
+@media (min-width: 900px) {
+  body.aw-on #mainViews > .view.csx-doc > .aw-screen { margin-left: auto !important; margin-right: auto !important; margin-top: 0 !important; }
+  .aw2-spback, .aw2-sphead .aw-title { display: none; }
+  #settingsOverlay.aw2-sp-main { padding-top: 12px; }
+}
+
 /* ============ v714 HYBRID main screen — "Make it yours" (view 'create'), mockup H-hybrid.png. Tokens only. ============
    The old layout (#createRemix) shows only in "Classic Make it yours" (body.hy-classic). Gate: scripts/verify/hybrid-v714.mjs */
 body:not(.hy-classic) #view-create > #createRemix { display: none !important; }
@@ -2863,3 +3005,4 @@ button[style*="background:#E7DAF9" i], a[style*="background:#E7DAF9" i] {
     :root input, :root textarea, :root select, :root .csx-toolbar select { font-size: 16px !important; }
   }
 }
+

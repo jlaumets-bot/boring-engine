@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v716';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v717';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -6359,8 +6359,8 @@ if (!window.supabase) {
 <div class="bv-overlay" id="bvOverlay" style="display:none">
   <div class="bv-header">
     <div class="bv-header-text">
-      <div class="bv-header-title">Brand Voice AI Assistant</div>
-      <div class="bv-header-sub">Build your brand brain — you approve every change</div>
+      <div class="bv-header-title">Coach</div>
+      <div class="bv-header-sub">Talk or type. You approve every change.</div>
       <a class="bv-manual-link" onclick="closeBrandVoice(); if(typeof openBrain==='function') openBrain();" style="display:inline-block;margin-top:5px;font-size:12px;font-weight:700;color:var(--text,#16130F);cursor:pointer;text-decoration:underline">Edit your Voice Memory by hand</a>
     </div>
     <button class="bv-close" onclick="closeBrandVoice()">
@@ -6967,6 +6967,8 @@ if (!window.supabase) {
 
 
   <div class="view" id="view-notebook">
+    <!-- v717: the calm Notebook (aw2Render). The capture box below is MOVED into #awNotesCap while "New note" is open (its mic + save run as before). -->
+    <div class="aw-screen" id="awNotes"><div id="awNotesHead"></div><div id="awNotesCap" class="aw2-cap" hidden></div><div id="awNotesBody"></div></div>
     <div class="nb-header">
       <h2>Brand Notebook</h2>
       <p>Dump any thought about your brand — a line, an observation, a "never say this". Develop it into a post, save it as a voice rule, or just keep it.</p>
@@ -6982,6 +6984,8 @@ if (!window.supabase) {
   </div> <!-- /view-notebook -->
 
   <div class="view" id="view-viral">
+    <!-- v717: the calm Trends list (aw2Render); the old panels below stay in the page (hidden) — pullWebTrends reads #trendPullTopic there -->
+    <div class="aw-screen" id="awTrends"></div>
     <div class="vl-head">
       <h2>Trends</h2>
       <p class="vl-sub">What's rising in your niche, competitor moves, and the trends you teach it — all feeding your ideas.</p>
@@ -7023,6 +7027,7 @@ if (!window.supabase) {
   <div class="view" id="view-idea"></div>
 
   <div class="view" id="view-questions">
+    <div class="aw-screen" id="awSearch"></div><!-- v717: the calm What people search list (aw2Render) -->
     <div id="paaSection"></div>
   </div>
 
@@ -7030,7 +7035,7 @@ if (!window.supabase) {
 
   <div class="view" id="view-today"></div>
 
-  <div class="view" id="view-bookmarks"></div><!-- v703: desktop Bookmarks screen (master-detail); phones keep the sheet -->
+  <div class="view" id="view-bookmarks"></div><!-- v703: desktop Bookmarks screen (master-detail); v717: aw2Render adds the calm Creators list (#awCreators) on every width -->
 
   <div class="footer">Content Shrimp</div>
   <!-- v699: composer pinned at the bottom of Ideas + Quick Post (shown by body[data-cs-view]). csComposerSend routes it. -->
@@ -10388,7 +10393,7 @@ function csNewPost(){ csDrawerClose(); if (typeof hyActive === 'function' && hyA
 // Called by switchView after every screen change: closes the drawer, tells the CSS which screen is up
 // (the composer shows on Ideas and Quick Post only).
 var CS_PAGE_TITLES = { today: 'Quick Post', ideas: 'Ideas', pipeline: 'Pipeline', create: CS_REMIX_NAME, idea: 'Idea Catcher',
-  notebook: 'Notebook', viral: 'Trends', questions: 'What people search' };
+  notebook: 'Notebook', viral: 'Trends', questions: 'What people search', bookmarks: 'Creators' };
 function csShellSync(view){
   try { document.body.setAttribute('data-cs-view', String(view || '')); } catch (e) {}
   try { var _pt = document.getElementById('csPageTitle'); if (_pt) _pt.textContent = CS_PAGE_TITLES[view] || ''; } catch (e) {}
@@ -24689,6 +24694,9 @@ function hyNewThread(src){
     src: { kind: kind, url: String(s.url || ''), creator: String(s.creator || ''), platform: kind === 'youtube' ? 'youtube' : (kind === 'tiktok' ? 'tiktok' : ''),
       text: text, failed: !!s.failed, empty: !text.trim(), note: String(s.note || ''), reading: !!s.reading,
       views: (s.views == null ? null : Number(s.views)), score: (s.score == null ? null : Number(s.score)) } };
+  // v717: a hand-off from a list (Trends, What people search, Notebook) says where it came from (from/label), which pill to
+  // light first (pre, e.g. 'qna' for a search question) and which row it was (ref) — nothing here calls the server
+  if (s.from) { const S = _hy.t.src; S.from = String(s.from).slice(0, 20); S.label = String(s.label || '').slice(0, 80); S.pre = String(s.pre || '').slice(0, 20); S.ref = String(s.ref || '').slice(0, 300); }
   _hy.t.open = !_hy.t.src.reading && kind !== 'text' && _hy.t.src.empty;
   hySave(); hyRender(); hyScrollEnd();
   return true;
@@ -24832,6 +24840,8 @@ function hySelected(){
 function hyThreadHtml(){
   const t = _hy.t, s = t.src, busy = !!_hy.busy;
   let h = '<div class="hy-thread">';
+  if (s.from && s.label) {   // v717: where this idea came from (a list row hand-off)
+    h += '<div class="hy-label hy-from">' + hyE(s.label) + (/^https?:\/\//i.test(safeUrl(s.url)) ? ' · <a class="hy-watch" href="' + escAttr(safeUrl(s.url)) + '" target="_blank" rel="noopener noreferrer">Source ↗</a>' : '') + '</div>'; }
   h += '<div class="hy-me' + (s.kind !== 'text' ? ' hy-me-link' : '') + '">' + hyE(hyBubble(s)) + '</div>';
   if (s.kind !== 'text') {
     h += '<div class="hy-say">' + (s.reading ? 'Getting the words…' : 'Here’s what they said') + '</div>';
@@ -24840,7 +24850,7 @@ function hyThreadHtml(){
   if (!s.reading) {
     const lastB = t.blocks.length ? t.blocks[t.blocks.length - 1] : null;
     h += (s.kind === 'text' ? '<div class="hy-say">Good one. Pick a twist</div>' : '') + '<div class="hy-label">Make it yours</div><div class="hy-grid">'
-      + hyTwists(s).map(m => '<button type="button" class="hy-pill' + (lastB && lastB.twist === m.id ? ' on' : '') + '" data-twist="' + m.id + '"'
+      + hyTwists(s).map(m => '<button type="button" class="hy-pill' + ((lastB ? lastB.twist === m.id : s.pre === m.id) ? ' on' : '') + '" data-twist="' + m.id + '"'
         + (busy ? ' disabled aria-disabled="true"' : '') + ' onclick="hyTwist(\'' + m.id + '\')">' + hyE(m.label) + '</button>').join('') + '</div>';
   }
   const lastIdx = t.blocks.length - 1;
@@ -24905,6 +24915,7 @@ async function hyTwist(mode){
     const v = { result: remix, instruction: '', note: '', at: Date.now() };
     blk.versions.push(v); blk.sel = 0; blk.pendingTwist = false;
     hyKeepRemix(v, mode, t.src);
+    try { if (typeof aw2SrcUsed === 'function') aw2SrcUsed(t.src); } catch (e) {}   // v717
     return true;
   } catch (e) {
     if (seq !== _hy.seq) return false;
@@ -25469,6 +25480,7 @@ function awDockHtml(){
   if (v === 'ideas' && _aw.skipped) return '';
   if (v === 'ideas') return '<button type="button" class="aw-fab" id="awPlan" onclick="awPlanWeek()"' + (_aw.planBusy ? ' disabled aria-busy="true"' : '') + '>' + AW_IC.spark + '<span>' + (_aw.planBusy ? 'Planning your week…' : 'Plan my week') + '</span></button>';
   if (v === 'pipeline' && awFilmNextId() != null) return '<button type="button" class="aw-fab" id="awFilmNext" onclick="awFilmNext()">' + AW_IC.film + '<span>Film next</span></button>';
+  if (typeof aw2DockHtml === 'function') return aw2DockHtml(v);   // v717: Trends, What people search, Notebook, Creators
   return '';
 }
 function awWire(){
@@ -25517,6 +25529,673 @@ function awRender(){
   } catch (e) {}
 });
 // ===== end v716 app-wide =====
+// ===== v717 APP-WIDE phases 2+3 (owner-approved mockups design-options/appwide/ screens 5–10, 2026-11-07) =====
+// Trends (5), What people search (7), Notebook (8) and Creators (9) become CALM LISTS (the v716 .aw-* pieces), Settings (10) one
+// page of grouped rows, Coach (6) the shared chat look. Same rule as phase 1 — PRESENTATION ONLY: every pull / answer / save /
+// add / delete still runs the function it ran before (pullWebTrends, fetchPAAQuestions, paaAnswerV2, nbSaveNote + nbToggleMic,
+// nbDelete, nbDevelopV2, nbSaveAsRule, fpAdd, deleteBmEntry, dismissAutoTrend, removeTrend, remixTopPost, the old Settings panel).
+// A Trends / search / note row opens the MAIN chat (view 'create', the hy* thread) as a typed idea: the idea pills show, nothing
+// is sent until a pill is picked (a search question lights Q&A first). The old markup stays in the page, hidden while body.aw-on,
+// and every screen's header ⋯ has "Classic view" (the old screen, whole), so nothing that was reachable is lost.
+// Gate: scripts/verify/appwide-p23-v717.mjs ("APPWIDE P23 OK").
+const AW2_NB_META = 'cs_nb_meta::';          // per brand, this device: { noteKey: { v: voice seconds, u: 1 = used in a post } }
+const AW2_TREND_GROUPS = ['Rising now', 'This week', 'Earlier'];
+const AW2_NOTE_GROUPS = ['Today', 'Yesterday', 'Earlier this week', 'Earlier'];
+const AW2_SP_SECTIONS = ['brands', 'team', 'mix', 'bookmarks', 'schedule', 'danger', 'daily'];   // one old Settings section each
+const AW2_SP_VOICE = ['brain', 'brand', 'deep', 'tone'];                                         // the old Brand Voice tab
+const AW2_SP_TITLES = { brain: 'Brand brain', brand: 'Brand brain', deep: 'Brand brain', tone: 'Brand brain', brands: 'Brands', team: 'Team', mix: 'Post mix',
+  daily: 'Daily idea', danger: 'Plan and account', bookmarks: 'Bookmarks', schedule: 'Posting target', all: 'All settings' };
+let _aw2 = { view: '', menu: '', items: [], del: '', classic: '', trows: [], qrows: [], nrows: [], crows: [], note: '', edit: false, editVal: '',
+  capOpen: false, ask: false, voice: 0, voiceSecs: 0, adding: false, addVal: '', addNote: '', pulling: false, pullMsg: '', sp: '', spNext: null };
+let _aw2Wired = false;
+const AW2_IC = {
+  chat: _awSv('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z"/>', 20),
+  mic: _awSv('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', 15),
+  plus: _awSv('<path d="M12 5v14M5 12h14"/>', 20),
+  refresh: _awSv('<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>', 20),
+  search: _awSv('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', 20),
+  box: _awSv('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>', 20),
+  users: _awSv('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>', 20),
+  layers: _awSv('<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>', 20),
+  bulb: _awSv('<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>', 20),
+  moon: _awSv('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>', 20),
+  card: _awSv('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>', 20),
+  help: _awSv('<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7M12 17h.01"/>', 20),
+  out: _awSv('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 8l-4 4 4 4M6 12h10"/>', 20),
+  edit: _awSv('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', 18)
+};
+function aw2Brand(){ return (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) ? String(currentBrand.id) : ''; }
+function aw2View(){ return (typeof activeView !== 'undefined') ? activeView : ''; }
+function aw2Clip(s, n){ const t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1).trim() + '…' : t; }
+// "6 h ago" / "3 days" (a row) or "3 days ago" (a header line)
+function aw2Ago(ts, ago, now){
+  const t = Number(ts) || 0; if (!t) return '';
+  const h = Math.max(0, Math.floor(((now == null ? Date.now() : now) - t) / 36e5));
+  if (h < 1) return 'just now';
+  if (h < 24) return h + ' h ago';
+  const d = Math.floor(h / 24); return d + (d === 1 ? ' day' : ' days') + (ago ? ' ago' : '');
+}
+// the screen's title row: title, one quiet line, and the screen's ⋯ (its old tools + "Classic view")
+function aw2Head(title, sub, key, itemsFn){
+  let h = '<header class="aw-head aw-headrow"><div class="aw-headtx"><h1 class="aw-title">' + awE(title) + '</h1>' + (sub ? '<p class="aw-sub">' + awE(sub) + '</p>' : '') + '</div>';
+  if (key) h += '<button type="button" class="hy-dots aw-dots aw2-mbtn" aria-label="' + awE(title + ' tools') + '" aria-haspopup="menu" aria-expanded="' + (_aw2.menu === key ? 'true' : 'false') + '" onclick="event.stopPropagation();aw2Menu(\'' + key + '\')">' + AW_IC.dots + '</button>';
+  return h + '</header>' + (key ? aw2MenuHtml(key, itemsFn, 'aw-imenu') : '');
+}
+// one ⋯ menu at a time; items = [{ label, fn } | { label, href } | { label, fn, confirm }]
+function aw2MenuHtml(key, itemsFn, cls){
+  if (_aw2.menu !== key || typeof itemsFn !== 'function') return '';
+  let items = []; try { items = itemsFn() || []; } catch (e) { items = []; }
+  _aw2.items = items;
+  if (!items.length) return '';
+  return '<div class="hy-menu aw-menu aw2-menu' + (cls ? ' ' + cls : '') + '" role="menu">' + items.map((m, k) => {
+    if (m.href) return '<a role="menuitem" href="' + escAttr(safeUrl(m.href)) + '" target="_blank" rel="noopener noreferrer" onclick="aw2MenuClose()">' + awE(m.label) + '</a>';
+    const ask = m.confirm && _aw2.del === key + ':' + k;
+    return '<button type="button" role="menuitem"' + (ask ? ' class="aw2-ask"' : '') + ' onclick="event.stopPropagation();aw2Act(' + k + ')">' + awE(ask ? m.confirm : m.label) + '</button>';
+  }).join('') + '</div>';
+}
+function aw2Menu(key){ _aw2.menu = _aw2.menu === key ? '' : String(key || ''); _aw2.del = ''; aw2Render(); return _aw2.menu; }
+function aw2MenuClose(){ if (!_aw2.menu) return false; _aw2.menu = ''; _aw2.del = ''; try { setTimeout(aw2Render, 0); } catch (e) {} return true; }
+function aw2Act(k){
+  const m = _aw2.items[k]; if (!m) return false;
+  if (m.confirm && _aw2.del !== _aw2.menu + ':' + k) { _aw2.del = _aw2.menu + ':' + k; aw2Render(); return 'ask'; }   // a delete asks once, on the menu itself
+  _aw2.menu = ''; _aw2.del = ''; aw2Render();
+  try { m.fn(); } catch (e) { try { showToast(humanErr((e && e.message) || '', 'That didn’t work — try again.')); } catch (_) {} }
+  return true;
+}
+// "Classic view": the old screen, whole (its panels, tabs, inputs), with one line back to the new list
+function aw2Classic(v, tab){
+  _aw2.classic = String(v || ''); _aw2.menu = ''; aw2Render();
+  if (v === 'viral') { try { vlTab(tab === 'analyze' ? 'analyze' : 'watch'); } catch (e) {} }
+  try { window.scrollTo(0, 0); } catch (e) {}
+  return true;
+}
+function aw2ClassicEnd(){ _aw2.classic = ''; aw2Render(); try { window.scrollTo(0, 0); } catch (e) {} return true; }
+function aw2BackHtml(name){ return '<button type="button" class="hy-showall aw-more aw2-back" onclick="aw2ClassicEnd()">' + AW_IC.back.replace(/width="22" height="22"/, 'width="16" height="16"') + 'Back to the new ' + awE(name) + '</button>'; }
+function aw2Fab(id, icon, label, onclick, busy, cls){
+  return '<button type="button" class="aw-fab' + (cls ? ' ' + cls : '') + '" id="' + id + '" onclick="' + onclick + '"' + (busy ? ' disabled aria-busy="true"' : '') + '>' + icon + '<span>' + awE(label) + '</span></button>';
+}
+
+// ---- the hand-off: a row → the main chat as a typed idea (hyNewThread; the idea pills; no call until a pill is picked) ----
+function aw2ToChat(o){
+  const text = String((o && o.text) == null ? '' : o.text).trim().slice(0, 12000);
+  if (!text) return false;
+  try { _hy.classicReq = false; } catch (e) {}
+  if (typeof activeView === 'undefined' || activeView !== 'create' || (typeof _hy !== 'undefined' && _hy.classic)) switchView('create');
+  if (typeof hyActive === 'function' && !hyActive()) return false;
+  if (_hy.busy || _hy.rowBusy) { try { hyHint(HY_ONE); } catch (e) {} return false; }   // one at a time: a twist or a read is running
+  hyNewThread({ kind: 'text', text: text, from: o.from, label: o.label, pre: o.pre || '', ref: o.ref || '', url: o.url || '' });
+  return true;
+}
+// a version made from a row marks that row: a search question → Answered (paaUsed, as the old "Answer this" did), a note → "Used in a post"
+function aw2SrcUsed(src){
+  if (!src || !src.from || !src.ref) return false;
+  if (src.from === 'search') {
+    const k = String(src.ref);
+    const qs = (typeof paaQuestions !== 'undefined' && Array.isArray(paaQuestions)) ? paaQuestions : [];
+    if (!qs.some(q => q && String(q.question || '').toLowerCase().trim() === k)) return false;   // not this brand's list
+    paaUsed.add(k); try { savePAAState(); } catch (e) {}
+    return true;
+  }
+  if (src.from === 'note') return aw2NbMetaSet(String(src.ref), { u: 1 });
+  return false;
+}
+
+// ---- Trends (mockup 5): Rising now / This week / Earlier, a source chip and an age per row; "Pull fresh trends" ----
+function aw2SrcName(link, source){
+  const s = String(source || '').trim(); let host = '';
+  try { host = new URL(String(link || '')).hostname.toLowerCase().replace(/^www\./, ''); } catch (e) {}
+  if (/(^|\.)news\.google\./.test(host)) return 'Google News';
+  if (/(^|\.)(x|twitter)\.com$/.test(host) || /(^|[\s·])X$/.test(s)) return 'X';
+  if (/(^|\.)tiktok\.com$/.test(host)) return 'TikTok';
+  if (/(^|\.)(youtube\.com|youtu\.be)$/.test(host)) return 'YouTube';
+  if (/(^|\.)instagram\.com$/.test(host)) return 'Instagram';
+  if (/(^|\.)reddit\.com$/.test(host)) return 'Reddit';
+  if (s) return aw2Clip(s, 28);
+  return host ? 'News' : 'Web';
+}
+// the competitor digest (one block of text) → one row per competitor, markdown and links taken out (the first link kept)
+function aw2CompParts(raw){
+  let t = String(raw || '').trim(); if (!t) return [];
+  t = t.replace(/\s*-\s+(?=\*\*)/g, '\n- ');
+  const at = t.search(/(^|\n)\s*[-•]\s/); if (at > 0) t = t.slice(at);
+  const one = x => {
+    const m = /https?:\/\/[^\s)"'<>\]]+/.exec(x);
+    const text = x.replace(/\[\[?\d+\]?\]\([^)]*\)/g, '').replace(/\((https?:[^)\s]+)\)/g, '').replace(/https?:\/\/\S+/g, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\s+/g, ' ').trim();
+    return { text: text, link: m ? (safeUrl(m[0]) || '') : '' };
+  };
+  const parts = t.split(/(?:^|\n)\s*[-•]\s+/).map(one).filter(x => x.text.length > 3);
+  return (parts.length ? parts : [one(t)]).filter(x => x.text).slice(0, 6);
+}
+function aw2TrendRows(){
+  const at = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.auto_trends) || {}, rows = [], seen = new Set();
+  const src = {}; (Array.isArray(at.items) ? at.items : []).forEach(x => { if (x && x.text) src[String(x.text)] = String(x.source || ''); });
+  const add = r => { const k = String(r.text || '').toLowerCase().replace(/\s+/g, ' ').trim(); if (!k || seen.has(k)) return; seen.add(k); rows.push(r); };
+  try { getAutoTrends().forEach(t => add({ kind: 'auto', text: String(t.text), src: aw2SrcName(t.link, src[String(t.text)]), ts: Number(t.ts) || 0, hot: !!t.hot, link: safeUrl(t.link) || '' })); } catch (e) {}
+  try { getTopPosts().forEach((p, i) => add({ kind: 'post', i: i, text: String(p.text), src: aw2SrcName(p.link, ''), ts: Number(p.ts || at.at) || 0, link: safeUrl(p.link) || '', handle: String(p.handle || p.author || '') })); } catch (e) {}
+  try { aw2CompParts(at.competitorMoves).forEach(x => add({ kind: 'comp', text: x.text, src: 'Competitor', ts: Number(at.compAt) || 0, link: x.link })); } catch (e) {}
+  try { getTrendStore().forEach(t => add({ kind: 'taught', text: String(t.text), rawTs: t.ts, src: (t.source || t.link) ? aw2SrcName(t.link, t.source) : 'Added by you', ts: Number(t.ts) || 0, link: safeUrl(t.link) || '' })); } catch (e) {}
+  return rows;
+}
+function aw2TrendGroup(r, now){ const n = now == null ? Date.now() : now; if (r.hot || (r.ts && n - r.ts < 864e5)) return 0; return (r.ts && n - r.ts < 7 * 864e5) ? 1 : 2; }
+function aw2TrendItems(r){
+  const it = [];
+  if (r.link) it.push({ label: r.kind === 'post' ? 'See the post ↗' : 'Open the source ↗', href: r.link });
+  if (r.kind === 'auto') it.push({ label: 'Not relevant — remove', fn: () => dismissAutoTrend(r.text) });
+  if (r.kind === 'taught') it.push({ label: 'Remove', fn: () => removeTrend(r.rawTs, r.text) });
+  if (r.kind === 'post') it.push({ label: 'Make it yours with their words', fn: () => remixTopPost(r.i) });
+  if (r.kind === 'comp') it.push({ label: 'All competitor moves', fn: () => aw2Classic('viral') });
+  return it;
+}
+function aw2TrendsHtml(){
+  const now = Date.now(), at = (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.auto_trends) || {};
+  const rows = aw2TrendRows();
+  _aw2.trows = [];
+  const upd = at.at ? ' · updated ' + aw2Ago(at.at, true, now) : '';
+  let h = aw2Head('Trends', rows.length ? 'Pick one to make it yours' + upd : 'What’s rising in your niche' + upd, 'th', () => [
+    { label: 'Analyze a video', fn: () => aw2Classic('viral', 'analyze') },
+    { label: 'Topic, time window and all panels (classic view)', fn: () => aw2Classic('viral') }]);
+  const groups = [[], [], []];
+  rows.forEach(r => groups[aw2TrendGroup(r, now)].push(r));
+  groups.forEach((g, gi) => {
+    if (!g.length) return;
+    g.sort((a, b) => (b.hot - a.hot) || ((b.ts || 0) - (a.ts || 0)));
+    h += '<div class="aw-gh"><span>' + AW2_TREND_GROUPS[gi] + '</span></div><div class="aw-list">' + g.map(r => {
+      const k = _aw2.trows.push(r) - 1, key = 't' + k, age = r.hot ? 'rising' + (r.ts && now - r.ts < 864e5 ? ' · ' + aw2Ago(r.ts, false, now) : '') : aw2Ago(r.ts, false, now);
+      return '<div class="aw-row aw2-row" data-aw2-k="' + k + '"><button type="button" class="aw-rb" onclick="aw2TrendGo(' + k + ')"><span class="aw-rt">' + awE(aw2Clip(r.text, 200)) + '</span>'
+        + '<span class="aw-rm"><span class="aw-tag">' + awE(r.src) + '</span>' + (r.handle ? '<span>@' + awE(cfHandle(r.handle)) + '</span>' : '') + (age ? '<span>' + awE(age) + '</span>' : '') + '</span></button>'
+        + '<span class="aw-acts"><button type="button" class="aw-ib aw2-mbtn" aria-label="' + awE('More for ' + aw2Clip(r.text, 60)) + '" aria-haspopup="menu" aria-expanded="' + (_aw2.menu === key ? 'true' : 'false') + '" onclick="event.stopPropagation();aw2Menu(\'' + key + '\')">' + AW_IC.dots + '</button></span></div>'
+        + aw2MenuHtml(key, () => aw2TrendItems(r), 'aw2-rmenu');
+    }).join('') + '</div>';
+  });
+  if (!rows.length) h += '<div class="aw-empty">No trends yet. They arrive every day, or pull fresh ones now.</div>';
+  if (_aw2.pullMsg) h += '<div class="aw-note" role="status">' + awE(_aw2.pullMsg) + '</div>';
+  return h;
+}
+function aw2TrendGo(k){
+  const r = _aw2.trows[k]; if (!r) return false;
+  return aw2ToChat({ text: r.text, from: 'trend', label: 'From Trends · ' + r.src, url: r.link });
+}
+// Pull fresh trends = the existing pull (pullWebTrends: topic + window from the old panel, brand pin, merge, toasts)
+async function aw2Pull(){
+  if (_aw2.pulling) return false;
+  _aw2.pulling = true; _aw2.pullMsg = ''; aw2Render();
+  try { await pullWebTrends(); } catch (e) {}
+  finally { _aw2.pulling = false; }
+  const st = awEl('trendPullStatus'); _aw2.pullMsg = st ? String(st.textContent || '').trim() : '';
+  aw2Render();
+  return true;
+}
+
+// ---- What people search (mockup 7): questions grouped by keyword, a chip, "Answered"; "Find more questions" ----
+function aw2QKey(q){ return String((q && q.question) || '').toLowerCase().trim(); }
+function aw2AskItems(idx){
+  const it = [{ label: 'Answer it with the post writer', fn: () => paaAnswerV2(idx) }];
+  try { Object.keys(FORMAT_LABELS).forEach(k => it.push({ label: 'Answer as ' + FORMAT_LABELS[k], fn: () => paaAnswerV2(idx, k) })); } catch (e) {}
+  return it;
+}
+function aw2SearchHtml(){
+  const qs = (typeof paaQuestions !== 'undefined' && Array.isArray(paaQuestions)) ? paaQuestions : [];
+  const used = (typeof paaUsed !== 'undefined' && paaUsed) ? paaUsed : new Set();
+  const loading = typeof paaLoading !== 'undefined' && paaLoading;
+  let h = aw2Head('What people search', 'Real Google questions · pick one to answer it', 'sh', () => [
+    { label: 'Search keywords', fn: () => { aw2SpGo('brain'); setTimeout(() => { try { spScrollToField('paaKeywords'); } catch (e) {} }, 260); } },
+    { label: 'Classic view', fn: () => aw2Classic('questions') }]);
+  _aw2.qrows = [];
+  if (!(typeof settings !== 'undefined' && settings && settings.brandName)) return h + '<div class="aw-empty">Set up your brand first. The questions come from your brand’s keywords.</div>';
+  if (loading) h += '<div class="aw-note" role="status">Searching Google for real questions…</div>';
+  const order = [], by = {};
+  qs.forEach((q, idx) => { if (!q || !q.question) return; const g = String(q.keyword || 'Your niche').toLowerCase().trim() || 'your niche'; if (!by[g]) { by[g] = []; order.push(g); } by[g].push(idx); });
+  order.forEach(g => {
+    const ids = by[g], fresh = ids.filter(i => !used.has(aw2QKey(qs[i]))).length;
+    h += '<div class="aw-gh"><span>' + awE(g) + '</span><span>' + (fresh ? fresh + ' new' : '') + '</span></div><div class="aw-list">' + ids.map(idx => {
+      const q = qs[idx], done = used.has(aw2QKey(q)), key = 'q' + idx;
+      _aw2.qrows.push(idx);
+      return '<div class="aw-row aw2-row' + (done ? ' aw-dim' : '') + '"><button type="button" class="aw-rb" onclick="aw2AskGo(' + idx + ')"><span class="aw-rt">' + awE(q.question) + '</span>'
+        + '<span class="aw-rm"><span class="aw-tag">' + (q.source === 'Related' ? 'Related' : 'People also ask') + '</span>' + (done ? '<span class="aw2-done"><span class="aw2-dot" aria-hidden="true"></span>Answered</span>' : '') + '</span></button>'
+        + (done ? '<span class="aw-go aw2-go" aria-hidden="true">' + AW2_IC.chat + '</span>' : '<span class="aw-acts"><button type="button" class="aw-ib aw2-mbtn" aria-label="' + awE('More ways to answer: ' + aw2Clip(q.question, 60)) + '" aria-haspopup="menu" aria-expanded="' + (_aw2.menu === key ? 'true' : 'false') + '" onclick="event.stopPropagation();aw2Menu(\'' + key + '\')">' + AW_IC.dots + '</button></span>')
+        + '</div>' + aw2MenuHtml(key, () => aw2AskItems(idx), 'aw2-rmenu');
+    }).join('') + '</div>';
+  });
+  if (!qs.length && !loading) h += '<div class="aw-empty">' + ((typeof window !== 'undefined' && window.__paaError) ? 'Couldn’t pull questions just now. Try again.' : 'No questions yet. Find the real questions people ask about your niche.') + '</div>';
+  else if (qs.length && window.__paaError && !loading) h += '<div class="aw-note" role="status">Couldn’t refresh these just now. These are the previous ones.</div>';
+  return h;
+}
+function aw2AskGo(idx){
+  const q = ((typeof paaQuestions !== 'undefined' && Array.isArray(paaQuestions)) ? paaQuestions : [])[idx]; if (!q || !q.question) return false;
+  return aw2ToChat({ text: String(q.question), from: 'search', label: 'From What people search', pre: 'qna', ref: aw2QKey(q) });
+}
+function aw2Find(){ if (typeof paaLoading !== 'undefined' && paaLoading) return false; fetchPAAQuestions(true); return true; }
+
+// ---- Notebook (mockup 8): notes by day, time, voice length, "Used in a post"; a note opens its page; "New note" ----
+function aw2NbKey(t){ return String(t == null ? '' : t).replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 200); }
+function aw2NbMeta(){
+  const b = aw2Brand(); if (!b) return {};
+  try { const m = JSON.parse(localStorage.getItem(AW2_NB_META + b) || '{}'); return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {}; } catch (e) { return {}; }
+}
+function aw2NbMetaSet(key, patch){
+  const b = aw2Brand(); if (!b || !key) return false;
+  const m = aw2NbMeta(); m[key] = Object.assign({}, (m[key] && typeof m[key] === 'object') ? m[key] : {}, patch);
+  const ks = Object.keys(m); if (ks.length > 300) ks.slice(0, ks.length - 300).forEach(k => delete m[k]);
+  try { localStorage.setItem(AW2_NB_META + b, JSON.stringify(m)); return true; } catch (e) { return false; }
+}
+function aw2NbTs(n){ const v = n && n.createdAt; const t = typeof v === 'number' ? v : Date.parse(v || ''); return isFinite(t) ? t : 0; }
+function aw2NbGroup(t, now){
+  if (!t) return 3;
+  const day = x => { const d = new Date(x); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+  const diff = Math.round((day(now == null ? Date.now() : now) - day(t)) / 864e5);
+  return diff <= 0 ? 0 : (diff === 1 ? 1 : (diff < 7 ? 2 : 3));
+}
+function aw2NbWhen(t, g){
+  if (!t) return '';
+  const d = new Date(t), p = x => String(x).padStart(2, '0');
+  if (g <= 1) return p(d.getHours()) + ':' + p(d.getMinutes());
+  if (g === 2) return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
+  return d.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+}
+function aw2Secs(s){ const n = Math.max(1, Math.round(Number(s) || 0)); return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'); }
+function aw2NbMarks(n, meta){
+  const m = meta[aw2NbKey(n.text)] || {};
+  return (m.v ? '<span class="aw2-voice">' + AW2_IC.mic + '<span class="cs-sr">Voice note, </span>' + aw2Secs(m.v) + '</span>' : '') + (m.u ? '<span class="aw-tag ghost">Used in a post</span>' : '');
+}
+function aw2Notes(){ return (typeof notebookNotes !== 'undefined' && Array.isArray(notebookNotes)) ? notebookNotes : []; }
+function aw2NoteObj(){ if (!_aw2.note) return null; return aw2Notes().find(n => n && String(n.id) === _aw2.note) || null; }
+function aw2NotesListHtml(){
+  const notes = aw2Notes().filter(n => n && String(n.text || '').trim()), now = Date.now(), meta = aw2NbMeta();
+  _aw2.nrows = [];
+  if (!notes.length) {
+    return (typeof listLoadFailed === 'function' && listLoadFailed('notebook'))
+      ? '<div class="aw-empty">Couldn’t load your notebook. Nothing has been deleted. Reload when your connection is back.</div>'
+      : (_aw2.capOpen ? '' : '<div class="aw-empty">Nothing saved yet. Jot a thought, a customer quote or a rule of thumb.</div>');
+  }
+  const groups = [[], [], [], []];
+  notes.slice().sort((a, b) => aw2NbTs(b) - aw2NbTs(a)).forEach(n => groups[aw2NbGroup(aw2NbTs(n), now)].push(n));
+  let h = '';
+  groups.forEach((g, gi) => {
+    if (!g.length) return;
+    h += '<div class="aw-gh"><span>' + AW2_NOTE_GROUPS[gi] + '</span></div><div class="aw-list">' + g.map(n => {
+      const k = _aw2.nrows.push(String(n.id)) - 1, t = aw2NbTs(n);
+      return '<button type="button" class="aw-row aw2-nrow" onclick="aw2NoteOpen(' + k + ')"><span class="aw-rtx"><span class="aw-rt aw2-nt">' + awE(n.text) + '</span>'
+        + '<span class="aw-rm"><span>' + awE(aw2NbWhen(t, gi)) + '</span>' + aw2NbMarks(n, meta) + '</span></span></button>';
+    }).join('') + '</div>';
+  });
+  return h;
+}
+function aw2NoteDetailHtml(n){
+  const t = aw2NbTs(n), g = aw2NbGroup(t), when = (g <= 1 ? AW2_NOTE_GROUPS[g] + ' · ' : '') + aw2NbWhen(t, g), id = String(n.id);
+  let h = '<div class="aw-dtop"><button type="button" class="aw-ib aw-back" aria-label="Back to the notebook" title="Back" onclick="aw2NoteBack()">' + AW_IC.back + '</button>'
+    + '<button type="button" class="hy-dots aw-dots aw2-mbtn" aria-label="More for this note" aria-haspopup="menu" aria-expanded="' + (_aw2.menu === 'nd' ? 'true' : 'false') + '" onclick="event.stopPropagation();aw2Menu(\'nd\')">' + AW_IC.dots + '</button></div>';
+  h += aw2MenuHtml('nd', () => [
+    { label: 'Develop into a post (the post writer)', fn: () => nbDevelopV2(id, null) },
+    { label: 'Save as a voice rule', fn: () => nbSaveAsRule(id, null) },
+    { label: 'Edit', fn: () => aw2NoteEdit() },
+    { label: 'Delete', confirm: 'Press again to delete this note', fn: () => { aw2NoteBack(); nbDelete(id); } }], 'aw2-dmenu');
+  h += '<div class="aw-dmeta aw2-ndmeta"><span>' + awE(when) + '</span>' + aw2NbMarks(n, aw2NbMeta()) + '</div>';
+  if (_aw2.edit) {
+    h += '<label class="cs-sr" for="aw2NbEdit">Edit the note</label><textarea id="aw2NbEdit" class="aw2-ta" rows="6" oninput="_aw2.editVal=this.value"></textarea>'
+      + (_aw2.ask ? '<div class="aw2-askrow" role="alert"><span>Discard changes?</span><button type="button" class="aw-pill" id="aw2Discard" onclick="aw2NoteEditEnd()">Discard</button><button type="button" class="aw-pill" onclick="aw2NoteKeep()">Keep editing</button></div>' : '')
+      + '<div class="aw2-ed"><button type="button" class="aw-film" onclick="aw2NoteSave()">Save</button><button type="button" class="aw-pill" onclick="aw2NoteEditEnd()">Cancel</button></div>';
+  } else h += '<p class="aw-p aw2-ntext">' + nl2br(String(n.text || '')) + '</p>';
+  return h;
+}
+function aw2NotesRender(){
+  const head = awEl('awNotesHead'), body = awEl('awNotesBody'); if (!head || !body) return;
+  if (_aw2.classic === 'notebook') { head.innerHTML = aw2BackHtml('Notebook'); body.innerHTML = ''; return; }
+  const n = aw2NoteObj();
+  if (_aw2.note && !n) { _aw2.note = ''; _aw2.edit = false; }   // deleted, or reloaded under new ids
+  if (n) {
+    head.innerHTML = '';
+    body.innerHTML = aw2NoteDetailHtml(n);
+    const ta = awEl('aw2NbEdit'); if (ta) ta.value = _aw2.editVal;
+    return;
+  }
+  const cnt = aw2Notes().filter(x => x && String(x.text || '').trim()).length;
+  head.innerHTML = aw2Head('Notebook', cnt ? cnt + (cnt === 1 ? ' note' : ' notes') : '', 'nh', () => [{ label: 'Classic view', fn: () => aw2Classic('notebook') }])
+    + (_aw2.capOpen ? '<div class="aw2-caph"><span>New note</span><button type="button" class="hy-showall" onclick="aw2NoteNewEnd()">Cancel</button></div>' : '');
+  body.innerHTML = aw2NotesListHtml();
+}
+function aw2NoteOpen(k){ const id = _aw2.nrows[k]; if (id == null) return false; _aw2.note = String(id); _aw2.edit = false; _aw2.menu = ''; aw2Render(); try { window.scrollTo(0, 0); } catch (e) {} return true; }
+function aw2NoteBack(){ _aw2.note = ''; _aw2.edit = false; _aw2.ask = false; _aw2.menu = ''; aw2Render(); return true; }
+function aw2NoteEdit(){ const n = aw2NoteObj(); if (!n) return false; _aw2.edit = true; _aw2.editVal = String(n.text || ''); aw2Render(); try { const t = awEl('aw2NbEdit'); if (t) t.focus(); } catch (e) {} return true; }
+function aw2NoteEditEnd(){ _aw2.edit = false; _aw2.ask = false; aw2Render(); return true; }
+function aw2NoteKeep(){ _aw2.ask = false; aw2Render(); try { const t = awEl('aw2NbEdit'); if (t && t.focus) t.focus(); } catch (e) {} return true; }
+// Esc, one step at a time: an open ⋯ menu first; a note being edited asks before its changes go ("Discard changes?" on the page);
+// then the note's page closes. Phones: the document listener below; desktop: csxOnKey calls this before its own Esc.
+function aw2Esc(){
+  if (_aw2.menu) { _aw2.menu = ''; _aw2.del = ''; aw2Render(); return true; }
+  if (typeof _aw !== 'undefined' && _aw && (_aw.menu || _aw.imenu)) { _aw.menu = false; _aw.imenu = false; try { awRender(); } catch (e) {} return true; }
+  const n = aw2View() === 'notebook' && _aw2.classic !== 'notebook' ? aw2NoteObj() : null;
+  if (!n) return false;
+  if (_aw2.edit) {
+    const ta = awEl('aw2NbEdit'), v = String(ta ? ta.value : _aw2.editVal);
+    if (_aw2.ask) return aw2NoteKeep();
+    if (v.trim() !== String(n.text || '').trim()) { _aw2.editVal = v; _aw2.ask = true; aw2Render(); return true; }
+    return aw2NoteEditEnd();
+  }
+  if (document.querySelector && document.querySelector('.csx-backdrop')) return false;
+  return aw2NoteBack();
+}
+// Edit = the note's text changes, then the notebook's own save (saveNotebookToDB: refuses an unloaded list, says when it failed)
+function aw2NoteSave(){
+  const n = aw2NoteObj(), ta = awEl('aw2NbEdit'); if (!n) return false;
+  const v = String((ta ? ta.value : _aw2.editVal) || '').trim();
+  if (!v) { try { showToast('A note needs some words. To remove it, use Delete in ⋯.'); } catch (e) {} return false; }
+  if (v !== String(n.text || '').trim()) {
+    const old = aw2NbMeta()[aw2NbKey(n.text)];
+    n.text = v;
+    if (old) aw2NbMetaSet(aw2NbKey(v), old);
+    Promise.resolve(saveNotebookToDB()).then(function (r) {
+      if (r && r.ok === false) { try { _warnSaveFailed('notebook note', r); } catch (e) {} return; }
+      try { showToast('Note saved'); } catch (e) {}
+    }).catch(function (e) { try { _warnSaveFailed('notebook note', { ok: false, error: e }); } catch (_) {} });
+  }
+  _aw2.edit = false; _aw2.ask = false;
+  renderNotebook();
+  return true;
+}
+function aw2NoteChat(){ const n = aw2NoteObj(); if (!n) return false; return aw2ToChat({ text: String(n.text || ''), from: 'note', label: 'From your Notebook', ref: aw2NbKey(n.text) }); }
+// "New note": the old capture box (its textarea, mic and Save note — nbToggleMic / nbSaveNote) is MOVED here, and back on close
+function aw2NoteNew(){
+  const cap = awEl('awNotesCap'), box = document.querySelector('#view-notebook .nb-capture'); if (!cap || !box) return false;
+  _aw2.capOpen = true; _aw2.voice = 0; _aw2.voiceSecs = 0;
+  try { cap.appendChild(box); } catch (e) {}
+  cap.hidden = false;
+  aw2Render();
+  try { const t = awEl('nbInput'); if (t && t.focus) t.focus(); } catch (e) {}
+  return true;
+}
+function aw2NoteNewEnd(quiet){
+  const cap = awEl('awNotesCap'), view = awEl('view-notebook'), box = cap && cap.querySelector ? cap.querySelector('.nb-capture') : null;
+  if (box && view) { try { view.insertBefore(box, awEl('nbList')); } catch (e) {} }
+  if (cap) cap.hidden = true;
+  _aw2.capOpen = false;
+  if (!quiet) aw2Render();
+  return true;
+}
+
+// ---- Creators (mockup 9): your ≤5 TikTok creators (the ONE creator rule), their latest video, then every other bookmark ----
+function aw2CreatorData(){
+  const max = (typeof CF_MAX_CREATORS !== 'undefined') ? CF_MAX_CREATORS : 5;
+  const handles = cfFollowedHandles(null).slice(0, max), pos = {}; handles.forEach((h, i) => { pos[h] = i; });
+  const rows = [], others = [], took = new Set();
+  ((typeof bookmarkCategories !== 'undefined' && Array.isArray(bookmarkCategories)) ? bookmarkCategories : []).forEach(cat => ((cat && Array.isArray(cat.entries)) ? cat.entries : []).forEach(e => {
+    if (!e || typeof e !== 'object') return;
+    const hit = cfCreatorTtLink(e.links), h = hit && hit.handle;
+    if (h && h in pos && !took.has(h)) { took.add(h); rows.push({ cat: cat, ent: e, handle: h, url: hit.url }); }
+    else others.push({ cat: cat, ent: e });
+  }));
+  rows.sort((a, b) => pos[a.handle] - pos[b.handle]);
+  return { rows: rows, others: others, n: handles.length, max: max };
+}
+// "New today · 4.2× usual": the creator feed's newest video for that handle (the same _cf data Make it yours shows), when loaded
+function aw2CreatorStat(h){
+  const ok = typeof _cf !== 'undefined' && _cf && _cf.brandId === aw2Brand() && _cf.data && Array.isArray(_cf.data.videos);
+  const vids = ok ? _cf.data.videos.filter(v => v && cfHandle(v.handle).toLowerCase() === h) : [];
+  if (!vids.length) return '';
+  const v = vids.slice().sort((a, b) => (Date.parse(b.postedAt || '') || 0) - (Date.parse(a.postedAt || '') || 0))[0];
+  const dk = hyDayKey(v.postedAt);
+  const when = isFinite(Date.parse(v.postedAt || '')) ? (dk === 0 ? 'New today' : (dk === 1 ? 'Yesterday' : cfAge(v.postedAt))) : '';
+  return [when, hyUsual(v.score)].filter(Boolean).join(' · ');
+}
+function aw2EntryItems(r){
+  const it = [], L = (r.ent && r.ent.links) || {};
+  ((typeof BM_PLATFORMS !== 'undefined') ? BM_PLATFORMS : []).forEach(p => { const u = safeUrl(L[p.key]); if (u) it.push({ label: 'Open on ' + p.title + ' ↗', href: u }); });
+  it.push({ label: 'Edit note and links', fn: () => { try { _bmEditingEntry = { catId: r.cat.id, entId: r.ent.id }; } catch (e) {} aw2SpGo('bookmarks'); } });
+  it.push({ label: 'Remove', confirm: 'Press again to remove', fn: () => deleteBmEntry(r.cat.id, r.ent.id) });
+  return it;
+}
+function aw2Initial(s){ const m = /[\p{L}\p{N}]/u.exec(String(s || '')); return m ? m[0].toUpperCase() : '?'; }
+function aw2CreatorsHtml(){
+  const d = aw2CreatorData(), left = Math.max(0, d.max - d.n);
+  _aw2.crows = [];
+  let h = aw2Head('Creators', d.n + ' of ' + d.max + ' · their new videos show on Make it yours', 'ch', () => [
+    { label: 'Manage all bookmarks', fn: () => aw2SpGo('bookmarks') },
+    { label: 'Check for new videos', fn: () => cfRefresh() }]);
+  if (_aw2.adding) {
+    h += '<div class="aw2-add"><label class="cs-sr" for="aw2AddLink">TikTok profile link</label>'
+      + '<input id="aw2AddLink" class="aw2-in" type="url" inputmode="url" autocomplete="off" placeholder="Paste a TikTok profile link" oninput="_aw2.addVal=this.value" onkeydown="if(event.key===\'Enter\'){event.preventDefault();aw2AddSave();}">'
+      + '<label class="cs-sr" for="aw2AddNote">Why you follow them</label><input id="aw2AddNote" class="aw2-in" type="text" maxlength="' + ((typeof FP_NOTE_MAX !== 'undefined') ? FP_NOTE_MAX : 140) + '" placeholder="Why you follow them (optional)" oninput="_aw2.addNote=this.value">'
+      + '<div class="aw2-err" id="aw2AddErr" role="alert"></div><div class="aw2-ed"><button type="button" class="aw-film" onclick="aw2AddSave()">' + AW2_IC.plus + '<span>Add creator</span></button><button type="button" class="aw-pill" onclick="aw2AddEnd()">Cancel</button></div></div>';
+  }
+  if (typeof listLoadFailed === 'function' && listLoadFailed('bookmarks')) h += '<div class="aw-note" role="status">Couldn’t load your bookmarks. Nothing has been deleted. Reload when your connection is back.</div>';
+  const row = (r, creator) => {
+    const k = _aw2.crows.push(r) - 1, key = 'c' + k, note = (typeof fpCleanNote === 'function') ? fpCleanNote(r.ent.note) : String(r.ent.note || '');
+    const name = creator ? '@' + r.handle : String(r.ent.name || 'Bookmark');
+    let meta = '';
+    if (creator) { const st = aw2CreatorStat(r.handle); meta = '<span class="aw-tag">TikTok</span>' + (st ? '<span>' + awE(st) + '</span>' : ''); }
+    else {
+      const L = r.ent.links || {};
+      meta = ((typeof BM_PLATFORMS !== 'undefined') ? BM_PLATFORMS : []).filter(p => L[p.key]).slice(0, 3).map(p => '<span class="aw-tag">' + awE(p.title) + '</span>').join('')
+        + (r.cat && r.cat.name ? '<span>' + awE(aw2Clip(r.cat.name, 30)) + '</span>' : '');
+    }
+    return '<div class="aw-row aw2-crow"><span class="aw2-av" aria-hidden="true">' + awE(aw2Initial(creator ? r.handle : r.ent.name)) + '</span>'
+      + '<button type="button" class="aw-rb aw2-mbtn" aria-haspopup="menu" aria-expanded="' + (_aw2.menu === key ? 'true' : 'false') + '" onclick="event.stopPropagation();aw2Menu(\'' + key + '\')">'
+      + '<span class="aw-rt">' + awE(name) + '</span>' + (note ? '<span class="aw2-d">' + awE(note) + '</span>' : '') + (meta ? '<span class="aw-rm">' + meta + '</span>' : '') + '</button>'
+      + '<span class="aw-go" aria-hidden="true">' + AW_IC.right + '</span></div>' + aw2MenuHtml(key, () => aw2EntryItems(r), 'aw2-rmenu');
+  };
+  if (d.rows.length) h += '<div class="aw-gh"><span>Following</span></div><div class="aw-list">' + d.rows.map(r => row(r, true)).join('') + '</div>';
+  else if (!_aw2.adding) h += '<div class="aw-empty">Follow up to ' + d.max + ' TikTok creators. Their new videos show on Make it yours.</div>';
+  h += '<div class="aw-gh aw2-left"><span>' + (left ? left + (left === 1 ? ' spot left' : ' spots left') : 'All ' + d.max + ' spots used. Remove one to add another.') + '</span></div>';
+  if (d.others.length) h += '<div class="aw-gh"><span>Other bookmarks</span><span>' + d.others.length + '</span></div><div class="aw-list">' + d.others.map(r => row(r, false)).join('') + '</div>';
+  return h;
+}
+// "+ Add creator" = the follow panel's own add (fpAdd: link check, the 5-creator rule via cfAllowLinks, save)
+function aw2AddOpen(){
+  const max = (typeof CF_MAX_CREATORS !== 'undefined') ? CF_MAX_CREATORS : 5;
+  if (cfFollowedHandles(null).length >= max) { try { showToast(CF_MAX_MSG); } catch (e) {} return false; }
+  _aw2.adding = true; _aw2.addVal = ''; _aw2.addNote = ''; aw2Render();
+  try { const f = awEl('aw2AddLink'); if (f && f.focus) f.focus(); } catch (e) {}
+  return true;
+}
+function aw2AddEnd(){ _aw2.adding = false; _aw2.addVal = ''; _aw2.addNote = ''; aw2Render(); return true; }
+function aw2AddSave(){
+  const ok = fpAdd('aw2Add');
+  if (ok) { _aw2.adding = false; _aw2.addVal = ''; _aw2.addNote = ''; aw2Render(); try { showToast('Added. Their new videos show on Make it yours.'); } catch (e) {} }
+  return !!ok;
+}
+
+// ---- Settings (mockup 10): Brand / Content / Account rows; each chevron opens the existing panel (the old Settings, one section) ----
+function aw2SpOpen(){ const o = awEl('settingsOverlay'); return !!(o && o.classList.contains('open')); }
+function aw2SpGo(key){
+  const k = String(key == null ? '' : key); _aw2.menu = '';
+  if (aw2SpOpen()) { _aw2.sp = k; renderSettingsPanel(); try { window.scrollTo(0, 0); } catch (e) {} }
+  else { _aw2.spNext = k; openSettings(); }
+  return k;
+}
+function aw2SpBack(){ return aw2SpGo(''); }
+function aw2PlanText(){
+  if (typeof csUsage === 'undefined' || !csUsage) return (typeof csUsageLoadFailed !== 'undefined' && csUsageLoadFailed) ? 'Couldn’t check' : '';
+  const u = csUsage, n = v => (typeof v === 'number' && isFinite(v)) || (typeof v === 'string' && v.trim() !== '' && isFinite(+v));
+  return planLabel(u.plan) + (n(u.used) && n(u.limit) ? ' · ' + u.used + ' of ' + u.limit : '');
+}
+function aw2Paid(){ const u = (typeof csUsage !== 'undefined') ? csUsage : null; return !!(u && (['pro', 'agency', 'starter'].indexOf(u.plan) >= 0 || (u.billing && u.billing.paymentIssue))); }
+function aw2Billing(){ if (aw2Paid()) return openBillingPortal(null); return showUpgrade(csUsage); }
+function aw2Help(){ try { if (aw2SpOpen()) toggleSettings(); } catch (e) {} startTour(); return true; }
+function aw2Dark(on){ toggleDarkMode(!!on); try { if (aw2SpOpen() && !_aw2.sp) { const ov = awEl('settingsOverlay'); if (ov) ov.innerHTML = aw2SettingsHtml(); } } catch (e) {} return !!on; }
+function aw2SettingsHtml(){
+  let pct = '', brands = 0, team = 1, mix = 0, daily = 'Off', dark = true, plan = '';
+  try { pct = Math.round(Number(getBrandCompleteness().pct) || 0) + '%'; } catch (e) {}
+  try { brands = (allBrands || []).length; } catch (e) {}
+  try { team = 1 + (teamMembers || []).filter(m => m && m.user_id !== (currentUser && currentUser.id)).length; } catch (e) {}
+  try { mix = typesMixTotal(typesMix()); } catch (e) {}
+  try { daily = lsGet('daily-push-on') === '1' ? String(parseInt(lsGet('daily-push-hour') || '9', 10) || 0).padStart(2, '0') + ':00' : 'Off'; } catch (e) {}
+  try { dark = csResolveTheme() === 'dark'; } catch (e) {}
+  try { plan = aw2PlanText(); } catch (e) {}
+  const row = (ic, lb, v, on) => '<button type="button" class="aw-row aw2-srow" onclick="' + on + '"><span class="aw2-ic" aria-hidden="true">' + ic + '</span><span class="aw2-lb">' + awE(lb) + '</span>'
+    + (v !== '' && v != null ? '<span class="aw2-v">' + awE(v) + '</span>' : '') + '<span class="aw-go" aria-hidden="true">' + AW_IC.right + '</span></button>';
+  let h = '<div class="aw-screen aw2-sp"><header class="aw-head aw-headrow aw2-sphead"><button type="button" class="aw-ib aw-back aw2-spback" aria-label="Close settings" title="Close" onclick="toggleSettings()">' + AW_IC.back + '</button>'
+    + '<div class="aw-headtx"><h1 class="aw-title">Settings</h1></div>'
+    + '<button type="button" class="hy-dots aw-dots aw2-mbtn" aria-label="More settings" aria-haspopup="menu" aria-expanded="' + (_aw2.menu === 'sp' ? 'true' : 'false') + '" onclick="event.stopPropagation();aw2Menu(\'sp\')">' + AW_IC.dots + '</button></header>'
+    + aw2MenuHtml('sp', () => [{ label: 'All settings', fn: () => aw2SpGo('all') }, { label: 'Bookmarks', fn: () => aw2SpGo('bookmarks') }, { label: 'Posting target', fn: () => aw2SpGo('schedule') }], 'aw-imenu aw2-spmenu');
+  h += '<div class="aw-gh"><span>Brand</span></div><div class="aw-list">' + row(AW_IC.spark, 'Brand brain', pct, "aw2SpGo('brain')") + row(AW2_IC.box, 'Brands', String(brands), "aw2SpGo('brands')")
+    + row(AW2_IC.users, 'Team', team + (team === 1 ? ' person' : ' people'), "aw2SpGo('team')") + '</div>';
+  h += '<div class="aw-gh"><span>Content</span></div><div class="aw-list">' + row(AW2_IC.layers, 'Post mix', mix ? mix + ' a week' : '', "aw2SpGo('mix')") + row(AW2_IC.bulb, 'Daily idea', daily, "aw2SpGo('daily')")
+    + '<label class="aw-row aw2-srow aw2-tgrow"><span class="aw2-ic" aria-hidden="true">' + AW2_IC.moon + '</span><span class="aw2-lb">Dark mode</span><input type="checkbox" class="aw2-tog" role="switch" aria-label="Dark mode"' + (dark ? ' checked' : '') + ' onchange="aw2Dark(this.checked)"></label></div>';
+  h += '<div class="aw-gh"><span>Account</span></div><div class="aw-list">' + row(AW2_IC.box, 'Plan', plan, "aw2SpGo('danger')") + row(AW2_IC.card, 'Billing', '', 'aw2Billing()')
+    + row(AW2_IC.help, 'Help', '', 'aw2Help()') + row(AW2_IC.out, 'Log out', '', 'handleLogout()') + '</div>';
+  const ver = (typeof window !== 'undefined' && window.APP_VERSION) ? String(window.APP_VERSION) : '';
+  h += '<div class="aw2-foot"><a href="/terms.html" target="_blank" rel="noopener">Terms</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="/refunds.html" target="_blank" rel="noopener">Refunds</a>' + (ver ? ' · ' + awE(ver) : '') + '</div></div>';
+  return h;
+}
+// a sub-page = the old panel, drawn by its own renderer; "Back" returns to the rows; one section shown on its own, opened
+function aw2SpDecorate(ov, k){
+  const back = ov.querySelector('.sp-back');
+  if (back) { back.setAttribute('onclick', 'aw2SpBack()'); back.textContent = 'Settings'; back.setAttribute('aria-label', 'Back to Settings'); }
+  const h2 = ov.querySelector('.sp-header h2'); if (h2) h2.textContent = AW2_SP_TITLES[k] || 'Settings';
+  // desktop hides .sp-header (the toolbar's Close still closes Settings): a "‹ Settings" back to the rows at the top of the panel
+  const pb = ov.querySelector('.sp-body');
+  if (pb && document.createElement && !(pb.querySelector && pb.querySelector('.aw2-spdback'))) {
+    try { const bb = document.createElement('button'); bb.type = 'button'; bb.className = 'hy-showall aw2-spdback'; bb.setAttribute('onclick', 'aw2SpBack()'); bb.setAttribute('aria-label', 'Back to Settings');
+      bb.innerHTML = AW_IC.back.replace(/width="22" height="22"/, 'width="16" height="16"') + 'Settings'; pb.insertBefore(bb, pb.firstChild || null); } catch (e) {}
+  }
+  if (AW2_SP_SECTIONS.indexOf(k) < 0) return null;
+  let keep = [];
+  if (k === 'daily') { const s = ov.querySelector('#dailyPushHour'), r = s && s.closest ? s.closest('.ws-row') : null; if (r) { keep.push(r); if (r.nextElementSibling && r.nextElementSibling.classList.contains('ws-row')) keep.push(r.nextElementSibling); } }
+  else { const hd = ov.querySelector('.sp-section-header[onclick="toggleSection(\'' + k + '\')"]'), sec = hd && hd.closest ? hd.closest('.sp-section') : null; if (sec) keep.push(sec); }
+  if (!keep.length) return null;
+  const box = keep[0].parentElement; if (!box) return null;
+  Array.prototype.forEach.call(box.children, ch => ch.classList.toggle('aw2-sp-hide', keep.indexOf(ch) < 0));
+  return keep[0];
+}
+function aw2SpRender(orig, self, args){
+  const k = _aw2.sp;
+  try {
+    if (k && AW2_SP_VOICE.indexOf(k) >= 0) spActiveTab = 'voice'; else if (k) spActiveTab = 'workspace';
+    if (k && AW2_SP_SECTIONS.indexOf(k) >= 0 && k !== 'daily' && settings && settings.openSections) settings.openSections[k] = true;
+  } catch (e) {}
+  const r = orig.apply(self, args);
+  const ov = awEl('settingsOverlay'); if (!ov) return r;
+  try {
+    if (!k) { ov.innerHTML = aw2SettingsHtml(); ov.classList.add('aw2-sp-main'); ov.classList.remove('aw2-sub', 'csx-settings'); return r; }
+    ov.classList.remove('aw2-sp-main'); ov.classList.toggle('aw2-sub', k !== 'all');
+    aw2SpDecorate(ov, k);
+  } catch (e) {}
+  return r;
+}
+
+// ---- Coach (mockup 6): the brand-brain strip (72 % · N left · gap chips) over the same chat (bvSend / bvToggleMic unchanged) ----
+function aw2CoachStrip(){
+  const el = awEl('bvHome'); if (!el) return false;
+  try { if (bvState.onboardingMode) return false; } catch (e) {}
+  let cov = { pct: 0, missing: [] }; try { cov = brainCoverage(false) || cov; } catch (e) {}
+  const pct = Math.max(0, Math.min(100, Math.round(Number(cov.pct) || 0))), miss = Array.isArray(cov.missing) ? cov.missing : [];
+  el.innerHTML = '<div class="aw2-bb"><div class="aw2-bbr"><span>Brand brain ' + pct + '%</span><span class="aw2-bbn">' + (miss.length ? miss.length + ' left to fill' : 'All filled') + '</span></div>'
+    + '<div class="aw2-bar" role="progressbar" aria-label="Brand brain" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"><i style="width:' + pct + '%"></i></div>'
+    + (miss.length ? '<div class="aw2-bbc">' + miss.slice(0, 3).map(k => '<button type="button" class="aw-tag aw2-chip" onclick="bvAskField(\'' + escJs(k) + '\')">' + awE(_brainLabel(k)) + '</button>').join('')
+      + (miss.length > 3 ? '<button type="button" class="aw-tag ghost aw2-chip" onclick="closeBrandVoice();openBrain()">+' + (miss.length - 3) + ' more</button>' : '') + '</div>' : '') + '</div>';
+  return true;
+}
+
+// ---- the dock (the v716 one): Pull fresh trends / Find more questions / New note (or the note's [Make it yours][edit]) / Add creator ----
+function aw2DockHtml(v){
+  if (_aw2.classic && _aw2.classic === v) return '';
+  if (v === 'viral') return aw2Fab('aw2Pull', AW2_IC.refresh, _aw2.pulling ? 'Pulling trends…' : 'Pull fresh trends', 'aw2Pull()', _aw2.pulling);
+  if (v === 'questions') {
+    const busy = typeof paaLoading !== 'undefined' && paaLoading, has = typeof paaQuestions !== 'undefined' && Array.isArray(paaQuestions) && paaQuestions.length;
+    return aw2Fab('aw2Find', AW2_IC.search, busy ? 'Searching…' : (has ? 'Find more questions' : 'Find the questions'), 'aw2Find()', busy);
+  }
+  if (v === 'notebook') {
+    if (aw2NoteObj()) return _aw2.edit ? '' : '<div class="aw-bar"><button type="button" class="aw-film" id="aw2NoteChat" onclick="aw2NoteChat()">' + AW_IC.spark + '<span>Make it yours</span></button>'
+      + '<button type="button" class="aw-sq" aria-label="Edit the note" title="Edit" onclick="aw2NoteEdit()">' + AW2_IC.edit + '</button></div>';
+    return _aw2.capOpen ? '' : aw2Fab('aw2New', AW2_IC.plus, 'New note', 'aw2NoteNew()');
+  }
+  if (v === 'bookmarks') {
+    if (_aw2.adding) return '';
+    let full = false; try { full = cfFollowedHandles(null).length >= ((typeof CF_MAX_CREATORS !== 'undefined') ? CF_MAX_CREATORS : 5); } catch (e) {}
+    return '<button type="button" class="aw-fab' + (full ? ' aw2-full' : '') + '" id="aw2Add" aria-disabled="' + (full ? 'true' : 'false') + '" onclick="aw2AddOpen()">' + AW2_IC.plus + '<span>Add creator</span></button>';
+  }
+  return '';
+}
+function aw2Wire(){
+  if (_aw2Wired) return; _aw2Wired = true;
+  try {
+    document.addEventListener('click', function (e) {
+      if (!_aw2.menu) return; const t = e && e.target;
+      if (t && t.closest && t.closest('.aw2-menu, .aw2-mbtn')) return;
+      _aw2.menu = ''; _aw2.del = ''; aw2Render();
+    });
+    document.addEventListener('keydown', function (e) { if (e && e.key === 'Escape') aw2Esc(); });
+  } catch (e) {}
+}
+// keep what is typed (and the caret) across a redraw
+function aw2Keep(){ const a = document.activeElement; return (a && a.id && /^aw2/.test(a.id)) ? { id: a.id, s: a.selectionStart, e: a.selectionEnd } : null; }
+function aw2Restore(k){ if (!k) return; const f = awEl(k.id); if (!f) return; try { f.focus(); if (f.setSelectionRange && k.s != null) f.setSelectionRange(k.s, k.e); } catch (e) {} }
+function aw2Render(){
+  aw2Wire();
+  const v = aw2View();
+  if (_aw2.view !== v) {
+    _aw2.view = v; _aw2.menu = ''; _aw2.del = '';
+    if (_aw2.classic && _aw2.classic !== v) _aw2.classic = '';
+    if (v !== 'notebook') { _aw2.note = ''; _aw2.edit = false; if (_aw2.capOpen) aw2NoteNewEnd(true); }
+    if (v !== 'bookmarks') _aw2.adding = false;
+  }
+  try {
+    document.body.classList.add('aw-on');
+    if (_aw2.classic) document.body.setAttribute('data-aw2-classic', _aw2.classic); else document.body.removeAttribute('data-aw2-classic');
+  } catch (e) {}
+  const keep = aw2Keep();
+  const t = awEl('awTrends'); if (t) t.innerHTML = _aw2.classic === 'viral' ? aw2BackHtml('Trends') : aw2TrendsHtml();
+  const s = awEl('awSearch'); if (s) s.innerHTML = _aw2.classic === 'questions' ? aw2BackHtml('What people search') : aw2SearchHtml();
+  aw2NotesRender();
+  let c = awEl('awCreators');
+  if (!c) { const vb = awEl('view-bookmarks'); if (vb && document.createElement) { try { c = document.createElement('div'); c.className = 'aw-screen'; c.id = 'awCreators'; vb.insertBefore(c, vb.firstChild || null); } catch (e) { c = null; } } }
+  if (c) { c.innerHTML = aw2CreatorsHtml(); const a = awEl('aw2AddLink'), b = awEl('aw2AddNote'); if (a) a.value = _aw2.addVal; if (b) b.value = _aw2.addNote; }
+  aw2Restore(keep);
+  try {
+    if (v === 'notebook' && _aw2.classic !== 'notebook' && aw2NoteObj()) document.body.setAttribute('data-aw2-detail', 'notebook');
+    else document.body.removeAttribute('data-aw2-detail');
+  } catch (e) {}
+  if (aw2SpOpen() && !_aw2.sp) { const ov = awEl('settingsOverlay'); if (ov && ov.querySelector && ov.querySelector('.aw2-sp')) ov.innerHTML = aw2SettingsHtml(); }
+  try { if (typeof awRender === 'function') awRender(); } catch (e) {}   // the dock
+}
+// ---- wiring: the old renderers redraw the calm screens from the same data; the menu's Creators opens the screen ----
+function aw2Wrap(name, make){
+  try { const orig = window[name]; if (typeof orig !== 'function' || orig.__aw2) return; const w = make(orig); w.__aw2 = true; window[name] = w; } catch (e) {}
+}
+['renderTrendMemory', 'renderPAASection', 'renderNotebook', 'rerenderBookmarks'].forEach(nm => aw2Wrap(nm, orig => function () { const r = orig.apply(this, arguments); try { aw2Render(); } catch (e) {} return r; }));
+aw2Wrap('cfRender', orig => function () { const r = orig.apply(this, arguments); try { if (aw2View() === 'bookmarks') aw2Render(); } catch (e) {} return r; });
+aw2Wrap('switchView', orig => function (view) { const r = orig.apply(this, arguments); try { aw2Render(); } catch (e) {} return r; });
+aw2Wrap('toggleBookmarkBar', orig => function () { try { closeBookmarks(); } catch (e) {} switchView('bookmarks'); return true; });
+aw2Wrap('bvRenderHome', orig => function () { const r = orig.apply(this, arguments); try { aw2CoachStrip(); } catch (e) {} return r; });
+aw2Wrap('renderSettingsPanel', orig => function () { return aw2SpRender(orig, this, arguments); });
+aw2Wrap('openSettings', orig => function () { _aw2.sp = _aw2.spNext != null ? _aw2.spNext : ''; _aw2.spNext = null; _aw2.menu = ''; return orig.apply(this, arguments); });
+aw2Wrap('toggleSettings', orig => function () {
+  if (!aw2SpOpen()) { _aw2.sp = _aw2.spNext != null ? _aw2.spNext : ''; _aw2.spNext = null; }
+  const r = orig.apply(this, arguments);
+  if (!aw2SpOpen()) { _aw2.sp = ''; _aw2.menu = ''; }
+  return r;
+});
+// the old ways into one part of Settings land on that part (Brand brain, Bookmarks, Team, Content mix)
+[['openBrain', 'brain'], ['openSettingsToBookmarks', 'bookmarks'], ['openSettingsToTeam', 'team'], ['openContentMix', 'mix']].forEach(p => aw2Wrap(p[0], orig => function () {
+  if (aw2SpOpen()) _aw2.sp = p[1]; else _aw2.spNext = p[1];
+  const r = orig.apply(this, arguments); _aw2.spNext = null; return r;
+}));
+aw2Wrap('spSetTab', orig => function (t) { if (!_aw2.sp || _aw2.sp === 'brain' || _aw2.sp === 'all') _aw2.sp = t === 'voice' ? 'brain' : 'all'; return orig.apply(this, arguments); });
+aw2Wrap('toggleSection', orig => function (key) { if (aw2SpOpen() && !_aw2.sp) _aw2.sp = AW2_SP_SECTIONS.indexOf(key) >= 0 ? key : 'brain'; return orig.apply(this, arguments); });
+// New note: a save closes the box and keeps the voice length (from the mic's first press to its stop) on this device
+aw2Wrap('nbToggleMic', orig => function () {
+  let rec = false; try { rec = !!(_nbRec && _nbRec.state === 'recording'); } catch (e) {}
+  if (rec && _aw2.voice) { _aw2.voiceSecs += Math.min(60, (Date.now() - _aw2.voice) / 1000); _aw2.voice = 0; }
+  else if (!rec) _aw2.voice = Date.now();
+  const p = orig.apply(this, arguments);
+  if (!rec) Promise.resolve(p).then(() => { try { if (!_nbRec) _aw2.voice = 0; } catch (e) {} }, () => { _aw2.voice = 0; });   // the mic never opened
+  return p;
+});
+aw2Wrap('nbSaveNote', orig => function () {
+  const before = aw2Notes().length;
+  const r = orig.apply(this, arguments);
+  try {
+    const list = aw2Notes();
+    if (list.length > before && list[0]) {
+      if (_aw2.voice) { _aw2.voiceSecs += Math.min(60, (Date.now() - _aw2.voice) / 1000); _aw2.voice = 0; }
+      if (_aw2.voiceSecs >= 1) aw2NbMetaSet(aw2NbKey(list[0].text), { v: Math.round(_aw2.voiceSecs) });
+      _aw2.voiceSecs = 0;
+      if (_aw2.capOpen) aw2NoteNewEnd(true);
+      aw2Render();
+    }
+  } catch (e) {}
+  return r;
+});
+// ===== end v717 app-wide =====
 
 // ===== follow-panels: "Creators you follow" (bottom of Remix, owner 2026-10-04) =====
 // The creators are the saved Bookmarks (bookmarkCategories → entries { id, name, links, note }), stored
@@ -32296,7 +32975,7 @@ function csxOnKey(e){
   var ob = document.getElementById('onboardingOverlay');
   if (ob && !ob.classList.contains('hidden') && csxShown(ob)) return;
   var k = e.key;
-  if (k === 'Escape' || k === 'Esc') { e.stopImmediatePropagation(); if (csxEscape()) e.preventDefault(); return; }
+  if (k === 'Escape' || k === 'Esc') { e.stopImmediatePropagation(); if (typeof aw2Esc === 'function' && aw2Esc()) { e.preventDefault(); return; } if (csxEscape()) e.preventDefault(); return; }   // v717: an open ⋯ / an unsaved note first
   if ((e.metaKey || e.ctrlKey) && !e.altKey && (k === 'k' || k === 'K')) { e.preventDefault(); e.stopImmediatePropagation(); csxPaletteToggle(); return; }
   if (k === 'Tab') { csxTrapTab(e); return; }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -32306,7 +32985,7 @@ function csxOnKey(e){
   if (k === '?') { e.preventDefault(); csxShortcutsOpen(); return; }
   if (k === 'n' || k === 'N') { e.preventDefault(); csxComposerOpen(); return; }
   var scr = csxScreen(); if (CSX_MD_VIEWS.indexOf(scr) < 0) return;
-  try { if (document.body.classList.contains('aw-on') && (scr === 'ideas' || scr === 'pipeline')) return; } catch (e) {}   // v716: calm lists, no hidden row to approve
+  try { if (document.body.classList.contains('aw-on') && (scr === 'ideas' || scr === 'pipeline' || scr === 'bookmarks' || (scr === 'notebook' && document.body.getAttribute('data-aw2-classic') !== 'notebook'))) return; } catch (e) {}   // v716/v717: calm lists, no hidden row to select — arrows scroll the page
   var pane = document.getElementById('csxDetail');
   if ((k === 'ArrowDown' || k === 'ArrowUp') && pane && pane.contains(e.target)) return;   // arrows scroll the detail
   if (_L.length && (k === 'ArrowDown' || k === 'ArrowUp' || k === 'Enter')) return;          // …and inside the detail dialog
@@ -32497,7 +33176,7 @@ function csxBreakpoint(desk){
     var p = document.getElementById('csxDetail'); if (p) p.innerHTML = '';
     csxSyncClasses();
     try { var so = document.getElementById('settingsOverlay'); if (so && so.classList.contains('open')) renderSettingsPanel(); } catch (e) {}
-    if (typeof activeView !== 'undefined' && activeView === 'bookmarks') { switchView('ideas'); return; }
+    if (typeof activeView !== 'undefined' && activeView === 'bookmarks' && !document.body.classList.contains('aw-on')) { switchView('ideas'); return; }   // v717: Creators is a phone screen too
   }
   var p2 = document.getElementById('csxDetail'); if (p2 && !csxIsWide()) p2.innerHTML = '';
   try { if (typeof refreshCurrentView === 'function') refreshCurrentView(); if (typeof renderNotebook === 'function') renderNotebook(); } catch (e) {}

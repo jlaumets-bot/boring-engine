@@ -1,0 +1,166 @@
+{
+ "mutations": [
+  {
+   "id": "M1",
+   "finding": "v717-trend-idea-pills",
+   "file": "app.html",
+   "find": "hyNewThread({ kind: 'text', text: text, from: o.from, label: o.label, pre: o.pre || '', ref: o.ref || '', url: o.url || '' });",
+   "replace": "hyNewThread({ kind: 'trend', text: text, from: o.from, label: o.label, pre: o.pre || '', ref: o.ref || '', url: o.url || '' });",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "a list row lands as a 'trend' source: the remix pills, not the idea pills"
+  },
+  {
+   "id": "M2",
+   "finding": "v717-search-qna-preselect",
+   "file": "app.html",
+   "find": "from: 'search', label: 'From What people search', pre: 'qna', ref: aw2QKey(q) });",
+   "replace": "from: 'search', label: 'From What people search', pre: '', ref: aw2QKey(q) });",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "a search question opens the chat with no Q&A pill lit"
+  },
+  {
+   "id": "M3",
+   "finding": "v717-preselect-render",
+   "file": "app.html",
+   "find": "class=\"hy-pill' + ((lastB ? lastB.twist === m.id : s.pre === m.id) ? ' on' : '') + '\"",
+   "replace": "class=\"hy-pill' + (lastB && lastB.twist === m.id ? ' on' : '') + '\"",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "the thread ignores the preselected pill"
+  },
+  {
+   "id": "M4",
+   "finding": "v717-add-cap",
+   "file": "app.html",
+   "find": "if (cfFollowedHandles(null).length >= max) { try { showToast(CF_MAX_MSG); } catch (e) {} return false; }",
+   "replace": "if (cfFollowedHandles(null).length > max) { try { showToast(CF_MAX_MSG); } catch (e) {} return false; }",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "+ Add creator opens the form at 5 of 5"
+  },
+  {
+   "id": "M5",
+   "finding": "v717-creators-five",
+   "file": "app.html",
+   "find": "const handles = cfFollowedHandles(null).slice(0, max), pos = {};",
+   "replace": "const handles = cfFollowedHandles(null), pos = {};",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "Creators lists a 6th TikTok creator under Following"
+  },
+  {
+   "id": "M6",
+   "finding": "v717-xss-trend",
+   "file": "app.html",
+   "find": "<span class=\"aw-rt\">' + awE(aw2Clip(r.text, 200)) + '</span>'",
+   "replace": "<span class=\"aw-rt\">' + aw2Clip(r.text, 200) + '</span>'",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "a trend's text is written into the list unescaped"
+  },
+  {
+   "id": "M7",
+   "finding": "v717-xss-note",
+   "file": "app.html",
+   "find": "<span class=\"aw-rt aw2-nt\">' + awE(n.text) + '</span>'",
+   "replace": "<span class=\"aw-rt aw2-nt\">' + n.text + '</span>'",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "a note's text is written into the Notebook list unescaped"
+  },
+  {
+   "id": "M8",
+   "finding": "v717-settings-section",
+   "file": "app.html",
+   "find": "Array.prototype.forEach.call(box.children, ch => ch.classList.toggle('aw2-sp-hide', keep.indexOf(ch) < 0));",
+   "replace": "Array.prototype.forEach.call(box.children, ch => ch.classList.toggle('aw2-sp-hide', false));",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "a Settings row opens the whole old tab instead of its section"
+  },
+  {
+   "id": "M9",
+   "finding": "v717-answered",
+   "file": "app.html",
+   "find": "    paaUsed.add(k); try { savePAAState(); } catch (e) {}\n",
+   "replace": "    try { savePAAState(); } catch (e) {}\n",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "a version made from a search question never marks it Answered"
+  },
+  {
+   "id": "M10",
+   "finding": "v717-note-to-chat",
+   "file": "app.html",
+   "find": "return aw2ToChat({ text: String(n.text || ''), from: 'note', label: 'From your Notebook', ref: aw2NbKey(n.text) });",
+   "replace": "return aw2ToChat({ text: String(n.id || ''), from: 'note', label: 'From your Notebook', ref: aw2NbKey(n.text) });",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "Make it yours sends the note's id, not its words, to the chat"
+  },
+  {
+   "id": "M11",
+   "finding": "v717-trend-groups",
+   "file": "app.html",
+   "find": "return (r.ts && n - r.ts < 7 * 864e5) ? 1 : 2; }",
+   "replace": "return 1; }",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "old trends are filed under This week (no Earlier group)"
+  },
+  {
+   "id": "M12",
+   "finding": "v717-delete-asks",
+   "file": "app.html",
+   "find": "  if (m.confirm && _aw2.del !== _aw2.menu + ':' + k) { _aw2.del = _aw2.menu + ':' + k; aw2Render(); return 'ask'; }",
+   "replace": "  if (false) { _aw2.del = _aw2.menu + ':' + k; aw2Render(); return 'ask'; }",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "Delete / Remove in a ⋯ menu acts on the first tap"
+  },
+  {
+   "id": "M13",
+   "finding": "v717-classic-view",
+   "file": "clean.css",
+   "find": "body.aw-on:not([data-aw2-classic=\"viral\"]) #view-viral > :not(#awTrends),",
+   "replace": "body.aw-on #view-viral > :not(#awTrends),",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "Trends' Classic view stays hidden (the old tools become unreachable)"
+  },
+  {
+   "id": "M14",
+   "finding": "v717-esc-unsaved",
+   "file": "app.html",
+   "find": "    if (v.trim() !== String(n.text || '').trim()) { _aw2.editVal = v; _aw2.ask = true; aw2Render(); return true; }\n",
+   "replace": "",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "Esc on an edited note throws the changes away without asking"
+  },
+  {
+   "id": "M15",
+   "finding": "v717-esc-menu-first",
+   "file": "app.html",
+   "find": "if (typeof aw2Esc === 'function' && aw2Esc()) { e.preventDefault(); return; } if (csxEscape())",
+   "replace": "if (csxEscape())",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "desktop Esc skips the open menu / unsaved note"
+  },
+  {
+   "id": "M16",
+   "finding": "v717-arrow-guard",
+   "file": "app.html",
+   "find": "scr === 'pipeline' || scr === 'bookmarks' || (scr === 'notebook'",
+   "replace": "scr === 'pipeline' || (scr === 'notebook'",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "arrow keys move a hidden selection on Creators instead of scrolling"
+  },
+  {
+   "id": "M17",
+   "finding": "v717-desktop-subpage-back",
+   "file": "app.html",
+   "find": "bb.setAttribute('onclick', 'aw2SpBack()');",
+   "replace": "bb.setAttribute('onclick', 'toggleSettings()');",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "the desktop sub-page back closes Settings instead of returning to the rows"
+  },
+  {
+   "id": "M18",
+   "finding": "v717-esc-menu-order",
+   "file": "app.html",
+   "find": "  if (_aw2.menu) { _aw2.menu = ''; _aw2.del = ''; aw2Render(); return true; }\n  if (typeof _aw !== 'undefined'",
+   "replace": "  if (typeof _aw !== 'undefined'",
+   "gate": "appwide-p23-v717.mjs",
+   "why": "Esc closes the note page under an open menu"
+  }
+ ]
+}
