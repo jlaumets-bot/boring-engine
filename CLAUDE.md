@@ -2,6 +2,15 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-08 — v721. HOMEPAGE: 4-step hero + phone loop (owner-approved v714 copy, parked until now) + Micro-lecture → Explainer.
+- index.html hero: h1 unchanged ("Paste any TikTok. Make it yours."); paragraph → ordered list: Paste the link / Get your version /
+  Film it right away (teleprompter, breathing gaps, stress marks) / Add B-roll if you want. Phone = 5-frame loop (paste, exact words,
+  your version, teleprompter, split-screen B-roll), reduced-motion = frame 3, pauses off-screen. Gate hero-v714.
+- Website "micro-lecture(s)" → "explainer(s)" in meta, JSON-LD description, card heading, tool list, FAQ. site-clean approved pairs; landing.mjs.
+- SQL saves-v720 RUN 2026-11-08 (owner asked Claude to run it): ideas 425 / notes 171 / remixes 2 all keyed, first_created_at
+  filled, trigger + ACL (postgres, service_role) verified; health 26/26.
+NOT CHANGED (owner's copy, never approved): the crossed-out lines above the h1 and the "first week of posts before your coffee's cold" fine print.
+
 ## ▶▶ 2026-11-08 — v720. SAVES SEND ONLY WHAT CHANGED (audit H1/H2/G6 cross-device data loss). SQL sql/saves-v720.sql (owner runs).
 - client_key on ideas, notebook_notes, remixes, reference photos, prompt history (backfill id::text, random default, unique
   (brand_id, client_key)); ideas.first_created_at (+ trigger ideas_v720_touch: DB stamps created_at, keeps first_created_at; not

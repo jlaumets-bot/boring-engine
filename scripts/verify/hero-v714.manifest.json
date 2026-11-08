@@ -1,0 +1,36 @@
+{
+ "mutations": [
+  {
+   "id": "H1",
+   "finding": "v714 2: step 3 is the owner-approved text",
+   "file": "index.html",
+   "find": "<li><b>Film it right away.</b> The teleprompter",
+   "replace": "<li><b>Film it today.</b> The teleprompter",
+   "gate": "hero-v714.mjs"
+  },
+  {
+   "id": "H2",
+   "finding": "v714 3: the phone holds exactly 5 frames",
+   "file": "index.html",
+   "find": "<div class=\"hd-frame hd-f2\" data-frame=\"2\">",
+   "replace": "<div class=\"hd-f2\" data-frame=\"2\">",
+   "gate": "hero-v714.mjs"
+  },
+  {
+   "id": "H3",
+   "finding": "v714 5: no external URL or asset is added",
+   "file": "index.html",
+   "find": "<span class=\"hd-th on\">4</span>",
+   "replace": "<span class=\"hd-th on\"><img src=\"https://images.example.com/b-roll.jpg\" alt=\"\"></span>",
+   "gate": "hero-v714.mjs"
+  },
+  {
+   "id": "H4",
+   "finding": "v714 6: the reduced-motion CSS stops the demo frames moving",
+   "file": "index.html",
+   "find": "  .hd-frame,.hd-frame *,.hd-dot::before{animation:none!important;transition:none!important}\n",
+   "replace": "",
+   "gate": "hero-v714.mjs"
+  }
+ ]
+}

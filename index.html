@@ -44,7 +44,7 @@
 })();
 </script>
 <title>Content Shrimp — Paste any TikTok. Make it yours. On-brand posts, in your voice.</title>
-<meta name="description" content="For people who have to post and don't know what. Talk about your brand for two minutes and it writes a week at a time — scripts, statements, carousels, micro-lectures, Q&amp;As — in your voice, from a brand brain that keeps learning how you talk.">
+<meta name="description" content="For people who have to post and don't know what. Talk about your brand for two minutes and it writes a week at a time — scripts, statements, carousels, explainers, Q&amp;As — in your voice, from a brand brain that keeps learning how you talk.">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://contentshrimp.com/">
 
@@ -70,7 +70,7 @@
   "url": "https://contentshrimp.com",
   "applicationCategory": "BusinessApplication",
   "operatingSystem": "Web",
-  "description": "For people who have to post and don't know what. Talk about your brand for two minutes and it writes a week at a time — scripts, statements, carousels, micro-lectures, Q&As — in your voice, from a brand brain that keeps learning how you talk.",
+  "description": "For people who have to post and don't know what. Talk about your brand for two minutes and it writes a week at a time — scripts, statements, carousels, explainers, Q&As — in your voice, from a brand brain that keeps learning how you talk.",
   "offers": [
     { "@type": "Offer", "name": "Free trial", "price": "0", "priceCurrency": "USD", "description": "7-day free trial of Pro, no card required" },
     { "@type": "Offer", "name": "Pro", "price": "24", "priceCurrency": "USD", "description": "750 posts a month, every tool, learning brand brain" },
@@ -133,45 +133,116 @@ b,strong{font-weight:600}
 .pain-strip .ps-ok{color:var(--cs-text);font-weight:500;margin-top:2px}
 .hero h1{font-size:clamp(36px,5.2vw,56px);line-height:1.06}
 .hero h1 em{font-style:normal;white-space:nowrap}
-.hero p.sub{font-size:18px;color:var(--cs-muted);margin:20px 0 30px;max-width:560px;line-height:1.6}
-.hero p.sub b{color:var(--cs-text);font-weight:500}
 .hero-actions{display:flex;flex-wrap:wrap;gap:12px}
 .hero-note{font-size:13.5px;color:var(--cs-muted);margin-top:18px;max-width:520px;line-height:1.55}
 .hero-note b{color:var(--cs-text);font-weight:500}
 
-/* hero visual: the Ideas screen of the app, drawn in HTML/CSS (decoration, aria-hidden) */
-.hero-mock{width:360px;max-width:100%}
-.mk-phone{position:relative;height:620px;overflow:hidden;background:var(--cs-bg);border:1px solid var(--cs-line);border-radius:36px;padding:14px 16px 0}
-.mk-phone::after{content:'';position:absolute;left:0;right:0;bottom:0;height:70px;background:var(--cs-bg);z-index:1}
-.mk-top{display:flex;align-items:center;justify-content:space-between;height:40px}
+/* v714 hero steps: the four things you do, numbered small and muted; the step the phone is showing lights up */
+.hero-steps{margin:22px 0 30px;padding-left:22px;max-width:560px;font-size:17px;line-height:1.55;color:var(--cs-muted)}
+.hero-steps li{padding-left:6px;transition:color .4s var(--ease)}
+.hero-steps li+li{margin-top:10px}
+.hero-steps li::marker{font-size:13px;font-weight:500;color:var(--cs-muted);font-variant-numeric:tabular-nums}
+.hero-steps b{color:var(--cs-text);font-weight:500}
+.hero-steps.hs-live li.on{color:var(--cs-text)}
+.hero-steps.hs-live li.on::marker{color:var(--cs-text)}
+
+/* hero visual: a short loop of the four steps on a phone, drawn in HTML/CSS (decoration, aria-hidden) */
+.hero-demo{width:360px;max-width:100%}
+.hero-mock{width:100%}
+.mk-phone{position:relative;height:600px;overflow:hidden;background:var(--cs-bg);border:1px solid var(--cs-line);border-radius:36px}
+.mk-top{position:absolute;left:16px;right:16px;top:14px;z-index:2;display:flex;align-items:center;justify-content:space-between;height:40px}
 .mk-top>svg{width:20px;height:20px}
 .mk-brand{display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:600}
 .mk-brand svg{width:14px;height:14px;color:var(--cs-muted)}
-.mk-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:14px 0 16px}
-.mk-title{font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.15}
+.mk-title{font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.15;margin-top:14px}
 .mk-sub{font-size:13px;color:var(--cs-muted);margin-top:4px;line-height:1.4}
-.mk-plan{flex:none;font-size:12.5px;font-weight:500;border:1px solid var(--cs-line);border-radius:999px;padding:7px 12px;white-space:nowrap}
-.mk-types{display:flex;gap:6px;overflow:hidden;margin-bottom:16px}
 .mk-chip{flex:none;font-size:12px;font-weight:500;background:var(--cs-chip);border-radius:999px;padding:5px 11px}
 .mk-chip.on{background:var(--cs-primary);color:var(--cs-on-primary)}
-.mk-day{display:flex;align-items:baseline;gap:8px;font-size:13px;font-weight:600;padding-bottom:8px;border-bottom:1px solid var(--cs-line);margin-bottom:10px}
-.mk-day span{font-size:12px;font-weight:400;color:var(--cs-muted)}
-.mk-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid var(--cs-line);border-radius:18px;padding:14px;margin-bottom:10px}
-.mk-tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
-.mk-tag{font-size:11px;font-weight:500;background:var(--cs-chip);border-radius:999px;padding:3px 9px}
-.mk-ttl{font-size:15px;font-weight:600;line-height:1.3;letter-spacing:-0.01em}
-.mk-lbl{font-size:11.5px;color:var(--cs-muted);margin-top:8px}
-.mk-txt{font-size:13px;color:var(--cs-muted);line-height:1.45;margin-top:2px}
-.mk-acts{display:flex;gap:6px;align-self:start}
-.mk-ok,.mk-no{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center}
-.mk-ok{background:var(--cs-primary);color:var(--cs-on-primary)}
-.mk-no{border:1px solid var(--cs-line)}
-.mk-ok svg,.mk-no svg{width:15px;height:15px}
 .mk-composer{position:absolute;left:12px;right:12px;bottom:12px;z-index:2;display:flex;align-items:center;gap:8px;background:var(--cs-input);border-radius:28px;padding:6px 6px 6px 16px;font-size:13px;color:var(--cs-muted)}
-.mk-composer>span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mk-send{flex:none;width:34px;height:34px;border-radius:50%;background:var(--cs-primary);color:var(--cs-on-primary);display:flex;align-items:center;justify-content:center}
 .mk-send svg{width:16px;height:16px}
-@media(max-width:900px){.hero-grid{grid-template-columns:minmax(0,1fr);gap:48px}.hero-mock{justify-self:center}}
+
+.hd-frame{position:absolute;left:0;right:0;top:54px;bottom:0;padding:0 16px;opacity:0;transition:opacity .6s var(--ease);pointer-events:none}
+.hd-frame.on{opacity:1}
+.hd-step{font-size:12px;font-weight:500;color:var(--cs-muted);margin:18px 0 10px}
+.hd-label{font-size:12px;font-weight:500;color:var(--cs-muted);margin:24px 0 8px}
+.hd-av{flex:none;width:30px;height:30px;border-radius:50%;background:var(--cs-chip);border:1px solid var(--cs-line)}
+.hd-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--cs-line)}
+.hd-rt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.hd-rt b{font-weight:600}
+.hd-rt>span{color:var(--cs-muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd-rt i{display:block;height:7px;border-radius:4px;background:var(--cs-chip);width:46%}
+.hd-rt i+i{width:72%;margin-top:5px}
+.hd-score{flex:none;font-size:11.5px;font-weight:500;background:var(--cs-chip);border-radius:999px;padding:3px 9px}
+.hd-ghost .hd-av{background:var(--cs-raise)}
+.hd-in{flex:1;min-width:0;display:grid}
+.hd-in>span{grid-area:1/1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd-ph{opacity:0}
+.hd-link{color:var(--cs-text)}
+.hd-paste{position:absolute;right:16px;bottom:66px;font-size:11.5px;font-weight:500;background:var(--cs-chip);color:var(--cs-text);border-radius:999px;padding:4px 10px}
+.hd-src{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--cs-muted);margin-bottom:12px}
+.hd-src .hd-av{width:24px;height:24px}
+.hd-src b{color:var(--cs-text);font-weight:600}
+.hd-card{border:1px solid var(--cs-line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:8px;font-size:15px;line-height:1.45}
+.hd-f2 .hd-card{color:var(--cs-muted)}
+.hd-mine{color:var(--cs-text)}
+.hd-chips{display:flex;gap:6px;margin-bottom:12px}
+.hd-meta{font-size:12px;color:var(--cs-muted);margin-top:10px}
+.hd-cta{position:absolute;left:16px;right:16px;bottom:14px;display:flex;align-items:center;justify-content:center;height:44px;border-radius:999px;background:var(--cs-primary);color:var(--cs-on-primary);font-size:14px;font-weight:500}
+/* the teleprompter, marked the way the app marks it: ••• where you breathe, the stressed words heavy and underlined */
+.hd-mode{display:flex;align-items:center;justify-content:center;gap:7px;width:max-content;margin:14px auto 0;font-size:11.5px;font-weight:500;color:var(--cs-muted);border:1px solid var(--cs-line);border-radius:999px;padding:4px 11px}
+.hd-live{width:7px;height:7px;border-radius:50%;background:var(--cs-ok)}
+.hd-tp{margin-top:26px;text-align:center;font-size:20px;font-weight:600;line-height:1.35;letter-spacing:-0.015em}
+.hd-tl{display:block;padding:4px 2px;border-radius:10px}
+.hd-said{opacity:.32}
+.hd-cur{background:var(--cs-raise)}
+.hd-em{font-weight:800;text-decoration:underline;text-decoration-color:var(--cs-muted);text-decoration-thickness:.06em;text-underline-offset:.18em}
+.hd-beat{display:block;text-align:center;font-size:0;line-height:1;margin:16px 0}
+.hd-beat::before{content:'\2022\2022\2022';font-size:13px;letter-spacing:.42em;color:var(--cs-muted)}
+.hd-rec{position:absolute;left:0;right:0;bottom:18px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11.5px;color:var(--cs-muted);font-variant-numeric:tabular-nums}
+.hd-recbtn{width:52px;height:52px;border-radius:50%;border:2px solid var(--cs-text);display:flex;align-items:center;justify-content:center}
+.hd-recbtn::before{content:'';width:18px;height:18px;border-radius:5px;background:var(--cs-text)}
+/* split screen: you on top, the B-roll under you */
+.hd-split{margin-top:12px;height:420px;border:1px solid var(--cs-line);border-radius:18px;overflow:hidden;display:grid;grid-template-rows:1fr 1fr}
+.hd-cam{position:relative;background:var(--cs-raise);display:flex;align-items:flex-end;justify-content:center;border-bottom:1px solid var(--cs-line)}
+.hd-cam svg{width:150px;height:125px;fill:var(--cs-muted);opacity:.28}
+.hd-subt{position:absolute;left:12px;right:12px;bottom:10px;text-align:center;font-size:12.5px;font-weight:500;color:var(--cs-text)}
+.hd-broll{position:relative;display:flex;align-items:center;justify-content:center;padding:16px}
+.hd-gfx{width:100%;height:100%;border-radius:12px;background:var(--cs-primary);color:var(--cs-on-primary);display:flex;flex-direction:column;justify-content:center;padding:0 20px;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.15}
+.hd-cap{position:absolute;right:24px;bottom:24px;font-size:11px;font-weight:500;background:var(--cs-bg);color:var(--cs-text);border-radius:999px;padding:3px 9px}
+.hd-thumbs{display:flex;justify-content:center;gap:8px;margin-top:12px}
+.hd-th{width:44px;height:44px;border-radius:10px;border:1px solid var(--cs-line);background:var(--cs-raise);color:var(--cs-muted);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600}
+.hd-th svg{width:18px;height:18px}
+.hd-th.on{background:var(--cs-primary);color:var(--cs-on-primary);border-color:var(--cs-primary)}
+/* what moves inside a frame while it shows; the resting (no-animation) state is the end state */
+@keyframes hdOut{0%,30%{opacity:1}42%,100%{opacity:0}}
+@keyframes hdIn{0%,34%{opacity:0}46%,100%{opacity:1}}
+@keyframes hdRise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes hdWas{0%,42%{opacity:1;background:var(--cs-raise)}56%,100%{opacity:.32;background:var(--cs-bg)}}
+@keyframes hdNow{0%,42%{background:var(--cs-bg)}56%,100%{background:var(--cs-raise)}}
+.hd-f1.on .hd-ph{animation:hdOut 2.6s var(--ease) both}
+.hd-f1.on .hd-link,.hd-f1.on .hd-paste{animation:hdIn 2.6s var(--ease) both}
+.hd-f2.on .hd-ln,.hd-f3.on .hd-ln{animation:hdRise .5s var(--ease) both}
+.hd-frame.on .hd-ln:nth-child(2){animation-delay:.25s}
+.hd-frame.on .hd-ln:nth-child(3){animation-delay:.5s}
+.hd-frame.on .hd-ln:nth-child(4){animation-delay:.75s}
+.hd-f4.on .hd-was{animation:hdWas 3s var(--ease) both}
+.hd-f4.on .hd-now{animation:hdNow 3s var(--ease) both}
+.hd-f5.on .hd-gfx{animation:hdRise .6s var(--ease) both .2s}
+.hd-f5.on .hd-cap{animation:hdIn 1.6s var(--ease) both}
+/* the frame buttons under the phone */
+.hd-ctrl{display:flex;justify-content:center;align-items:center;margin-top:10px}
+.hd-dot,.hd-play{border:0;background:none;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;height:44px;border-radius:10px;color:var(--cs-muted)}
+.hd-dot{width:32px}
+.hd-dot::before{content:'';width:6px;height:6px;border-radius:3px;background:var(--cs-muted);transition:width .3s var(--ease),background .3s var(--ease)}
+.hd-dot:hover::before{background:var(--cs-text)}
+.hd-dot[aria-current="step"]::before{width:18px;background:var(--cs-text)}
+.hd-play{width:44px;margin-left:4px}
+.hd-play:hover{color:var(--cs-text)}
+.hd-play svg{width:14px;height:14px}
+.hd-play .hd-i-play,.hd-paused .hd-play .hd-i-pause{display:none}
+.hd-paused .hd-play .hd-i-play{display:block}
+@media(max-width:900px){.hero-grid{grid-template-columns:minmax(0,1fr);gap:48px}.hero-demo{justify-self:center}}
 
 /* ── SECTIONS ── */
 .section{padding:96px 0}
@@ -314,7 +385,7 @@ b,strong{font-weight:600}
   .section{padding:64px 0}
   .section-head{margin-bottom:36px}
   .hero{padding:40px 0 56px}
-  .hero p.sub{font-size:17px}
+  .hero-steps{font-size:16px}
   .hero-actions{flex-direction:column;align-items:stretch}
   .btn{width:100%}
   .func,.beat{padding:20px}
@@ -330,6 +401,7 @@ b,strong{font-weight:600}
   *,*::before,*::after{animation:none!important;transition:none!important}
   .reveal{opacity:1;transform:none}
   .lp-pill{display:none}
+  .hd-frame,.hd-frame *,.hd-dot::before{animation:none!important;transition:none!important}
 }
 </style>
 </head>
@@ -361,25 +433,115 @@ b,strong{font-weight:600}
         <span class="ps-ok">You'll never type any of that again.</span>
       </div>
       <h1>Paste any TikTok. <em>Make it yours.</em></h1>
-      <p class="sub">Tell it about your brand once, talk to it for two minutes, and it writes a week at a time. Talking-head scripts, statements, carousels, micro-lectures, Q&amp;As, in your voice, on your themes. Approve what you like. <b>It learns from that too.</b></p>
+      <ol class="hero-steps" id="heroSteps"><li><b>Paste the link.</b> You get the exact words it said.</li><li><b>Get your version</b>, rewritten in your brand's voice with your facts.</li><li><b>Film it right away.</b> The teleprompter follows your voice, with breathing gaps and the words to stress marked.</li><li><b>Add B-roll if you want</b>: matching photos and on-brand graphics, built on your phone. No editor.</li></ol>
       <div class="hero-actions">
         <a href="/app.html" class="btn btn-primary">Try Pro free for 7 days →</a>
         <a href="#formats" class="btn btn-ghost">See what it makes ↓</a>
       </div>
       <div class="hero-note">No credit card, no setup, no learning curve — mobile-first, works on any device. Your first week of posts before your coffee’s cold. <b>7-day free trial of Pro.</b></div>
     </div>
-    <div class="hero-mock" data-site-mock aria-hidden="true">
-      <div class="mk-phone">
-        <div class="mk-top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 8h16M4 15h10"/></svg><span class="mk-brand">Your brand <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
-        <div class="mk-head"><div><div class="mk-title">5 ideas ready</div><div class="mk-sub">Pick the ones you’d post. Skip the rest.</div></div><span class="mk-plan">Plan my week</span></div>
-        <div class="mk-types"><span class="mk-chip on">All</span><span class="mk-chip">Script</span><span class="mk-chip">Statement</span><span class="mk-chip">Carousel</span><span class="mk-chip">Q&amp;A</span><span class="mk-chip">Micro-lecture</span></div>
-        <div class="mk-day">Monday <span>How-to</span></div>
-        <div class="mk-card"><div><div class="mk-tags"><span class="mk-tag">Script</span><span class="mk-tag">Tip</span></div><div class="mk-ttl">Write the first 3 seconds before anything else</div><div class="mk-lbl">Hook</div><div class="mk-txt">Most people start with the caption. Start with the line that stops the scroll.</div></div><div class="mk-acts"><span class="mk-ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="mk-no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div></div>
-        <div class="mk-card"><div><div class="mk-tags"><span class="mk-tag">Statement</span></div><div class="mk-ttl">One idea per post. Always.</div><div class="mk-lbl">Hook</div><div class="mk-txt">If you need “and” to explain it, it’s two posts.</div></div><div class="mk-acts"><span class="mk-ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="mk-no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div></div>
-        <div class="mk-card"><div><div class="mk-tags"><span class="mk-tag">Q&amp;A</span></div><div class="mk-ttl">How often should I really post?</div><div class="mk-lbl">Hook</div><div class="mk-txt">A straight answer, and the one thing that matters more than how often.</div></div><div class="mk-acts"><span class="mk-ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="mk-no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div></div>
-        <div class="mk-composer"><span>Write a post about… or paste a TikTok link</span><span class="mk-send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span></div>
+    <!-- v714: the phone plays the four steps above as five short frames (HTML/CSS + the small script below).
+         The phone itself is decoration (data-site-mock, aria-hidden); the step buttons under it are real controls. -->
+    <div class="hero-demo" id="heroDemo">
+      <div class="hero-mock" data-site-mock aria-hidden="true">
+        <div class="mk-phone">
+          <div class="mk-top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 8h16M4 15h10"/></svg><span class="mk-brand">Your brand <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
+
+          <div class="hd-frame hd-f1 on" data-frame="1">
+            <div class="mk-title">Make it yours</div>
+            <div class="mk-sub">Paste a TikTok. Get your version.</div>
+            <div class="hd-label">New from your creators</div>
+            <div class="hd-row"><span class="hd-av"></span><span class="hd-rt"><b>@calm.creator</b><span>Why your mornings feel rushed</span></span><span class="hd-score">3.1×</span></div>
+            <div class="hd-row hd-ghost"><span class="hd-av"></span><span class="hd-rt"><i></i><i></i></span></div>
+            <div class="hd-row hd-ghost"><span class="hd-av"></span><span class="hd-rt"><i></i><i></i></span></div>
+            <span class="hd-paste">Pasted</span>
+            <div class="mk-composer hd-comp"><span class="hd-in"><span class="hd-ph">Write a post about… or paste a TikTok link</span><span class="hd-link">tiktok.com/@calm.creator/video/7301…</span></span><span class="mk-send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span></div>
+          </div>
+
+          <div class="hd-frame hd-f2" data-frame="2">
+            <div class="hd-step">Exact words</div>
+            <div class="hd-src"><span class="hd-av"></span><span><b>@calm.creator</b> · 0:24</span></div>
+            <div class="hd-card"><span class="hd-ln">“Nobody tells you this about mornings.</span><span class="hd-ln">You don’t need an hour.</span><span class="hd-ln">You need one thing you never skip.</span><span class="hd-ln">Mine is ten minutes outside.”</span></div>
+            <span class="hd-cta">Make my version</span>
+          </div>
+
+          <div class="hd-frame hd-f3" data-frame="3">
+            <div class="hd-step">Your version</div>
+            <div class="hd-chips"><span class="mk-chip on">My take</span><span class="mk-chip">Simplify</span><span class="mk-chip">Flip it</span></div>
+            <div class="hd-card hd-mine"><span class="hd-ln">Nobody tells you this about your first cup.</span><span class="hd-ln">You don’t need a ritual.</span><span class="hd-ln">You need one cup you never skip.</span><span class="hd-ln">Ours brews in four minutes.</span></div>
+            <div class="hd-meta">In your brand’s voice · with your facts</div>
+            <span class="hd-cta">Film it</span>
+          </div>
+
+          <div class="hd-frame hd-f4" data-frame="4">
+            <div class="hd-mode"><span class="hd-live"></span>following your voice</div>
+            <div class="hd-tp">
+              <div class="hd-blk"><span class="hd-tl hd-said">Nobody tells you this</span><span class="hd-tl hd-said">about your first cup.</span></div>
+              <span class="hd-beat"></span>
+              <div class="hd-blk"><span class="hd-tl hd-said hd-was">You don’t need a ritual.</span><span class="hd-tl hd-cur hd-now">You need one cup you <b class="hd-em">never skip.</b></span></div>
+              <span class="hd-beat"></span>
+              <div class="hd-blk"><span class="hd-tl">Ours brews in <b class="hd-em">four minutes.</b></span></div>
+            </div>
+            <div class="hd-rec"><span class="hd-recbtn"></span><span class="hd-time">0:07</span></div>
+          </div>
+
+          <div class="hd-frame hd-f5" data-frame="5">
+            <div class="hd-split">
+              <div class="hd-cam"><svg viewBox="0 0 120 100"><circle cx="60" cy="40" r="20"/><path d="M20 100c3-24 20-36 40-36s37 12 40 36z"/></svg><span class="hd-subt">You need one cup you never skip.</span></div>
+              <div class="hd-broll"><div class="hd-gfx">4 minutes.<br>Every morning.</div><span class="hd-cap">B-roll · on-brand graphic</span></div>
+            </div>
+            <div class="hd-thumbs"><span class="hd-th"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg></span><span class="hd-th on">4</span><span class="hd-th"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v2M10 2v2M14 2v2"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="hd-ctrl" role="group" aria-label="How it works, frame by frame">
+        <button type="button" class="hd-dot" aria-label="Step 1: paste the link" aria-current="step"></button>
+        <button type="button" class="hd-dot" aria-label="Step 1: the exact words"></button>
+        <button type="button" class="hd-dot" aria-label="Step 2: your version"></button>
+        <button type="button" class="hd-dot" aria-label="Step 3: film it"></button>
+        <button type="button" class="hd-dot" aria-label="Step 4: add B-roll"></button>
+        <button type="button" class="hd-play" aria-label="Pause the demo"><svg class="hd-i-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><svg class="hd-i-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.6-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg></button>
       </div>
     </div>
+    <script>
+    /* v714 hero demo: five frames, one every ~2.6 s, crossfading. The step under the phone and the
+       matching list item light up with it. Reduced motion: no auto-advance, frame 3 shows, the buttons
+       still switch frames. Off-screen or in a background tab it stops. Picking a frame stops the loop. */
+    (function(){
+      var demo=document.getElementById('heroDemo'), list=document.getElementById('heroSteps');
+      if(!demo||!list) return;
+      var frames=demo.querySelectorAll('.hd-frame'), dots=demo.querySelectorAll('.hd-dot'), play=demo.querySelector('.hd-play');
+      var items=list.querySelectorAll('li');
+      var STEP=[0,0,1,2,3], HOLD=[2600,2600,2600,3000,2800];
+      var mq=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
+      var cur=0, timer=0, running=!(mq&&mq.matches), seen=!('IntersectionObserver' in window);
+      function show(i){
+        cur=i;
+        for(var k=0;k<frames.length;k++) frames[k].classList.toggle('on',k===i);
+        for(k=0;k<dots.length;k++){ if(k===i) dots[k].setAttribute('aria-current','step'); else dots[k].removeAttribute('aria-current'); }
+        for(k=0;k<items.length;k++) items[k].classList.toggle('on',k===STEP[i]);
+      }
+      function tick(){
+        clearTimeout(timer); timer=0;
+        if(!running||!seen||document.hidden) return;
+        timer=setTimeout(function(){ show((cur+1)%frames.length); tick(); },HOLD[cur]);
+      }
+      function setRunning(r){
+        running=r;
+        play.setAttribute('aria-label',r?'Pause the demo':'Play the demo');
+        demo.classList.toggle('hd-paused',!r);
+        tick();
+      }
+      for(var d=0;d<dots.length;d++)(function(i){ dots[i].addEventListener('click',function(){ show(i); setRunning(false); }); })(d);
+      play.addEventListener('click',function(){ setRunning(!running); });
+      if(!seen){ new IntersectionObserver(function(es){ seen=es[es.length-1].isIntersecting; tick(); },{threshold:.25}).observe(demo); }
+      document.addEventListener('visibilitychange',tick);
+      if(mq){ var onMq=function(){ if(mq.matches){ show(2); setRunning(false); } }; if(mq.addEventListener) mq.addEventListener('change',onMq); else if(mq.addListener) mq.addListener(onMq); }
+      list.classList.add('hs-live');
+      show(running?0:2);
+      setRunning(running);
+    })();
+    </script>
   </div>
 </header>
 
@@ -395,7 +557,7 @@ b,strong{font-weight:600}
       <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 13 5.2 3.1a.5.5 0 0 0 .8-.4V8.3a.5.5 0 0 0-.8-.4L16 11"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></div><h3>Talking-head script</h3><p>Written to be said, not read. Full sentences, a hook that works out loud, and a shot list. Film it with the teleprompter.</p></div>
       <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><h3>Statement</h3><p>One bold claim, two to five sentences, made for a text graphic. Lands for a stranger with zero context.</p></div>
       <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M2 6v12M22 6v12"/></svg></div><h3>Carousel</h3><p>Slide by slide, one idea per slide, ready for the slide maker in your brand colours.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg></div><h3>Micro-lecture</h3><p>One surprising fact about how something in your world works, under a minute. The post people save.</p></div>
+      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg></div><h3>Explainer</h3><p>One surprising fact about how something in your world works, under a minute. The post people save.</p></div>
       <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></div><h3>Q&amp;A</h3><p>A real question people search, pulled from Google, answered your way. The post that gets you found.</p></div>
       <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg></div><h3>Static</h3><p>A caption and an image brief. The quick one for the days you only have a photo.</p></div>
     </div>
@@ -441,7 +603,7 @@ b,strong{font-weight:600}
     (function(){
       var st=document.getElementById('lpStage'); if(!st) return;
       var SRC=['How you talk','Your website','Competitors','Reviews & reputation','Market complaints','Your social posts','Posts that worked','Google “People Also Ask”','What\u2019s rising','News · X · RSS','What you approve','How you edit'];
-      var TOOL=['Scripts','Statements','Carousels','Micro-lectures','Q&As','Your versions'];
+      var TOOL=['Scripts','Statements','Carousels','Explainers','Q&As','Your versions'];
       var si=0,ti=0,n=0;
       setInterval(function(){
         if(st.querySelectorAll('.lp-pill').length>7) return;
@@ -638,7 +800,7 @@ b,strong{font-weight:600}
       <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What's a "brand brain," really? <span class="pm">+</span></div><div class="faq-a">Everything it knows about you, in one place: what you sell, who it's for, how you talk (it heard you), and everything it learns from how you work — the lines you keep, the ones you rewrite, the ones you pass on. Every post is written through it. It's memory, not just generation.</div></div>
       <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">How fast until I have posts? <span class="pm">+</span></div><div class="faq-a">Paste your website — it fills most of your profile in seconds. Answer a couple of quick questions to sharpen it, then hit generate. About two minutes to your first batch, ready to film.</div></div>
       <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Do I have to fill out a huge form? <span class="pm">+</span></div><div class="faq-a">No. Paste your website and it fills most of it. Then talk for two minutes about what you do, the way you'd explain it to a friend. That's the part that makes it sound like you. Add anything else by hand whenever you like; from there it learns from the posts you approve, edit and pass.</div></div>
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What kinds of posts does it make? <span class="pm">+</span></div><div class="faq-a">Six: talking-head scripts, statements, carousels, micro-lectures, Q&amp;As and statics. You set the mix once (say, three videos, two carousels, two statements a week) and it plans the week around it. Change the mix any time.</div></div>
+      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What kinds of posts does it make? <span class="pm">+</span></div><div class="faq-a">Six: talking-head scripts, statements, carousels, explainers, Q&amp;As and statics. You set the mix once (say, three videos, two carousels, two statements a week) and it plans the week around it. Change the mix any time.</div></div>
       <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What if I have nothing to say? <span class="pm">+</span></div><div class="faq-a">That's the point of it. The ideas come from your brand, from what people search, from what's rising in your niche, from posts by creators you follow, and from the half-thoughts you say into the notebook. You're one source of five, so it never runs dry.</div></div>
       <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Do I need a computer, or does it work on my phone? <span class="pm">+</span></div><div class="faq-a">Your phone is all you need. It's built mobile-first — write, review and post right from your thumb, nothing to install. Works just as well on a desktop if you prefer, but you're never tied to one.</div></div>
       <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Will it actually sound like me? <span class="pm">+</span></div><div class="faq-a">Yes, because it heard you. During setup you talk for two minutes, and that recording outranks every description and every rule when it writes. Every voice note you leave afterwards teaches it more, and every post you approve or change sharpens it further.</div></div>

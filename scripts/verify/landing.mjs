@@ -67,7 +67,7 @@ const them = [...live.matchAll(/<div class="cmp-cell them">([\s\S]*?)<\/div>/g)]
 ok(them.length === 8 && them.every(c => /<b>[^<]+<\/b>/.test(c)) && !them.some(c => /cmp-x/.test(c)), 'C8b every ChatGPT cell concedes a real capability under a bold topic, no ○ straw-man glyph');
 ok(/remembers (things|facts) about you/i.test(live) && /browses/i.test(live), 'C8c the intro concedes memory and browsing honestly');
 ok(count(section('sources'), /class="moat-row"/g) === 5, 'C9 five idea sources');
-const fmts = ['script', 'statement', 'carousel', 'micro-lecture', 'q&amp;a', 'static'];
+const fmts = ['script', 'statement', 'carousel', 'explainer', 'q&amp;a', 'static'];
 for (const f of fmts) ok(new RegExp(f, 'i').test(section('formats')), 'C10 format present: ' + f);
 const faqQs = [...live.matchAll(/class="faq-q"[^>]*>([\s\S]*?)<span/g)].map(m => m[1].trim());
 ok(faqQs.some(q => /sound like me/i.test(q)) && /heard you/i.test(live), 'C11 FAQ answers "will it sound like me" with the voice');
