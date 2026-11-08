@@ -1,0 +1,365 @@
+{
+ "gate": "try-transcript-v722.mjs",
+ "mutations": [
+  {
+   "id": "M1",
+   "finding": "visitor cap is 3",
+   "file": "api/try-transcript.js",
+   "find": "const VISITOR_DAILY = 3;",
+   "replace": "const VISITOR_DAILY = 4;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a visitor gets a 4th read"
+  },
+  {
+   "id": "M2",
+   "finding": "global cap default 300",
+   "file": "api/try-transcript.js",
+   "find": "const DEFAULT_GLOBAL_DAILY = 300;",
+   "replace": "const DEFAULT_GLOBAL_DAILY = 301;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "301 reads a day by default"
+  },
+  {
+   "id": "M3",
+   "finding": "parallel: the primary key refuses a taken slot",
+   "file": "api/try-transcript.js",
+   "find": "{ body: row(slot), headers: { Prefer: 'return=minimal' } }",
+   "replace": "{ body: row(slot), headers: { Prefer: 'resolution=merge-duplicates,return=minimal' } }",
+   "gate": "try-transcript-v722.mjs",
+   "why": "an insert silently overwrites a taken slot: parallel reads pass the cap"
+  },
+  {
+   "id": "M4",
+   "finding": "in-flight reads count (a live hold is never taken over)",
+   "file": "api/try-transcript.js",
+   "find": "const HOLD_TTL_MS = 5 * 60 * 1000;",
+   "replace": "const HOLD_TTL_MS = 0;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "reads still in flight are treated as dead and their slots taken"
+  },
+  {
+   "id": "M5",
+   "finding": "big bursts re-read",
+   "file": "api/try-transcript.js",
+   "find": "const SLOT_TRIES = 25, SLOT_ROUNDS = 3;",
+   "replace": "const SLOT_TRIES = 25, SLOT_ROUNDS = 1;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a burst over 25 is wrongly turned away"
+  },
+  {
+   "id": "M6",
+   "finding": "too long from tikwm metadata",
+   "file": "api/try-transcript.js",
+   "find": "if (m && Number(m.durationSec) > MAX_SEC) throw coded('too_long');",
+   "replace": "if (false) throw coded('too_long');",
+   "gate": "try-transcript-v722.mjs",
+   "why": "the tikwm length is ignored"
+  },
+  {
+   "id": "M7",
+   "finding": "too long from the audio header",
+   "file": "api/try-transcript.js",
+   "find": "if (sec != null ? sec > MAX_SEC + LENGTH_SLACK_SEC",
+   "replace": "if (sec != null ? false",
+   "gate": "try-transcript-v722.mjs",
+   "why": "the downloaded file's length is ignored"
+  },
+  {
+   "id": "M8",
+   "finding": "never Apify",
+   "file": "api/try-transcript.js",
+   "find": "      apifyFallback: false,",
+   "replace": "      apifyFallback: true,",
+   "gate": "try-transcript-v722.mjs",
+   "why": "the paid Apify fallback runs for anonymous visitors"
+  },
+  {
+   "id": "M9",
+   "finding": "origin check",
+   "file": "api/try-transcript.js",
+   "find": "  if (o) return allowed.has(o);",
+   "replace": "  if (o) return true;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "any Origin passes"
+  },
+  {
+   "id": "M10",
+   "finding": "origin check is applied",
+   "file": "api/try-transcript.js",
+   "find": "  if (!sameOrigin(req)) return fail(res, 403, 'failed', MSG.origin);\n",
+   "replace": "",
+   "gate": "try-transcript-v722.mjs",
+   "why": "no origin check at all"
+  },
+  {
+   "id": "M11",
+   "finding": "no raw IP logged",
+   "file": "api/try-transcript.js",
+   "find": "const tag = 'v=' + vh.slice(0, 8);",
+   "replace": "const tag = 'v=' + clientIp(req);",
+   "gate": "try-transcript-v722.mjs",
+   "why": "the IP is written to the logs"
+  },
+  {
+   "id": "M12",
+   "finding": "no raw IP stored",
+   "file": "api/try-transcript.js",
+   "find": "return crypto.createHash('sha256').update(salt + '\\n' + ipKey(ip) + '\\n' + day).digest('hex');",
+   "replace": "return ipKey(ip) + day;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "the bucket stores the IP itself"
+  },
+  {
+   "id": "M13",
+   "finding": "bad link: the host decides",
+   "file": "api/try-transcript.js",
+   "find": "if (/(^|\\.)tiktok\\.com$/.test(host)) {",
+   "replace": "if (/tiktok\\.com/.test(host)) {",
+   "gate": "try-transcript-v722.mjs",
+   "why": "tiktok.com.evil.example passes as TikTok"
+  },
+  {
+   "id": "M14",
+   "finding": "cache hit is free",
+   "file": "api/try-transcript.js",
+   "find": "  if (link.key) {\n    const hit = await cacheGet(link.key);",
+   "replace": "  if (false) {\n    const hit = await cacheGet(link.key);",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a cached video is paid for again"
+  },
+  {
+   "id": "M15",
+   "finding": "cache hits have their own cap",
+   "file": "api/try-transcript.js",
+   "find": "if (hs === null) return fail(res, 429, 'limit_reached', MSG.limit_reached, true);",
+   "replace": "if (false) return fail(res, 429, 'limit_reached', MSG.limit_reached, true);",
+   "gate": "try-transcript-v722.mjs",
+   "why": "unlimited cache hits"
+  },
+  {
+   "id": "M16",
+   "finding": "a failure hands the visitor's success slot back",
+   "file": "api/try-transcript.js",
+   "find": "releaseSlot(held.v)]);",
+   "replace": "settleSlot(held.v, {})]);",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a failed read uses up one of the 3 successful reads"
+  },
+  {
+   "id": "M17",
+   "finding": "busy hands every slot back",
+   "file": "api/try-transcript.js",
+   "find": "      await giveBack(Object.keys(held));\n      if (broken)",
+   "replace": "      if (broken)",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a busy answer costs the visitor a read"
+  },
+  {
+   "id": "M18",
+   "finding": "fail closed when the store is down",
+   "file": "api/try-transcript.js",
+   "find": "if (broken) return fail(res, 503, 'busy', MSG.busy);",
+   "replace": "if (broken) { held[name] = { day, bucket, slot: 0, token: 'x' }; continue; }",
+   "gate": "try-transcript-v722.mjs",
+   "why": "reads proceed with no cap when the store is down"
+  },
+  {
+   "id": "M19",
+   "finding": "signed-in reads use the cache",
+   "file": "api/transcribe-url.js",
+   "find": "if (cachedRow) return res.status(200).json({ transcript: cachedRow.transcript });",
+   "replace": "if (false) return res.status(200).json({ transcript: cachedRow.transcript });",
+   "gate": "try-transcript-v722.mjs",
+   "why": "signed-in reads ignore the cache"
+  },
+  {
+   "id": "M20",
+   "finding": "signed-in reads fill the cache",
+   "file": "api/transcribe-url.js",
+   "find": "await TT.cachePut((meta && meta.videoKey) || urlKey,",
+   "replace": "await (async () => false)((meta && meta.videoKey) || urlKey,",
+   "gate": "try-transcript-v722.mjs",
+   "why": "signed-in reads never fill the cache"
+  },
+  {
+   "id": "M21",
+   "finding": "metadata reaches the caller before the download",
+   "file": "api/transcribe-url.js",
+   "find": "if (audioDownloadUrl && tikMeta && typeof opts.onMeta === 'function') await opts.onMeta(tikMeta);",
+   "replace": "",
+   "gate": "try-transcript-v722.mjs",
+   "why": "no metadata hook: length unchecked, short links never hit the cache"
+  },
+  {
+   "id": "M22",
+   "finding": "audio checked before Whisper",
+   "file": "api/transcribe-url.js",
+   "find": "  if (typeof opts.beforeTranscribe === 'function') await opts.beforeTranscribe(audioBuffer);   // v722\n",
+   "replace": "",
+   "gate": "try-transcript-v722.mjs",
+   "why": "Whisper is paid for a too-long file"
+  },
+  {
+   "id": "M23",
+   "finding": "no words is its own code",
+   "file": "api/transcribe-url.js",
+   "find": "      if (r.status === 200) noWords = true;\n",
+   "replace": "",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a silent video answers 'failed' instead of no_words"
+  },
+  {
+   "id": "M24",
+   "finding": "YouTube reads captions, not cobalt",
+   "file": "api/try-transcript.js",
+   "find": "    if (link.platform === 'youtube') return await youtubeRead(res, link, held, settleFailure, giveBack, tag, t0);",
+   "replace": "    if (false) return await youtubeRead(res, link, held, settleFailure, giveBack, tag, t0);",
+   "gate": "try-transcript-v722.mjs",
+   "why": "YouTube goes to the broken cobalt + Whisper path"
+  },
+  {
+   "id": "M25",
+   "finding": "YouTube too long",
+   "file": "api/try-transcript.js",
+   "find": "  if (Number.isFinite(len) && len > MAX_SEC + LENGTH_SLACK_SEC) {",
+   "replace": "  if (false) {",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a long YouTube video is read"
+  },
+  {
+   "id": "M26",
+   "finding": "no captions is remembered",
+   "file": "api/try-transcript.js",
+   "find": "    if (e && e.httpStatus === 400) { await settleFailure('no_captions');",
+   "replace": "    if (e && e.httpStatus === 400) { await giveBack(Object.keys(held));",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a YouTube video without captions is fetched again every time"
+  },
+  {
+   "id": "M27",
+   "finding": "captions length fallback",
+   "file": "api/transcribe.js",
+   "find": "    lengthSec = end > 0 ? end : null;",
+   "replace": "    lengthSec = null;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "no player length -> the length is never known"
+  },
+  {
+   "id": "M28",
+   "finding": "captions length from the player",
+   "file": "api/transcribe.js",
+   "find": "    lengthSec = Number(pj && pj.videoDetails && pj.videoDetails.lengthSeconds) || null;   // v722 (additive)",
+   "replace": "    lengthSec = null;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "the player API's length is ignored"
+  },
+  {
+   "id": "M29",
+   "finding": "captions count toward the caps",
+   "file": "api/try-transcript.js",
+   "find": "  await Promise.all([settleSlot(held.v, { video_id: link.key }), settleSlot(held.g, { video_id: link.key, cost_eur: COST_CAPTIONS_EUR })]);",
+   "replace": "  await Promise.all([releaseSlot(held.v), releaseSlot(held.g)]);",
+   "gate": "try-transcript-v722.mjs",
+   "why": "captions reads are free of the caps"
+  },
+  {
+   "id": "M30",
+   "finding": "visitor failure cap 10",
+   "file": "api/try-transcript.js",
+   "find": "const VISITOR_FAIL_DAILY = 10;",
+   "replace": "const VISITOR_FAIL_DAILY = 11;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "an 11th failure a day"
+  },
+  {
+   "id": "M31",
+   "finding": "global failure ceiling 200",
+   "file": "api/try-transcript.js",
+   "find": "const DEFAULT_GLOBAL_FAIL_DAILY = 200;",
+   "replace": "const DEFAULT_GLOBAL_FAIL_DAILY = 201;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "201 failures a day by default"
+  },
+  {
+   "id": "M32",
+   "finding": "remembered failures are served",
+   "file": "api/try-transcript.js",
+   "find": "    const miss = await missGet(link.key);\n    if (miss)",
+   "replace": "    const miss = null;\n    if (miss)",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a looped dead video calls the provider every time"
+  },
+  {
+   "id": "M33",
+   "finding": "failures are remembered",
+   "file": "api/try-transcript.js",
+   "find": "    if (key && outcome) await missPut(key, outcome);",
+   "replace": "    if (false) await missPut(key, outcome);",
+   "gate": "try-transcript-v722.mjs",
+   "why": "nothing is remembered"
+  },
+  {
+   "id": "M34",
+   "finding": "a provider hiccup is not remembered",
+   "file": "api/try-transcript.js",
+   "find": "    await settleFailure(err && err.unavailable ? 'unavailable' : null);",
+   "replace": "    await settleFailure('unavailable');",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a Groq outage blacklists good videos for 24 h"
+  },
+  {
+   "id": "M35",
+   "finding": "a paid failure keeps its global slot",
+   "file": "api/try-transcript.js",
+   "find": "      settleSlot(held.g, { video_id: key, cost_eur: st.whisper ? COST_EUR : 0 }),",
+   "replace": "      releaseSlot(held.g),",
+   "gate": "try-transcript-v722.mjs",
+   "why": "failed attempts never count toward the global cost cap"
+  },
+  {
+   "id": "M36",
+   "finding": "failures are counted",
+   "file": "api/try-transcript.js",
+   "find": "      settleSlot(held.f, { video_id: key }), ",
+   "replace": "      releaseSlot(held.f), ",
+   "gate": "try-transcript-v722.mjs",
+   "why": "failures never reach the visitor's 10/day"
+  },
+  {
+   "id": "M37",
+   "finding": "success is not a failure",
+   "file": "api/try-transcript.js",
+   "find": "    await giveBack(['f', 'gf']);            // it worked: not a failure",
+   "replace": "    // failure slots kept",
+   "gate": "try-transcript-v722.mjs",
+   "why": "successful reads eat the failure ceilings"
+  },
+  {
+   "id": "M38",
+   "finding": "no salt, no service",
+   "file": "api/try-transcript.js",
+   "find": "  const salt = process.env.SUPABASE_SERVICE_ROLE_KEY;\n  if (!salt) return null;",
+   "replace": "  const salt = process.env.SUPABASE_SERVICE_ROLE_KEY || 'content-shrimp-try-v722';",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a guessable constant salt is used"
+  },
+  {
+   "id": "M39",
+   "finding": "a dead TikTok is marked as the video's fault",
+   "file": "api/transcribe-url.js",
+   "find": "      e.unavailable = true; throw e;",
+   "replace": "      throw e;",
+   "gate": "try-transcript-v722.mjs",
+   "why": "a private/removed TikTok is fetched again every time"
+  },
+  {
+   "id": "M40",
+   "finding": "a Whisper-paid failure records its cost",
+   "file": "api/try-transcript.js",
+   "find": "        st.whisper = true;                  // Whisper is called next: this attempt costs money",
+   "replace": "        // cost not recorded",
+   "gate": "try-transcript-v722.mjs",
+   "why": "failed Whisper calls show 0 cost"
+  }
+ ]
+}

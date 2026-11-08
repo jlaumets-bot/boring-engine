@@ -1,15 +1,17 @@
 #!/usr/bin/env node
-// GATE (v714, owner-approved copy 2026-11-06): the homepage hero explains the product as 4 steps, and the phone
-// next to it plays those steps as a short loop.
+// GATE (v714, owner-approved copy 2026-11-06; MOVED in v722, owner-approved Grok-style mockups 2026-11-08): the 4 steps
+// and the phone that plays them as a short loop. Since v722 they live in "How it works" (#how), not in the hero: the first
+// screen is the paste box (landing-v722.mjs). The phone frames, buttons, motion rules and asset rules are unchanged.
 // STATIC (plain node, no git, no browser):
 //   1  the h1 is still exactly: Paste any TikTok. <em>Make it yours.</em>
-//   2  under it sits ONE <ol id="heroSteps"> with exactly the 4 approved items (bold parts included), and the
-//      old "Tell it about your brand once…" paragraph is gone.
-//   3  the phone (the one data-site-mock, aria-hidden) holds exactly 5 frames, data-frame 1..5 in order, one shown
-//      by default; frame 2 is "Exact words", frame 3 "Your version" with a "My take" chip, frame 4 the teleprompter
-//      with a ••• breathing gap, a highlighted line and stressed words, frame 5 a split screen with a B-roll caption.
-//   4  5 frame buttons + 1 pause/play button sit OUTSIDE the aria-hidden phone, each a <button type="button"> with
-//      an aria-label; the script wires them, pauses off-screen (IntersectionObserver) and in background tabs.
+//   2  in #how, under "Four steps.", ONE <ol id="heroSteps"> holds exactly the 4 v722 steps (title + one line), and the
+//      v714 hero list / old "Tell it about your brand once…" paragraph are gone.
+//   3  the phone (the one data-site-mock, aria-hidden) sits in #how next to the list and holds exactly 5 frames, data-frame
+//      1..5 in order, one shown by default; frame 2 "Exact words", frame 3 "Your version" with a "My take" chip, frame 4 the
+//      teleprompter with a ••• breathing gap, a highlighted line and stressed words, frame 5 a split screen with a B-roll caption.
+//   4  5 frame buttons + 1 pause/play button sit OUTSIDE the aria-hidden phone, each a <button type="button"> with an
+//      aria-label; the script wires them, pauses off-screen (IntersectionObserver) and in background tabs, and lights the
+//      matching step: frames 1-5 → steps Paste link, Exact words, Your version, Film it, Film it (STEP=[0,1,2,3,3]).
 //   5  no external URL added: every absolute or protocol-relative URL is on the v713 list; no src=, url( or @import.
 //   6  reduced motion: the CSS @media(prefers-reduced-motion:reduce) block stops .hd-frame animation/transition,
 //      and the script reads matchMedia('(prefers-reduced-motion: reduce)') and then does not auto-advance.
@@ -38,24 +40,26 @@ ok(h1s.length === 1 && h1s[0] === 'Paste any TikTok. <em>Make it yours.</em>', '
 
 /* 2 */
 const ITEMS = [
-  "<b>Paste the link.</b> You get the exact words it said.",
-  "<b>Get your version</b>, rewritten in your brand's voice with your facts.",
-  "<b>Film it right away.</b> The teleprompter follows your voice, with breathing gaps and the words to stress marked.",
-  "<b>Add B-roll if you want</b>: matching photos and on-brand graphics, built on your phone. No editor.",
+  ['Paste link', 'Copy it from TikTok and paste it here.'],
+  ['Exact words', 'Every word they said, written out.'],
+  ['Your version', 'Rewritten in your brand’s voice, with your facts.'],
+  ['Film it', 'A teleprompter that follows your voice. Add B-roll if you want.'],
 ];
+const howAt = live.search(/<section\b[^>]*\bid="how"/);
+const how = howAt >= 0 ? elementAt(live, howAt) : '';
+ok(/<h2>Four steps\.<\/h2>/.test(how), '2 #how is headed "Four steps."');
 const ols = [...live.matchAll(/<ol\b[^>]*\bid="heroSteps"[^>]*>/g)];
-ok(ols.length === 1, '2 one <ol id="heroSteps"> (' + ols.length + ')');
+ok(ols.length === 1 && howAt >= 0 && ols[0].index > howAt && ols[0].index < howAt + how.length, '2 one <ol id="heroSteps">, inside #how (' + ols.length + ')');
 const ol = ols.length ? elementAt(live, ols[0].index) : '';
-const lis = [...ol.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map(m => m[1].replace(/\s+/g, ' ').trim());
-ok(lis.length === 4, '2 exactly 4 steps (' + lis.length + ')');
-ITEMS.forEach((t, i) => ok(lis[i] === t, '2 step ' + (i + 1) + ' is the approved text' + (lis[i] === t ? '' : ' — got: ' + (lis[i] || '(missing)'))));
-const h1At = live.indexOf('<h1'), olAt = ols.length ? ols[0].index : -1, ctaAt = live.indexOf('class="hero-actions"');
-ok(h1At >= 0 && olAt > h1At && ctaAt > olAt, '2 the list sits between the h1 and the buttons');
-ok(!/Tell it about your brand once/.test(live) && !/<p class="sub">/.test(live), '2 the old hero paragraph is gone');
+const lis = [...ol.matchAll(/<li class="lp-bs">[\s\S]*?<b class="t">([^<]+)<\/b><span class="d">([^<]+)<\/span>[\s\S]*?<\/li>/g)].map(m => [m[1], m[2]]);
+ok((ol.match(/<li\b/g) || []).length === 4 && lis.length === 4, '2 exactly 4 steps (' + lis.length + ')');
+ITEMS.forEach((t, i) => ok(lis[i] && lis[i][0] === t[0] && lis[i][1] === t[1], '2 step ' + (i + 1) + ' is the approved text' + (lis[i] && lis[i][0] === t[0] && lis[i][1] === t[1] ? '' : ' — got: ' + (lis[i] || ['(missing)']).join(' / '))));
+ok(!/class="hero-steps"/.test(live) && !/Tell it about your brand once/.test(live) && !/<p class="sub">/.test(live), '2 the v714 hero list and the old hero paragraph are gone');
 
 /* 3 */
 const mocks = [...live.matchAll(/<([a-z]+)\b[^>]*\bdata-site-mock\b[^>]*>/g)];
 ok(mocks.length === 1 && /aria-hidden="true"/.test(mocks[0][0]), '3 one data-site-mock phone, aria-hidden="true"');
+ok(mocks.length === 1 && mocks[0].index > howAt && mocks[0].index < howAt + how.length, '3 the phone sits in #how, beside the steps');
 const mock = mocks.length ? elementAt(live, mocks[0].index) : '';
 const frameTags = [...mock.matchAll(/<div class="hd-frame\b[^"]*"[^>]*>/g)];
 const frames = frameTags.map(m => elementAt(mock, m.index));
@@ -86,7 +90,7 @@ ok(parses, '7 the demo script exists and parses');
 ok(/new IntersectionObserver\(/.test(js) && /\.observe\(demo\)/.test(js), '4 pauses off-screen (IntersectionObserver on the demo)');
 ok(/visibilitychange/.test(js) && /document\.hidden/.test(js), '4 pauses in a background tab');
 ok(/addEventListener\('click'/.test(js) && /setAttribute\('aria-current','step'\)/.test(js), '4 the buttons switch frames and mark the current one');
-ok(/items\[k\]\.classList\.toggle\('on',k===STEP\[i\]\)/.test(js) && /STEP=\[0,0,1,2,3\]/.test(js), '4 the matching list item is lit with its frame');
+ok(/getElementById\('heroSteps'\)/.test(js) && /items\[k\]\.classList\.toggle\('on',k===STEP\[i\]\)/.test(js) && /STEP=\[0,1,2,3,3\]/.test(js), '4 the matching step is lit with its frame (STEP=[0,1,2,3,3])');
 
 /* 5 */
 const ALLOWED = new Set(['https://contentshrimp.com', 'https://contentshrimp.com/', 'https://contentshrimp.com/og-image.png',

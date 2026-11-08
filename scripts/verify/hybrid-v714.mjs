@@ -3,7 +3,7 @@
 // Contract: .unlazy/hybrid/CONTRACT.md. EXECUTED — the real hybrid block (hy*) and the real helpers it reuses
 // (remixPickLink, remixFetchWords, cf* feed, humanErr, escAttr, safeUrl, remixParts, tvOpenTeleprompter …) are lifted out
 // of app.html and run in node:vm against a fake DOM, a stubbed fetch and a stubbed clipboard. No network, no AI.
-//   1  H1 start renders exactly: the big "Paste a TikTok" button, "New from your creators" (Today / Yesterday, ≤4 rows,
+//   1  H1 start renders exactly: the big "Paste TikTok link" button (v722 label + its one-time help line), "New from your creators" (Today / Yesterday, ≤4 rows,
 //      "N× usual" chip, "Words ready" dot, "See all"), the bottom input "Paste a link or type an idea…" — no other text;
 //      no bar, no hint, no new-chat button yet. Nobody followed → no list at all.
 //   2  the paste button reads navigator.clipboard.readText(); a TikTok link runs the paste path (/api/transcribe-url with
@@ -140,13 +140,13 @@ function feedReady() { V('_cf.brandId = "b1"'); c.cfApply(FEED()); }
   {
     const h = main(), text = vis(h);
     const btns = (h.match(/<button\b/g) || []).length;
-    ok(/<button type="button" class="hy-paste" id="hyPasteBig" onclick="hyPaste\(\)">[\s\S]*?<span>Paste a TikTok<\/span><\/button>/.test(h), '1 the big round "Paste a TikTok" button');
+    ok(/<button type="button" class="hy-paste" id="hyPasteBig" onclick="hyPaste\(\)">[\s\S]*?<span>Paste TikTok link<\/span><\/button>/.test(h), '1 the big round "Paste TikTok link" button (v722 label)');
     ok(/<h2 class="hy-lt">New from your creators<\/h2>/.test(h) && />See all<\/button>/.test(h), '1 "New from your creators" + "See all"');
     const rows = (h.match(/class="hy-row"/g) || []).length;
     ok(rows === 4 && btns === 1 + 1 + 4 + 1 && /<button type="button" class="hy-add" onclick="hyAddOpen\(\)">\+ Add creator<\/button>/.test(h), '1 four rows (5 videos) + "+ Add creator" (3 of 5 followed): the only buttons (' + btns + ')');
     ok(h.indexOf('>Today<') > 0 && h.indexOf('>Yesterday<') > h.indexOf('>Today<') && !/>Earlier</.test(h), '1 grouped Today / Yesterday');
     ok(/4\.2× usual/.test(h) && /3\.0× usual/.test(h) && /1\.8× usual/.test(h) && (h.match(/class="hy-dot"/g) || []).length === 3, '1 "N× usual" chips and a "Words ready" dot on the 3 ready rows');
-    const allowed = ['Paste a TikTok', 'New from your creators', 'See all', 'Today', 'Yesterday', 'Your first cup decides your whole morning', 'Stop writing SOPs <b>nobody</b> reads',
+    const allowed = ['Paste TikTok link', 'In TikTok: Share → Copy link, then press here.', 'New from your creators', 'See all', 'Today', 'Yesterday', 'Your first cup decides your whole morning', 'Stop writing SOPs <b>nobody</b> reads',
       'I quit hustle culture for 90 days', 'Coffee at noon, not at seven', '@morningcup', '@studioops', '@calmfounder', '4.2× usual', '2.1× usual', '3.0× usual', '1.8× usual', 'Words ready', '+ Add creator'];
     let rest = text; for (const a of allowed.sort((x, y) => y.length - x.length)) rest = rest.split(a).join(' ');
     ok(rest.replace(/\s+/g, '') === '', '1 no other text on the start screen (left over: "' + rest.trim() + '")');
@@ -159,11 +159,11 @@ function feedReady() { V('_cf.brandId = "b1"'); c.cfApply(FEED()); }
     const app = between('<section class="hy-app" id="hyApp"', '</section>');
     const dock = between('<div class="hy-dock" id="hyDock">', '\n</div>\n');
     ok(vis(app.replace(/<label[\s\S]*?<\/label>/g, '')) === '' && vis(dock.replace(/<label[\s\S]*?<\/label>/g, '')) === '', '1 the static markup adds no visible words (labels are screen-reader only)');
-    ok(/<input type="text" class="hy-in" id="hyIn" placeholder="Paste a link or type an idea…"[^>]*enterkeyhint="send"/.test(dock) && /<form class="hy-input" id="hyForm" onsubmit="event\.preventDefault\(\);hySend\(\);">/.test(dock) && /<button type="submit" class="hy-send"/.test(dock),
+    ok(/<input type="text" class="hy-in" id="hyIn" placeholder="Paste a link or type an idea…"[^>]*enterkeyhint="send"/.test(dock) && /<form class="hy-input" id="hyForm" onsubmit="event\.preventDefault\(\);window\.hySend\(\);">/.test(dock) && /<button type="submit" class="hy-send"/.test(dock),
       '10 Enter sends (a real form submit), the send button is a submit button');
   }
   c.bookmarkCategories = []; V('_cf.data = { creators: [], videos: [], fetchedAt: null }; _cf.status = "ready";'); c.hyRender();
-  ok(vis(main()) === 'Paste a TikTok Follow up to 5 TikTok creators to see their new videos here + Add creator' && /onclick="hyAddOpen\(\)"/.test(main()),
+  ok(vis(main()) === 'Paste TikTok link In TikTok: Share → Copy link, then press here. Follow up to 5 TikTok creators to see their new videos here + Add creator' && /onclick="hyAddOpen\(\)"/.test(main()),
     '12b nobody followed → just one line + "+ Add creator" (no list)');
   c.bookmarkCategories = FOLLOW(5); c.hyRender();
   ok(!/Add creator/.test(main()) && !/Follow up to 5/.test(main()), '12b five followed → no add row');
@@ -301,12 +301,12 @@ function feedReady() { V('_cf.brandId = "b1"'); c.cfApply(FEED()); }
   c.currentBrand = { id: 'b2' }; V('currentBrand = globalThis.currentBrand');
   // a stale feed answer of the OLD brand must never draw on the new one
   V('_cf.brandId = "b1"'); c.hyBrandReset(); V('_cf.brandId = "b1"; _cf.data = ' + JSON.stringify({ creators: FEED().creators, videos: FEED().videos }) + '; _cf.status = "ready";'); c.hyRender();
-  ok(!st().t && /Paste a TikTok/.test(main()) && !/V1 SCRIPT/.test(main()) && !/hy-row/.test(main()) && els.hyBar.hidden === true, '8 brand switch clears the thread and the feed (an old-brand feed never draws)');
+  ok(!st().t && /Paste TikTok link/.test(main()) && !/V1 SCRIPT/.test(main()) && !/hy-row/.test(main()) && els.hyBar.hidden === true, '8 brand switch clears the thread and the feed (an old-brand feed never draws)');
   ok(store.has('cs_hy_thread::b1'), '8 the other brand\'s thread stays saved for that brand');
   c.currentBrand = { id: 'b1' }; V('currentBrand = globalThis.currentBrand'); c.hyBrandReset();
   ok(/REVISED V2 SCRIPT/.test(main()), '8 back on brand 1 → its own thread');
   c.hyNew();
-  ok(!st().t && !store.has('cs_hy_thread::b1') && /Paste a TikTok/.test(main()) && els.hyBar.hidden === true, '8 the new-chat icon starts fresh');
+  ok(!st().t && !store.has('cs_hy_thread::b1') && /Paste TikTok link/.test(main()) && els.hyBar.hidden === true, '8 the new-chat icon starts fresh');
 
   // ═══ 12c. a thread saved mid-read ═══
   store.set('cs_hy_thread::b1', JSON.stringify({ at: now, open: false, blocks: [], src: { kind: 'tiktok', url: 'https://www.tiktok.com/@morningcup/video/7341', creator: 'morningcup', platform: 'tiktok', text: '', failed: false, empty: true, note: '', reading: true, views: null, score: null } }));

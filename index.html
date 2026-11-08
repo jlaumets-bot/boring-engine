@@ -84,67 +84,140 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap">
 <style>
-/* ── "Calm" dark look (v705, Granola-like) — same tokens as the app (clean.css / .unlazy/redesign/PLAN.md).
-   One palette for everyone (dark, the app default): to switch later, change this one block. ── */
+/* ── v722 Grok-style landing (owner-approved mockups design-options/landing/ A1–A4, 2026-11-08).
+   Same "Calm" dark tokens as the app (clean.css). One palette for everyone (dark). No gradients. ── */
 :root{
   --cs-bg:#1a1a1a; --cs-card:#1a1a1a; --cs-raise:#202020; --cs-text:#e8e8e8; --cs-muted:#8f8f8f;
-  --cs-line:#262626; --cs-chip:#242424; --cs-input:#212121; --cs-primary:#e8e8e8; --cs-on-primary:#111111;
+  --cs-line:#262626; --cs-line-strong:#2e2e2e; --cs-chip:#242424; --cs-input:#212121; --cs-primary:#e8e8e8; --cs-on-primary:#111111;
   --cs-ok:#4ade80;
-  /* older names still used by inline styles in the markup */
-  --cream:var(--cs-bg); --ink:var(--cs-text); --surface:var(--cs-card); --surface2:var(--cs-raise);
-  --border:var(--cs-line); --text2:var(--cs-muted); --text3:var(--cs-muted); --lilac:var(--cs-chip); --green:var(--cs-ok);
   --ease:cubic-bezier(.2,.8,.2,1);
   color-scheme:dark;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;background:var(--cs-bg)}
 body{font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:16px;background:var(--cs-bg);color:var(--cs-text);line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
 a{color:inherit;text-decoration:none}
+button,input{font:inherit;color:inherit}
 h1,h2,h3{font-weight:600;letter-spacing:-0.02em;line-height:1.12}
 b,strong{font-weight:600}
 :focus-visible{outline:2px solid var(--cs-text);outline-offset:3px;border-radius:8px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
-/* ── NAV ── */
-.nav{position:sticky;top:0;z-index:100;background:var(--cs-bg);border-bottom:1px solid var(--cs-line)}
-.nav-in{max-width:1080px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;gap:16px}
-.logo{display:inline-flex;align-items:center;min-height:44px;font-weight:600;font-size:17px;letter-spacing:-0.01em;white-space:nowrap}
-.nav-links{display:flex;align-items:center;gap:2px;font-size:14px;font-weight:500;color:var(--cs-muted)}
-.nav-links a:not(.nav-cta){display:inline-flex;align-items:center;min-height:44px;padding:0 12px;border-radius:999px;transition:color .15s,background .15s}
-.nav-links a:not(.nav-cta):hover{color:var(--cs-text);background:var(--cs-raise)}
-.nav-cta{display:inline-flex;align-items:center;min-height:44px;margin-left:10px;padding:0 18px;border-radius:999px;background:var(--cs-primary);color:var(--cs-on-primary)!important;font-weight:500;white-space:nowrap;transition:opacity .15s}
-.nav-cta:hover{opacity:.88}
-@media(max-width:880px){.nav-links a:not(.nav-cta){display:none}.nav-cta{margin-left:0}}
+/* ── top bar ── */
+.lp-nav{position:sticky;top:0;z-index:50;background:var(--cs-bg);height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 32px}
+.lp-logo{display:inline-flex;align-items:center;gap:10px;min-height:44px;font-size:17px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.lp-logo i{width:30px;height:30px;border-radius:9px;background:var(--cs-chip);border:1px solid var(--cs-line-strong);display:flex;align-items:center;justify-content:center;color:var(--cs-muted)}
+.lp-navr{display:flex;align-items:center;gap:6px}
+.lp-login{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:999px;font-size:15px;font-weight:500;color:var(--cs-muted);transition:color .15s}
+.lp-login:hover{color:var(--cs-text)}
+.lp-start{display:inline-flex;align-items:center;min-height:44px;padding:0 20px;border-radius:999px;background:var(--cs-primary);color:var(--cs-on-primary);font-size:15px;font-weight:500;white-space:nowrap;transition:opacity .15s}
+.lp-start:hover{opacity:.88}
 
-/* ── BUTTONS ── */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 24px;border-radius:999px;font-family:inherit;font-size:15px;font-weight:500;cursor:pointer;transition:opacity .15s,background .15s}
-.btn-primary{background:var(--cs-primary);color:var(--cs-on-primary);border:1px solid var(--cs-primary)}
-.btn-primary:hover{opacity:.88}
-.btn-ghost{background:transparent;color:var(--cs-text);border:1px solid var(--cs-line)}
-.btn-ghost:hover{background:var(--cs-raise)}
+/* ── first screen ── */
+.lp-hero{min-height:calc(100vh - 64px);min-height:calc(100svh - 64px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px 64px}
+.lp-hero h1{font-size:60px;letter-spacing:-.03em;line-height:1.06;text-align:center}
+.lp-hero h1 em{font-style:normal}
+.lp-sub{font-size:19px;color:var(--cs-muted);margin-top:16px;text-align:center}
+.lp-in{width:720px;max-width:100%;height:68px;margin-top:36px;border-radius:34px;background:var(--cs-input);border:1px solid var(--cs-line-strong);display:flex;align-items:center;gap:8px;padding:0 10px 0 12px;transition:border-color .15s}
+.lp-in:focus-within{border-color:var(--cs-muted)}
+.lp-pst{flex:none;width:44px;height:44px;border:0;border-radius:22px;background:none;display:flex;align-items:center;justify-content:center;color:var(--cs-muted);cursor:pointer;transition:color .15s,background .15s}
+.lp-pst:hover{color:var(--cs-text);background:var(--cs-chip)}
+.lp-pst svg{width:22px;height:22px}
+.lp-in input{flex:1;min-width:0;height:44px;border:0;background:none;outline:none;font-size:18px;color:var(--cs-text)}
+.lp-in input::placeholder{color:var(--cs-muted);opacity:1}
+.lp-send{flex:none;width:48px;height:48px;border:0;border-radius:24px;background:var(--cs-primary);color:var(--cs-on-primary);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:opacity .15s}
+.lp-send:hover{opacity:.88}
+.lp-send[disabled]{opacity:.5;cursor:default}
+.lp-send svg{width:22px;height:22px}
+.lp-steps{list-style:none;display:flex;align-items:center;gap:14px;margin-top:26px;font-size:15px;color:var(--cs-muted)}
+.lp-steps li{display:inline-flex;align-items:center;gap:8px}
+.lp-steps li svg{width:18px;height:18px;color:var(--cs-text)}
+.lp-steps li+li::before{content:'\00b7';color:var(--cs-line-strong);margin-right:6px}
+.lp-hint{width:720px;max-width:100%;min-height:0;margin-top:12px;font-size:15px;color:var(--cs-muted);text-align:center}
+.lp-hint:empty{display:none}
+.lp-hint a{color:var(--cs-text);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--cs-muted)}
 
-/* ── HERO ── */
-.hero{padding:72px 0 72px}
-.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:64px;align-items:center}
-.eyebrow{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 14px;border:1px solid var(--cs-line);border-radius:999px;font-size:13px;font-weight:500;color:var(--cs-muted);margin-bottom:24px}
-.eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--cs-ok)}
-.pain-strip{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:0 0 22px;font-size:14px;color:var(--cs-muted)}
-.pain-strip s{text-decoration-color:var(--cs-muted);text-decoration-thickness:1px}
-.pain-strip .ps-ok{color:var(--cs-text);font-weight:500;margin-top:2px}
-.hero h1{font-size:clamp(36px,5.2vw,56px);line-height:1.06}
-.hero h1 em{font-style:normal;white-space:nowrap}
-.hero-actions{display:flex;flex-wrap:wrap;gap:12px}
-.hero-note{font-size:13.5px;color:var(--cs-muted);margin-top:18px;max-width:520px;line-height:1.55}
-.hero-note b{color:var(--cs-text);font-weight:500}
+/* after paste: the hero moves up, the reveal shows under the input */
+.lp-hero.is-open{justify-content:flex-start;padding-top:36px}
+.lp-hero.is-open h1{font-size:40px}
+.lp-hero.is-open .lp-sub{font-size:17px;margin-top:10px}
+.lp-hero.is-open .lp-in{margin-top:24px;height:64px}
+.lp-hero.is-open .lp-steps{display:none}
+.lp-rev{width:720px;max-width:100%;display:flex;flex-direction:column;gap:12px;margin-top:28px}
+.lp-rev[hidden]{display:none}
+.lp-say{font-size:17px;font-weight:500}
+.lp-card{background:var(--cs-raise);border:1px solid var(--cs-line);border-radius:18px;padding:16px 20px}
+.lp-card .m{font-size:14px;color:var(--cs-muted)}
+.lp-words{max-height:320px;overflow:auto;margin-top:6px}
+.lp-words p{font-size:16px;line-height:1.55}
+.lp-pills{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
+.lp-pills button{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--cs-line-strong);background:none;display:inline-flex;align-items:center;font-size:15px;color:var(--cs-muted);cursor:not-allowed}
+.lp-pills button.on{background:var(--cs-chip);color:var(--cs-text);border-color:var(--cs-chip)}
+.lp-skel{display:flex;flex-direction:column;gap:12px;padding:4px 0 6px;filter:blur(4px);opacity:.8;user-select:none}
+.lp-skel i{display:block;height:12px;border-radius:6px;background:var(--cs-line-strong)}
+.lp-skel i:nth-child(1){width:88%}.lp-skel i:nth-child(2){width:64%}.lp-skel i:nth-child(3){width:76%}.lp-skel i:nth-child(4){width:52%}
+.lp-cta{display:flex;align-items:center;flex-wrap:wrap;gap:12px 16px;margin-top:4px}
+.lp-go{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:0 26px;border:0;border-radius:999px;background:var(--cs-primary);color:var(--cs-on-primary);font-size:16px;font-weight:500;cursor:pointer;transition:opacity .15s}
+.lp-go:hover{opacity:.88}
+.lp-go svg{width:18px;height:18px}
+.lp-cta .m{font-size:14px;color:var(--cs-muted);display:inline-flex;align-items:center;gap:6px}
+.lp-cta .m svg{width:16px;height:16px}
+.lp-busy{display:flex;flex-direction:column;gap:12px}
+.lp-busy i{display:block;height:12px;border-radius:6px;background:var(--cs-chip)}
+.lp-busy i:nth-child(1){width:70%}.lp-busy i:nth-child(2){width:84%}.lp-busy i:nth-child(3){width:58%}
 
-/* v714 hero steps: the four things you do, numbered small and muted; the step the phone is showing lights up */
-.hero-steps{margin:22px 0 30px;padding-left:22px;max-width:560px;font-size:17px;line-height:1.55;color:var(--cs-muted)}
-.hero-steps li{padding-left:6px;transition:color .4s var(--ease)}
-.hero-steps li+li{margin-top:10px}
-.hero-steps li::marker{font-size:13px;font-weight:500;color:var(--cs-muted);font-variant-numeric:tabular-nums}
-.hero-steps b{color:var(--cs-text);font-weight:500}
-.hero-steps.hs-live li.on{color:var(--cs-text)}
-.hero-steps.hs-live li.on::marker{color:var(--cs-text)}
+/* ── scrolled sections ── */
+.lp-sec{padding:72px 0;border-top:1px solid var(--cs-line)}
+.lp-kick{font-size:14px;color:var(--cs-muted);font-weight:500}
+.lp-sec h2{font-size:40px;letter-spacing:-.02em;margin-top:10px;max-width:760px}
+.lp-how{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:64px;align-items:start}
+.lp-big{list-style:none;margin-top:28px}
+.lp-bs{display:flex;gap:18px;padding:20px 0;border-bottom:1px solid var(--cs-line);color:var(--cs-muted);transition:color .4s var(--ease)}
+.lp-bs:last-child{border-bottom:0}
+.lp-bs .n{width:44px;height:44px;border-radius:22px;background:var(--cs-chip);display:flex;align-items:center;justify-content:center;flex:none;color:var(--cs-text)}
+.lp-bs .t{display:block;font-size:20px;font-weight:600;letter-spacing:-.2px;color:var(--cs-text)}
+.lp-bs .d{display:block;font-size:16px;margin-top:4px}
+.lp-big.hs-live li.on .n{background:var(--cs-primary);color:var(--cs-on-primary)}
+.lp-big.hs-live li.on .d{color:var(--cs-text)}
+
+.lp-feats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 40px;margin-top:32px;list-style:none}
+.lp-feat{display:flex;gap:14px;padding:18px 0;border-top:1px solid var(--cs-line)}
+.lp-feat .n{width:36px;height:36px;border-radius:18px;background:var(--cs-chip);display:flex;align-items:center;justify-content:center;flex:none;color:var(--cs-text)}
+.lp-feat .n svg{width:18px;height:18px}
+.lp-feat h3{font-size:16px;letter-spacing:-.01em;line-height:1.35}
+.lp-feat p{font-size:15px;color:var(--cs-muted);line-height:1.5;margin-top:3px}
+.lp-note{font-size:15px;color:var(--cs-muted);margin-top:24px}
+
+.prices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:36px;align-items:stretch}
+.price{border:1px solid var(--cs-line);border-radius:20px;padding:28px;display:flex;flex-direction:column}
+.price.pro{border-color:var(--cs-line-strong);background:var(--cs-raise)}
+.price-trial{align-self:flex-start;background:var(--cs-primary);color:var(--cs-on-primary);font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;margin-bottom:14px}
+.price-tag{font-size:16px;font-weight:600;margin-bottom:8px}
+.price-amt{font-size:44px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.price-amt small{font-size:16px;font-weight:400;color:var(--cs-muted);letter-spacing:0}
+.price-note{font-size:15px;color:var(--cs-muted);margin-top:6px}
+.price-feats{list-style:none;margin:20px 0 24px;display:flex;flex-direction:column;gap:10px;flex:1}
+.price-feat{display:flex;gap:10px;font-size:15px;line-height:1.45}
+.price-feat svg{width:16px;height:16px;color:var(--cs-muted);flex:none;margin-top:3px}
+.price-btn{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:999px;font-size:15px;font-weight:500;background:var(--cs-primary);color:var(--cs-on-primary);border:1px solid var(--cs-primary);transition:opacity .15s,background .15s}
+.price-btn:hover{opacity:.88}
+.price-btn.out{background:transparent;color:var(--cs-text);border-color:var(--cs-line-strong)}
+.price-btn.out:hover{background:var(--cs-raise);opacity:1}
+.price-more{font-size:14px;color:var(--cs-muted);margin-top:20px}
+
+.faq{margin-top:28px;max-width:760px}
+.fq{border-bottom:1px solid var(--cs-line)}
+.fq summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:64px;padding:18px 0;font-size:17px;font-weight:500;cursor:pointer}
+.fq summary::-webkit-details-marker{display:none}
+.fq-i{flex:none;display:flex;color:var(--cs-muted);transition:transform .2s var(--ease)}
+.fq-i svg{width:18px;height:18px}
+.fq[open] .fq-i{transform:rotate(45deg)}
+.fa{font-size:16px;line-height:1.6;color:var(--cs-muted);padding:0 0 20px}
+
+.lp-foot{border-top:1px solid var(--cs-line);padding:20px 24px 36px;font-size:14px;color:var(--cs-muted);text-align:center}
+.lp-foot a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 4px}
+.lp-foot a:hover{color:var(--cs-text)}
 
 /* hero visual: a short loop of the four steps on a phone, drawn in HTML/CSS (decoration, aria-hidden) */
 .hero-demo{width:360px;max-width:100%}
@@ -242,206 +315,90 @@ b,strong{font-weight:600}
 .hd-play svg{width:14px;height:14px}
 .hd-play .hd-i-play,.hd-paused .hd-play .hd-i-pause{display:none}
 .hd-paused .hd-play .hd-i-play{display:block}
-@media(max-width:900px){.hero-grid{grid-template-columns:minmax(0,1fr);gap:48px}.hero-demo{justify-self:center}}
 
-/* ── SECTIONS ── */
-.section{padding:96px 0}
-.section-head{max-width:660px;margin:0 auto 48px;text-align:center}
-.kicker{font-size:14px;font-weight:500;color:var(--cs-muted);margin-bottom:12px}
-.section-head h2{font-size:clamp(28px,4vw,40px)}
-.section-head p{font-size:17px;color:var(--cs-muted);margin-top:16px;line-height:1.6}
+@media(max-width:1000px){.lp-feats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.lp-how{grid-template-columns:minmax(0,1fr);gap:40px}.hero-demo{justify-self:center}.prices{grid-template-columns:minmax(0,1fr);max-width:480px}}
+@media(max-width:820px){.lp-hero h1{font-size:48px}}
 
-/* cards: formats + tools */
-.funcs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-#features .funcs{grid-template-columns:repeat(4,minmax(0,1fr))}
-.func{background:var(--cs-card);border:1px solid var(--cs-line);border-radius:18px;padding:24px}
-.func-ico{width:40px;height:40px;border-radius:12px;background:var(--cs-raise);border:1px solid var(--cs-line);display:flex;align-items:center;justify-content:center;margin-bottom:16px;color:var(--cs-text)}
-.func-ico svg{width:20px;height:20px}
-.func h3{font-size:17px;margin-bottom:8px}
-.func p{font-size:15px;color:var(--cs-muted);line-height:1.55}
-.funcs-note{text-align:center;font-size:15px;color:var(--cs-muted);margin:32px auto 0;max-width:620px;line-height:1.6}
-.funcs-note b{color:var(--cs-text);font-weight:500}
-@media(max-width:1000px){.funcs,#features .funcs{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:640px){.funcs,#features .funcs{grid-template-columns:minmax(0,1fr)}}
-
-/* the brand brain: sources stream in, formats stream out */
-.lp-brain{display:flex;justify-content:center;margin:0 auto 40px;overflow:hidden}
-.lp-stage{position:relative;flex:0 0 360px;width:360px;height:252px}
-.lp-wire{position:absolute;left:0;top:0;width:360px;height:252px;pointer-events:none}
-.lp-wire path{stroke:var(--cs-muted);stroke-width:1;fill:none;opacity:.35;stroke-dasharray:3 5}
-.lp-core{position:absolute;left:180px;top:126px;margin:-32px 0 0 -32px;width:64px;height:64px;border-radius:50%;background:var(--cs-raise);border:1px solid var(--cs-line);color:var(--cs-text);display:flex;align-items:center;justify-content:center;z-index:3}
-.lp-core svg{width:28px;height:28px}
-.lp-ring{position:absolute;left:180px;top:126px;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;border:1px solid var(--cs-line);border-top-color:var(--cs-muted);animation:lpSpin 6s linear infinite;z-index:2}
-.lp-pill{position:absolute;top:0;left:0;offset-rotate:0deg;white-space:nowrap;font-size:12px;font-weight:500;padding:3px 10px;border-radius:999px}
-.lp-pin{border:1px solid var(--cs-line);background:var(--cs-raise);color:var(--cs-text);animation:lpFlowIn 3.6s ease-in-out forwards;z-index:3}
-.lp-pout{border:1px solid var(--cs-primary);background:var(--cs-primary);color:var(--cs-on-primary);animation:lpFlowOut 3.6s ease-in-out forwards;z-index:4}
-.lp-p0{offset-path:path("M 70 40 C 115 95,150 95,180 118")}
-.lp-p1{offset-path:path("M 290 40 C 245 95,210 95,180 118")}
-.lp-p2{offset-path:path("M 55 126 C 110 124,150 124,180 126")}
-.lp-p3{offset-path:path("M 305 126 C 250 124,210 124,180 126")}
-.lp-p4{offset-path:path("M 180 28 C 180 60,180 85,180 114")}
-.lp-o0{offset-path:path("M 180 132 C 180 175,140 205,100 240")}
-.lp-o1{offset-path:path("M 180 132 C 180 175,220 205,260 240")}
-.lp-o2{offset-path:path("M 180 132 C 180 180,180 210,180 244")}
-@keyframes lpSpin{to{transform:rotate(360deg)}}
-@keyframes lpFlowIn{0%{offset-distance:0%;opacity:0}32%{opacity:1}70%{opacity:1}100%{offset-distance:100%;opacity:0}}
-@keyframes lpFlowOut{0%{offset-distance:0%;opacity:0}32%{opacity:1}78%{opacity:1}100%{offset-distance:100%;opacity:0}}
-@media(max-width:400px){.lp-stage{transform:scale(.9)}.lp-brain{margin-bottom:28px}}
-
-/* how the brain learns: four cards, each with a still picture */
-.beats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
-.beat{background:var(--cs-card);border:1px solid var(--cs-line);border-radius:18px;padding:24px;display:flex;flex-direction:column}
-.beat-num{font-size:13px;font-weight:500;color:var(--cs-muted);margin-bottom:10px;font-variant-numeric:tabular-nums}
-.beat h3{font-size:17px;margin-bottom:8px}
-.beat p{font-size:15px;color:var(--cs-muted);line-height:1.55;margin-bottom:20px}
-.beat p b{color:var(--cs-text);font-weight:500}
-.beat-stage{height:112px;border:1px solid var(--cs-line);border-radius:12px;background:var(--cs-raise);margin-top:auto;position:relative;overflow:hidden}
-@media(max-width:1000px){.beats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:640px){.beats{grid-template-columns:minmax(0,1fr)}}
-.b0-wave{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:5px;padding-bottom:22px}
-.b0-wave i{display:block;width:5px;border-radius:3px;background:var(--cs-muted)}
-.b0-wave i:nth-child(1){height:14px}.b0-wave i:nth-child(2){height:26px}.b0-wave i:nth-child(3){height:38px}.b0-wave i:nth-child(4){height:22px}.b0-wave i:nth-child(5){height:32px}.b0-wave i:nth-child(6){height:18px}.b0-wave i:nth-child(7){height:28px}
-.b0-tag,.b3-badge{position:absolute;right:10px;bottom:10px;font-size:11px;font-weight:500;border-radius:999px;padding:3px 9px}
-.b0-tag{background:var(--cs-chip);color:var(--cs-text)}
-.b3-badge{background:var(--cs-primary);color:var(--cs-on-primary)}
-.scanline{position:absolute;left:12px;height:8px;border-radius:4px;background:var(--cs-line)}
-.s1{top:22px;width:60%}.s2{top:42px;width:80%}.s3{top:62px;width:45%}
-.scan-fill{position:absolute;left:12px;top:16px;width:62%;height:62px;background:rgba(236,236,236,.06);border-right:1.5px solid var(--cs-muted)}
-.b2-draft{position:absolute;top:14px;left:14px;right:14px;font-size:12.5px;color:var(--cs-muted);line-height:1.4}
-.b2-strike{opacity:.7}
-.b2-rule{position:absolute;left:12px;bottom:12px;background:var(--cs-chip);color:var(--cs-text);border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:500}
-/* the edit card stacks its draft line and its rule so they never overlap on narrow cards */
-.beat-stage:has(.b2-rule){display:flex;flex-direction:column;justify-content:space-between;gap:10px;height:auto;min-height:112px;padding:12px}
-.beat-stage:has(.b2-rule) .b2-draft,.beat-stage:has(.b2-rule) .b2-rule{position:static}
-.beat-stage:has(.b2-rule) .b2-rule{align-self:flex-start}
-.b3-list{position:absolute;left:14px;right:14px;top:14px;display:flex;flex-direction:column;gap:6px}
-.b3-line{height:8px;border-radius:4px;background:var(--cs-line)}
-.b3-line.new{background:var(--cs-muted)}
-
-/* two-column blocks: idea sources + the moat */
-.moat{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:center}
-.moat h2{font-size:clamp(28px,3.6vw,38px);margin-bottom:16px}
-.moat p{font-size:17px;color:var(--cs-muted);line-height:1.6;margin-bottom:14px}
-.moat-card{background:var(--cs-card);border:1px solid var(--cs-line);border-radius:18px;padding:6px 24px}
-.moat-row{display:flex;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid var(--cs-line);font-size:15px;line-height:1.5}
-.moat-row:last-child{border-bottom:none}
-.moat-txt{flex:1;min-width:0}
-.moat-row .wk{flex:none;min-width:72px;text-align:center;background:var(--cs-chip);color:var(--cs-text);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:500}
-@media(max-width:820px){.moat{grid-template-columns:minmax(0,1fr);gap:28px}}
-
-/* comparison */
-.cmp{max-width:820px;margin:0 auto;border:1px solid var(--cs-line);border-radius:18px;overflow:hidden;background:var(--cs-card)}
-.cmp-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border-bottom:1px solid var(--cs-line)}
-.cmp-row:last-child{border-bottom:none}
-.cmp-cell{padding:18px 20px;font-size:15px;line-height:1.5;display:flex;align-items:flex-start;gap:10px}
-.cmp-cell.them{color:var(--cs-muted);border-right:1px solid var(--cs-line)}
-.cmp-cell.them b{color:var(--cs-text);font-weight:500}
-.cmp-head .cmp-cell{padding:14px 20px;font-size:14px;font-weight:600;background:var(--cs-raise);color:var(--cs-text)}
-.cmp-c{flex:none;color:var(--cs-ok);font-weight:600}
-
-/* pricing — flat cards, the featured plan gets a 1.5px text-colour border */
-.prices{display:grid;grid-template-columns:repeat(3,minmax(0,320px));gap:16px;justify-content:center;align-items:stretch}
-.price{background:var(--cs-card);border:1px solid var(--cs-line);border-radius:18px;padding:28px;display:flex;flex-direction:column}
-.price.pro{border:1.5px solid var(--cs-text)}
-.price-trial{align-self:flex-start;background:var(--cs-primary);color:var(--cs-on-primary);font-size:11px;font-weight:600;letter-spacing:.02em;padding:4px 10px;border-radius:999px;margin-bottom:14px}
-.price-tag{font-size:15px;font-weight:600;margin-bottom:8px}
-.price-amt{font-size:40px;font-weight:600;letter-spacing:-0.02em;line-height:1.1}
-.price-amt small{font-size:15px;font-weight:400;color:var(--cs-muted);letter-spacing:0}
-.price-note{font-size:13px;color:var(--cs-muted);margin-top:6px}
-.price-feats{list-style:none;margin:22px 0 26px;display:flex;flex-direction:column;gap:10px;flex:1}
-.price-feat{font-size:14.5px;display:flex;gap:10px;align-items:flex-start;line-height:1.5}
-.price-feat::before{content:'✓';flex:none;color:var(--cs-muted)}
-.price-btn{display:flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:999px;font-weight:500;font-size:15px;background:var(--cs-primary);color:var(--cs-on-primary);border:1px solid var(--cs-primary);transition:opacity .15s,background .15s}
-.price-btn:hover{opacity:.88}
-.price-btn.out{background:transparent;color:var(--cs-text);border-color:var(--cs-line)}
-.price-btn.out:hover{background:var(--cs-raise);opacity:1}
-@media(max-width:1000px){.prices{grid-template-columns:repeat(2,minmax(0,320px))}}
-@media(max-width:700px){.prices{grid-template-columns:minmax(0,1fr)}}
-
-/* faq */
-.faq{max-width:740px;margin:0 auto;border-top:1px solid var(--cs-line)}
-.faq-item{border-bottom:1px solid var(--cs-line)}
-.faq-q{min-height:64px;padding:18px 0;font-size:16.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;gap:16px;cursor:pointer}
-.faq-q .pm{flex:none;width:28px;height:28px;border:1px solid var(--cs-line);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--cs-muted);transition:transform .2s var(--ease)}
-.faq-item.open .pm{transform:rotate(45deg)}
-.faq-a{font-size:15px;color:var(--cs-muted);line-height:1.65;max-height:0;overflow:hidden;transition:max-height .3s var(--ease),padding .3s var(--ease)}
-.faq-item.open .faq-a{max-height:420px;padding-bottom:20px}
-
-/* final + footer */
-.final{text-align:center;padding:104px 24px;border-top:1px solid var(--cs-line)}
-.final h2{font-size:clamp(32px,5vw,48px);margin:0 0 14px}
-.final p{font-size:17px;color:var(--cs-muted);margin:0 auto 28px;max-width:560px}
-.footer{text-align:center;padding:20px 24px 40px;font-size:13px;color:var(--cs-muted);border-top:1px solid var(--cs-line)}
-.footer a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 4px;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--cs-line)}
-.footer a:hover{color:var(--cs-text)}
-
-/* reveal on scroll — a short fade, 8px of travel */
-.reveal{opacity:0;transform:translateY(8px);transition:opacity .5s var(--ease),transform .5s var(--ease)}
-.reveal.in{opacity:1;transform:none}
-
-/* phone: 16px gutters, full-width buttons */
+/* ── phone (A4): left-aligned hero, 2×2 steps, the call to action pinned to the bottom after paste ── */
 @media(max-width:600px){
-  .wrap,.nav-in{padding-left:16px;padding-right:16px}
-  .section{padding:64px 0}
-  .section-head{margin-bottom:36px}
-  .hero{padding:40px 0 56px}
-  .hero-steps{font-size:16px}
-  .hero-actions{flex-direction:column;align-items:stretch}
-  .btn{width:100%}
-  .func,.beat{padding:20px}
-  .moat-card{padding:4px 18px}
-  .cmp-cell{padding:14px;font-size:14px}
-  .cmp-head .cmp-cell{padding:12px 14px}
+  .lp-nav{height:56px;padding:0 12px 0 16px}
+  .lp-logo{font-size:16px;gap:8px}
+  .lp-logo i{width:28px;height:28px}
+  .lp-login{padding:0 10px}
+  .lp-start{min-height:40px;padding:0 16px}
+  .lp-hero{min-height:calc(100vh - 56px);min-height:calc(100svh - 56px);align-items:stretch;padding:0 16px 40px}
+  .lp-hero h1{font-size:40px;line-height:1.08;text-align:left}
+  .lp-sub{font-size:17px;line-height:1.45;margin-top:14px;text-align:left}
+  .lp-in{height:60px;margin-top:28px;border-radius:30px;gap:6px;padding:0 8px}
+  .lp-in input{font-size:17px}
+  .lp-send{width:44px;height:44px}
+  .lp-steps{display:grid;grid-template-columns:1fr 1fr;gap:12px 10px;margin-top:24px}
+  .lp-steps li+li::before{content:none}
+  .lp-hint{text-align:left}
+  .lp-hero.is-open{padding-top:8px;padding-bottom:0}
+  .lp-hero.is-open h1,.lp-hero.is-open .lp-sub{display:none}
+  .lp-hero.is-open .lp-in{margin-top:0;height:60px}
+  .lp-rev{margin-top:16px;gap:10px;flex:1}
+  .lp-card{padding:12px 16px}
+  .lp-pills{gap:6px}
+  .lp-pills button{height:34px;padding:0 12px}
+  .lp-pills button:nth-child(n+5){display:none}
+  .lp-cta{position:sticky;bottom:0;z-index:5;flex-direction:column;gap:8px;margin:auto -16px 0;padding:12px 16px 20px;background:var(--cs-bg);border-top:1px solid var(--cs-line)}
+  .lp-go{width:100%}
+  .wrap{padding:0 16px}
+  .lp-sec{padding:56px 0}
+  .lp-sec h2{font-size:32px}
+  .lp-feats{grid-template-columns:minmax(0,1fr)}
   .price{padding:24px}
-  .final{padding:72px 16px}
-  .footer{padding:16px 16px 32px}
+  .lp-foot{padding:16px 16px 32px}
 }
 @media(prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*::before,*::after{animation:none!important;transition:none!important}
-  .reveal{opacity:1;transform:none}
-  .lp-pill{display:none}
   .hd-frame,.hd-frame *,.hd-dot::before{animation:none!important;transition:none!important}
 }
 </style>
 </head>
 <body>
 
-<nav class="nav">
-  <div class="nav-in">
-    <a href="/" class="logo">Content Shrimp</a>
-    <div class="nav-links">
-      <a href="#formats">What it makes</a>
-      <a href="#how">How it learns</a>
-      <a href="#features">What you get</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#faq">FAQ</a>
-      <a href="/app.html" class="nav-cta">Open app</a>
-    </div>
-  </div>
+<nav class="lp-nav" aria-label="Main">
+  <a href="/" class="lp-logo"><i><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg></i>Content Shrimp</a>
+  <div class="lp-navr"><a href="/app.html" class="lp-login">Log in</a><a href="/app.html" class="lp-start">Start free</a></div>
 </nav>
 
-<!-- HERO -->
-<header class="hero">
-  <div class="wrap hero-grid">
-    <div>
-      <div class="eyebrow"><span class="dot"></span> Your brand brain, learning live</div>
-      <div class="pain-strip" aria-label="What you'll never type again">
-        <s>"Act as my brand's marketing expert&hellip;" — again</s>
-        <s>"No, that's not our tone. Rewrite."</s>
-        <s>New chat: "Instagram captions"</s>
-        <span class="ps-ok">You'll never type any of that again.</span>
-      </div>
-      <h1>Paste any TikTok. <em>Make it yours.</em></h1>
-      <ol class="hero-steps" id="heroSteps"><li><b>Paste the link.</b> You get the exact words it said.</li><li><b>Get your version</b>, rewritten in your brand's voice with your facts.</li><li><b>Film it right away.</b> The teleprompter follows your voice, with breathing gaps and the words to stress marked.</li><li><b>Add B-roll if you want</b>: matching photos and on-brand graphics, built on your phone. No editor.</li></ol>
-      <div class="hero-actions">
-        <a href="/app.html" class="btn btn-primary">Try Pro free for 7 days →</a>
-        <a href="#formats" class="btn btn-ghost">See what it makes ↓</a>
-      </div>
-      <div class="hero-note">No credit card, no setup, no learning curve — mobile-first, works on any device. Your first week of posts before your coffee’s cold. <b>7-day free trial of Pro.</b></div>
+<!-- FIRST SCREEN (A1) + AFTER PASTE (A2) -->
+<header class="lp-hero" id="top" data-v722-landing>
+  <h1>Paste any TikTok. <em>Make it yours.</em></h1>
+  <p class="lp-sub">Get the exact words, your own version, and a teleprompter to film it.</p>
+  <form class="lp-in" id="tryForm" action="/app.html" method="get" autocomplete="off">
+    <button type="button" class="lp-pst" id="tryPaste" aria-label="Paste from clipboard"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
+    <label class="sr" for="tryUrl">TikTok link</label>
+    <input id="tryUrl" name="link" type="url" inputmode="url" placeholder="Paste a TikTok link…" enterkeyhint="go" spellcheck="false">
+    <button type="submit" class="lp-send" id="trySend" aria-label="Get the words"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+  </form>
+  <p class="lp-hint" id="tryHint" role="status" aria-live="polite"></p>
+  <ol class="lp-steps" id="trySteps" aria-label="How it works"><li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>Paste link</li><li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M14 3v5h5"/></svg>Exact words</li><li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>Your version</li><li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 6-3v10l-6-3"/></svg>Film it</li></ol>
+  <div class="lp-rev" id="tryOut" hidden aria-live="polite">
+    <h2 class="lp-say">Here's what they said</h2>
+    <div class="lp-card"><div class="m" id="tryMeta"></div><div class="lp-words" id="tryWords" tabindex="0"></div></div>
+    <div class="lp-card lp-yours">
+      <h2 class="lp-say">Your version — one step away</h2>
+      <div class="lp-pills" aria-label="Ways to make it yours, after you sign in"><button type="button" disabled class="on">My take</button><button type="button" disabled>Simplify</button><button type="button" disabled>Flip it</button><button type="button" disabled>Different format</button><button type="button" disabled>Series</button><button type="button" disabled>Roast &amp; respond</button></div>
+      <div class="lp-skel" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     </div>
-    <!-- v714: the phone plays the four steps above as five short frames (HTML/CSS + the small script below).
-         The phone itself is decoration (data-site-mock, aria-hidden); the step buttons under it are real controls. -->
+    <div class="lp-cta"><button type="button" class="lp-go" id="tryGo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg>Make it yours — free</button><span class="m"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg>Email sign-in link, no password</span></div>
+  </div>
+</header>
+
+<!-- HOW IT WORKS (A3) — the v714 phone loop, beside the four steps -->
+<section class="lp-sec" id="how">
+  <div class="wrap lp-how">
+    <div>
+      <div class="lp-kick">How it works</div>
+      <h2>Four steps.</h2>
+      <ol class="lp-big" id="heroSteps"><li class="lp-bs"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></span><span><b class="t">Paste link</b><span class="d">Copy it from TikTok and paste it here.</span></span></li><li class="lp-bs"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M14 3v5h5"/></svg></span><span><b class="t">Exact words</b><span class="d">Every word they said, written out.</span></span></li><li class="lp-bs"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg></span><span><b class="t">Your version</b><span class="d">Rewritten in your brand’s voice, with your facts.</span></span></li><li class="lp-bs"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 6-3v10l-6-3"/></svg></span><span><b class="t">Film it</b><span class="d">A teleprompter that follows your voice. Add B-roll if you want.</span></span></li></ol>
+    </div>
     <div class="hero-demo" id="heroDemo">
       <div class="hero-mock" data-site-mock aria-hidden="true">
         <div class="mk-phone">
@@ -496,15 +453,15 @@ b,strong{font-weight:600}
       </div>
       <div class="hd-ctrl" role="group" aria-label="How it works, frame by frame">
         <button type="button" class="hd-dot" aria-label="Step 1: paste the link" aria-current="step"></button>
-        <button type="button" class="hd-dot" aria-label="Step 1: the exact words"></button>
-        <button type="button" class="hd-dot" aria-label="Step 2: your version"></button>
-        <button type="button" class="hd-dot" aria-label="Step 3: film it"></button>
+        <button type="button" class="hd-dot" aria-label="Step 2: the exact words"></button>
+        <button type="button" class="hd-dot" aria-label="Step 3: your version"></button>
+        <button type="button" class="hd-dot" aria-label="Step 4: film it"></button>
         <button type="button" class="hd-dot" aria-label="Step 4: add B-roll"></button>
         <button type="button" class="hd-play" aria-label="Pause the demo"><svg class="hd-i-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><svg class="hd-i-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.6-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg></button>
       </div>
     </div>
     <script>
-    /* v714 hero demo: five frames, one every ~2.6 s, crossfading. The step under the phone and the
+    /* v714 phone loop (v722: beside How it works): five frames, one every ~2.6 s, crossfading. The step under the phone and the
        matching list item light up with it. Reduced motion: no auto-advance, frame 3 shows, the buttons
        still switch frames. Off-screen or in a background tab it stops. Picking a frame stops the loop. */
     (function(){
@@ -512,7 +469,7 @@ b,strong{font-weight:600}
       if(!demo||!list) return;
       var frames=demo.querySelectorAll('.hd-frame'), dots=demo.querySelectorAll('.hd-dot'), play=demo.querySelector('.hd-play');
       var items=list.querySelectorAll('li');
-      var STEP=[0,0,1,2,3], HOLD=[2600,2600,2600,3000,2800];
+      var STEP=[0,1,2,3,3], HOLD=[2600,2600,2600,3000,2800];
       var mq=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
       var cur=0, timer=0, running=!(mq&&mq.matches), seen=!('IntersectionObserver' in window);
       function show(i){
@@ -543,293 +500,158 @@ b,strong{font-weight:600}
     })();
     </script>
   </div>
-</header>
+</section>
 
-<!-- WHAT COMES OUT -->
-<section class="section" id="formats" style="padding-top:20px">
+<!-- EVERYTHING ELSE INSIDE (owner, 2026-11-08) — only features that exist in app.html (landing-v722.mjs checks each) -->
+<section class="lp-sec" id="inside">
   <div class="wrap">
-    <div class="section-head reveal">
-      <div class="kicker">What comes out</div>
-      <h2>Six kinds of post. One brain.</h2>
-      <p>Every one is written through your brand brain, so a one-line statement and a ninety-second script sound like the same person.</p>
-    </div>
-    <div class="funcs">
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 13 5.2 3.1a.5.5 0 0 0 .8-.4V8.3a.5.5 0 0 0-.8-.4L16 11"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></div><h3>Talking-head script</h3><p>Written to be said, not read. Full sentences, a hook that works out loud, and a shot list. Film it with the teleprompter.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><h3>Statement</h3><p>One bold claim, two to five sentences, made for a text graphic. Lands for a stranger with zero context.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M2 6v12M22 6v12"/></svg></div><h3>Carousel</h3><p>Slide by slide, one idea per slide, ready for the slide maker in your brand colours.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg></div><h3>Explainer</h3><p>One surprising fact about how something in your world works, under a minute. The post people save.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></div><h3>Q&amp;A</h3><p>A real question people search, pulled from Google, answered your way. The post that gets you found.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg></div><h3>Static</h3><p>A caption and an image brief. The quick one for the days you only have a photo.</p></div>
-    </div>
-    <p class="funcs-note reveal"><b>Set your mix once.</b> Three videos, two carousels, two statements a week, whatever fits you. It plans the week around it, and it never repeats itself.</p>
+    <div class="lp-kick">Inside the app</div>
+    <h2>Everything else inside</h2>
+    <ul class="lp-feats"><li class="lp-feat" data-feature="daily"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span><div><h3>Daily ideas</h3><p>A fresh batch every morning, in your voice. Just turn on the reminder.</p></div></li><li class="lp-feat" data-feature="week"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span><div><h3>Plan my week</h3><p>Seven days of posts across your formats, planned in one go.</p></div></li><li class="lp-feat" data-feature="trends"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg></span><div><h3>Trends</h3><p>What’s rising in your niche, pulled daily.</p></div></li><li class="lp-feat" data-feature="search"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><div><h3>What people search</h3><p>Real questions people ask Google, ready to answer.</p></div></li><li class="lp-feat" data-feature="coach"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></span><div><h3>Coach</h3><p>Talk it through. Your brand brain listens and learns your voice.</p></div></li><li class="lp-feat" data-feature="creators"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><div><h3>New from your creators</h3><p>Follow up to 5 creators. Their new videos, ranked by “× their usual”.</p></div></li><li class="lp-feat" data-feature="notebook"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg></span><div><h3>Notebook</h3><p>Say a half-thought out loud. It becomes a post later.</p></div></li><li class="lp-feat" data-feature="pipeline"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></svg></span><div><h3>Pipeline</h3><p>Every approved post, from Ready to Film &amp; Post to Done.</p></div></li><li class="lp-feat" data-feature="split"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M6 12h12"/></svg></span><div><h3>Split-screen video</h3><p>You on top, B-roll and on-brand graphics below, built on your phone.</p></div></li><li class="lp-feat" data-feature="slides"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M2 6v12M22 6v12"/></svg></span><div><h3>Slides</h3><p>Carousel slides in your brand colours.</p></div></li><li class="lp-feat" data-feature="changes"><span class="n"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span><div><h3>Ask for changes</h3><p>Say what to change on any idea, in plain words.</p></div></li></ul>
+    <p class="lp-note">Works on your phone and on a computer. Frontier models underneath, upgraded the moment a better one ships.</p>
   </div>
 </section>
-
-<!-- WHERE THE IDEAS COME FROM -->
-<section class="section" id="sources">
-  <div class="wrap moat">
-    <div class="reveal">
-      <div class="kicker">Where the ideas come from</div>
-      <h2>It never runs dry, because you're not the only source.</h2>
-      <p>Most people stop posting because they run out of things to say. Here the ideas come from five places, and you're only one of them.</p>
-      <a href="/app.html" class="btn btn-primary" style="margin-top:8px">Get your first week →</a>
-    </div>
-    <div class="moat-card reveal">
-      <div class="moat-row"><span class="moat-txt"><b>Your brand.</b> What you sell, who it's for, what annoys them, what you'd never say.</span><span class="wk">brain</span></div>
-      <div class="moat-row"><span class="moat-txt"><b>What people search.</b> Real questions from Google, one tap to answer.</span><span class="wk">questions</span></div>
-      <div class="moat-row"><span class="moat-txt"><b>What's rising in your niche.</b> Pulled daily, with the posts worth making yours.</span><span class="wk">trends</span></div>
-      <div class="moat-row"><span class="moat-txt"><b>Creators you follow.</b> Paste a post that worked. Get it rebuilt in your voice, never copied.</span><span class="wk">make it yours</span></div>
-      <div class="moat-row"><span class="moat-txt"><b>Your own half-thoughts.</b> Say it into the notebook at a red light. It becomes a post later.</span><span class="wk">notebook</span></div>
-    </div>
-  </div>
-</section>
-
-<!-- HOW THE BRAIN LEARNS -->
-<section class="section" id="how">
-  <div class="wrap">
-    <div class="section-head reveal">
-      <div class="kicker">How the brain learns</div>
-      <h2>The longer you use it, the more it's yours.</h2>
-      <p>Four things happen quietly in the background. A blank prompt does none of them.</p>
-    </div>
-    <div class="lp-brain" aria-hidden="true">
-      <div class="lp-stage" id="lpStage">
-        <svg class="lp-wire" viewBox="0 0 360 252"><path d="M 70 40 C 115 95,150 95,180 118"/><path d="M 290 40 C 245 95,210 95,180 118"/><path d="M 55 126 C 110 124,150 124,180 126"/><path d="M 305 126 C 250 124,210 124,180 126"/><path d="M 180 28 C 180 60,180 85,180 114"/></svg>
-        <span class="lp-ring"></span>
-        <div class="lp-core"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L19.5 10l-5.6 1.2L12 17l-1.9-5.8L4.5 10l5.6-1.2z"/></svg></div>
-      </div>
-    </div>
-    <script>
-    (function(){
-      var st=document.getElementById('lpStage'); if(!st) return;
-      var SRC=['How you talk','Your website','Competitors','Reviews & reputation','Market complaints','Your social posts','Posts that worked','Google “People Also Ask”','What\u2019s rising','News · X · RSS','What you approve','How you edit'];
-      var TOOL=['Scripts','Statements','Carousels','Explainers','Q&As','Your versions'];
-      var si=0,ti=0,n=0;
-      setInterval(function(){
-        if(st.querySelectorAll('.lp-pill').length>7) return;
-        var pin=document.createElement('span');pin.className='lp-pill lp-pin lp-p'+(si%5);
-        pin.textContent=SRC[si%SRC.length];si++;
-        pin.addEventListener('animationend',function(){pin.remove();});
-        st.appendChild(pin);
-        if(n%2===0){var po=document.createElement('span');po.className='lp-pill lp-pout lp-o'+(ti%3);po.textContent=TOOL[ti%TOOL.length];ti++;po.addEventListener('animationend',function(){po.remove();});st.appendChild(po);}
-        n++;
-      },720);
-    })();
-    </script>
-    <div class="beats">
-      <div class="beat reveal">
-        <div class="beat-num">01</div>
-        <h3>It hears you</h3>
-        <p>Two minutes of you talking, and it writes in your rhythm, not a description of it. Your sentence length, the way you join a thought, what you call things. Every voice note you leave afterwards teaches it more.</p>
-        <div class="beat-stage">
-          <div class="b0-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          <div class="b0-tag">2 min · that's the voice</div>
-        </div>
-      </div>
-      <div class="beat reveal">
-        <div class="beat-num">02</div>
-        <h3>It reads your brand</h3>
-        <p>Paste your website and it reads the whole thing, then your competitors, your reviews, your social posts. You approve what it keeps. Nothing lands in the brain unseen.</p>
-        <div class="beat-stage">
-          <div class="scanline s1"></div><div class="scanline s2"></div><div class="scanline s3"></div>
-          <div class="scan-fill"></div>
-        </div>
-      </div>
-      <div class="beat reveal">
-        <div class="beat-num">03</div>
-        <h3>It learns from every choice</h3>
-        <p>Approve, dismiss, change a line. It keeps the <b>pattern</b> behind the choice, not just the post, and turns it into a rule every tool obeys. You're training it just by using it.</p>
-        <div class="beat-stage">
-          <div class="b2-draft">"Our AMAZING formula!!!" <span class="b2-strike">→</span> "1000mg sodium. Zero sugar."</div>
-          <div class="b2-rule">✓ Rule: state it flat, cut the hype</div>
-        </div>
-      </div>
-      <div class="beat reveal">
-        <div class="beat-num">04</div>
-        <h3>It compounds</h3>
-        <p>Week ten sounds more like you than week one. It reads what you kept and what you rejected, writes the pattern into your Voice Memory, and applies it from that moment on. A blank prompt starts from zero every time.</p>
-        <div class="beat-stage">
-          <div class="b3-list">
-            <div class="b3-line" style="width:80%"></div>
-            <div class="b3-line" style="width:65%"></div>
-            <div class="b3-line new" style="width:90%"></div>
-            <div class="b3-line new n2" style="width:55%"></div>
-            <div class="b3-line new n3" style="width:75%"></div>
-          </div>
-          <div class="b3-badge">learned 3 this week</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- WHAT YOU GET -->
-<section class="section" id="features">
-  <div class="wrap">
-    <div class="section-head reveal">
-      <div class="kicker">What you get</div>
-      <h2>Everything between "I should post" and "it's live."</h2>
-    </div>
-    <div class="funcs">
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><h3>Quick Post</h3><p>One tap. Today's post, in your voice, on today's theme, in about thirty seconds. Don't like it? Redo it as a different kind of post, or twist the angle.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><h3>Week planner</h3><p>Seven days of posts across your formats and themes, each one a full brief: hook, script, caption, shot list. Approve the ones you like, film them from the pipeline, mark them done.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/></svg></div><h3>Film it</h3><p>A teleprompter that follows your voice as you talk, with breathing marks. Then a split-screen video with on-brand graphics and matching photos, built on your phone. No editor.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></div><h3>Make it yours</h3><p>A link or a transcript in, your version out. TikTok, YouTube, an article, a paste. It borrows the structure and the hook mechanics, never the words.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg></div><h3>Trends</h3><p>What's rising in your niche, pulled daily, and what your competitors just did. The posts worth making yours are one tap from your own version.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div><h3>What people search</h3><p>The real questions people and AI assistants ask about your niche, pulled live from Google. Answer one and get found.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></div><h3>Assistant</h3><p>Talk it out. It knows your brand, what you've approved and what you've been doing, and it can act: write the post, plan the week, pull the trends.</p></div>
-      <div class="func reveal"><div class="func-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h3>Multi-brand + team</h3><p>Several brands from one login, each with its own brain and its own voice. Invite teammates to draft and approve together.</p></div>
-    </div>
-    <p class="funcs-note reveal">Works on your phone. Frontier models underneath, upgraded the moment a better one ships. Useful the first day.</p>
-  </div>
-</section>
-
-<!-- MOAT -->
-<section class="section">
-  <div class="wrap moat">
-    <div class="reveal">
-      <h2>Six months in, nobody else can make this.</h2>
-      <p>They can copy your captions. They can't copy six months of your taste — your edits, your picks, your passes, distilled into a brand brain that only sounds like you.</p>
-      <p>That's the difference between renting a generator and owning a brain.</p>
-      <a href="/app.html" class="btn btn-primary" style="margin-top:8px">Start building yours →</a>
-    </div>
-    <div class="moat-card reveal">
-      <div class="moat-row"><span class="moat-txt">Hears how you talk. Reads your site, competitors &amp; reviews</span><span class="wk">day 1</span></div>
-      <div class="moat-row"><span class="moat-txt">Learns your taste from every pick</span><span class="wk">week 1</span></div>
-      <div class="moat-row"><span class="moat-txt">Writes its own voice rules</span><span class="wk">week 2</span></div>
-      <div class="moat-row"><span class="moat-txt">Sounds unmistakably like you</span><span class="wk">month 2</span></div>
-      <div class="moat-row"><span class="moat-txt">Impossible to walk away from</span><span class="wk">month 6</span></div>
-    </div>
-  </div>
-</section>
-
-<!-- OBJECTION: WHY NOT JUST CHATGPT -->
-<section class="section" style="padding-top:0">
-  <div class="wrap">
-    <div class="section-head reveal"><h2>"Couldn't I just use ChatGPT?"</h2><p style="text-align:center;max-width:640px;margin:14px auto 0;opacity:0.72;line-height:1.55">For one post, yes. It's a superb writer, it remembers things about you now, it browses when you ask. Here's what it still can't do for someone who has to post every day.</p></div>
-    <div class="cmp reveal">
-      <div class="cmp-row cmp-head"><div class="cmp-cell them">ChatGPT</div><div class="cmp-cell us">Content Shrimp</div></div>
-      <div class="cmp-row"><div class="cmp-cell them"><span><b>Your voice.</b> Writes in whatever tone you describe. Describing a voice is not the same as having one.</span></div><div class="cmp-cell us"><span class="cmp-c">✓</span><span>Heard you talk for two minutes. Writes in your rhythm, your sentence length, your words. Not a description of them.</span></div></div>
-      <div class="cmp-row"><div class="cmp-cell them"><span><b>Memory.</b> Remembers facts about you. What you sell, roughly who you are.</span></div><div class="cmp-cell us"><span class="cmp-c">✓</span><span>Remembers your taste. Every approve, dismiss and changed line becomes a rule it writes by from then on.</span></div></div>
-      <div class="cmp-row"><div class="cmp-cell them"><span><b>Ideas.</b> Gives you ten when you ask. Next week, ten more, and three of them are last week's.</span></div><div class="cmp-cell us"><span class="cmp-c">✓</span><span>Plans the week across your six formats and your themes, and checks every idea against everything it already wrote you.</span></div></div>
-      <div class="cmp-row"><div class="cmp-cell them"><span><b>What's happening.</b> Browses when you tell it to, one question at a time.</span></div><div class="cmp-cell us"><span class="cmp-c">✓</span><span>Pulls what's rising in your niche, what people search and what your competitors just did. Every day. Unasked.</span></div></div>
-      <div class="cmp-row"><div class="cmp-cell them"><span><b>Someone else's post.</b> Rewrites text you paste in.</span></div><div class="cmp-cell us"><span class="cmp-c">✓</span><span>Takes the TikTok link. Transcribes the video, reads the cover frame, works out why it landed, rebuilds it as yours.</span></div></div>
-      <div class="cmp-row"><div class="cmp-cell them"><span><b>Filming.</b> Ends at the text. You take it from there.</span></div><div class="cmp-cell us"><span class="cmp-c">✓</span><span>A teleprompter that follows your voice, then a split-screen video with on-brand graphics and photos, built on your phone.</span></div></div>
-      <div class="cmp-row"><div class="cmp-cell them"><span><b>What you get.</b> A chat message. You copy it out and go.</span></div><div class="cmp-cell us"><span class="cmp-c">✓</span><span>A finished post: hook, script, caption, tags, shot list, the day it's for. Sitting in a pipeline until it's filmed and done.</span></div></div>
-      <div class="cmp-row"><div class="cmp-cell them"><span><b>Several brands.</b> One memory, one you. Brand B starts inheriting brand A.</span></div><div class="cmp-cell us"><span class="cmp-c">✓</span><span>A separate brain per brand, each with its own voice, its own taste, its own trends. Nothing bleeds.</span></div></div>
-    </div>
-    <p style="text-align:center;max-width:620px;margin:22px auto 0;opacity:0.82;line-height:1.55">A frontier model writes here too. The difference is everything it has been given about you, and everything it remembers. That's the part you'd otherwise rebuild by hand, every single time.</p>
-  </div>
-</section>
-
-<!-- ===========================================================================
-     PROOF / TESTIMONIALS — HIDDEN placeholder. This is the single biggest lever
-     to lift conversion (Hormozi: "perceived likelihood of achievement").
-     TO ENABLE: delete this whole opening comment block and the closing marker at
-     the very end, then replace the bracketed placeholders with REAL quotes (or a
-     short founder "why I built this" note). Never invent numbers or fake names.
-<section class="section" style="padding-top:0">
-  <div class="wrap">
-    <div class="section-head reveal"><h2>What early users say</h2></div>
-    <div class="reveal" style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center;max-width:940px;margin:24px auto 0">
-      <blockquote style="flex:1 1 260px;max-width:340px;border:1.5px solid var(--border);border-radius:16px;padding:20px;margin:0;background:var(--surface)"><p style="margin:0 0 12px;line-height:1.5">&ldquo;[Real quote — what actually changed for them, in their own words.]&rdquo;</p><footer style="opacity:0.7;font-size:14px">&mdash; [Name], [Brand]</footer></blockquote>
-      <blockquote style="flex:1 1 260px;max-width:340px;border:1.5px solid var(--border);border-radius:16px;padding:20px;margin:0;background:var(--surface)"><p style="margin:0 0 12px;line-height:1.5">&ldquo;[Real quote #2.]&rdquo;</p><footer style="opacity:0.7;font-size:14px">&mdash; [Name], [Brand]</footer></blockquote>
-      <blockquote style="flex:1 1 260px;max-width:340px;border:1.5px solid var(--border);border-radius:16px;padding:20px;margin:0;background:var(--surface)"><p style="margin:0 0 12px;line-height:1.5">&ldquo;[Real quote #3.]&rdquo;</p><footer style="opacity:0.7;font-size:14px">&mdash; [Name], [Brand]</footer></blockquote>
-    </div>
-  </div>
-</section>
-     =========================================================================== -->
 
 <!-- PRICING -->
-<section class="section" id="pricing">
+<section class="lp-sec" id="pricing">
   <div class="wrap">
-    <!-- URGENCY PLACEHOLDER: the "Limited-time offer" badge below is vague/fake scarcity. When you have
-         a REAL one, swap it in (e.g. "Founding price — first 100 signups", with an actual count/date), or
-         remove it. Fake scarcity can read as hype. NOTE: the "No card" claim in the h2 (and in the hero
-         note + FAQ) must be TRUE — if you start collecting a card, change those before launch. -->
-    <div class="section-head reveal"><div class="kicker">Pricing</div><h2>Try Pro free for 7 days. No card. A brain that learns your voice.</h2></div>
+    <div class="lp-kick">Pricing</div>
+    <h2>Try Pro free for 7 days. No card.</h2>
     <div class="prices">
-      <div class="price reveal">
-        <div class="price-tag">Free</div>
-        <div class="price-amt">$0<small>/mo</small></div>
-        <div class="price-note">After your trial &mdash; no card, ever</div>
-        <ul class="price-feats">
-          <li class="price-feat">40 posts a month, one brand</li>
-          <li class="price-feat">The daily tools &mdash; Make it yours, Quick Post, Ideas, Pipeline, Trends, Notebook</li>
-          <li class="price-feat">Your brand brain stays trained</li>
-        </ul>
-        <a href="/app.html" class="price-btn out">Start free</a>
-      </div>
-      <div class="price pro reveal">
-        <div class="price-trial">7 DAYS FREE &middot; NO CARD</div>
-        <div class="price-tag">Pro</div>
-        <div class="price-amt">$24<small>/mo</small></div>
-        <div class="price-note">Most people start here</div>
-        <ul class="price-feats">
-          <li class="price-feat">750 posts a month</li>
-          <li class="price-feat">2 brands on one account</li>
-          <li class="price-feat">Every tool &mdash; Make it yours, Trends, Film it, Assistant</li>
-          <li class="price-feat">The brand brain that sharpens as you use it</li>
-          <li class="price-feat">Cancel anytime &mdash; nothing charged during the trial</li>
-        </ul>
-        <a href="/app.html" class="price-btn">Try Pro free for 7 days</a>
-      </div>
-      <div class="price reveal">
-        <div class="price-tag">Agency</div>
-        <div class="price-amt">$79<small>/mo</small></div>
-        <div class="price-note">Starts right away &mdash; no trial</div>
-        <ul class="price-feats">
-          <li class="price-feat">2,500 posts a month</li>
-          <li class="price-feat">Everything in Pro</li>
-          <li class="price-feat">Multiple brands &amp; seats for your team</li>
-        </ul>
-        <a href="/app.html" class="price-btn out">Get Agency</a>
-      </div>
+      <div class="price"><div class="price-tag">Free</div><div class="price-amt">$0<small>/mo</small></div><div class="price-note">After your trial &mdash; no card, ever</div><ul class="price-feats"><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>40 posts a month, one brand</span></li><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>The daily tools &mdash; Make it yours, Quick Post, Ideas, Pipeline, Trends, Notebook</span></li><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>Your brand brain stays trained</span></li></ul><a href="/app.html" class="price-btn out">Start free</a></div>
+      <div class="price pro"><div class="price-trial">7 days free &middot; no card</div><div class="price-tag">Pro</div><div class="price-amt">$24<small>/mo</small></div><div class="price-note">Most people start here</div><ul class="price-feats"><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>750 posts a month</span></li><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>2 brands on one account</span></li><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>Every tool &mdash; Make it yours, Trends, Film it, Coach</span></li><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>The brand brain that sharpens as you use it</span></li><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>Cancel anytime &mdash; nothing charged during the trial</span></li></ul><a href="/app.html" class="price-btn">Try Pro free for 7 days</a></div>
+      <div class="price"><div class="price-tag">Agency</div><div class="price-amt">$79<small>/mo</small></div><div class="price-note">Starts right away &mdash; no trial</div><ul class="price-feats"><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>2,500 posts a month</span></li><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>Everything in Pro</span></li><li class="price-feat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>Multiple brands &amp; seats for your team</span></li></ul><a href="/app.html" class="price-btn out">Get Agency</a></div>
     </div>
-    <p class="reveal" style="text-align:center;margin-top:20px;font-size:14px;color:var(--text3)">
-      Every account starts on Pro, free for 7 days — no card. Keep Pro, or drop to the free plan and keep posting. Agency skips the trial and starts right away.
-    </p>
+    <p class="price-more">Every account starts on Pro, free for 7 days &mdash; no card. Keep Pro, or drop to the free plan and keep posting. Agency skips the trial and starts right away.</p>
   </div>
 </section>
 
 <!-- FAQ -->
-<section class="section" id="faq">
+<section class="lp-sec" id="faq">
   <div class="wrap">
-    <div class="section-head reveal"><div class="kicker">Questions</div><h2>The honest answers</h2></div>
+    <div class="lp-kick">Questions</div>
+    <h2>The honest answers</h2>
     <div class="faq">
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What's a "brand brain," really? <span class="pm">+</span></div><div class="faq-a">Everything it knows about you, in one place: what you sell, who it's for, how you talk (it heard you), and everything it learns from how you work — the lines you keep, the ones you rewrite, the ones you pass on. Every post is written through it. It's memory, not just generation.</div></div>
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">How fast until I have posts? <span class="pm">+</span></div><div class="faq-a">Paste your website — it fills most of your profile in seconds. Answer a couple of quick questions to sharpen it, then hit generate. About two minutes to your first batch, ready to film.</div></div>
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Do I have to fill out a huge form? <span class="pm">+</span></div><div class="faq-a">No. Paste your website and it fills most of it. Then talk for two minutes about what you do, the way you'd explain it to a friend. That's the part that makes it sound like you. Add anything else by hand whenever you like; from there it learns from the posts you approve, edit and pass.</div></div>
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What kinds of posts does it make? <span class="pm">+</span></div><div class="faq-a">Six: talking-head scripts, statements, carousels, explainers, Q&amp;As and statics. You set the mix once (say, three videos, two carousels, two statements a week) and it plans the week around it. Change the mix any time.</div></div>
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What if I have nothing to say? <span class="pm">+</span></div><div class="faq-a">That's the point of it. The ideas come from your brand, from what people search, from what's rising in your niche, from posts by creators you follow, and from the half-thoughts you say into the notebook. You're one source of five, so it never runs dry.</div></div>
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Do I need a computer, or does it work on my phone? <span class="pm">+</span></div><div class="faq-a">Your phone is all you need. It's built mobile-first — write, review and post right from your thumb, nothing to install. Works just as well on a desktop if you prefer, but you're never tied to one.</div></div>
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Will it actually sound like me? <span class="pm">+</span></div><div class="faq-a">Yes, because it heard you. During setup you talk for two minutes, and that recording outranks every description and every rule when it writes. Every voice note you leave afterwards teaches it more, and every post you approve or change sharpens it further.</div></div>
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">What happens when my trial ends? <span class="pm">+</span></div><div class="faq-a">You move to a free plan: the daily tools — Make it yours, Quick Post, Ideas, Trends, Notebook — with a smaller monthly allowance, for one brand. More output and more brands live on the paid plans. Your brand voice stays set up either way — pick up right where you left off.</div></div>
-      <div class="faq-item reveal"><div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Is there a free trial? What does it cost? <span class="pm">+</span></div><div class="faq-a">Pro comes with a 7-day free trial — full access, no card required. After that it's $24/mo, or stay on a free plan with a small monthly allowance. Agency is $79/mo and starts right away, no trial. Your brand setup stays in place either way.</div></div>
+      <details class="fq"><summary>What's a "brand brain," really?<span class="fq-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span></summary><div class="fa">Everything it knows about you, in one place: what you sell, who it's for, how you talk (it heard you), and everything it learns from how you work — the lines you keep, the ones you rewrite, the ones you pass on. Every post is written through it. It's memory, not just generation.</div></details>
+      <details class="fq"><summary>How fast until I have posts?<span class="fq-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span></summary><div class="fa">Paste your website — it fills most of your profile in seconds. Answer a couple of quick questions to sharpen it, then hit generate. About two minutes to your first batch, ready to film.</div></details>
+      <details class="fq"><summary>Do I have to fill out a huge form?<span class="fq-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span></summary><div class="fa">No. Paste your website and it fills most of it. Then talk for two minutes about what you do, the way you'd explain it to a friend. That's the part that makes it sound like you. Add anything else by hand whenever you like; from there it learns from the posts you approve, edit and pass.</div></details>
+      <details class="fq"><summary>What kinds of posts does it make?<span class="fq-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span></summary><div class="fa">Six: talking-head scripts, statements, carousels, explainers, Q&amp;As and statics. You set the mix once (say, three videos, two carousels, two statements a week) and it plans the week around it. Change the mix any time.</div></details>
+      <details class="fq"><summary>What if I have nothing to say?<span class="fq-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span></summary><div class="fa">That's the point of it. The ideas come from your brand, from what people search, from what's rising in your niche, from posts by creators you follow, and from the half-thoughts you say into the notebook. You're one source of five, so it never runs dry.</div></details>
+      <details class="fq"><summary>Do I need a computer, or does it work on my phone?<span class="fq-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span></summary><div class="fa">Your phone is all you need. It's built mobile-first — write, review and post right from your thumb, nothing to install. Works just as well on a desktop if you prefer, but you're never tied to one.</div></details>
+      <details class="fq"><summary>Will it actually sound like me?<span class="fq-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span></summary><div class="fa">Yes, because it heard you. During setup you talk for two minutes, and that recording outranks every description and every rule when it writes. Every voice note you leave afterwards teaches it more, and every post you approve or change sharpens it further.</div></details>
+      <details class="fq"><summary>What happens when my trial ends?<span class="fq-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span></summary><div class="fa">You move to a free plan: the daily tools — Make it yours, Quick Post, Ideas, Trends, Notebook — with a smaller monthly allowance, for one brand. More output and more brands live on the paid plans. Your brand voice stays set up either way — pick up right where you left off.</div></details>
+      <details class="fq"><summary>Is there a free trial? What does it cost?<span class="fq-i"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span></summary><div class="fa">Pro comes with a 7-day free trial — full access, no card required. After that it's $24/mo, or stay on a free plan with a small monthly allowance. Agency is $79/mo and starts right away, no trial. Your brand setup stays in place either way.</div></details>
     </div>
   </div>
 </section>
 
-<!-- FINAL -->
-<section class="final">
-  <h2>Never run out of content. Ever.</h2>
-  <p>Paste your website. Talk for two minutes. Your first week of posts before your coffee's cold.</p>
-  <p style="opacity:0.74;font-size:15px;max-width:520px;margin:0 auto 8px">Your brand brain and every Pro tool — free for 7 days.</p>
-  <a href="/app.html" class="btn btn-primary">Try Pro free for 7 days →</a>
-  <p style="opacity:0.6;font-size:13.5px;max-width:470px;margin:12px auto 0">Free for 7 days, no card, cancel anytime — you pay nothing. If it doesn't sound like you, you've lost nothing but a paste.</p>
-</section>
-
-<footer class="footer">
-  &copy; 2026 Content Shrimp · Jord Digital Ltd · <a href="/faq.html">FAQ</a> · <a href="/terms.html">Terms</a> · <a href="/privacy.html">Privacy</a> · <a href="/refunds.html">Refunds</a> · <a href="/app.html">Open app</a>
+<footer class="lp-foot">
+  &copy; 2026 Content Shrimp &middot; JORG DIGITAL LTD &middot; <a href="/faq.html">FAQ</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/privacy.html">Privacy</a> &middot; <a href="/refunds.html">Refunds</a> &middot; <a href="/app.html">Open app</a>
 </footer>
 
-
 <script>
-if('IntersectionObserver' in window){
-var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.14});
-document.querySelectorAll('.reveal').forEach(function(el){io.observe(el)});
-} else { document.querySelectorAll('.reveal').forEach(function(el){el.classList.add('in')}); }
-
+/* v722 — the paste box (contract .unlazy/landing/CONTRACT.md). A link goes to POST /api/try-transcript (no account, words only,
+   no AI writing). The words show; "Your version" is grey placeholder bars until sign-up. "Make it yours — free" stores the link
+   (localStorage 'cs-pending-link' {url, at}) and opens the app with ?link=, where sign-in and the rest happen.
+   Everything the server sends is put on the page as text (textContent), never as HTML. */
+(function(){
+  var form=document.getElementById('tryForm'), input=document.getElementById('tryUrl'), send=document.getElementById('trySend'),
+      paste=document.getElementById('tryPaste'), hint=document.getElementById('tryHint'), hero=document.getElementById('top'),
+      rev=document.getElementById('tryOut'), meta=document.getElementById('tryMeta'), words=document.getElementById('tryWords'),
+      go=document.getElementById('tryGo'), steps=document.getElementById('trySteps');
+  if(!form||!input) return;
+  var APP='/app.html', KEY='cs-pending-link', busy=false, seq=0, last='';
+  var MSG={
+    bad_link:"That doesn't look like a TikTok or YouTube link. In TikTok, tap Share, then Copy link, and paste it here.",
+    too_long:"That video is longer than 3 minutes. Try a shorter one here.",
+    limit_reached:"You've used today's free tries on this page.",
+    busy:"Lots of people are trying this right now, so the free tries are paused for today.",
+    no_words:"We couldn't hear any words in that video. Try one where someone talks.",
+    failed:"Something went wrong reading that video. Try again in a moment.",
+    paste_blocked:"Your browser didn't let us read the clipboard. Tap the box and paste the link there."
+  };
+  var SIGNUP={limit_reached:1,busy:1};
+  // only http(s) TikTok / YouTube links; a bare "tiktok.com/…" gets https:// in front
+  function clean(raw){
+    var s=String(raw==null?'':raw).trim(); if(!s) return '';
+    var m=s.match(/https?:\/\/\S+/i); if(m) s=m[0]; else if(/^(www\.|m\.|vm\.|vt\.)?(tiktok\.com|youtube\.com|youtu\.be)[/]/i.test(s)) s='https://'+s;
+    var u; try{ u=new URL(s); }catch(e){ return ''; }
+    if(u.protocol!=='https:'&&u.protocol!=='http:') return '';
+    var h=u.hostname.toLowerCase();
+    var ok=h==='tiktok.com'||/\.tiktok\.com$/.test(h)||h==='youtube.com'||/\.youtube\.com$/.test(h)||h==='youtu.be';
+    return ok?u.href:'';
+  }
+  function setHint(code){
+    hint.textContent='';
+    if(!code) return;
+    hint.appendChild(document.createTextNode(MSG[code]||MSG.failed));
+    if(SIGNUP[code]){ hint.appendChild(document.createTextNode(' ')); var a=document.createElement('a'); a.href=APP; a.id='trySignup'; a.textContent='Sign up free to continue';
+      a.addEventListener('click',function(e){ var u=clean(input.value); if(u){ e.preventDefault(); handOver(u); } }); hint.appendChild(a); }
+    hint.setAttribute('data-code',code);
+  }
+  function fmt(sec){ sec=Math.round(Number(sec)); if(!(sec>0)) return ''; return Math.floor(sec/60)+':'+('0'+(sec%60)).slice(-2); }
+  function lines(t){
+    var parts=String(t).split(/\n+/), out=[];
+    for(var i=0;i<parts.length;i++){ var p=parts[i].trim(); if(!p) continue; var bits=p.replace(/([.!?])\s+/g,'$1\n').split('\n'); for(var k=0;k<bits.length;k++) if(bits[k].trim()) out.push(bits[k].trim()); }
+    return out.slice(0,80);
+  }
+  function open(state){
+    hero.classList.add('is-open'); rev.hidden=false; rev.setAttribute('data-state',state);
+  }
+  function showBusy(){
+    open('loading'); meta.textContent='Reading the video…'; words.textContent='';
+    var b=document.createElement('div'); b.className='lp-busy'; b.setAttribute('aria-hidden','true'); b.innerHTML='<i></i><i></i><i></i>'; words.appendChild(b);
+  }
+  function showWords(d){
+    open('ready');
+    var bits=[]; var c=d.creator==null?'':String(d.creator).trim(); if(c) bits.push(c.charAt(0)==='@'?c:'@'+c);
+    var len=fmt(d.durationSec); if(len) bits.push(len);
+    meta.textContent=bits.join(' · ');
+    words.textContent='';
+    var ls=lines(d.transcript);
+    for(var i=0;i<ls.length;i++){ var p=document.createElement('p'); p.textContent=ls[i]; words.appendChild(p); }
+  }
+  function fail(code){
+    if(rev.getAttribute('data-state')==='loading'){ rev.hidden=true; rev.removeAttribute('data-state'); hero.classList.remove('is-open'); }
+    setHint(code);
+  }
+  function handOver(url){
+    try{ localStorage.setItem(KEY,JSON.stringify({url:url,at:Date.now()})); }catch(e){}
+    window.location.assign(APP+'?link='+encodeURIComponent(url));
+  }
+  function run(raw){
+    var url=clean(raw);
+    if(!url){ fail('bad_link'); input.focus(); return; }
+    if(busy&&url===last) return;
+    var my=++seq; busy=true; last=url; send.disabled=true; form.setAttribute('aria-busy','true'); setHint(''); showBusy();
+    var ctl=('AbortController' in window)?new AbortController():null, t=setTimeout(function(){ if(ctl) ctl.abort(); },90000);
+    fetch('/api/try-transcript',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url}),credentials:'same-origin',signal:ctl?ctl.signal:undefined})
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ return {ok:r.ok,status:r.status,d:d||{}}; }); })
+      .then(function(x){
+        if(my!==seq) return;
+        var d=x.d;
+        if(x.ok&&d.ok===true&&typeof d.transcript==='string'&&d.transcript.trim()) showWords(d);
+        else fail(MSG.hasOwnProperty(d.code)&&d.code!=='paste_blocked'?d.code:(x.status===429?'limit_reached':'failed'));
+      })
+      .catch(function(){ if(my===seq) fail('failed'); })
+      .then(function(){ clearTimeout(t); if(my===seq){ busy=false; send.disabled=false; form.removeAttribute('aria-busy'); } });
+  }
+  form.addEventListener('submit',function(e){ e.preventDefault(); run(input.value); });
+  input.addEventListener('paste',function(e){
+    var txt=''; try{ txt=(e.clipboardData||window.clipboardData).getData('text'); }catch(x){}
+    if(clean(txt)){ e.preventDefault(); input.value=txt.trim(); run(txt); }
+  });
+  paste.addEventListener('click',function(){
+    var cb=navigator.clipboard;
+    if(!cb||typeof cb.readText!=='function'){ setHint('paste_blocked'); input.focus(); return; }
+    cb.readText().then(function(txt){
+      txt=String(txt||'').trim();
+      if(!txt){ setHint('paste_blocked'); input.focus(); return; }
+      input.value=txt; run(txt);
+    },function(){ setHint('paste_blocked'); input.focus(); });
+  });
+  go.addEventListener('click',function(){ var u=clean(input.value)||last; if(u) handOver(u); else { fail('bad_link'); input.focus(); } });
+})();
 </script>
 </body>
 </html>

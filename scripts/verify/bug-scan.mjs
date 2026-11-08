@@ -103,7 +103,9 @@ add('bare localStorage write bypassing lsSet (brand-bleed risk)',
 {
   // Vercel does not route files whose name starts with "_"; they are shared modules.
   // health.js is a deliberately public liveness probe and returns no user data.
-  const skip = new Set(['health.js', 'push-key.js']);
+  // try-transcript.js (v722) is the PUBLIC landing reader by contract (.unlazy/landing/CONTRACT.md): no sign-in;
+  // it is bounded by per-visitor + global daily slots, same-origin and a length cap (gate try-transcript-v722.mjs).
+  const skip = new Set(['health.js', 'push-key.js', 'try-transcript.js']);
   const AUTH_FORMS = [
     ['plan meter (guard/checkLimit)', (code) => /\bguard\s*\(\s*req\b/.test(code) || /\bcheckLimit\s*\(/.test(code)],
     ['signed-in user (_requireUser/getUser)', (code, text) =>

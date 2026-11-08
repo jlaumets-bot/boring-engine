@@ -81,6 +81,11 @@ function userMessage(err) {
 // v712: opts.apifyGate = async () => ({ ok }) is asked BEFORE the paid fallback (_usage.useApifyFallback: the
 // per-day cap, and it logs the run's cost). Not ok, or it throws -> no Apify call; throws an Error with
 // .limitCode = 'fallback_limit' (no .code, so userMessage keeps the sentence; callers map it to that code).
+// v722 (api/try-transcript.js; both optional, nothing changes without them):
+//   opts.onMeta = async ({ videoKey: 'tt:<id>'|null, durationSec, creator }) runs after tikwm answers, BEFORE any
+//   download; whatever it throws is thrown from here (a length cap, a cache hit). opts.beforeTranscribe =
+//   async (audioBuffer) runs after the download, BEFORE Whisper is paid; same rule. A Whisper 200 with no words
+//   throws the same message as before, now with .noWords = true.
 async function transcribeVideo(url, opts) {
   opts = opts || {};
   const deadline = Number(opts.deadline) > 0 ? Number(opts.deadline) : Date.now() + HANDLER_BUDGET_MS;
@@ -97,7 +102,7 @@ async function transcribeVideo(url, opts) {
   };
 
   // Detect platform and get audio download URL
-  let audioDownloadUrl;
+  let audioDownloadUrl, tikMeta = null;
   const isTikTok = url.includes('tiktok.com') || url.includes('vm.tiktok');
   const isInstagram = url.includes('instagram.com');
 
@@ -118,8 +123,11 @@ async function transcribeVideo(url, opts) {
       });
       if (tikwmResp && tikwmResp.data) {
         audioDownloadUrl = tikwmResp.data.play || tikwmResp.data.wmplay || tikwmResp.data.music;
+        tikMeta = tikwmMeta(tikwmResp.data);
       }
     } catch (e) { console.log('tikwm failed:', e.message); }
+    // v722 — outside the try above, so what the caller throws is not swallowed as "tikwm failed".
+    if (audioDownloadUrl && tikMeta && typeof opts.onMeta === 'function') await opts.onMeta(tikMeta);
 
     // 2) Fallback: Apify TikTok scraper (reliable, already used elsewhere) — used only
     //    if tikwm couldn't return a media URL.
@@ -154,7 +162,9 @@ async function transcribeVideo(url, opts) {
     }
 
     if (!audioDownloadUrl) {
-      throw new Error("Couldn't get the audio from that TikTok (it may be private or region-locked). Paste the spoken words or a short description instead.");
+      // v722: .unavailable marks "the video itself" (try-transcript remembers it for 24 h); the message is unchanged.
+      const e = new Error("Couldn't get the audio from that TikTok (it may be private or region-locked). Paste the spoken words or a short description instead.");
+      e.unavailable = true; throw e;
     }
   } else {
     // For YouTube, Instagram, etc — use cobalt if configured
@@ -209,23 +219,38 @@ async function transcribeVideo(url, opts) {
   if (audioBuffer.length > MAX_AUDIO_BYTES) {
     throw new Error(MSG_TOO_LARGE);
   }
+  if (typeof opts.beforeTranscribe === 'function') await opts.beforeTranscribe(audioBuffer);   // v722
 
   // Transcribe — Groq Whisper (whisper-large-v3) ONLY. No OpenAI fallback anywhere.
   console.log('Transcribing...');
   const whisperMs = stageBudget(WHISPER_TIMEOUT_MS, 'transcription');
   const providers = [{ host: 'api.groq.com', path: '/openai/v1/audio/transcriptions', key: groqKey, model: 'whisper-large-v3' }];
 
-  let transcript = null, lastErr = '';
+  let transcript = null, lastErr = '', noWords = false;
   for (const p of providers) {
     try {
       const r = await whisperTranscribe(p, audioBuffer, whisperMs);
       if (r.status === 200 && r.body && r.body.trim()) { transcript = r.body.trim(); break; }
+      if (r.status === 200) noWords = true;
       try { lastErr = JSON.parse(r.body).error.message; } catch (e) { lastErr = 'transcription error ' + r.status; }
       console.log(p.host + ' transcription failed:', lastErr);
     } catch (e) { lastErr = e.message; }
   }
-  if (transcript == null) throw new Error(lastErr || 'Could not transcribe the audio — try again.');
+  if (transcript == null) {
+    const e = new Error(lastErr || 'Could not transcribe the audio — try again.');
+    if (noWords) e.noWords = true;
+    throw e;
+  }
   return transcript;
+}
+// v722 — what tikwm already says about the video: its id (the cache key), length and creator. Unreadable -> null.
+function tikwmMeta(d) {
+  if (!d || typeof d !== 'object') return null;
+  const id = String(d.id == null ? '' : d.id);
+  const dur = Number(d.duration != null ? d.duration : (d.music_info && d.music_info.duration));
+  const who = d.author && (d.author.unique_id || d.author.nickname);
+  return { videoKey: /^\d{5,25}$/.test(id) ? 'tt:' + id : null, durationSec: Number.isFinite(dur) && dur > 0 ? dur : null,
+    creator: who ? String(who).slice(0, 60) : null };
 }
 
 const handler = async function (req, res) {
@@ -258,19 +283,38 @@ const handler = async function (req, res) {
     try { await require('./_safeurl').assertPublicHttpUrl(String(url).trim()); }
     catch (e) { return res.status(400).json({ error: require('./_safeurl').urlRefusalMessage(e, 'That URL is not allowed.') }); }
 
+    // v722 — the shared transcript cache (api/try-transcript.js, table try_transcript_cache). A hit is free and,
+    // like every cached transcript (v712), not counted: nothing is logged, so attachHoldRelease hands the hold back.
+    const TT = require('./try-transcript');
+    const urlKey = TT.videoKey(String(url).trim());
+    const cachedRow = urlKey ? await TT.cacheGet(urlKey) : null;
+    if (cachedRow) return res.status(200).json({ transcript: cachedRow.transcript });
+
     // v712 — free reads, DAILY_READ_LIMITS successful ones per user per UTC day. The 429 is a JSON answer, so
     // the reservation guard() placed is handed back by attachHoldRelease (nothing was logged).
     const cap = await U.dailyReadCheck(billingUserId, { hold: _g.hold });
     if (!cap.ok) return U.dailyReadDeny(res, cap);
 
+    let meta = null;
     const transcript = await transcribeVideo(url, { deadline, groqKey,
-      apifyGate: () => U.useApifyFallback(billingUserId, U.claimedBrandId(req)) });
+      apifyGate: () => U.useApifyFallback(billingUserId, U.claimedBrandId(req)),
+      // a short link (vm.tiktok.com/…) names its video only once tikwm answers: check the cache again then.
+      onMeta: async (m) => {
+        meta = m;
+        if (m && m.videoKey && m.videoKey !== urlKey) {
+          const hit = await TT.cacheGet(m.videoKey);
+          if (hit) { const e = new Error('cached'); e.cacheHit = hit; throw e; }
+        }
+      } });
 
     // Logged ONLY on success: this row is what the daily cap counts, and its cost what the fuse sees.
     await U.logUsage({ userId: billingUserId, action: 'transcribeurl' });
+    await TT.cachePut((meta && meta.videoKey) || urlKey, { transcript, creator: meta && meta.creator,
+      durationSec: meta && meta.durationSec, source: 'app' });   // never throws
     return res.status(200).json({ transcript });
 
   } catch (err) {
+    if (err && err.cacheHit) return res.status(200).json({ transcript: err.cacheHit.transcript });   // v722
     console.error('Transcribe-url error:', err);
     // Same status as every other "couldn't read" answer here; the code tells the client it was the cap.
     if (err && err.limitCode === 'fallback_limit') return res.status(500).json({ error: MSG_FALLBACK_LIMIT, code: 'fallback_limit' });

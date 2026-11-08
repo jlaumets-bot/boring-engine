@@ -2,6 +2,23 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-08 — v722. GROK-STYLE LANDING + free public transcript preview + paste-button copy + sign-up hand-over.
+Mockups: cloud /mnt/user-data/outputs/design-options/landing/. Contract .unlazy/landing/CONTRACT.md.
+- index.html: first screen = h1 + sub-line + BIG paste box + 4 tiny steps; after paste → /api/try-transcript → "Here's what they
+  said" + blurred PLACEHOLDER "Your version — one step away" (no AI before sign-up) + "Make it yours — free" (cs-pending-link +
+  app.html?link=). Then "Four steps." (no time claim) + v714 phone loop, NEW "Everything else inside" (11 real features), pricing
+  (Coach not Assistant), FAQ accordion, footer. Removed: pain strip, brain animation, format cards, ChatGPT comparison, final CTA.
+  Company name "Jord Digital Ltd" → JORG DIGITAL LTD on index/faq/terms/privacy/refunds/llms.txt (13 places).
+- api/try-transcript.js (PUBLIC, no auth): TikTok via tikwm+Groq, YouTube via captions (youtubeCaptions exported from
+  transcribe.js; cobalt never). Caps via try_read_slots PK slots: 3 ok/visitor/day, 10 failures/visitor/day, 30 cache hits,
+  300 paid/day global, 200 failures/day global; visitor = SHA-256(salt=SUPABASE_SERVICE_ROLE_KEY by name, IP, UTC day); no salt
+  → busy; ≤180 s; cache try_transcript_cache (also used by signed-in transcribe-url); misses cached 24 h; never Apify, never AI.
+  SQL sql/try-v722.sql (3 server-only tables, RLS on, no policy, no function); health ZERO_POLICY_ALLOWED updated.
+- app.html: big button "Paste TikTok link" + first-time line "In TikTok: Share → Copy link, then press here." (gone after first
+  paste); ?link=/cs-pending-link hand-over (≤24 h, TikTok/YouTube only, once via Web Lock + claim, after onboarding for new users);
+  FIXED: Enter/send in the main chat crashed since v714 (id="hySend" button shadowed the function).
+Gates landing-v722, try-transcript-v722 (40 mutations), app-handover-v722 (16); spend-cap/bug-scan exceptions for this endpoint.
+
 ## ▶▶ 2026-11-08 — v721. HOMEPAGE: 4-step hero + phone loop (owner-approved v714 copy, parked until now) + Micro-lecture → Explainer.
 - index.html hero: h1 unchanged ("Paste any TikTok. Make it yours."); paragraph → ordered list: Paste the link / Get your version /
   Film it right away (teleprompter, breathing gaps, stress marks) / Add B-roll if you want. Phone = 5-frame loop (paste, exact words,

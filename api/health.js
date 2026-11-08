@@ -27,7 +27,8 @@ try { ({ COST_CAP_EUR } = require('./_usage')); } catch (_) {}
 // api/brand-memory.js. A policy on either would let the public anon key reach them.
 // v712: creator_feed_state (sql/creator-feed.sql, v711) is server-only by design — RLS on, no policy; only
 // api/creator-feed.js writes it with the service role.
-const ZERO_POLICY_ALLOWED = ['brand_connections', 'job_heartbeats', 'blind_tests', 'brand_memory', 'creator_feed_state'];
+const ZERO_POLICY_ALLOWED = ['brand_connections', 'job_heartbeats', 'blind_tests', 'brand_memory', 'creator_feed_state',
+  'try_transcript_cache', 'try_read_slots', 'try_transcript_misses'];   // v722: server-only landing-reader tables (sql/try-v722.sql)
 
 // The arrays security_health() always returns. Their PRESENCE is what proves the audit
 // actually ran: a PostgREST error body is also a plain object, and treating one as an

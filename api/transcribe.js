@@ -46,6 +46,91 @@ function buildWhisperMultipart(boundary, model, fname, mime, audioBuffer) {
   return Buffer.concat(parts.map(pp => typeof pp === 'string' ? Buffer.from(pp) : pp));
 }
 
+// v722 — the YouTube captions read, lifted out of the handler UNCHANGED so api/try-transcript.js can reuse it.
+// -> { text, lengthSec|null }. The handler's own refusals throw an Error with .httpStatus + .userMessage (the same
+// statuses and words it always answered); anything else throws as before. Charges nothing: billing stays with the caller.
+function capErr(status, msg) { const e = new Error(msg); e.httpStatus = status; e.userMessage = msg; return e; }
+async function youtubeCaptions(videoId) {
+  // Primary: YouTube innertube API (ANDROID client) — survives bot walls that block HTML scraping
+  let trackUrl = null, lengthSec = null;
+  try {
+    const ply = await fetch('https://www.youtube.com/youtubei/v1/player', {
+      method: 'POST',
+      // TIME-BOXED so a stall FALLS THROUGH to the HTML scrape below instead of hanging to
+      // maxDuration 60 and being platform-killed — the fallback usually works, and without a
+      // signal it was never reached. 12s here still leaves the scrape (15s) and the caption
+      // fetch (15s) inside the 60s cap.
+      signal: AbortSignal.timeout(12000),
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
+      },
+      body: JSON.stringify({
+        context: { client: { clientName: 'ANDROID', clientVersion: '19.09.37', androidSdkVersion: 30, hl: 'en' } },
+        videoId
+      })
+    });
+    const pj = await ply.json();
+    lengthSec = Number(pj && pj.videoDetails && pj.videoDetails.lengthSeconds) || null;   // v722 (additive)
+    const tracks = (pj && pj.captions && pj.captions.playerCaptionsTracklistRenderer && pj.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
+    if (tracks.length > 0) {
+      const en = tracks.find(t => (t.languageCode || '').startsWith('en')) || tracks[0];
+      trackUrl = en.baseUrl;
+    }
+  } catch (e) { /* fall through to HTML scrape */ }
+
+  // Fallback: scrape watch page HTML
+  if (!trackUrl) {
+    const captionUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const pageHtml = await new Promise((resolve, reject) => {
+      const rq = https.get(captionUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 }, (resp) => {
+        let data = '';
+        resp.on('data', chunk => data += chunk);
+        resp.on('end', () => resolve(data));
+      });
+      rq.on('error', reject);
+      rq.on('timeout', () => { rq.destroy(new Error('timeout')); });
+    });
+    const captionMatch = pageHtml.match(/"captionTracks":\[.*?"baseUrl":"(.*?)"/);
+    if (captionMatch) trackUrl = captionMatch[1].replace(/\\u0026/g, '&');
+  }
+  if (!trackUrl) throw capErr(400, 'No captions found for this video. Try a video with subtitles enabled.');
+  // SSRF defense-in-depth: the caption URL comes from YouTube's own data, but
+  // guard it anyway before fetching, and time-box the request.
+  try { await require('./_safeurl').assertPublicHttpUrl(trackUrl); }
+  // v690 — a DNS blip reaching YouTube's caption host is not "no captions".
+  catch (e) { if (e && e.code === 'UNRESOLVED') throw capErr(502, "Couldn't reach YouTube's captions. Try again in a minute."); throw capErr(400, 'No captions found for this video. Try a video with subtitles enabled.'); }
+  const captionXml = await new Promise((resolve, reject) => {
+    // v690 — lookup re-checks the address actually connected (closes DNS rebinding).
+    const rq = https.get(trackUrl, { lookup: require('./_safeurl').safeLookup, timeout: 15000 }, (resp) => {
+      let data = '';
+      resp.on('data', chunk => data += chunk);
+      resp.on('end', () => resolve(data));
+    });
+    rq.on('error', reject);
+    rq.on('timeout', () => { rq.destroy(new Error('timeout')); });
+  });
+  const textParts = [];
+  const textMatches = captionXml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g);
+  for (const match of textMatches) {
+    let text = match[1]
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\n/g, ' ').trim();
+    if (text) textParts.push(text);
+  }
+  if (textParts.length === 0) throw capErr(400, 'Could not parse captions from video.');
+  const fullText = textParts.join(' ');
+  if (!lengthSec) {   // v722 — no length from the player API: the last caption's end is close enough
+    let end = 0;
+    for (const m of captionXml.matchAll(/<text\b([^>]*)>/g)) {
+      const st = /\bstart="([\d.]+)"/.exec(m[1]), du = /\bdur="([\d.]+)"/.exec(m[1]);
+      if (st) end = Math.max(end, Number(st[1]) + (du ? Number(du[1]) : 0));
+    }
+    lengthSec = end > 0 ? end : null;
+  }
+  return { text: fullText, lengthSec };
+}
+
 const handler = async function (req, res) {
   const allowed = ['https://contentshrimp.com','https://bettercontent.app','https://boring-engine.vercel.app'];
   const origin = req.headers.origin || '';
@@ -88,78 +173,10 @@ const handler = async function (req, res) {
       // so only those count; a refusal here hands the reservation back (attachHoldRelease).
       const cap = await U.dailyReadCheck(_g.billingUserId || _g.user.id, { hold: _g.hold });
       if (!cap.ok) return U.dailyReadDeny(res, cap);
-      // Primary: YouTube innertube API (ANDROID client) — survives bot walls that block HTML scraping
-      let trackUrl = null;
-      try {
-        const ply = await fetch('https://www.youtube.com/youtubei/v1/player', {
-          method: 'POST',
-          // TIME-BOXED so a stall FALLS THROUGH to the HTML scrape below instead of hanging to
-          // maxDuration 60 and being platform-killed — the fallback usually works, and without a
-          // signal it was never reached. 12s here still leaves the scrape (15s) and the caption
-          // fetch (15s) inside the 60s cap.
-          signal: AbortSignal.timeout(12000),
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip'
-          },
-          body: JSON.stringify({
-            context: { client: { clientName: 'ANDROID', clientVersion: '19.09.37', androidSdkVersion: 30, hl: 'en' } },
-            videoId
-          })
-        });
-        const pj = await ply.json();
-        const tracks = (pj && pj.captions && pj.captions.playerCaptionsTracklistRenderer && pj.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
-        if (tracks.length > 0) {
-          const en = tracks.find(t => (t.languageCode || '').startsWith('en')) || tracks[0];
-          trackUrl = en.baseUrl;
-        }
-      } catch (e) { /* fall through to HTML scrape */ }
-
-      // Fallback: scrape watch page HTML
-      if (!trackUrl) {
-        const captionUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        const pageHtml = await new Promise((resolve, reject) => {
-          const rq = https.get(captionUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 }, (resp) => {
-            let data = '';
-            resp.on('data', chunk => data += chunk);
-            resp.on('end', () => resolve(data));
-          });
-          rq.on('error', reject);
-          rq.on('timeout', () => { rq.destroy(new Error('timeout')); });
-        });
-        const captionMatch = pageHtml.match(/"captionTracks":\[.*?"baseUrl":"(.*?)"/);
-        if (captionMatch) trackUrl = captionMatch[1].replace(/\\u0026/g, '&');
-      }
-      if (!trackUrl) {
-        return res.status(400).json({ error: 'No captions found for this video. Try a video with subtitles enabled.' });
-      }
-      // SSRF defense-in-depth: the caption URL comes from YouTube's own data, but
-      // guard it anyway before fetching, and time-box the request.
-      try { await require('./_safeurl').assertPublicHttpUrl(trackUrl); }
-      // v690 — a DNS blip reaching YouTube's caption host is not "no captions".
-      catch (e) { if (e && e.code === 'UNRESOLVED') return res.status(502).json({ error: "Couldn't reach YouTube's captions. Try again in a minute." }); return res.status(400).json({ error: 'No captions found for this video. Try a video with subtitles enabled.' }); }
-      const captionXml = await new Promise((resolve, reject) => {
-        // v690 — lookup re-checks the address actually connected (closes DNS rebinding).
-        const rq = https.get(trackUrl, { lookup: require('./_safeurl').safeLookup, timeout: 15000 }, (resp) => {
-          let data = '';
-          resp.on('data', chunk => data += chunk);
-          resp.on('end', () => resolve(data));
-        });
-        rq.on('error', reject);
-        rq.on('timeout', () => { rq.destroy(new Error('timeout')); });
-      });
-      const textParts = [];
-      const textMatches = captionXml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g);
-      for (const match of textMatches) {
-        let text = match[1]
-          .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\n/g, ' ').trim();
-        if (text) textParts.push(text);
-      }
-      if (textParts.length === 0) {
-        return res.status(400).json({ error: 'Could not parse captions from video.' });
-      }
-      const fullText = textParts.join(' ');
+      let cap2;
+      try { cap2 = await youtubeCaptions(videoId); }
+      catch (e) { if (e && e.httpStatus) return res.status(e.httpStatus).json({ error: e.userMessage }); throw e; }
+      const fullText = cap2.text;
       await U.logUsage({ userId: _g.billingUserId || _g.user.id, action: 'transcribeurl', model: 'youtube:captions' });
       return res.status(200).json({ text: fullText, wordCount: fullText.split(/\s+/).length });
     }
@@ -260,6 +277,7 @@ const handler = async function (req, res) {
 };
 
 module.exports = handler;
+module.exports.youtubeCaptions = youtubeCaptions;   // v722
 // NOTE: this config line is Next.js-style and does NOT lift Vercel's ~4.5MB
 // serverless body cap (it never did). Large uploads go through Supabase Storage
 // via storagePath above — do not raise this expecting bigger inline bodies.

@@ -209,6 +209,9 @@
     },
     "api/creator-feed.js": {
       "maxDuration": 180
+    },
+    "api/try-transcript.js": {
+      "maxDuration": 120
     }
   },
   "crons": [

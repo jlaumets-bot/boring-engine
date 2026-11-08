@@ -1,0 +1,132 @@
+{
+ "mutations": [
+  {
+   "id": "L1",
+   "finding": "contract: POST /api/try-transcript is the only endpoint",
+   "file": "index.html",
+   "find": "fetch('/api/try-transcript',",
+   "replace": "fetch('/api/transcribe-url',",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L2",
+   "finding": "hand-over key 'cs-pending-link'",
+   "file": "index.html",
+   "find": "KEY='cs-pending-link'",
+   "replace": "KEY='cs-pending'",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L3",
+   "finding": "hand-over opens /app.html?link=",
+   "file": "index.html",
+   "find": "window.location.assign(APP+'?link='+encodeURIComponent(url));",
+   "replace": "window.location.assign(APP+'?url='+encodeURIComponent(url));",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L4",
+   "finding": "server text escaped (textContent, never innerHTML)",
+   "file": "index.html",
+   "find": "var p=document.createElement('p'); p.textContent=ls[i];",
+   "replace": "var p=document.createElement('p'); p.innerHTML=ls[i];",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L5",
+   "finding": "busy offers Sign up free to continue",
+   "file": "index.html",
+   "find": "var SIGNUP={limit_reached:1,busy:1};",
+   "replace": "var SIGNUP={limit_reached:1};",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L6",
+   "finding": "each error code has its own friendly line",
+   "file": "index.html",
+   "find": "    too_long:\"That video is longer than 3 minutes. Try a shorter one here.\",\n",
+   "replace": "",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L7",
+   "finding": "only TikTok/YouTube links reach the server",
+   "file": "index.html",
+   "find": "    return ok?u.href:'';",
+   "replace": "    return u.href;",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L8",
+   "finding": "Everything else inside lists only features that exist",
+   "file": "index.html",
+   "find": "<h3>Slides</h3><p>Carousel slides in your brand colours.</p>",
+   "replace": "<h3>Auto-publish</h3><p>Posts go live on TikTok by themselves.</p>",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L9",
+   "finding": "no time claim: heading is exactly Four steps.",
+   "file": "index.html",
+   "find": "<h2>Four steps.</h2>",
+   "replace": "<h2>Four steps. About a minute.</h2>",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L10",
+   "finding": "placeholder skeleton has no fake text",
+   "file": "index.html",
+   "find": "<div class=\"lp-skel\" aria-hidden=\"true\"><i></i>",
+   "replace": "<div class=\"lp-skel\" aria-hidden=\"true\"><i>Ours brews in four minutes.</i>",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L11",
+   "finding": "no Jord left on public pages",
+   "file": "index.html",
+   "find": "&copy; 2026 Content Shrimp &middot; JORG DIGITAL LTD &middot;",
+   "replace": "&copy; 2026 Content Shrimp &middot; Jord Digital Ltd &middot;",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L12",
+   "finding": "no horizontal scroll at 390px",
+   "file": "index.html",
+   "find": ".lp-in{width:720px;max-width:100%;",
+   "replace": ".lp-in{width:720px;",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L13",
+   "finding": "first screen has exactly the approved elements",
+   "file": "index.html",
+   "find": "<div class=\"lp-navr\"><a href=\"/app.html\" class=\"lp-login\">Log in</a>",
+   "replace": "<div class=\"lp-navr\"><a href=\"#pricing\" class=\"lp-login\">Pricing</a><a href=\"/app.html\" class=\"lp-login\">Log in</a>",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L14",
+   "finding": "twist pills shown disabled",
+   "file": "index.html",
+   "find": "<button type=\"button\" disabled class=\"on\">My take</button>",
+   "replace": "<button type=\"button\" class=\"on\">My take</button>",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L15",
+   "finding": "clipboard fallback shows a friendly line",
+   "file": "index.html",
+   "find": "if(!cb||typeof cb.readText!=='function'){ setHint('paste_blocked'); input.focus(); return; }",
+   "replace": "if(!cb||typeof cb.readText!=='function'){ return; }",
+   "gate": "landing-v722.mjs"
+  },
+  {
+   "id": "L16",
+   "finding": "each Everything-else-inside label maps to a real function in app.html",
+   "file": "app.html",
+   "find": "function openCarouselMaker(",
+   "replace": "function openCarouselMakerGone(",
+   "gate": "landing-v722.mjs"
+  }
+ ]
+}

@@ -269,6 +269,12 @@ if (!/gate && _cbGuard\.gate\.used\) > 0|used\) > 0/.test(cbSrc)) {
                                check: (s) => /require\(['"]\.\/_requireUser['"]\)\s*\(/.test(s) },
     'create-portal-session.js': { why: 'creates a Stripe billing-portal session behind _requireUser — no LLM spend',
                                check: (s) => /require\(['"]\.\/_requireUser['"]\)\s*\(/.test(s) },
+    // v722 — the PUBLIC landing reader (no user, so no plan to meter): platform cost bounded by numbered daily
+    // slots per visitor and globally, transcript only (no model writer, never Apify). Gate try-transcript-v722.mjs.
+    'try-transcript.js':     { why: 'public transcript-only reader — per-visitor + global daily slots, length cap, cache; no LLM, never Apify',
+                               check: (s) => /\['v', 'v:' \+ vh, VISITOR_DAILY/.test(s) && /\['f', 'f:' \+ vh, VISITOR_FAIL_DAILY/.test(s) &&
+                                 /\['gf', 'gf', globalFailCap\(\)/.test(s) && /\['g', 'g', globalCap\(\)/.test(s) && /claimSlot\(day, bucket, cap\)/.test(s) &&
+                                 /apifyFallback: false/.test(s) && !/_llm|callLLM|anthropic|x\.ai|apifyGate/i.test(s) },
     'usage.js':              { why: 'read-only plan/usage status behind _requireUser',
                                check: (s) => /require\(['"]\.\/_requireUser['"]\)\s*\(/.test(s) && /getStatus\(/.test(s) },
   };

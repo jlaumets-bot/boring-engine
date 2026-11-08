@@ -1,0 +1,148 @@
+{
+  "mutations": [
+    {
+      "id": "H1",
+      "finding": "v722-label",
+      "file": "app.html",
+      "find": "const HY_PASTE_LABEL = 'Paste TikTok link';",
+      "replace": "const HY_PASTE_LABEL = 'Paste a TikTok';",
+      "gate": "app-handover-v722.mjs",
+      "why": "the old label comes back"
+    },
+    {
+      "id": "H2",
+      "finding": "v722-help-flag",
+      "file": "app.html",
+      "find": "  hyHelpDone();   // v722: a link went in",
+      "replace": "  // hyHelpDone();   // v722: a link went in",
+      "gate": "app-handover-v722.mjs",
+      "why": "a paste never stores the flag: the line stays forever"
+    },
+    {
+      "id": "H3",
+      "finding": "v722-help-flag",
+      "file": "app.html",
+      "find": "function hyHelpSeen(){ if (_hyLearned) return true; try { return localStorage.getItem(HY_HELP_LS) === '1'; } catch (e) { return false; } }",
+      "replace": "function hyHelpSeen(){ if (_hyLearned) return true; return false; }",
+      "gate": "app-handover-v722.mjs",
+      "why": "the flag is not read back: after a reload the line shows again"
+    },
+    {
+      "id": "H4",
+      "finding": "v722-help-line",
+      "file": "app.html",
+      "find": "    + (hyHelpSeen() ? '' : '<p class=\"hy-help\" id=\"hyHelp\">' + hyE(HY_HELP_TEXT) + '</p>') + '</div>'",
+      "replace": "    + '</div>'",
+      "gate": "app-handover-v722.mjs",
+      "why": "no first-time line"
+    },
+    {
+      "id": "H5",
+      "finding": "v722-url-strip",
+      "file": "app.html",
+      "find": "  const raw = hoParam(); hoStripUrl();",
+      "replace": "  const raw = hoParam();",
+      "gate": "app-handover-v722.mjs",
+      "why": "?link= stays in the address bar"
+    },
+    {
+      "id": "H6",
+      "finding": "v722-age",
+      "file": "app.html",
+      "find": "fresh: isFinite(at) && age <= HO_MAX_AGE && age >= -300000",
+      "replace": "fresh: isFinite(at) && age >= -300000",
+      "gate": "app-handover-v722.mjs",
+      "why": "a pending link older than 24 h still runs"
+    },
+    {
+      "id": "H7",
+      "finding": "v722-only-tt-yt",
+      "file": "app.html",
+      "find": "  if (!(/(^|\\.)tiktok\\.com$/.test(h) || /(^|\\.)youtube\\.com$/.test(h) || h === 'youtu.be')) return '';\n  const k = remixDetectKind(u.href);\n  return (k === 'tiktok' || k === 'youtube') ? u.href : '';",
+      "replace": "  return u.href;",
+      "gate": "app-handover-v722.mjs",
+      "why": "any http(s) link is accepted"
+    },
+    {
+      "id": "H8",
+      "finding": "v722-claim",
+      "file": "app.html",
+      "find": "    try { localStorage.setItem(HO_CLAIM, JSON.stringify({ url: url, at: Date.now() })); } catch (e) {}\n",
+      "replace": "",
+      "gate": "app-handover-v722.mjs",
+      "why": "no claim: a second tab with the same ?link= runs it again"
+    },
+    {
+      "id": "H9",
+      "finding": "v722-clear-pending",
+      "file": "app.html",
+      "find": "    hoClearPending();\n    return true;",
+      "replace": "    return true;",
+      "gate": "app-handover-v722.mjs",
+      "why": "the pending record is never cleared"
+    },
+    {
+      "id": "H10",
+      "finding": "v722-new-user",
+      "file": "app.html",
+      "find": "  if (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) return hoRun(h.url, h.at);",
+      "replace": "  return hoRun(h.url, h.at);",
+      "gate": "app-handover-v722.mjs",
+      "why": "a new user's link runs before onboarding"
+    },
+    {
+      "id": "H11",
+      "finding": "v722-new-user",
+      "file": "app.html",
+      "find": "  const _obLand = _obOwn || _obHeld;",
+      "replace": "  const _obLand = _obOwn;",
+      "gate": "app-handover-v722.mjs",
+      "why": "after onboarding the held link never runs"
+    },
+    {
+      "id": "H12",
+      "finding": "v722-step5",
+      "file": "app.html",
+      "find": "    try { if (_obc && _obc.step === 5 && !_obc.finishing && hoHeld()) { _obc.hoTried = true; obcFinish(); } } catch (e) {}",
+      "replace": "    try { } catch (e) {}",
+      "gate": "app-handover-v722.mjs",
+      "why": "step 5 waits for a paste instead of running the link"
+    },
+    {
+      "id": "H13",
+      "finding": "v722-step5",
+      "file": "app.html",
+      "find": "  if (typeof hoHeld === 'function' && hoHeld()) {\n    h += obcApp('Your brand brain is ready.')",
+      "replace": "  if (false) {\n    h += obcApp('Your brand brain is ready.')",
+      "gate": "app-handover-v722.mjs",
+      "why": "step 5 shows the paste button, not the running link"
+    },
+    {
+      "id": "H14",
+      "finding": "v722-stash",
+      "file": "app.html",
+      "find": "  const url = hoValid(hoParam()); if (!url || hoClaimed(url, 0)) return false;",
+      "replace": "  const url = hoValid(hoParam()); if (!url) return false;",
+      "gate": "app-handover-v722.mjs",
+      "why": "a link that already ran is re-stashed before login"
+    },
+    {
+      "id": "H15",
+      "finding": "v722-enter-sends",
+      "file": "app.html",
+      "find": "onsubmit=\"event.preventDefault();window.hySend();\"",
+      "replace": "onsubmit=\"event.preventDefault();hySend();\"",
+      "gate": "app-handover-v722.mjs",
+      "why": "Enter in the main chat input hits the form's #hySend button, not the function"
+    },
+    {
+      "id": "H16",
+      "finding": "v722-initapp",
+      "file": "app.html",
+      "find": "    try { if (typeof hoAfterLogin === 'function') hoAfterLogin(); } catch(e) { debugLog('hand-over error: ' + e.message); }",
+      "replace": "    ",
+      "gate": "app-handover-v722.mjs",
+      "why": "no hand-over after login"
+    }
+  ]
+}

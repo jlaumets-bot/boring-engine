@@ -210,7 +210,7 @@ try {
     ok(!/a minute or two/i.test(html) && !hits.length, 'F: "a minute or two" is gone from the app (' + (hits.join(', ') || 'none in ' + roots.length + ' files') + ')');
     ok(/talk for a minute\. Rough is fine/.test(html) && /Talk to me for a minute about your brand/.test(html), 'F: the copy says "a minute"');
     ok(/const OBC_MIC_MAX = 60000;/.test(html) && /maxMs: OBC_MIC_MAX/.test(html), 'F: the 60 s cap stays');
-    ok(/const _obLand = \(typeof obcTakeLanding === 'function'\) \? obcTakeLanding\(\) : '';/.test(html) && /\} else if \(_obFollowed > 0\) \{/.test(html), 'F: obFinish keeps both v712 endings after the step-5 paste branch');
+    ok(/const _obOwn = \(typeof obcTakeLanding === 'function'\) \? obcTakeLanding\(\) : '';/.test(html) && /const _obLand = _obOwn \|\| _obHeld;/.test(html) && /\} else if \(_obFollowed > 0\) \{/.test(html), 'F: obFinish keeps both v712 endings after the step-5 paste branch');
   }
 } catch (e) { ok(false, 'the gate crashed: ' + (e && e.stack || e)); }
 await closeAll();

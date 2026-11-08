@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v721';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v722';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -7066,7 +7066,7 @@ if (!window.supabase) {
     <div class="hy-dock-in">
       <div class="hy-bar" id="hyBar" hidden></div>
       <div class="hy-hint" id="hyHint" role="status" aria-live="polite"></div>
-      <form class="hy-input" id="hyForm" onsubmit="event.preventDefault();hySend();">
+      <form class="hy-input" id="hyForm" onsubmit="event.preventDefault();window.hySend();">
         <button type="button" class="hy-pst" aria-label="Paste from clipboard" title="Paste from clipboard" onclick="hyPaste()"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
         <label for="hyIn" class="cs-sr" id="hyInLbl">Paste a link or type an idea</label>
         <input type="text" class="hy-in" id="hyIn" placeholder="Paste a link or type an idea…" autocomplete="off" enterkeyhint="send" oninput="hyInput()">
@@ -9923,6 +9923,8 @@ async function initApp() {
     }
     // fix7 (1) — opened from the morning push (/app.html?open=ideas&b=<brandId>): straight to Ideas
     try { window._csAppReady = true; csHandleOpenIdeas(window.location.href, true); } catch(e) {}
+    // v722: the link pasted on the landing before sign-up (?link= / cs-pending-link) → the main chat, or held for onboarding
+    try { if (typeof hoAfterLogin === 'function') hoAfterLogin(); } catch(e) { debugLog('hand-over error: ' + e.message); }
     debugLog('initApp complete OK');
   } catch(e) {
     debugLog('initApp FATAL: ' + e.message + '\n' + e.stack);
@@ -25093,6 +25095,14 @@ const HY_TWIST_FB = "Couldn't make your version — try again.";
 const HY_REVISE_FB = "Couldn't change your version — try again.";
 const HY_READ_FB = "Couldn't get the words from that link — try again in a minute.";
 const HY_ONE = 'One at a time — wait for this one to finish.';
+// v722: the big button says "Paste TikTok link"; until the first link is pasted (button, input or the sign-up hand-over) one muted
+// line under it says how. The "learned" flag lives in localStorage (best effort) and in memory (private windows).
+const HY_PASTE_LABEL = 'Paste TikTok link';
+const HY_HELP_LS = 'cs-paste-learned';
+const HY_HELP_TEXT = 'In TikTok: Share \u2192 Copy link, then press here.';
+let _hyLearned = false;
+function hyHelpSeen(){ if (_hyLearned) return true; try { return localStorage.getItem(HY_HELP_LS) === '1'; } catch (e) { return false; } }
+function hyHelpDone(){ _hyLearned = true; try { localStorage.setItem(HY_HELP_LS, '1'); } catch (e) {} }
 // v716 (mockup 2): a TYPED idea gets its own six twists. /api/remix knows only RX_MODES' six modes, so each idea twist runs one
 // of them, plus one short angle line after the idea ("ANGLE: …"). A link keeps the remix set (RX_MODES) exactly as before.
 const HY_IDEA_TWISTS = [
@@ -25232,7 +25242,8 @@ function hyAlignDock(){
 }
 function hyStartHtml(){
   return '<div class="hy-hero"><div class="hy-ring"><button type="button" class="hy-paste" id="hyPasteBig" onclick="hyPaste()">'
-    + HY_IC.clip(28) + '<span>Paste a TikTok</span></button></div></div>'
+    + HY_IC.clip(28) + '<span>' + HY_PASTE_LABEL + '</span></button></div>'
+    + (hyHelpSeen() ? '' : '<p class="hy-help" id="hyHelp">' + hyE(HY_HELP_TEXT) + '</p>') + '</div>'
     + '<div class="hy-feed" id="hyFeed">' + hyFeedHtml() + hyFollowHtml() + '</div>';
 }
 // "+ Add creator" under the list while fewer than 5 TikTok creators are followed (the one creator rule, cfFollowedHandles);
@@ -25413,6 +25424,7 @@ async function hyStart(raw){
   const pick = remixPickLink(text);
   if (pick.kind === 'instagram') { hyHint(RX_IG_MSG); return false; }
   if (pick.kind === 'text') return hyNewThread({ kind: 'text', text: text });
+  hyHelpDone();   // v722: a link went in — the "In TikTok: Share → Copy link" line never shows again
   hyNewThread({ kind: pick.kind, url: pick.url, creator: remixCreatorFromUrl(pick.url), text: '', reading: true });
   const seq = _hy.seq, t = _hy.t;
   _hy.busy = 'read';
@@ -25728,6 +25740,116 @@ function hySaveIdeas(btn){
   return p;
 }
 // ===== end v714 hybrid =====
+// ===== v722 sign-up hand-over =====
+// Contract: .unlazy/landing/CONTRACT.md "Hand-over to the app after sign-up". Gate: scripts/verify/app-handover-v722.mjs.
+// The landing keeps the pasted link in localStorage 'cs-pending-link' ({url, at}) and opens app.html?link=<encoded>.
+// After login (initApp → hoAfterLogin): ?link= is read and taken out of the address bar (history.replaceState); else a
+// cs-pending-link no older than 24 h. Only http(s) TikTok / YouTube links; anything else is ignored (and a stale or bad
+// pending record is cleared).
+//   brand ready  → the main chat ('create') runs the existing link flow (hyStart) right away;
+//   brand-new    → the link waits in cs-pending-link (a reload keeps it) until onboarding saves the brand; obFinish then runs
+//                  it and lands in the main chat (the chat's step 5 shows it already running instead of "Paste a TikTok").
+// Never twice: the pending record is cleared and a claim 'cs-link-claimed' ({url, at}) is written under a Web Lock, so a
+// reload or a second tab never starts the same link again (a NEWER landing paste of the same link — pending.at after the
+// claim — still runs). Before login, a valid ?link= is copied into cs-pending-link so it survives the magic-link round trip.
+const HO_PENDING = 'cs-pending-link', HO_CLAIM = 'cs-link-claimed', HO_MAX_AGE = 24 * 3600e3;
+let _ho = { held: '', heldAt: 0, ran: false };
+function hoValid(raw){
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s || s.length > 2000 || /\s/.test(s) || !/^https?:\/\//i.test(s)) return '';
+  let u; try { u = new URL(s); } catch (e) { return ''; }
+  if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.username || u.password) return '';
+  const h = String(u.hostname || '').toLowerCase();
+  if (!(/(^|\.)tiktok\.com$/.test(h) || /(^|\.)youtube\.com$/.test(h) || h === 'youtu.be')) return '';
+  const k = remixDetectKind(u.href);
+  return (k === 'tiktok' || k === 'youtube') ? u.href : '';
+}
+function hoParam(){ try { const p = new URLSearchParams(window.location.search); return p.has('link') ? String(p.get('link') || '') : null; } catch (e) { return null; } }
+function hoStripUrl(){
+  try {
+    const u = new URL(window.location.href); if (!u.searchParams.has('link')) return;
+    u.searchParams.delete('link');
+    window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+  } catch (e) {}
+}
+// {url ('' when not a TikTok / YouTube link), at, fresh} or null
+function hoPending(){
+  try {
+    const d = JSON.parse(localStorage.getItem(HO_PENDING) || 'null');
+    if (!d || typeof d !== 'object') return d == null ? null : { url: '', at: 0, fresh: false };
+    const at = typeof d.at === 'number' ? d.at : Date.parse(String(d.at || ''));
+    const age = Date.now() - at;
+    return { url: hoValid(d.url), at: isFinite(at) ? at : 0, fresh: isFinite(at) && age <= HO_MAX_AGE && age >= -300000 };
+  } catch (e) { return { url: '', at: 0, fresh: false }; }
+}
+function hoSetPending(url, at){ try { localStorage.setItem(HO_PENDING, JSON.stringify({ url: url, at: at })); } catch (e) {} }
+function hoClearPending(){ try { localStorage.removeItem(HO_PENDING); } catch (e) {} }
+// already run (here, in another tab, or before a reload) — unless this copy of the link is newer than that run
+function hoClaimed(url, at){
+  try {
+    const c = JSON.parse(localStorage.getItem(HO_CLAIM) || 'null');
+    if (!c || c.url !== url) return false;
+    const cat = Number(c.at) || 0;
+    if (Date.now() - cat > HO_MAX_AGE) return false;
+    return !(at && at > cat);
+  } catch (e) { return false; }
+}
+function hoLocked(fn){
+  try { if (navigator.locks && typeof navigator.locks.request === 'function') return navigator.locks.request('cs-link-handover', () => fn()); } catch (e) {}
+  return Promise.resolve().then(fn);
+}
+// claim it exactly once (true = this tab runs it)
+function hoClaim(url, at){
+  return hoLocked(() => {
+    if (_ho.ran || hoClaimed(url, at)) { hoClearPending(); return false; }
+    _ho.ran = true;
+    try { localStorage.setItem(HO_CLAIM, JSON.stringify({ url: url, at: Date.now() })); } catch (e) {}
+    hoClearPending();
+    return true;
+  }).catch(() => false);
+}
+// before login: keep a valid ?link= through the magic-link round trip (never over a newer copy, never after it already ran)
+function hoStashEarly(){
+  const url = hoValid(hoParam()); if (!url || hoClaimed(url, 0)) return false;
+  const p = hoPending(); if (p && p.url === url && p.fresh) return false;
+  hoSetPending(url, Date.now()); return true;
+}
+// the link to hand over after login, or null (the address bar is cleaned either way)
+function hoPick(){
+  const raw = hoParam(); hoStripUrl();
+  const p = hoPending();
+  let url = raw != null ? hoValid(raw) : '', at = 0;
+  if (url && p && p.url === url) at = p.at;
+  if (!url && p && p.url && p.fresh) { url = p.url; at = p.at; }
+  if (!url) { if (p) hoClearPending(); return null; }
+  if (hoClaimed(url, at)) { hoClearPending(); return null; }
+  return { url: url, at: at };
+}
+async function hoRun(url, at){
+  if (!(await hoClaim(url, at))) return false;
+  _ho.held = ''; _ho.heldAt = 0;
+  try { switchView('create'); } catch (e) {}
+  try { hyStart(url); } catch (e) {}
+  return true;
+}
+// initApp, once the brand is known: run it now, or hold it for onboarding
+function hoAfterLogin(){
+  if (_ho.ran) { hoStripUrl(); return false; }
+  const h = hoPick(); if (!h) return false;
+  if (typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id) return hoRun(h.url, h.at);
+  _ho.held = h.url; _ho.heldAt = h.at || Date.now();
+  hoSetPending(_ho.held, _ho.heldAt);   // a reload during onboarding keeps it
+  return 'held';
+}
+function hoHeld(){ return !!_ho.held && !_ho.ran && !hoClaimed(_ho.held, _ho.heldAt); }
+// obFinish (the brand is saved): the held link, claimed — or '' (none, or another tab already ran it)
+async function hoTakeHeld(){
+  const url = _ho.held, at = _ho.heldAt; if (!url) return '';
+  _ho.held = ''; _ho.heldAt = 0;
+  return (await hoClaim(url, at)) ? url : '';
+}
+try { hoStashEarly(); } catch (e) {}
+// ===== end v722 hand-over =====
 
 // ===== v716 APP-WIDE phase 1 (owner-approved mockups design-options/appwide/, 2026-11-07) =====
 // One style for the whole app: the CHAT for making things, the CALM LIST for browsing. Phase 1 = Ideas (mockup 3),
@@ -30594,7 +30716,10 @@ async function obFinish() {
   obPendingCreators = [];
   // v718: the chat's last step ("Paste a TikTok to try it"): what they pasted or typed goes straight into the main chat thread
   // (creators saved above first, so the rail's feed has them). Nothing pasted → the v712 endings below, unchanged.
-  const _obLand = (typeof obcTakeLanding === 'function') ? obcTakeLanding() : '';
+  // v722: a link handed over from the landing (held since login) runs here too — the held copy is consumed either way
+  const _obOwn = (typeof obcTakeLanding === 'function') ? obcTakeLanding() : '';
+  const _obHeld = (typeof hoTakeHeld === 'function') ? await hoTakeHeld() : '';
+  const _obLand = _obOwn || _obHeld;
   if (_obLand) {
     try { if (currentBrand) await saveIdeasToDB(); } catch(e) { console.error('Ideas save error:', e); }
     switchView('create');
@@ -34397,6 +34522,13 @@ function obcStepHtml(){
   }
   // step 5
   const feed = obFinaleMode() === 'feed', busy = _obc.finishing;
+  // v722: a link handed over from the landing — no "Paste a TikTok": it is already running (obcOnStep(5) finishes on its own)
+  if (typeof hoHeld === 'function' && hoHeld()) {
+    h += obcApp('Your brand brain is ready.') + obcApp('Making your version of the TikTok you pasted', 1) + obcMe(_ho.held)
+      + '<div class="obc-app obc-work"><span class="obc-spin" aria-hidden="true"></span><span>Getting its words\u2026</span></div>';
+    if (!busy && _obc.hoTried) h += obcBtns(obcBtn('Try again', 'obcFinish()', 1));
+    return h;
+  }
   h += obcApp('Your brand brain is ready.') + obcApp('Paste a TikTok to try it', 1);
   h += '<div class="hy-hero obc-hero"><div class="hy-ring"><button type="button" class="hy-paste" id="obcPaste" onclick="obcPaste()"' + (busy ? ' disabled aria-busy="true"' : '') + '>' + HY_IC.clip(28) + '<span>Paste a TikTok</span></button></div></div>';
   // (no feed rows here: the brand — and so its feed — only exists once obFinish has saved it; the creators show as plain chips)
@@ -34439,6 +34571,10 @@ function obcOnStep(step){
   if (step === 4) { _obc.cErr = ''; if (prev === 5) _obc.cDone = ''; }
   if (step === 5) { _obc.finishing = false; }
   obcRender();
+  // v722: the handed-over link runs the moment the brand brain is ready
+  if (step === 5 && typeof hoHeld === 'function' && hoHeld()) setTimeout(function () {
+    try { if (_obc && _obc.step === 5 && !_obc.finishing && hoHeld()) { _obc.hoTried = true; obcFinish(); } } catch (e) {}
+  }, 0);
 }
 function obcReset(){
   obcPollStop(); obcTickStop();
@@ -34664,6 +34800,11 @@ function obcInit(){
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', v18Init); else v18Init();
 /* ===== end v718 ===== */
 </script>
+<style id="cs-v722-app">
+/* v722: the start screen's one-time line under the big paste button (mockup design-options/landing/B1) */
+#hyMain .hy-hero { flex-direction: column; align-items: center; }
+#hyMain .hy-help { margin: 12px 0 0; padding: 0 16px; max-width: 360px; font-size: 14px; line-height: 1.4; color: var(--cs-muted); text-align: center; }
+</style>
 <style id="csx-layout">
 /* v703 desktop-native STRUCTURE (D2): LAYOUT properties only (display, grid/flex, position, size, overflow, z-index, gap).
    Every look (colour, border, radius, font, padding, hover, focus) is clean.css §8 (D1).
