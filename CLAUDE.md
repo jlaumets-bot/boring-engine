@@ -2,6 +2,13 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-08 — v719. "MICRO-LECTURE" IS NOW "EXPLAINER" (owner picked option 1: rename, not a new post type).
+Internal id stays `micro` everywhere (data, API, FORMAT_ALIAS, batch). FORMAT_LABELS.micro = 'Explainer'. postRules for micro adds the
+explainer shape: the question in one plain line → how it actually works (plain words or one everyday comparison) → what it means
+for the viewer; short-format limits + all shared rules kept. Prompts in _brain, generate-ideas, revise ("make it an explainer" →
+micro), viral-rewrite, sharpen, remix say "explainer". Gate explainer-v719 (5 mutations).
+WEBSITE still says micro-lecture (index.html 47, 73, 560, 606, 803; landing.mjs:70) — change with the parked v714 hero ship.
+
 ## ▶▶ 2026-11-07 — v718. DESKTOP LAYOUT + ONBOARDING AS A CHAT + Ask for changes on saved ideas.
 Mockups: cloud /mnt/user-data/outputs/design-options/desktop-onboarding/. Contract .unlazy/hybrid/CONTRACT.md "v718 addition" + Server notes v718.
 - Desktop ≥1100px: main chat = centre 720px + right rail 320px (feed + "Your creators", redraw only on change, no fetch); "New chat"

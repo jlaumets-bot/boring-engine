@@ -1,0 +1,44 @@
+{
+ "mutations": [
+  {
+   "id": "X1",
+   "finding": "v719 2/4: FORMAT_LABELS.micro is 'Explainer' and a saved micro idea renders with it",
+   "file": "app.html",
+   "find": "micro:\"Explainer\",bonus",
+   "replace": "micro:\"Micro-Lecture\",bonus",
+   "gate": "explainer-v719.mjs"
+  },
+  {
+   "id": "X2",
+   "finding": "v719 1: the Educational / Authority description says explainers, not micro-lectures",
+   "file": "app.html",
+   "find": "desc:\"Fact-first, professor-mode explainers.\"",
+   "replace": "desc:\"Fact-first, professor-mode micro-lectures.\"",
+   "gate": "explainer-v719.mjs"
+  },
+  {
+   "id": "X3",
+   "finding": "v719 3: postRules({format:'micro'}) adds the EXPLAINER rule",
+   "file": "api/_write.js",
+   "find": "].concat(f === 'micro' ? ['- ' + EXPLAINER_RULE] : []).join('\\n');",
+   "replace": "].join('\\n');",
+   "gate": "explainer-v719.mjs"
+  },
+  {
+   "id": "X4",
+   "finding": "v719 3: the micro post rules still carry the no-sell rule",
+   "file": "api/_write.js",
+   "find": "    '- ' + (f === 'statement' ? NO_SELL_CORE : NO_SELL_RULE),",
+   "replace": "    '- ' + (f === 'statement' ? NO_SELL_CORE : f === 'micro' ? 'Keep it friendly.' : NO_SELL_RULE),",
+   "gate": "explainer-v719.mjs"
+  },
+  {
+   "id": "X5",
+   "finding": "v719 1: the ideas batch delivery prompt says EXPLAINER, not MICRO-LECTURE",
+   "file": "api/generate-ideas.js",
+   "find": "(applies to any VIDEO, EXPLAINER, Q&A or STATEMENT idea): the creator films",
+   "replace": "(applies to any VIDEO, MICRO-LECTURE, Q&A or STATEMENT idea): the creator films",
+   "gate": "explainer-v719.mjs"
+  }
+ ]
+}

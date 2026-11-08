@@ -222,7 +222,7 @@ function buildLegacyRemixPrompt(bc, inp) {
   var _rules = sharedPostRules({ type: '', format: '', delivery: _delivery });
   if (_rules) { /* the delivery rule is in _rules */ }
   else if (_delivery === 'faceless') {
-    deliveryNote = '\n\nDELIVERY STYLE — FACELESS: if the remix format is a filmable one (video, micro-lecture, Q&A or statement), the creator is NOT on camera. Write remixScript as a VOICEOVER read over footage (it may be AI-voiced), and make every shot b-roll, stock clips, screen recordings, product or close-up shots, or text-on-screen cards — never "talk to camera" or "look into the lens". For carousel/image, ignore this.';
+    deliveryNote = '\n\nDELIVERY STYLE — FACELESS: if the remix format is a filmable one (video, explainer, Q&A or statement), the creator is NOT on camera. Write remixScript as a VOICEOVER read over footage (it may be AI-voiced), and make every shot b-roll, stock clips, screen recordings, product or close-up shots, or text-on-screen cards — never "talk to camera" or "look into the lens". For carousel/image, ignore this.';
   } else if (normDelivery(delivery) === 'face') {
     deliveryNote = '\n\nDELIVERY STYLE — FACE-ON: if the remix format is a filmable one, write it to be performed on camera by the creator, with the shot list assuming they are on screen.';
   }

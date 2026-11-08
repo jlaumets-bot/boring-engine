@@ -145,7 +145,7 @@ module.exports = async function handler(req, res) {
     // build-up are the whole point — compressing to bullet-y statements ruins it. Tell the model the shape.
     const STYLE = {
       video: 'This is a SPOKEN video script — keep the natural, conversational, story-like talk-track (short spoken sentences, the build-up, the beats). Keep the SAME length.',
-      micro: 'This is a short SPOKEN video — keep it spoken and natural, same length.',
+      micro: 'This is a short SPOKEN explainer video (the question in one plain line, then how it actually works (in plain words or with one everyday comparison), then what it means for the viewer) — keep it spoken, natural and in that shape, same length.',
       qna: 'This is a SPOKEN answer to a question — keep the conversational answer flow and the same length.',
       statement: 'This is a bold text statement — it can be tight, but keep the same idea, beats and punch; do not gut it.',
       carousel: 'These are carousel slides — keep the same number of slides and their story flow.',

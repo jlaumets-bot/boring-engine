@@ -216,10 +216,14 @@ const SOURCE_LABEL = {
   idea: 'an idea the creator had',
 };
 
+// v719 (owner 2026-11-08) — the format shown as "Micro-Lecture" is now "Explainer". Its id stays `micro` everywhere
+// (data, API, storage, FORMAT_ALIAS, the batch); only the label and this writing shape changed.
+const EXPLAINER_SHAPE = 'the question in one plain line, then how it actually works (in plain words or with one everyday comparison), then what it means for the viewer';
+const EXPLAINER_RULE = 'EXPLAINER: this short video is an EXPLAINER. Its beats: ' + EXPLAINER_SHAPE + '. Fit the shape above into those beats. Every fact in it is real (from the brand profile or a checked fact), never an invented number, name or result.';
 const FORMAT_RULES = {
   // v693 r3 — GUIDANCE, not caps: the model is told "usually", and nothing in code trims to these.
   talking:   { min: 60, max: 160, what: 'a talking video, said out loud in one take' },   // v709 — who is on screen is the DELIVERY rule's job
-  micro:     { min: 25, max: 70,  what: 'a short video: the one point and the reason behind it' },
+  micro:     { min: 25, max: 70,  what: 'a short explainer video, one point: ' + EXPLAINER_SHAPE },   // v719 — shown as "Explainer" (id stays micro)
   statement: { min: 15, max: 60,  what: 'a bold text post: a few sentences that stand alone on screen' },
   carousel:  { min: 70, max: 220, what: 'a swipe carousel: 5 to 8 slides, one slide per paragraph, slide 1 makes people swipe' },
 };
@@ -239,7 +243,7 @@ const TYPE_SHAPES = {
   bts: 'one real moment from the work: what happened, then what it shows',
 };
 const OPINION_SHAPE = 'why people believe the opposite, what goes wrong because of it, then the reframe';
-// v709 (audit A4) — THE SAME TYPES IN A SHORT FORMAT (a statement, a micro video, an image post). A 15-60 word
+// v709 (audit A4) — THE SAME TYPES IN A SHORT FORMAT (a statement, an explainer video, an image post). A 15-60 word
 // statement has no room for "2 to 4 steps" or a full arc, so each type is compressed to ONE move there.
 // postRules() picks the shape that fits the format; TYPE_RULES (the batch, which mixes formats) names both.
 const SHORT_SHAPES = {
@@ -260,7 +264,7 @@ const TYPE_RULE_BASE = {
   story: 'CUSTOMER STORY: built around ONE real story from the story bank if one fits. If none fits, the story itself is a [your story: <the customer moment to tell>] slot in a spoken script (on-screen text keeps to the lesson). Never invent a customer, a name or a result.',
   bts: 'BEHIND THE SCENES / FOUNDER: ONE real moment from the work or from the founder. Real details only from the brand profile; anything else is a [your story: <what to tell>] slot in a spoken script (in on-screen text it is cut).',
 };
-const shortNote = (t) => ' (in a statement, micro or image post: ' + SHORT_SHAPES[t] + ')';
+const shortNote = (t) => ' (in a statement, explainer or image post: ' + SHORT_SHAPES[t] + ')';
 const TYPE_RULES = {
   tip: 'TIP: ONE practical how-to from the viewer\'s own world. SHAPE: ' + TYPE_SHAPES.tip + shortNote('tip') + '. Only when the point is an opinion: ONE sharp opinion, argued plainly.',
   about: 'ABOUT US, AS A STORY OR A LESSON: why the product or service exists, how it is made, the problem it was built for, or a myth about the category it busts. It teaches or entertains; it never sells. Use ONLY the real facts in the brand profile; a fact you do not have becomes a [your story: <what to tell>] slot in a spoken script (in on-screen text the claim is cut). Still spoken, still ONE point. Never an offer, a price, a feature list or a pitch.',
@@ -302,7 +306,7 @@ const FORMAT_ALIAS = { talking: 'talking', video: 'talking', reel: 'talking', mi
 const normPostFormat = (f) => { const k = toStr(f).trim().toLowerCase(); return Object.prototype.hasOwnProperty.call(FORMAT_ALIAS, k) ? FORMAT_ALIAS[k] : ''; };
 const READ_FORMATS = ['statement', 'static', 'carousel'];
 const SHORT_FORMATS = ['statement', 'micro', 'static'];
-const FORMAT_NAME = { talking: 'talking video', micro: 'micro video', qna: 'Q&A', statement: 'statement', static: 'image post', carousel: 'carousel' };
+const FORMAT_NAME = { talking: 'talking video', micro: 'short explainer video', qna: 'Q&A', statement: 'statement', static: 'image post', carousel: 'carousel' };
 // The shape a post moves through, fitted to its format (A4: no step list in a 15-60 word statement).
 function shapeFor(type, format, kind, either) {
   const t = normPostType(type);
@@ -345,7 +349,7 @@ function postRules(opts) {
     '- ' + SLOT_RULE + (READ_FORMATS.indexOf(f) >= 0 ? ' This whole post is on-screen text, so it carries no slot at all.' : ''),
     '- ' + deliveryRule(o.delivery, f),
     '- SHAPE (' + what + '): ' + shapeFor(t, f, o.kind, o.either === true) + '.' + noList,
-  ].join('\n');
+  ].concat(f === 'micro' ? ['- ' + EXPLAINER_RULE] : []).join('\n');
 }
 
 // ── v706 HOW A PICKED ANGLE IS FRAMED ────────────────────────────────────────
@@ -2209,7 +2213,7 @@ async function runWrite(opts) {
 }
 
 module.exports = {
-  TYPE_SHAPES, OPINION_SHAPE, factsBlockFor, factsUse, factsMaterial, knownFactIds, factIdsUsedIn, citedFactIds, factSourcesFor, captionWithFactSources, factList, factMatchesText, inventedFactsIn,
+  TYPE_SHAPES, OPINION_SHAPE, EXPLAINER_SHAPE, EXPLAINER_RULE, factsBlockFor, factsUse, factsMaterial, knownFactIds, factIdsUsedIn, citedFactIds, factSourcesFor, captionWithFactSources, factList, factMatchesText, inventedFactsIn,
   postRules, hashtagsFor, guardPost, sourceLine, deliveryRule, normDelivery, SHORT_SHAPES, TYPE_RULE_BASE, brandProof, WEB_TAG, SLOT_RULE, NO_SELL_CORE,
   styleGuide, runAngles, runWrite, NO_SELL_RULE, noSellRule, noSellNote, guardNoSell, guardIdeaNoSell, noSellCore, hasSales, strongSales, FORMATS, SOURCE_KINDS, TYPE_RULES, normPostType, guardIdeaFacts, userFacts,
   usageModel, writerCall, writerCallResilient, CLAUDE_CALL_PLAN, CLAUDE_THINKING_HEADROOM, LOWER_EFFORT, DRAFT_MAX_TOKENS, SPOKEN_MAX_TOKENS, ANGLES_MAX_TOKENS, SHAPE_MAX_TOKENS, writerEffort, writerProvider, WRITER_EFFORT, startBrandAttribution,

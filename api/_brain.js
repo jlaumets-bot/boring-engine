@@ -546,7 +546,7 @@ function clarityFlow() {
 // fragments. Grammar, connectives and a countable floor are checkable by the model against its own
 // draft; vibes are not.
 function spokenShape() {
-  return `SPOKEN-SCRIPT SHAPE (mandatory for any script a person reads aloud — video, micro-lecture, Q&A, on camera or as a voiceover):
+  return `SPOKEN-SCRIPT SHAPE (mandatory for any script a person reads aloud — video, explainer, Q&A, on camera or as a voiceover):
 This is written to be SAID, not read. It is performed out loud by a human, so it must survive being spoken at normal pace by someone who is not a presenter.
 - Write COMPLETE SENTENCES with a subject and a verb. "Sales follow-ups eat hours" is speakable; "Sales follow-ups eating hours." is a caption fragment and nobody talks like that. Fragments are for the HOOK and the on-screen text only — in the body they read as a robot reciting a slide.
 - Keep the CONNECTIVE TISSUE. Speech is carried by the small joining words written copy strips out: so, and, but, because, which means, that's why, the way it works is, here's what happens. Two facts side by side are notes; two facts joined by "because" is someone talking. If a line starts with a noun, check whether it needs a connector in front of it.
@@ -707,7 +707,7 @@ function factSources(bc, ids) {
 // they get the mechanics without the override. Same mechanics as api/_write.js's spoken pass:
 // complete sentences, joining words, the point said twice, varied construction, a length floor.
 function spokenV2() {
-  return `SPOKEN SCRIPTS (video, micro, Q&A: said out loud, on camera or as a voiceover):
+  return `SPOKEN SCRIPTS (video, explainer, Q&A: said out loud, on camera or as a voiceover):
 - Natural speech, not three clipped commands. Complete sentences with a subject and a verb; fragments belong in on-screen text, never in the script.
 - Keep the joining words people use when they talk: so, and, but, because, which means. They carry one thought into the next.
 - The listener cannot re-read, so say the point that matters twice, in different words.
@@ -789,7 +789,7 @@ function writingCraft(opts) {
 // Per-format length + shape spec, so nothing over- or under-writes. Shared by every generator.
 const FORMAT_SPEC = {
   video: 'Vertical reel/TikTok, ~30-60s. script = usually 90-180 SPOKEN words in full, varied-length sentences (90 is a floor, not a target). shots = 4-8 concrete phone shots. screen = 3-6 short overlays.',
-  micro: '10-15s single-point video. script = usually 30-70 spoken words: one point (a checked fact or something from the brand profile, never an invented number) + why it matters.',
+  micro: '10-15s EXPLAINER video, one point. script = usually 30-70 spoken words: the question in one plain line, then how it actually works (in plain words or with one everyday comparison), then what it means for the viewer. Facts come from a checked fact or the brand profile, never an invented number. One point, no list of steps.',
   qna: 'A real audience question + filmed answer under 30s. script = the answer; first sentence answers directly (no wind-up), usually 40-80 words.',
   statement: 'Bold text graphic. boldText = the full statement (2-5 short sentences, setup + payoff, stands alone). script = 2-3 delivery-tip lines only.',
   carousel: 'Instagram carousel. boldText = numbered slide texts; slide 1 forces the swipe. caption = the post caption.',

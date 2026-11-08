@@ -81,7 +81,7 @@ module.exports = async function handler(req, res) {
     // without a render site.
     const formatGuide = {
       video: 'Vertical Reel/TikTok, 30-60s. script = spoken words (usually 90-180 words, full sentences of varied length). shots = 4-8 concrete phone shots.',
-      micro: '10-15s single-point video. script = usually 30-70 spoken words: one point (from the brand profile or the original post, never a made-up statistic) + why it matters. shots = 1-3.',
+      micro: '10-15s EXPLAINER video, one point. script = usually 30-70 spoken words: the question in one plain line, then how it actually works (in plain words or with one everyday comparison), then what it means for the viewer. Facts come from the brand profile or the original post, never a made-up statistic. One point, no list of steps. shots = 1-3.',
       qna: 'A real audience question + filmed answer under 30s. title = the raw question. script = the answer (first sentence answers directly, usually 40-80 words). shots = 1-3.',
       statement: 'Bold text-graphic statement. boldText = the full statement (2-5 short sentences, setup + payoff, stands alone). script = 2-3 lines of delivery tips. No design talk.',
       carousel: 'Instagram carousel. boldText = all slide texts numbered ("1: ... 2: ..."), slide 1 forces the swipe. script = design notes only. caption = the post caption (1-3 sentences).',

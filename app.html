@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v718';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v719';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -9545,7 +9545,7 @@ const IDEAS = [];
 const TONE_OPTIONS = [
   {id:"sarcastic",name:"Sarcastic / Deadpan",desc:"Dry humor, anti-marketing energy."},
   {id:"witty",name:"Witty / Clever",desc:"Smart wordplay, unexpected angles."},
-  {id:"educational",name:"Educational / Authority",desc:"Fact-first, professor-mode micro-lectures."},
+  {id:"educational",name:"Educational / Authority",desc:"Fact-first, professor-mode explainers."},
   {id:"provocative",name:"Provocative / Bold",desc:"Hot takes, pattern-interrupt."},
   {id:"deadpan",name:"Deadpan",desc:"Straight-faced, no fluff."},
   {id:"inspirational",name:"Inspirational",desc:"Uplift and motivate."},
@@ -9579,7 +9579,7 @@ function getDayCommunities() {
 }
 const DAY_COMMUNITIES = DAY_COMMUNITIES_DEFAULT;
 const FORMATS = ["video","carousel","static","statement","micro","bonus","qna"];
-const FORMAT_LABELS = {video:"Video",carousel:"Carousel",static:"Image",statement:"Statement",micro:"Micro-Lecture",bonus:"Bonus",qna:"Q&A"};
+const FORMAT_LABELS = {video:"Video",carousel:"Carousel",static:"Image",statement:"Statement",micro:"Explainer",bonus:"Bonus",qna:"Q&A"};
 // types — what a post is ABOUT (same ids as the server; see .unlazy/types/PLAN.md). Saved per brand at voice_extra.typeMix.
 const POST_TYPE_IDS = ["tip","about","news","qna","story","bts"];
 const POST_TYPE_LABELS = {tip:"Tip",about:"About us",news:"News",qna:"Q&A",story:"Story",bts:"Behind the scenes"};
@@ -21832,7 +21832,7 @@ const remixModeHints = {
   'remix': 'Same hook structure and format, adapted to your brand voice.',
   'simplify': 'Strip it down to the raw truth. Minimal words, deadpan delivery, pure minimalist energy.',
   'flip': 'Take the opposite angle — if they hype, we anti-hype. Contrarian take.',
-  'format-swap': 'Change the format entirely — video → carousel, carousel → statement, long → micro.',
+  'format-swap': 'Change the format entirely — video → carousel, carousel → statement, long → explainer.',
   'series': 'Turn one piece of content into a 3-5 part series for multiple days.',
   'roast': 'Respond to their content as your brand — deadpan commentary, fact-check their claims.'
 };

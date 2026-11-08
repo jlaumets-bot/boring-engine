@@ -173,10 +173,10 @@ const IDEA_FORMATS = ['video', 'micro', 'qna', 'statement', 'carousel', 'static'
 const IDEA_FORMAT_ALIAS = { talking: 'video', reel: 'video', image: 'static' };              // the v2 writer's names
 const ON_SCREEN = ['statement', 'static', 'carousel'];
 const SWITCHABLE = ['video', 'micro', 'statement', 'carousel', 'static'];   // written by the writers AND shown by the app
-const IDEA_FORMAT_NAME = { video: 'talking video', micro: 'micro video', qna: 'Q&A video', statement: 'statement', carousel: 'carousel', static: 'image post', bonus: 'bonus post' };
+const IDEA_FORMAT_NAME = { video: 'talking video', micro: 'short explainer video', qna: 'Q&A video', statement: 'statement', carousel: 'carousel', static: 'image post', bonus: 'bonus post' };
 const IDEA_TYPE_NAME = { tip: 'tip', about: 'about-us post', news: 'news post', qna: 'Q&A', story: 'customer story', bts: 'behind-the-scenes post' };
 const IDEA_NOTE = {
-  formatKept: (f) => 'I kept it as a ' + IDEA_FORMAT_NAME[f] + '. The app writes talking videos, micro videos, statements, carousels and image posts, not that format.',
+  formatKept: (f) => 'I kept it as a ' + IDEA_FORMAT_NAME[f] + '. The app writes talking videos, short explainer videos, statements, carousels and image posts, not that format.',
   screenCut: "A claim I couldn't check was taken off the on-screen text.",
 };
 const SLOT_ANY_RE = /\[\s*your\s+story\s*:[^\]]*\]/gi;
@@ -187,7 +187,7 @@ const FMT_LEAD = '(?:\\b(?:make|turn|do|redo|rewrite|reformat|change|convert|swi
   + '|\\b(?:into|as)\\b|\\b(?:it|this|that)(?:\\s+[a-z]+)?(?=\\s+an?\\s))\\s+(?:an?\\s+|one\\s+)?(?:(?:short|quick|simple|single|punchy|\\d+[\\s-]?(?:seconds?|secs?|s|minutes?|mins?))\\s+)?';
 const FORMAT_ASKS = [
   [null, 'blog\\s+posts?|blogs?|articles?|newsletters?|e-?mails?|(?:twitter\\s+|x\\s+)?threads?|tweets?|podcasts?(?:\\s+episodes?)?|long[\\s-]?form(?:\\s+videos?)?|youtube(?:\\s+videos?)?|live\\s*streams?|webinars?|e-?books?|press\\s+releases?|linkedin\\s+(?:posts?|articles?)'],
-  ['micro', 'micro(?:[\\s-]videos?)?|(?:short|quick)\\s+clips?'],
+  ['micro', 'micro[\\s-]?lectures?|explainers?(?:[\\s-]videos?)?|micro(?:[\\s-]videos?)?|(?:short|quick)\\s+clips?'],   // v719 — shown as "Explainer"
   ['carousel', 'carousels?|slide\\s*shows?|slides'],
   ['statement', 'statements?(?:\\s+posts?)?|text(?:[\\s-]only)?\\s+posts?'],
   ['static', 'image\\s+posts?|single\\s+images?|static\\s+posts?|photo\\s+posts?|graphics?|picture\\s+posts?'],
