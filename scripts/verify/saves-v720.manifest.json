@@ -1,0 +1,220 @@
+{
+ "mutations": [
+  {
+   "id": "S1",
+   "finding": "v720: a known idea sends only the columns that differ from its baseline (B's stale status must not overwrite A's approval)",
+   "file": "app.html",
+   "find": "      if (_csSig(r[c]) !== _csSig(was[c])) patch[c] = (c in r) ? r[c] : null;",
+   "replace": "      patch[c] = (c in r) ? r[c] : null;",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S2",
+   "finding": "v720: a list save upserts only items that differ from the baseline (a stale copy must not overwrite another device's edit)",
+   "file": "app.html",
+   "find": "    if (!was || _csSig(was) !== _csSig(r)) dirty.push(r);",
+   "replace": "    dirty.push(r);",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S3",
+   "finding": "v720: _saveIdeasToDBNow takes the keyed save when the brand is on it (the old replace-by-title brings the stale copy back)",
+   "file": "app.html",
+   "find": "  if (typeof _csSaveIdeasKeyed === 'function' && (await _csSaveIdeasKeyed(brandId, rows)) === true) return;",
+   "replace": "  if (typeof _csSaveIdeasKeyed === 'function' && false) return;",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S4",
+   "finding": "v720: the brand save sends only the columns this device changed (A's tagline survives B's save)",
+   "file": "app.html",
+   "find": "    if (c === 'updated_at' || _csSig(data[c]) !== _csSig(b[c])) out[c] = data[c];",
+   "replace": "    out[c] = data[c];",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S5",
+   "finding": "v720: first_created_at is never sent, so a save never overwrites the real date",
+   "file": "app.html",
+   "find": "    const res = await send(() => sb.from('ideas').update(strip(g.patch)).eq('brand_id', brandId).in('client_key', keys).select('client_key'));",
+   "replace": "    const res = await send(() => sb.from('ideas').update(Object.assign(strip(g.patch), { first_created_at: new Date().toISOString() })).eq('brand_id', brandId).in('client_key', keys).select('client_key'));",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S6",
+   "finding": "v720 fallback: rows without client_key keep the old save (before the SQL has run)",
+   "file": "app.html",
+   "find": "    : (raw.every(r => r && r.client_key != null && r.client_key !== '') ? true : false);",
+   "replace": "    : true;",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S7",
+   "finding": "v720: the bookmarks baseline is this device's own view, so a second save does not delete another device's entry",
+   "file": "app.html",
+   "find": "    st.doc = mineNow;   // this device's own view",
+   "replace": "    st.doc = merged;   // this device's own view",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S8",
+   "finding": "v720: the three-way merge keeps an item added on another device",
+   "file": "app.html",
+   "find": "    if (!m) { if (!b) out.push(t); return; }",
+   "replace": "    if (!m) { return; }",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S9",
+   "finding": "v720: the merge-reload keeps this device's own unsaved edit of a column",
+   "file": "app.html",
+   "find": "      if (_csSig(mine[c]) !== _csSig(was[c])) return;   // changed here too: this device's edit stays",
+   "replace": "",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S10",
+   "finding": "v720: a backend that accepts any column (a stub) is not trusted as having the v720 columns",
+   "file": "app.html",
+   "find": "      ok = !!(c && c.error && _csNoColumn(c.error));",
+   "replace": "      ok = true;",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S11",
+   "finding": "v720: an idea rebuilt as a new object takes back its key by title (no duplicate row)",
+   "file": "app.html",
+   "find": "    if (t && free.length) {",
+   "replace": "    if (false) {",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S12",
+   "finding": "v720: a list deletes only the items this device removed since it loaded them",
+   "file": "app.html",
+   "find": "  base.forEach((_, k) => { if (!seen.has(k)) gone.push(k); });",
+   "replace": "  base.forEach((_, k) => { gone.push(k); });",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S13",
+   "finding": "v720 SQL: safe to run twice (the ideas unique index says IF NOT EXISTS)",
+   "file": "sql/saves-v720.sql",
+   "find": "  create unique index if not exists ideas_brand_client_key_uniq on public.ideas (brand_id, client_key);",
+   "replace": "  create unique index ideas_brand_client_key_uniq on public.ideas (brand_id, client_key);",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S14",
+   "finding": "v720: bookmarks save through the three-way merge, not the old whole-list write",
+   "file": "app.html",
+   "find": "    if (_m) return _m;\n  }\n  // Store entire bookmarkCategories",
+   "replace": "    if (false) return _m;\n  }\n  // Store entire bookmarkCategories",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S15",
+   "finding": "v720: the ideas list groups by first_created_at when present",
+   "file": "app.html",
+   "find": "function awWhen(i){ return Number(i && i.firstAt) || Number(i && i.freshAt) ||",
+   "replace": "function awWhen(i){ return Number(i && i.freshAt) ||",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S16",
+   "finding": "review blocker: an update that finds no row never inserts the stale row blind (an old-path tab re-keyed it)",
+   "file": "app.html",
+   "find": "    g.rows.forEach(r => { if (hit.has(String(r.client_key))) base.set(String(r.client_key), r); else misses.push({ r, patch: g.patch }); });",
+   "replace": "    g.rows.forEach(r => { if (hit.has(String(r.client_key))) base.set(String(r.client_key), r); else fresh.push(r); });",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S17",
+   "finding": "review: a list item re-keyed by an old-path tab is found by content and its key adopted (no duplicate note)",
+   "file": "app.html",
+   "find": "  if (moved.size) {\n    dirty = dirty.map(",
+   "replace": "  if (false) {\n    dirty = dirty.map(",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S18",
+   "finding": "review: once the old save ran for a list this session, it stays on the old save until reload",
+   "file": "app.html",
+   "find": "  if (!(await csKeyedOn(table, brandId))) { csKeyedMarkLegacy(table, brandId); return null; }",
+   "replace": "  if (!(await csKeyedOn(table, brandId))) { return null; }",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S19",
+   "finding": "review: no local keys are assigned before keyed saves are confirmed",
+   "file": "app.html",
+   "find": "  if (table && !csKeyedNow(table, brandId)) return null;   // keys only once keyed saves are confirmed",
+   "replace": "  if (table) { const b = _csBase(table, brandId); if (!b || b.keyed === false) return null; }",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S20",
+   "finding": "review: a tab that loaded before the switch is shown the update banner once the columns exist",
+   "file": "app.html",
+   "find": "  try { if (typeof window !== 'undefined' && window && typeof window._showUpdateBanner === 'function') window._showUpdateBanner(); } catch (e) {}",
+   "replace": "",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S21",
+   "finding": "review: idea saves no longer stamp created_at with the device clock (the database trigger does)",
+   "file": "app.html",
+   "find": "    const res = await send(() => sb.from('ideas').update(strip(g.patch)).eq('brand_id', brandId).in('client_key', keys).select('client_key'));",
+   "replace": "    const res = await send(() => sb.from('ideas').update(Object.assign(strip(g.patch), { created_at: new Date().toISOString() })).eq('brand_id', brandId).in('client_key', keys).select('client_key'));",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S22",
+   "finding": "v720 SQL: the trigger keeps first_created_at once set",
+   "file": "sql/saves-v720.sql",
+   "find": "    new.first_created_at := old.first_created_at;\n",
+   "replace": "",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S23",
+   "finding": "re-review: an update miss adopts a same-title row only if its last-saved hook or script matches",
+   "file": "app.html",
+   "find": "        ((was.hook != null && s.hook === was.hook) || (was.script != null && s.script === was.script)));",
+   "replace": "        true);",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S24",
+   "finding": "re-review: a saved idea whose row is gone with no matching copy is never inserted again",
+   "file": "app.html",
+   "find": "        base.delete(k);\n        dropped++;\n        if (same && mine) {",
+   "replace": "        fresh.push(m.r); continue;\n        if (same && mine) {",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S25",
+   "finding": "re-review: the refresh merge binds a local idea to its re-keyed server row",
+   "file": "app.html",
+   "find": "      if (o && snap && ((snap.hook != null && snap.hook === srv.hook) || (snap.script != null && snap.script === srv.script))) {",
+   "replace": "      if (false) {",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S26",
+   "finding": "re-review: update-miss candidates exclude rows held by a DIFFERENT local idea (key map, not the baseline)",
+   "file": "app.html",
+   "find": "(!bound.has(String(s.client_key)) || bound.get(String(s.client_key)) === mine) &&",
+   "replace": "!base.has(String(s.client_key)) &&",
+   "gate": "saves-v720.mjs"
+  },
+  {
+   "id": "S27",
+   "finding": "re-review: a key made for a new idea before the column check answers is written back and reused (two quick saves = one row)",
+   "file": "app.html",
+   "find": "      let k = (it && it.ck != null && it.ck !== '' && !used.has(String(it.ck))) ? String(it.ck) : '';\n      if (!k && t) base.forEach(",
+   "replace": "      let k = '';\n      if (false) base.forEach(",
+   "gate": "saves-v720.mjs"
+  }
+ ]
+}

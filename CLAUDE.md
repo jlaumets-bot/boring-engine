@@ -2,6 +2,19 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+## ▶▶ 2026-11-08 — v720. SAVES SEND ONLY WHAT CHANGED (audit H1/H2/G6 cross-device data loss). SQL sql/saves-v720.sql (owner runs).
+- client_key on ideas, notebook_notes, remixes, reference photos, prompt history (backfill id::text, random default, unique
+  (brand_id, client_key)); ideas.first_created_at (+ trigger ideas_v720_touch: DB stamps created_at, keeps first_created_at; not
+  SECURITY DEFINER, search_path pinned, revoked, listed in v658-revoke-security-health.sql); member UPDATE policy on notebook_notes.
+- Client: per-item stable key stored ON the item; per-device snapshot; ideas update changed columns only; upsert by key; deletes only
+  for items loaded-then-removed or tombstoned; bookmarks JSON merged by id; brand row changed-columns only (424 check + voice_extra
+  merge kept). Idea update-miss: re-read by title → adopt a row only if unbound AND hook/script matches the last-saved SNAPSHOT
+  (newest wins); else never insert — drop the stale edit + toast "That idea changed on another device — refreshed"; only
+  never-saved ideas insert. Refresh binds re-keyed rows by the same test. Grouping uses first_created_at.
+- Compatibility: before the SQL, the old path runs unchanged; a list that used the old path stays on it until reload; tabs loaded
+  before the SQL get the "New version ready" banner once the columns exist.
+Gate saves-v720 (27 mutations); sql-ideas-index-safe updated. Two data-safety review rounds: blockers fixed, final verdict no blocker.
+
 ## ▶▶ 2026-11-08 — v719. "MICRO-LECTURE" IS NOW "EXPLAINER" (owner picked option 1: rename, not a new post type).
 Internal id stays `micro` everywhere (data, API, FORMAT_ALIAS, batch). FORMAT_LABELS.micro = 'Explainer'. postRules for micro adds the
 explainer shape: the question in one plain line → how it actually works (plain words or one everyday comparison) → what it means

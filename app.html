@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v719';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v720';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -7455,6 +7455,8 @@ function _saveThenDropRenamedRow(oldTitle, newTitle) {
 async function _dropRenamedIdeaRow(oldTitle, newTitle, pinnedBrandId) {
   try {
     if (!currentBrand || !sb) return;
+    // v720 — on keyed saves the renamed idea was updated in place by its key: there is no old row to drop
+    if (typeof csKeyedNow === 'function' && csKeyedNow('ideas', pinnedBrandId || currentBrand.id)) return;
     /* v679 BRAND PIN. `.eq('brand_id', currentBrand.id)` read the LIVE global, so a brand switch
        while the save was on the wire aimed this delete at the new brand: it matched nothing, the
        old-titled row stayed in the original brand forever, and — because the loader dedups by
@@ -7735,6 +7737,7 @@ async function switchBrand(brandId) {
     try { localStorage.setItem('cs_last_brand', brandId); } catch(e){}   // v576: remember for next reload
     migrateLegacyLS();                 // one-time, non-destructive; seeds this brand's namespace
     settings = brandToSettings(currentBrand);
+    try { if (typeof csBrandBaseSet === 'function') csBrandBaseSet(currentBrand.id, settingsToBrand()); } catch(e) {}   // v720: the brand save baseline
     try { brandPrefsMigrate(); } catch(e) {}   // v709: one-time device → brand moves (delivery, dismissed news, formatsOff)
     // Reload all data for this brand
     try { const dbIdeas = await loadIdeasFromDB(); if (myToken !== _switchSeq) return; IDEAS.length = 0; const seen = new Set(); dbIdeas.forEach(i => { const k = i.title.toLowerCase().trim(); if (!seen.has(k)) { seen.add(k); IDEAS.push(i); } }); state = IDEAS.map((idea, i) => ({ ...idea, id: i })); reconcileLocalStatus(state); window._ideasLoadFailed = false; window._ideasSwitching = false; } catch(e) { IDEAS.length = 0; state = []; window._ideasLoadFailed = true; window._ideasSwitching = false; notifyIdeasLoadFailed(); }
@@ -8288,9 +8291,16 @@ async function _saveBrandToDBInner() {
         const _cur = await sb.from('brands').select('voice_extra').eq('id', currentBrand.id).maybeSingle();
         const _fv = _cur && !_cur.error && _cur.data ? _cur.data.voice_extra : null;
         if (_fv && typeof _fv === 'object' && !Array.isArray(_fv) && typeof mergeVoiceExtra === 'function')
-          brandData.voice_extra = mergeVoiceExtra(currentBrand.voice_extra || {}, _veMine, _fv);
+          brandData.voice_extra = mergeVoiceExtra(((typeof csBrandBaseGet === 'function' && (csBrandBaseGet(currentBrand.id) || {}).voice_extra) || currentBrand.voice_extra || {}), _veMine, _fv);   // v720: base = this device's own view
       } catch (e) { brandData.voice_extra = _veMine; }
-      let { data: _wrote, error } = await sb.from('brands').update(brandData).eq('id', currentBrand.id).select('id');
+      // v720 — send only the columns this device changed since it loaded or last saved the brand (csBrandPatch):
+      // a stale tab no longer writes its old tagline over the one typed on the phone.
+      let _send = brandData;
+      try {
+        const _p = (typeof csBrandPatch === 'function') ? csBrandPatch(currentBrand.id, Object.assign({}, brandData, { voice_extra: _veMine })) : null;
+        if (_p) { _send = _p; if ('voice_extra' in _send) _send.voice_extra = brandData.voice_extra; }
+      } catch (e) { _send = brandData; }
+      let { data: _wrote, error } = await sb.from('brands').update(_send).eq('id', currentBrand.id).select('id');
       if (!error && (!_wrote || !_wrote.length)) {
         try { window._brandSaveOk = false; } catch(e) {}
         try { window._brandSaveLastError = 'refused'; } catch(_) {}
@@ -8313,6 +8323,7 @@ async function _saveBrandToDBInner() {
         alert('Brand save error: ' + (error.message || JSON.stringify(error)));
       } else {
         try { window._brandSaveOk = true; window._brandSaveLastError = ''; } catch(e) {}
+        try { if (typeof csBrandBaseSet === 'function') csBrandBaseSet(currentBrand.id, Object.assign({}, brandData, { voice_extra: _veMine })); } catch(e) {}   // v720
         // v709 review: what is stored now is the next save's base; take the other device's delivery and
         // dismissed headlines into this one, unless the person changed them here while this save ran
         try {
@@ -8367,6 +8378,7 @@ async function _saveBrandToDBInner() {
       } else {
         try { window._brandSaveOk = true; } catch(e) {}
         currentBrand = data;
+        try { if (typeof csBrandBaseSet === 'function') csBrandBaseSet(data.id, brandData); } catch(e) {}   // v720
         debugLog('Brand created OK: ' + data.id);
       }
     }
@@ -8467,6 +8479,7 @@ function saveIdeasToDB() {
   // ROWS too, a save queued for brand A still lands correctly in brand A after a switch
   // instead of being silently dropped.
   const _brandId = (currentBrand && currentBrand.id) || null;
+  try { if (typeof _csEnsureIdeaKeys === 'function') _csEnsureIdeaKeys(_brandId); } catch (e) {}   // v720: every idea has its key before its row is built
   const _rows = _buildIdeaRows(_brandId);
   const run = _ideasSaveChain.then(() => _saveIdeasToDBNow(_brandId, _rows));
   // fix7 — how many ideas saves are on the wire (csForegroundReload waits for zero)
@@ -8484,11 +8497,15 @@ function saveIdeasToDB() {
 }
 // Build the DB rows for a given brand from the CURRENT in-memory state. Called
 // synchronously by saveIdeasToDB so the payload can never drift onto another brand.
-function _buildIdeaRows(brandId) {
+function _buildIdeaRows(brandId, list, quiet) {
   if (!brandId) return [];
   const asText = v => Array.isArray(v) ? v.join(' ') : (v == null ? '' : String(v));
-  const rows = (Array.isArray(state) ? state : []).map(idea => ({
+  // v720: `list` builds rows for loaded ideas (the save baseline); `quiet` skips the device maps below
+  const _src = Array.isArray(list) ? list : (Array.isArray(state) ? state : []);
+  const rows = _src.map(idea => ({
     brand_id: brandId,
+    // v720 — the idea's stable key (sql/saves-v720.sql); the old save strips it
+    ...((idea && idea.ck != null && idea.ck !== '') ? { client_key: String(idea.ck) } : {}),
     day: asText(idea.day),
     community: asText(idea.community),
     format: idea.format || 'video',
@@ -8522,6 +8539,7 @@ function _buildIdeaRows(brandId) {
     // types — what the post is about (sql/idea-post-type.sql). Only named when set, like gen_flow.
     ...((typeof typesValid === 'function' && typesValid(idea.postType)) ? { post_type: typesValid(idea.postType) } : {}),
   }));
+  if (quiet) return rows;
   // Store paaSource mapping in localStorage (no DB column yet)
   const paaMap = {};
   (Array.isArray(state) ? state : []).forEach(idea => { if (idea.paaSource) paaMap[idea.title] = idea.paaSource; });
@@ -8544,6 +8562,8 @@ function _buildIdeaRows(brandId) {
 }
 async function _saveIdeasToDBNow(brandId, rows) {
   if (!brandId || !rows || !rows.length) return;
+  // v720 — the keyed save (only what changed — see _csSaveIdeasKeyed); null = this brand is not on it, the old save runs
+  if (typeof _csSaveIdeasKeyed === 'function' && (await _csSaveIdeasKeyed(brandId, rows)) === true) return;
   // Cross-device safe: only replace rows THIS device knows about (by title).
   // Rows added from another device (phone vs desktop) are never touched.
   //
@@ -8648,6 +8668,7 @@ async function _saveIdeasToDBNow(brandId, rows) {
     const strip = r => {
       if (!r || typeof r !== 'object') return r;
       const o = Object.assign({}, r);
+      delete o.client_key;   // v720: the old save never names it (the column may not exist; the database fills it in)
       if (globalThis._ideasNoEmphasisCol) delete o.emphasis;
       if (globalThis._ideasNoGenFlowCol) delete o.gen_flow;
       if (globalThis._ideasNoPostTypeCol) delete o.post_type;
@@ -8879,6 +8900,9 @@ async function loadIdeasFromDB(opts) {
     // v682: when this row was last written, so reconcileLocalStatus can tell which decision
     // is newer instead of assuming status only ever advances. See the note there.
     _rowAt: _ideaRowRecency(row) || 0,
+    // v720 — the stable key and the real creation date (sql/saves-v720.sql); absent before that SQL has run
+    ...((row.client_key != null && row.client_key !== '') ? { ck: String(row.client_key) } : {}),
+    ...((row.first_created_at && !isNaN(Date.parse(row.first_created_at))) ? { firstAt: Date.parse(row.first_created_at) } : {}),
   })).map(o => { if (o._dbDoneAt) { o.doneAt = o._dbDoneAt; } delete o._dbDoneAt; return o; });
   // Restore paaSource from localStorage mapping
   try {
@@ -8898,6 +8922,9 @@ async function loadIdeasFromDB(opts) {
       });
     }
   } catch(e) {}
+  // v720 — the save baseline: these rows as this device would write them. Not on a merge-reload, which
+  // takes the server's changes column by column instead (_csMergeServerIdeas).
+  try { if (!(opts && opts.union) && typeof csBaseLoaded === 'function') csBaseLoaded('ideas', _knownBid, data, _buildIdeaRows(_knownBid, result, true)); } catch (e) {}
   return result;
 }
 
@@ -8922,6 +8949,14 @@ async function _replaceBrandRows(table, brandId, rows, opts) {
   // two devices (or two tabs) saving the same list still race, and that needs a server-side
   // guard; the newest-first load path keeps the duplicate readable until then.
   const _work = async () => {
+  // v720 — the keyed save first (only what changed — _csKeyedListSave); null = this list is not on it, the replace below runs
+  if (opts.keyed && typeof _csKeyedListSave === 'function') {
+    let _kr = null;
+    try { _kr = await _csKeyedListSave(table, brandId, rows, opts); } catch (e) { _kr = { ok: false, error: e }; }
+    if (_kr) return _kr;
+  }
+  // the old save never names client_key (the column may not exist yet; the database fills it in)
+  if (Array.isArray(rows)) rows = rows.map(r => { if (r && typeof r === 'object' && 'client_key' in r) { const o = Object.assign({}, r); delete o.client_key; return o; } return r; });
   // 1. which rows are we superseding?
   let oldIds = null;                       // null = could not read → do NOT delete anything
   try {
@@ -8989,6 +9024,569 @@ async function _replaceBrandRows(table, brandId, rows, opts) {
   return _run;
 }
 
+/* ═════════════════════ v720 — SAVES SEND ONLY WHAT CHANGED ═════════════════════
+   Audit H-1/H-2 and G-6/G-7. Every save replaced a whole list (write the local copy, delete the old
+   rows) or a whole brand row. A device holding a stale copy therefore undid what another device had
+   done: an approval, an edited script, a note, a bookmark, a tagline. A team member's ideas save also
+   added a full copy of the library each time, because members cannot delete.
+   Now each item carries a stable key (client_key, from sql/saves-v720.sql). This device keeps a
+   BASELINE: what each item looked like when it last loaded or saved it. A save sends only the items
+   that differ from the baseline (for ideas, only the changed columns). It deletes only the items this
+   device removed since it loaded them, or an idea explicitly tombstoned. An item this device never
+   saw is never touched.
+   Before the SQL has run, the rows carry no client_key: the loaders record keyed:false, every
+   function here answers null, and the old save runs unchanged. After the SQL, the next load switches
+   to keyed saves by itself. */
+const _csKeyed = { probe: Object.create(null), base: Object.create(null), tomb: Object.create(null),
+  text: Object.create(null), bm: Object.create(null), bmChain: Object.create(null), brand: Object.create(null),
+  legacy: Object.create(null) };
+const CS_IDEA_COLS = { day: 'day', community: 'community', format: 'format', title: 'title', hook: 'hook',
+  script: 'script', shots: 'shots', screen: 'screen', caption: 'caption', reel_title: 'reelTitle', tags: 'tags',
+  bold_text: 'boldText', status: 'status', dismiss_reason: 'dismissReason', assignee: 'assignee',
+  is_generated: 'isGenerated', is_remix: 'isRemix', original_creator: 'originalCreator', emphasis: 'emphasis',
+  gen_flow: 'genFlow', post_type: 'postType' };
+function csKeyNew(prefix) {
+  return String(prefix || 'k') + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+function _csSig(v) {
+  try { return JSON.stringify(v === undefined ? null : v); } catch (e) { return String(v); }
+}
+function _csClone(v) {
+  try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; }
+}
+function _csNoColumn(err) {
+  if (!err) return false;
+  const msg = String((err.message || '') + ' ' + (err.details || '') + ' ' + (err.hint || ''));
+  return err.code === 'PGRST204' || err.code === '42703' || /schema cache|does not exist|could not find/i.test(msg);
+}
+/* A list that loaded EMPTY has no row to read client_key from, so its first save asks the database once.
+   A backend that also accepts a column that cannot exist (a test stub) proves nothing: that answers
+   "no", and the old save runs. */
+async function csKeyedProbe(table) {
+  const p = _csKeyed.probe[table];
+  if (p === true) return true;
+  if (p && Date.now() < p.until) return false;
+  const cols = table === 'ideas' ? ['client_key', 'first_created_at'] : ['client_key'];
+  let ok = false, retryMs = 600000;
+  try {
+    const r = await sb.from(table).select(cols.join(',')).limit(1);
+    if (r && r.error) { if (!_csNoColumn(r.error)) retryMs = 60000; }
+    else if (r && Array.isArray(r.data) && r.data.length) {
+      ok = cols.every(c => r.data[0] && Object.prototype.hasOwnProperty.call(r.data[0], c));
+    } else {
+      const c = await sb.from(table).select('cs_v720_no_such_column').limit(1);
+      ok = !!(c && c.error && _csNoColumn(c.error));
+    }
+  } catch (e) { retryMs = 60000; }
+  _csKeyed.probe[table] = ok ? true : { until: Date.now() + retryMs };
+  return ok;
+}
+/* Every loader calls this with the raw rows it read and the items it built from them (for ideas, the
+   save rows). keyed: true = the rows carry client_key; 'empty' = nothing to tell from (the probe decides);
+   false = the old save. */
+function csBaseLoaded(table, brandId, rawRows, items) {
+  if (!brandId) return;
+  const raw = Array.isArray(rawRows) ? rawRows : [];
+  const keyed = !raw.length ? 'empty'
+    : (raw.every(r => r && r.client_key != null && r.client_key !== '') ? true : false);
+  if (keyed === true) _csKeyed.probe[table] = true;
+  _csKeyed.base[table + '|' + brandId] = { keyed, items: keyed === false ? [] : _csClone(items || []), map: null };
+  if (table === 'prompt_history') {
+    const m = new Map();
+    raw.forEach(r => { if (r && r.client_key != null && !m.has(String(r.prompt || ''))) m.set(String(r.prompt || ''), String(r.client_key)); });
+    _csKeyed.text[table + '|' + brandId] = m;
+  }
+  // an empty list asks the database now, so its first save already knows which path to take
+  if (keyed === 'empty' && _csKeyed.probe[table] !== true) { try { Promise.resolve(csKeyedProbe(table)).catch(() => {}); } catch (e) {} }
+}
+function _csBase(table, brandId) {
+  return _csKeyed.base[table + '|' + brandId] || null;
+}
+// Synchronous answer, no probe: is this list already known to be on keyed saves?
+function csKeyedNow(table, brandId) {
+  if (_csKeyed.legacy[table + '|' + brandId]) return false;
+  const b = _csBase(table, brandId);
+  return !!b && (b.keyed === true || (b.keyed === 'empty' && _csKeyed.probe[table] === true));
+}
+async function csKeyedOn(table, brandId) {
+  if (_csKeyed.legacy[table + '|' + brandId]) return false;
+  const b = _csBase(table, brandId);
+  if (!b || b.keyed === false) return false;
+  return b.keyed === true ? true : csKeyedProbe(table);
+}
+/* Once the old save has run for a list in this tab, the list stays on it until the next load: switching
+   mid-session would leave rows the old save just re-keyed looking like strangers. */
+function csKeyedMarkLegacy(table, brandId) {
+  if (brandId) _csKeyed.legacy[table + '|' + brandId] = true;
+}
+function _csBaseMap(b, toRow) {
+  if (!b.map) {
+    b.map = new Map();
+    (b.items || []).forEach(it => {
+      const r = toRow ? toRow(it) : it;
+      if (r && r.client_key != null) b.map.set(String(r.client_key), r);
+    });
+    b.items = null;
+  }
+  return b.map;
+}
+// The stable key of a list item: the server's (set by the loader), else a new one kept on the item.
+function csItemKey(item, prefix, table, brandId) {
+  if (!item || typeof item !== 'object') return null;
+  if (table && !csKeyedNow(table, brandId)) return null;   // keys only once keyed saves are confirmed
+  if (item.ck == null || item.ck === '') item.ck = csKeyNew(prefix);
+  return String(item.ck);
+}
+/* A row this device knows by key is gone: a tab still on the old save re-inserted the list with new keys.
+   Find the re-inserted copy (same content as this device's baseline, a key this device does not know)
+   and take its key, so the change lands on it instead of making a duplicate. */
+async function _csAdoptListKeys(table, brandId, base, keys, opts) {
+  const moved = new Map();
+  if (!keys.length) return moved;
+  let have;
+  try { have = await sb.from(table).select('client_key').eq('brand_id', brandId).in('client_key', keys); } catch (e) { have = { error: e }; }
+  if (!have || have.error || !Array.isArray(have.data)) return moved;
+  const present = new Set(have.data.map(x => x && String(x.client_key)));
+  const missing = keys.filter(k => !present.has(k));
+  if (!missing.length) return moved;
+  let all;
+  try { all = await sb.from(table).select('*').eq('brand_id', brandId); } catch (e) { all = { error: e }; }
+  if (!all || all.error || !Array.isArray(all.data)) return moved;
+  const norm = (c, v) => (c === 'created_at' && v && !isNaN(Date.parse(v))) ? 't' + Date.parse(v) : _csSig(v == null ? null : v);
+  const free = all.data.filter(s => s && s.client_key != null && !base.has(String(s.client_key)));
+  missing.forEach(k => {
+    const was = base.get(k);
+    if (!was) return;
+    const cols = Object.keys(was).filter(c => c !== 'brand_id' && c !== 'client_key' && c !== 'id');
+    const j = free.findIndex(s => cols.every(c => norm(c, s[c]) === norm(c, was[c])));
+    if (j < 0) return;
+    const nk = String(free.splice(j, 1)[0].client_key);
+    moved.set(k, nk);
+    base.delete(k);
+    base.set(nk, Object.assign({}, was, { client_key: nk }));
+    (Array.isArray(opts && opts.items) ? opts.items : []).forEach(it => { if (it && typeof it === 'object' && String(it.ck) === k) it.ck = nk; });
+    const tm = _csKeyed.text[table + '|' + brandId];
+    if (tm) tm.forEach((v, t) => { if (v === k) tm.set(t, nk); });
+  });
+  return moved;
+}
+// Prompt history keeps loaded prompts as plain strings: their key is the loaded row's, by text.
+function csTextKey(table, brandId, text) {
+  const m = _csKeyed.text[table + '|' + brandId];
+  return (m && m.get(String(text == null ? '' : text))) || null;
+}
+/* A list save (notebook, saved versions, reference photos, prompt history): upsert the items that differ
+   from the baseline; delete the items this device removed since it loaded them. Answers null when the
+   list is not on keyed saves, and the caller's old save runs. */
+async function _csKeyedListSave(table, brandId, rows, opts) {
+  if (!brandId) return null;
+  if (!(await csKeyedOn(table, brandId))) { csKeyedMarkLegacy(table, brandId); return null; }
+  let list = Array.isArray(rows) ? rows : [];
+  // rows built before the empty-list probe answered carry no keys: build them again, now with keys
+  if (list.some(r => !r || r.client_key == null || r.client_key === '') && opts && opts.toRow && Array.isArray(opts.items)) list = opts.items.map(opts.toRow);
+  if (list.some(r => !r || r.client_key == null || r.client_key === '')) { csKeyedMarkLegacy(table, brandId); return null; }
+  const base = _csBaseMap(_csBase(table, brandId), opts && opts.toRow);
+  const seen = new Set();
+  let dirty = [];
+  list.forEach(r => {
+    const k = String(r.client_key);
+    if (seen.has(k)) return;
+    seen.add(k);
+    const was = base.get(k);
+    if (!was || _csSig(was) !== _csSig(r)) dirty.push(r);
+  });
+  let gone = [];
+  base.forEach((_, k) => { if (!seen.has(k)) gone.push(k); });
+  const moved = await _csAdoptListKeys(table, brandId, base,
+    dirty.filter(r => base.has(String(r.client_key))).map(r => String(r.client_key)).concat(gone), opts);
+  if (moved.size) {
+    dirty = dirty.map(r => moved.has(String(r.client_key)) ? Object.assign({}, r, { client_key: moved.get(String(r.client_key)) }) : r);
+    gone = gone.map(k => moved.get(k) || k);
+  }
+  for (let i = 0; i < dirty.length; i += 50) {
+    const chunk = dirty.slice(i, i + 50);
+    let res;
+    try { res = await sb.from(table).upsert(chunk, { onConflict: 'brand_id,client_key' }).select('client_key'); }
+    catch (e) { res = { error: e }; }
+    const err = res && res.error;
+    if (err || !Array.isArray(res && res.data) || res.data.length < chunk.length) {
+      console.error(table + ' save failed (nothing was deleted):', err || 'the database wrote fewer rows than were sent');
+      return { ok: false, error: err || new Error('the database refused the save') };
+    }
+    chunk.forEach(r => base.set(String(r.client_key), r));
+  }
+  let kept = 0;
+  for (let i = 0; i < gone.length; i += 50) {
+    const chunk = gone.slice(i, i + 50);
+    let res;
+    try { res = await sb.from(table).delete().eq('brand_id', brandId).in('client_key', chunk).select('client_key'); }
+    catch (e) { res = { error: e }; }
+    if (res && res.error) { console.error(table + ' delete failed (tried again on the next save):', res.error); continue; }
+    const killed = new Set(((res && res.data) || []).map(x => x && String(x.client_key)));
+    const left = chunk.filter(k => !killed.has(k));
+    if (left.length) {
+      // Fewer rows came back: deleted on another device already, or refused (a team member cannot
+      // delete — sql/v658-member-delete.sql). Only a refusal is worth saying.
+      try {
+        const chk = await sb.from(table).select('client_key').eq('brand_id', brandId).in('client_key', left);
+        if (chk && !chk.error && Array.isArray(chk.data)) kept += chk.data.length;
+      } catch (e) {}
+    }
+    chunk.forEach(k => base.delete(k));
+  }
+  if (kept) {
+    try {
+      if (typeof showToast === 'function') showToast('Saved — but ' + kept + ' deleted item' + (kept === 1 ? '' : 's') +
+        " stayed: only the brand owner can delete. It comes back on the next reload.", 8000);
+    } catch (e) {}
+  }
+  return { ok: true, keyed: true, sent: dirty.length, deleted: gone.length - kept };
+}
+// Ideas have no delete button; an idea is removed from the account only when something tombstones it here.
+function csIdeaTombstone(brandId, key) {
+  if (!brandId || key == null || key === '') return;
+  (_csKeyed.tomb[brandId] || (_csKeyed.tomb[brandId] = new Set())).add(String(key));
+}
+/* Give every idea in `state` a key before its rows are built (saveIdeasToDB, at queue time). An object
+   that lost its key (a rewrite that built a new object) takes back an unclaimed key with the same title. */
+function _csEnsureIdeaKeys(brandId) {
+  if (!csKeyedNow('ideas', brandId) || typeof state === 'undefined' || !Array.isArray(state)) return;   // keys only once keyed saves are confirmed
+  const b = _csBase('ideas', brandId);
+  const owner = new Map(), need = [];
+  state.forEach(i => {
+    if (!i || typeof i !== 'object') return;
+    const k = (i.ck != null && i.ck !== '') ? String(i.ck) : '';
+    if (k && (!owner.has(k) || owner.get(k) === i)) { owner.set(k, i); return; }
+    need.push(i);   // no key yet, or a COPY carrying another idea's key: a new idea
+  });
+  if (!need.length) return;
+  const base = _csBaseMap(b, null), free = [];
+  base.forEach((row, k) => { if (!owner.has(k)) free.push(k); });
+  need.forEach(i => {
+    let k = '';
+    const t = String(i.title || '').trim();
+    if (t && free.length) {
+      const j = free.findIndex(fk => String((base.get(fk) || {}).title || '').trim() === t);
+      if (j >= 0) k = free.splice(j, 1)[0];
+    }
+    i.ck = k || csKeyNew('i');
+    owner.set(i.ck, i);
+  });
+}
+/* The ideas save on keyed rows. An idea new to the baseline is upserted whole. A known idea sends only
+   the columns that differ from its baseline, so another device's change to a different column of the
+   same idea (an approval while this device edits the script) survives. Answers null when the brand's
+   ideas are not on keyed saves (the old save runs); throws on a failed write, like the old save. */
+async function _csSaveIdeasKeyed(brandId, rows) {
+  if (!brandId || !Array.isArray(rows) || !rows.length) return null;
+  if (!(await csKeyedOn('ideas', brandId))) {
+    csKeyedMarkLegacy('ideas', brandId);
+    try { Promise.resolve(csKeyedSwitchCheck()).catch(() => {}); } catch (e) {}
+    return null;
+  }
+  const base = _csBaseMap(_csBase('ideas', brandId), null);
+  // Rows built before the empty-library probe answered carry no key: they get one here, and the
+  // ideas take it back by title on the next save (_csEnsureIdeaKeys).
+  // The key made here is written back to the idea, and a second quick save reuses it (the idea's key, else an
+  // unclaimed baseline key with the same title) — never a second key for the same idea.
+  if (rows.some(r => r && (r.client_key == null || r.client_key === ''))) {
+    const sameB = (typeof state !== 'undefined' && Array.isArray(state) && typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id === brandId);
+    const used = new Set(rows.map(r => r && r.client_key).filter(x => x != null && x !== '').map(String));
+    rows = rows.map(r => {
+      if (!r || (r.client_key != null && r.client_key !== '')) return r;
+      const t = String(r.title || '').trim();
+      const it = (sameB && t) ? state.find(x => x && String(x.title || '').trim() === t) : null;
+      let k = (it && it.ck != null && it.ck !== '' && !used.has(String(it.ck))) ? String(it.ck) : '';
+      if (!k && t) base.forEach((row, bk) => { if (!k && !used.has(bk) && String((row && row.title) || '').trim() === t) k = bk; });
+      if (!k) k = csKeyNew('i');
+      used.add(k);
+      if (it && (it.ck == null || it.ck === '')) it.ck = k;
+      return Object.assign({}, r, { client_key: k });
+    });
+  }
+  const strip = r => {
+    const o = Object.assign({}, r);
+    if (globalThis._ideasNoEmphasisCol) delete o.emphasis;
+    if (globalThis._ideasNoGenFlowCol) delete o.gen_flow;
+    if (globalThis._ideasNoPostTypeCol) delete o.post_type;
+    return o;
+  };
+  // The old save's rule for the optional columns: one this database lacks is dropped, never the idea.
+  const send = async (mk) => {
+    let res = null;
+    for (let a = 0; a < 4; a++) {
+      try { res = await mk(); } catch (e) { res = { error: e }; }
+      const err = res && res.error;
+      const lacks = c => !!err && _csNoColumn(err) &&
+        String((err.message || '') + ' ' + (err.details || '')).toLowerCase().indexOf(c) >= 0;
+      if (lacks('emphasis') && !globalThis._ideasNoEmphasisCol) { globalThis._ideasNoEmphasisCol = true; continue; }
+      if (lacks('gen_flow') && !globalThis._ideasNoGenFlowCol) { globalThis._ideasNoGenFlowCol = true; continue; }
+      if (lacks('post_type') && !globalThis._ideasNoPostTypeCol) { globalThis._ideasNoPostTypeCol = true; continue; }
+      return res;
+    }
+    return res;
+  };
+  const seen = new Set(), fresh = [], groups = new Map();
+  rows.forEach(r => {
+    const k = String(r.client_key);
+    if (seen.has(k)) return;
+    seen.add(k);
+    const was = base.get(k);
+    if (!was) { fresh.push(r); return; }
+    const patch = {};
+    new Set(Object.keys(r).concat(Object.keys(was))).forEach(c => {
+      if (c === 'brand_id' || c === 'client_key') return;
+      if (_csSig(r[c]) !== _csSig(was[c])) patch[c] = (c in r) ? r[c] : null;
+    });
+    if (!Object.keys(patch).length) return;
+    const s = _csSig(patch);
+    if (!groups.has(s)) groups.set(s, { patch, rows: [] });
+    groups.get(s).rows.push(r);
+  });
+  // created_at is not sent: the database stamps it on every changed row (sql/saves-v720.sql trigger), so it
+  // stays "when this idea was last saved" by the database clock — what send-daily, fact-pack and the
+  // loader's newest-first order read. first_created_at is never sent, and the trigger keeps it.
+  const misses = [];
+  for (const g of groups.values()) {
+    const keys = g.rows.map(r => String(r.client_key));
+    const res = await send(() => sb.from('ideas').update(strip(g.patch)).eq('brand_id', brandId).in('client_key', keys).select('client_key'));
+    if (res && res.error) throw new Error('ideas save failed: ' + (res.error.message || res.error));
+    const hit = new Set(((res && res.data) || []).map(x => x && String(x.client_key)));
+    g.rows.forEach(r => { if (hit.has(String(r.client_key))) base.set(String(r.client_key), r); else misses.push({ r, patch: g.patch }); });
+  }
+  /* A known idea whose row is gone. Never insert it blind: a tab still on the old save re-inserts the whole
+     library under new keys, and a blind insert would add a second copy (the newest-wins loader would then
+     hide the other device's change). Read the brand's rows with those titles (the old save's identity),
+     take over the newest one's key, and apply ONLY the changed columns to it. No title match = a new row. */
+  if (misses.length) {
+    const titles = [...new Set(misses.map(m => m.r.title).filter(Boolean))];
+    let srv = [];
+    for (let i = 0; i < titles.length; i += 50) {
+      const rr = await sb.from('ideas').select('client_key,title,hook,script,created_at').eq('brand_id', brandId).in('title', titles.slice(i, i + 50));
+      if (rr && rr.error) throw new Error('ideas save failed: ' + (rr.error.message || rr.error));
+      srv = srv.concat((rr && rr.data) || []);
+    }
+    srv.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    const same = (typeof state !== 'undefined' && Array.isArray(state) && typeof currentBrand !== 'undefined' && currentBrand && currentBrand.id === brandId);
+    const bound = new Map();   // key -> the local idea holding it (not the baseline: a refresh may have merged an unbound row in)
+    if (same) state.forEach(x => { if (x && x.ck != null && x.ck !== '') bound.set(String(x.ck), x); });
+    const taken = new Set();
+    let dropped = 0;
+    for (const m of misses) {
+      const k = String(m.r.client_key), mine = bound.get(k) || null, was = base.get(k) || {};
+      // candidates: same title, not held by a DIFFERENT local idea; it must still be this idea — its
+      // last-saved hook or script matches (srv is newest first, so several matches take the newest)
+      const cand = srv.find(s => s && s.client_key != null && s.title === m.r.title && String(s.client_key) !== k &&
+        !taken.has(String(s.client_key)) && (!bound.has(String(s.client_key)) || bound.get(String(s.client_key)) === mine) &&
+        ((was.hook != null && s.hook === was.hook) || (was.script != null && s.script === was.script)));
+      if (!cand) {
+        /* Saved before under a confirmed key and now gone with no matching copy: deleted or replaced on
+           another device. Never inserted again (that would bring back a stale copy, or write over an
+           unrelated idea with the same title). The edit is dropped and the idea leaves this device's list. */
+        base.delete(k);
+        dropped++;
+        if (same && mine) {
+          const si = state.indexOf(mine); if (si >= 0) state.splice(si, 1);
+          try { if (typeof IDEAS !== 'undefined' && Array.isArray(IDEAS) && IDEAS !== state) { const ii = IDEAS.indexOf(mine); if (ii >= 0) IDEAS.splice(ii, 1); } } catch (e) {}
+        }
+        continue;
+      }
+      const nk = String(cand.client_key);
+      taken.add(nk);
+      const res = await send(() => sb.from('ideas').update(strip(m.patch)).eq('brand_id', brandId).eq('client_key', nk).select('client_key'));
+      if (res && res.error) throw new Error('ideas save failed: ' + (res.error.message || res.error));
+      if (!Array.isArray(res && res.data) || !res.data.length) { base.delete(k); dropped++; continue; }
+      base.delete(k);
+      base.set(nk, Object.assign({}, m.r, { client_key: nk }));
+      if (mine) mine.ck = nk;
+    }
+    if (dropped) {
+      try { if (same && typeof reindexIdeas === 'function') reindexIdeas(); } catch (e) {}
+      try { if (typeof showToast === 'function') showToast('That idea changed on another device — refreshed.', 6000); } catch (e) {}
+      try { if (same && typeof csReloadIdeasMerge === 'function') Promise.resolve(csReloadIdeasMerge()).catch(() => {}); } catch (e) {}
+    }
+  }
+  for (let i = 0; i < fresh.length; i += 50) {
+    const chunk = fresh.slice(i, i + 50);
+    const res = await send(() => sb.from('ideas').upsert(chunk.map(strip), { onConflict: 'brand_id,client_key' }).select('client_key'));
+    if (res && res.error) throw new Error('ideas save failed: ' + (res.error.message || res.error));
+    const n = Array.isArray(res && res.data) ? res.data.length : 0;
+    if (n < chunk.length) throw new Error((chunk.length - n) + ' idea(s) failed to save: the database refused them');
+    chunk.forEach(r => base.set(String(r.client_key), r));
+  }
+  const tomb = _csKeyed.tomb[brandId];
+  if (tomb && tomb.size) {
+    const ks = Array.from(tomb);
+    let res;
+    try { res = await sb.from('ideas').delete().eq('brand_id', brandId).in('client_key', ks).select('client_key'); }
+    catch (e) { res = { error: e }; }
+    if (res && res.error) console.error('ideas delete failed (tried again on the next save):', res.error);
+    else ks.forEach(k => { tomb.delete(k); base.delete(k); });
+  }
+  return true;
+}
+/* This tab loaded before sql/saves-v720.sql ran, so it is on the old save, which re-keys whole lists. Once
+   the columns exist it offers the app's own "New version ready — Refresh" banner (it waits while a take
+   is in hand), so the tab reloads onto the keyed save. At most one check every 5 minutes. */
+let _csSwitchAt = 0, _csSwitchSeen = false;
+async function csKeyedSwitchCheck() {
+  if (_csSwitchSeen || typeof currentBrand === 'undefined' || !currentBrand || !currentBrand.id) return false;
+  const bid = currentBrand.id, b = _csBase('ideas', bid);
+  if (!((b && b.keyed === false) || _csKeyed.legacy['ideas|' + bid])) return false;
+  if (Date.now() - _csSwitchAt < 300000) return false;
+  _csSwitchAt = Date.now();
+  if (_csKeyed.probe.ideas !== true) delete _csKeyed.probe.ideas;   // ask again: the answer may have changed
+  if (!(await csKeyedProbe('ideas'))) return false;
+  _csSwitchSeen = true;
+  try { if (typeof window !== 'undefined' && window && typeof window._showUpdateBanner === 'function') window._showUpdateBanner(); } catch (e) {}
+  return true;
+}
+try {
+  if (typeof document !== 'undefined' && document && document.addEventListener)
+    document.addEventListener('visibilitychange', function () { try { if (!document.hidden) csKeyedSwitchCheck(); } catch (e) {} });
+} catch (e) {}
+/* The merge-reload (csReloadIdeasMerge) on keyed rows: a column the server changed takes the server's
+   value, unless this device changed the same column since it loaded it (its edit stays and is sent
+   by the next save). Answers how many ideas changed. */
+function _csMergeServerIdeas(brandId, loaded) {
+  if (!csKeyedNow('ideas', brandId) || !Array.isArray(loaded) || typeof state === 'undefined' || !Array.isArray(state)) return 0;
+  const base = _csBaseMap(_csBase('ideas', brandId), null);
+  const srvRows = _buildIdeaRows(brandId, loaded, true);
+  const byKey = new Map();
+  state.forEach(x => { if (x && x.ck != null && x.ck !== '') byKey.set(String(x.ck), x); });
+  // local ideas whose row is gone from the server (a tab on the old save re-inserted it under a new key), by title
+  const srvKeys = new Set(loaded.map(it => (it && it.ck != null) ? String(it.ck) : '').filter(Boolean));
+  const orphans = new Map();
+  state.forEach(x => { if (x && x.ck != null && x.ck !== '' && !srvKeys.has(String(x.ck))) orphans.set(String(x.title || '').trim(), x); });
+  let updated = 0;
+  loaded.forEach((it, i) => {
+    const k = (it && it.ck != null) ? String(it.ck) : '';
+    if (!k) return;
+    const srv = srvRows[i];
+    let was = base.get(k), L = byKey.get(k);
+    if (!L) {
+      // the same idea under its new key: bind it here (the local idea and its snapshot take the server key),
+      // so a later save updates that row instead of missing — only when its last-saved hook or script matches
+      const o = orphans.get(String(it.title || '').trim()), snap = o && base.get(String(o.ck));
+      if (o && snap && ((snap.hook != null && snap.hook === srv.hook) || (snap.script != null && snap.script === srv.script))) {
+        orphans.delete(String(it.title || '').trim());
+        base.delete(String(o.ck));
+        was = Object.assign({}, snap, { client_key: k });
+        base.set(k, was);
+        o.ck = k; byKey.set(k, o); L = o;
+      } else { if (!was) base.set(k, srv); return; }
+    }
+    if (!was) return;   // this device wrote it whole and its save has not come back: that save decides
+    const mine = _buildIdeaRows(brandId, [L], true)[0];
+    const next = Object.assign({}, was);
+    let ch = false;
+    Object.keys(CS_IDEA_COLS).forEach(c => {
+      if (_csSig(srv[c]) === _csSig(was[c])) return;    // nothing new on the server
+      if (_csSig(mine[c]) !== _csSig(was[c])) return;   // changed here too: this device's edit stays
+      L[CS_IDEA_COLS[c]] = it[CS_IDEA_COLS[c]];
+      if (srv[c] === undefined) delete next[c]; else next[c] = srv[c];
+      ch = true;
+    });
+    if (ch) { if (it._rowAt) L._rowAt = it._rowAt; base.set(k, next); updated++; }
+  });
+  return updated;
+}
+/* Brand row: the baseline is this device's own view (settingsToBrand) at load and after each save. A
+   save sends only the columns that differ from it, so two devices editing different fields both keep
+   theirs. voice_extra is still merged key by key with what is stored (mergeVoiceExtra). */
+function csBrandBaseSet(brandId, row) {
+  if (brandId && row && typeof row === 'object') _csKeyed.brand[brandId] = _csClone(row);
+}
+function csBrandBaseGet(brandId) {
+  return (brandId && _csKeyed.brand[brandId]) || null;
+}
+function csBrandPatch(brandId, data) {
+  const b = csBrandBaseGet(brandId);
+  if (!b || !data || typeof data !== 'object') return null;
+  const out = {};
+  Object.keys(data).forEach(c => {
+    if (c === 'user_id') return;
+    if (c === 'updated_at' || _csSig(data[c]) !== _csSig(b[c])) out[c] = data[c];
+  });
+  return out;
+}
+/* Bookmarks live in ONE JSON row ("__bookmarks__"). A save merges three copies by id — what this device
+   loaded or last saved (base), what it has now (mine), what is stored now (theirs) — so a category or
+   entry added, edited or removed on another device is kept, and only this device's own changes win. */
+function csMerge3(base, mine, theirs, mergeItem) {
+  const idOf = x => (x && typeof x === 'object' && x.id != null) ? 'i:' + String(x.id) : 's:' + _csSig(x);
+  const B = new Map((base || []).map(x => [idOf(x), x]));
+  const M = new Map((mine || []).map(x => [idOf(x), x]));
+  const out = [], used = new Set();
+  (theirs || []).forEach(t => {
+    const id = idOf(t);
+    if (used.has(id)) return;
+    used.add(id);
+    const m = M.get(id), b = B.get(id);
+    if (!m) { if (!b) out.push(t); return; }          // new elsewhere: kept; removed here: dropped
+    out.push(mergeItem ? mergeItem(b, m, t) : (_csSig(m) !== _csSig(b) ? m : t));
+  });
+  (mine || []).forEach(m => {
+    const id = idOf(m);
+    if (used.has(id)) return;
+    used.add(id);
+    if (!B.has(id)) out.push(m);                     // new here; one this device had is removed elsewhere
+  });
+  return out;
+}
+function csMerge3Fields(b, m, t, special) {
+  const bb = (b && typeof b === 'object') ? b : {}, mm = (m && typeof m === 'object') ? m : {};
+  const out = Object.assign({}, (t && typeof t === 'object') ? t : {});
+  new Set(Object.keys(mm).concat(Object.keys(bb))).forEach(k => {
+    if (special && special[k]) { out[k] = special[k](bb[k], mm[k], out[k]); return; }
+    if (_csSig(mm[k]) === _csSig(bb[k])) return;       // not changed here: the stored value stays
+    if (mm[k] === undefined) delete out[k]; else out[k] = mm[k];
+  });
+  return out;
+}
+function _csMergeBookmarks(base, mine, theirs) {
+  const entries = (be, me, te) => csMerge3(be || [], me || [], te || [], (x, y, z) => csMerge3Fields(x, y, z));
+  return csMerge3(base || [], mine || [], theirs || [], (b, m, t) => csMerge3Fields(b, m, t, { entries }));
+}
+function csBookmarksLoaded(brandId, doc) {
+  if (brandId) _csKeyed.bm[brandId] = { doc: _csClone(Array.isArray(doc) ? doc : []) };
+}
+// Answers null when this device never loaded the bookmarks (the old save runs).
+function _csBookmarksMergeSave(brandId, mine) {
+  const st = brandId && _csKeyed.bm[brandId];
+  if (!st) return null;
+  const mineNow = _csClone(Array.isArray(mine) ? mine : []);
+  const newRow = { brand_id: brandId, name: '__bookmarks__', platform: '', url: '' };   // pinned to this brand before any await
+  const work = async () => {
+    let r;
+    try { r = await sb.from('competitors').select('id,notes,created_at').eq('brand_id', brandId).eq('name', '__bookmarks__'); }
+    catch (e) { r = { error: e }; }
+    if (!r || r.error || !Array.isArray(r.data)) return { ok: false, error: (r && r.error) || new Error('could not read the stored bookmarks') };
+    const newest = r.data.slice().sort((a, b) =>
+      (Date.parse(b.created_at || 0) || 0) - (Date.parse(a.created_at || 0) || 0))[0] || null;
+    let theirs = [];
+    if (newest) { try { theirs = JSON.parse(newest.notes); } catch (e) { theirs = st.doc; } }
+    if (!Array.isArray(theirs)) theirs = st.doc;
+    const merged = _csMergeBookmarks(st.doc, mineNow, theirs);
+    const notes = JSON.stringify(merged);
+    let w;
+    try {
+      w = (newest && newest.id != null)
+        ? await sb.from('competitors').update({ notes }).eq('brand_id', brandId).eq('id', newest.id).select('id')
+        : await sb.from('competitors').insert(Object.assign({}, newRow, { notes })).select('id');
+    } catch (e) { w = { error: e }; }
+    if (!w || w.error || !Array.isArray(w.data) || !w.data.length)
+      return { ok: false, error: (w && w.error) || new Error('the database refused the bookmarks save') };
+    st.doc = mineNow;   // this device's own view: what another device adds stays "theirs" on the next save
+    return { ok: true, merged: true };
+  };
+  const prev = _csKeyed.bmChain[brandId] || Promise.resolve();
+  const run = prev.then(work, work);
+  _csKeyed.bmChain[brandId] = run.then(function () {}, function () {});
+  return run;
+}
+/* ═══════════════════ end v720 ═══════════════════ */
+
 async function saveRemixesToDB() {
   if (!currentBrand) return;
   // Refuse to overwrite the database with a list that never loaded.
@@ -9004,19 +9602,28 @@ async function saveRemixesToDB() {
   // The whole object goes in remixed_text as JSON because the rendered content lives across six
   // fields and the table has one text column for it; the two genuinely-source columns are mapped
   // properly so the row stays readable on its own.
-  const rows = remixes.map(r => ({
-    brand_id: currentBrand.id,
-    source_type: String(r.platform || r.sourceType || r.source_type || ''),
-    source_url: String(r.postUrl || r.sourceUrl || r.source_url || ''),
-    source_text: String(r.inputDescription || r.sourceText || r.source_text || ''),
-    remixed_text: (() => { try { return JSON.stringify(r); } catch (e) { return String(r.remixedText || r.text || ''); } })(),
-    created_at: safeIso(r.createdAt),
-  }));
-  return _replaceBrandRows('remixes', currentBrand.id, rows);
+  const _rxBid = currentBrand.id;
+  const toRow = r => {
+    // v720 — the key also rides inside the JSON, and a remix gets one fixed time (or every save would see it changed)
+    const _ck = (typeof csItemKey === 'function') ? csItemKey(r, 'rx', 'remixes', _rxBid) : null;
+    if (_ck && r.createdAt == null) r.createdAt = Date.now();
+    return {
+      brand_id: _rxBid,
+      ...(_ck ? { client_key: _ck } : {}),
+      source_type: String(r.platform || r.sourceType || r.source_type || ''),
+      source_url: String(r.postUrl || r.sourceUrl || r.source_url || ''),
+      source_text: String(r.inputDescription || r.sourceText || r.source_text || ''),
+      remixed_text: (() => { try { return JSON.stringify(r); } catch (e) { return String(r.remixedText || r.text || ''); } })(),
+      created_at: safeIso(r.createdAt),
+    };
+  };
+  const rows = remixes.map(toRow);
+  return _replaceBrandRows('remixes', _rxBid, rows, { keyed: true, toRow, items: remixes });
 }
 
 async function loadRemixesFromDB() {
   if (!currentBrand) return [];
+  const _bid = currentBrand.id;   // v720: the baseline is recorded for the brand this read was for
   const { data, error } = await sb.from('remixes').select('*').eq('brand_id', currentBrand.id).order('created_at', { ascending: false });
   // THROW, never []. A transient read failure that returned [] emptied the in-memory list,
   // and the very next save wrote that emptiness over the real rows.
@@ -9026,7 +9633,7 @@ async function loadRemixesFromDB() {
   // empty and thrown away. Rows written before this fix have an empty remixed_text and cannot be
   // recovered (the content was never sent); they degrade to the legacy shape and are filtered out
   // exactly as before, which is correct — there is nothing in them to show.
-  return (data || []).map(r => {
+  const _out = (data || []).map(r => {
     let o = null;
     try { if (r.remixed_text && String(r.remixed_text).charAt(0) === '{') o = JSON.parse(r.remixed_text); } catch (e) {}
     if (o && typeof o === 'object') {
@@ -9035,26 +9642,35 @@ async function loadRemixesFromDB() {
         postUrl: o.postUrl || r.source_url || '',
         inputDescription: o.inputDescription || r.source_text || '',
         createdAt: new Date(r.created_at).getTime(),
-      });
+      }, (r.client_key != null && r.client_key !== '') ? { ck: String(r.client_key) } : {});
     }
     return {
       sourceType: r.source_type, sourceUrl: r.source_url,
       sourceText: r.source_text, remixedText: r.remixed_text,
       text: r.remixed_text, createdAt: new Date(r.created_at).getTime(),
+      ...((r.client_key != null && r.client_key !== '') ? { ck: String(r.client_key) } : {}),
     };
   });
+  try { if (typeof csBaseLoaded === 'function') csBaseLoaded('remixes', _bid, data, _out); } catch (e) {}   // v720
+  return _out;
 }
 
 async function saveProductRefsToDB() {
   if (!currentBrand) return;
   // Refuse to overwrite the database with a list that never loaded.
   if (!_listLoaded('productRefs')) { _warnListNotSaved('product references'); return { ok: false, error: new Error('product references were never loaded') }; }
-  const rows = productRefs.map(r => ({
-    brand_id: currentBrand.id,
-    name: String(r.name || ''),
-    data_url: r.thumb || r.dataUrl || r.data_url || '',
-  }));
-  return _replaceBrandRows('product_refs', currentBrand.id, rows);
+  const _prBid = currentBrand.id;
+  const toRow = r => {
+    const _ck = (typeof csItemKey === 'function') ? csItemKey(r, 'pr', 'product_refs', _prBid) : null;   // v720
+    return {
+      brand_id: _prBid,
+      ...(_ck ? { client_key: _ck } : {}),
+      name: String(r.name || ''),
+      data_url: r.thumb || r.dataUrl || r.data_url || '',
+    };
+  };
+  const rows = productRefs.map(toRow);
+  return _replaceBrandRows('product_refs', _prBid, rows, { keyed: true, toRow, items: productRefs });
 }
 
 async function loadProductRefsFromDB() {
@@ -9062,15 +9678,24 @@ async function loadProductRefsFromDB() {
   // v663: ordered, like every other list loader. Unordered, PostgREST returns the OLDEST rows and
   // truncates at db-max-rows — and _replaceBrandRows then deletes what it did not read back, so an
   // unordered read is the dangerous direction here, not just an incomplete one.
+  const _bid = currentBrand.id;   // v720
   const { data, error } = await sb.from('product_refs').select('*').eq('brand_id', currentBrand.id).order('created_at', { ascending: false });
   if (error) { console.error('Product refs load error:', error); throw new Error(error.message || 'product_refs load failed'); }
-  return (data || []).map(r => ({ name: r.name, thumb: r.data_url }));
+  const _out = (data || []).map(r => ({ name: r.name, thumb: r.data_url, ...((r.client_key != null && r.client_key !== '') ? { ck: String(r.client_key) } : {}) }));
+  try { if (typeof csBaseLoaded === 'function') csBaseLoaded('product_refs', _bid, data, _out); } catch (e) {}   // v720
+  return _out;
 }
 
 async function saveBookmarksToDB() {
   if (!currentBrand) return;
   // Refuse to overwrite the database with a list that never loaded.
   if (!_listLoaded('bookmarks')) { _warnListNotSaved('bookmarks'); return { ok: false, error: new Error('bookmarks were never loaded') }; }
+  // v720 — merged by id with what is stored, so another device's bookmarks are never written over
+  // (_csBookmarksMergeSave); null = never loaded here, and the old whole-list save below runs
+  if (typeof _csBookmarksMergeSave === 'function') {
+    const _m = _csBookmarksMergeSave(currentBrand.id, bookmarkCategories);   // no await here: the old save below must not run after one
+    if (_m) return _m;
+  }
   // Store entire bookmarkCategories as JSON in a single competitor row.
   // Scoped to name='__bookmarks__': the old unscoped delete also wiped any legacy
   // per-competitor rows that loadBookmarksFromDB still migrates from.
@@ -9086,6 +9711,7 @@ async function saveBookmarksToDB() {
 
 async function loadBookmarksFromDB() {
   if (!currentBrand) return [];
+  const _bid = currentBrand.id;   // v720
   // No .limit(1): write-before-delete can leave the superseded row alongside the new one for
   // a moment, and an unordered limit(1) could hand back the STALE copy — which the next save
   // would then write back as truth. Take every row and keep the newest.
@@ -9100,29 +9726,45 @@ async function loadBookmarksFromDB() {
       const entries = oldData.map(c => ({ id: bmId(), name: c.name, links: c.url ? { web: c.url } : {} }));
       return entries.length ? [{ id: bmId(), name: 'Competitors', entries }] : [];
     }
+    try { if (typeof csBookmarksLoaded === 'function') csBookmarksLoaded(_bid, []); } catch (e) {}   // v720
     return [];
   }
   const newest = data.slice().sort((a, b) =>
     (Date.parse(b.created_at || 0) || 0) - (Date.parse(a.created_at || 0) || 0))[0] || data[0];
-  try { return JSON.parse(newest.notes) || []; } catch(e) { return []; }
+  let _doc = [];
+  try { _doc = JSON.parse(newest.notes) || []; } catch(e) { _doc = []; }
+  try { if (typeof csBookmarksLoaded === 'function') csBookmarksLoaded(_bid, _doc); } catch (e) {}   // v720: the merge baseline
+  return _doc;
 }
 
 async function savePromptHistoryToDB() {
   if (!currentBrand) return;
   // Refuse to overwrite the database with a list that never loaded.
   if (!_listLoaded('promptHistory')) { _warnListNotSaved('prompt history'); return { ok: false, error: new Error('prompt history was never loaded') }; }
-  const rows = promptHistory.map(p => ({
-    brand_id: currentBrand.id,
-    prompt: typeof p === 'string' ? p : (p && p.prompt) || '',
-  }));
-  return _replaceBrandRows('prompt_history', currentBrand.id, rows);
+  const _phBid = currentBrand.id;
+  const toRow = p => {
+    // v720 — a loaded prompt is a plain string: its key is the loaded row's, found by its text
+    const _ck = (typeof p === 'string')
+      ? ((typeof csTextKey === 'function') ? csTextKey('prompt_history', _phBid, p) : null)
+      : ((typeof csItemKey === 'function') ? csItemKey(p, 'ph', 'prompt_history', _phBid) : null);
+    return {
+      brand_id: _phBid,
+      ...(_ck ? { client_key: _ck } : {}),
+      prompt: typeof p === 'string' ? p : (p && p.prompt) || '',
+    };
+  };
+  const rows = promptHistory.map(toRow);
+  return _replaceBrandRows('prompt_history', _phBid, rows, { keyed: true, toRow, items: promptHistory });
 }
 
 async function loadPromptHistoryFromDB() {
   if (!currentBrand) return [];
+  const _bid = currentBrand.id;   // v720
   const { data, error } = await sb.from('prompt_history').select('*').eq('brand_id', currentBrand.id).order('created_at', { ascending: false });
   if (error) { console.error('Prompt history load error:', error); throw new Error(error.message || 'prompt_history load failed'); }
-  return (data || []).map(p => p.prompt);
+  const _out = (data || []).map(p => p.prompt);
+  try { if (typeof csBaseLoaded === 'function') csBaseLoaded('prompt_history', _bid, data, _out); } catch (e) {}   // v720
+  return _out;
 }
 
 // Main app init after auth
@@ -9190,6 +9832,7 @@ async function initApp() {
       migrateLegacyLS();               // one-time, non-destructive: seed this brand's namespace from legacy globals
       try { if (typeof loadPAAState === 'function') loadPAAState(); } catch(e) {}   // reload PAA for THIS brand's namespace
       settings = brandToSettings(currentBrand);
+      try { if (typeof csBrandBaseSet === 'function') csBrandBaseSet(currentBrand.id, settingsToBrand()); } catch(e) {}   // v720: the brand save baseline
       try { brandPrefsMigrate(); } catch(e) {}   // v709: one-time device → brand moves (delivery, dismissed news, formatsOff)
       debugLog('initApp: settings loaded, onboarding=' + settings.onboardingComplete);
 
@@ -9330,6 +9973,8 @@ async function csReloadIdeasMerge() {
   try { rows = await loadIdeasFromDB({ union: true }); } catch (e) { return -1; }   // union: never drops a running save's ids
   if (!gate() || !Array.isArray(rows)) return 0;
   reindexIdeas();
+  let _upd = 0;   // v720 — columns another device changed come in, unless this device changed them too
+  try { if (typeof _csMergeServerIdeas === 'function') _upd = _csMergeServerIdeas(currentBrand.id, rows); } catch (e) {}
   const have = new Set(state.map(x => String((x && x.title) || '').toLowerCase().trim()));
   let added = 0;
   rows.forEach(r => {
@@ -9341,7 +9986,8 @@ async function csReloadIdeasMerge() {
     if (typeof IDEAS !== 'undefined' && Array.isArray(IDEAS) && IDEAS !== state) IDEAS.push(idea);
     added++;
   });
-  if (added) { try { renderNav(); } catch (e) {} }
+  if (added || _upd) { try { renderNav(); } catch (e) {} }
+  if (_upd) { try { if (typeof activeView !== 'undefined' && activeView === 'ideas' && typeof renderIdeas === 'function') renderIdeas(); } catch (e) {} }
   return added;
 }
 async function csOpenPushIdeas(brandId) {
@@ -18816,12 +19462,17 @@ async function saveNotebookToDB() {
   // `notebook_<id>` key, and B then rendered A's notebook from cache.
   const _nbBrandId = currentBrand.id;
   const _nbNotes = notebookNotes;
-  const rows = _nbNotes.map(n => ({
-    brand_id: _nbBrandId,
-    text: String(n.text || ''),
-    created_at: safeIso(n.createdAt),
-  }));
-  const res = await _replaceBrandRows('notebook_notes', _nbBrandId, rows);
+  const toRow = n => {
+    const _ck = (typeof csItemKey === 'function') ? csItemKey(n, 'nb', 'notebook_notes', _nbBrandId) : null;   // v720
+    return {
+      brand_id: _nbBrandId,
+      ...(_ck ? { client_key: _ck } : {}),
+      text: String(n.text || ''),
+      created_at: safeIso(n.createdAt),
+    };
+  };
+  const rows = _nbNotes.map(toRow);
+  const res = await _replaceBrandRows('notebook_notes', _nbBrandId, rows, { keyed: true, toRow, items: _nbNotes });
   // Only cache under a REAL brand id — never the shared "notebook_x" bucket (that bled
   // one brand's notes into the next during onboarding). DB is the source of truth anyway.
   try { if (_nbBrandId) localStorage.setItem('notebook_'+_nbBrandId, JSON.stringify(_nbNotes)); } catch(e) {}
@@ -18836,12 +19487,15 @@ async function saveNotebookToDB() {
 }
 async function loadNotebookFromDB() {
   if (!currentBrand || !sb) return [];
+  const _bid = currentBrand.id;   // v720
   const { data, error } = await sb.from('notebook_notes').select('*').eq('brand_id', currentBrand.id).order('created_at', { ascending: false });
   // THROW, never fall back to the cache. A read failure that yielded a list — or [] on a device
   // where the cache does not exist — was treated as the truth, and the very next save wrote that
   // over every real row.
   if (error) { console.error('Notebook load error:', error); throw new Error(error.message || 'notebook load failed'); }
-  return (data || []).map(r => ({ id: r.id, text: r.text, createdAt: r.created_at }));
+  const _out = (data || []).map(r => ({ id: r.id, text: r.text, createdAt: r.created_at, ...((r.client_key != null && r.client_key !== '') ? { ck: String(r.client_key) } : {}) }));
+  try { if (typeof csBaseLoaded === 'function') csBaseLoaded('notebook_notes', _bid, data, _out); } catch (e) {}   // v720
+  return _out;
 }
 
 function nbSaveNote() {
@@ -21437,7 +22091,8 @@ async function ideaRedoRun(id){
       const _keepNs = (typeof typesNewsSource === 'function') ? typesNewsSource(keep.newsSource) : null;
       state[si] = Object.assign({}, _nu, { id: keep.id, status: keep.status||'pending', assignee: keep.assignee||'', sparkSource: !!keep.sparkSource, paaSource: keep.paaSource || false, day: keep.day || getTodayName() },
         _redoType ? { postType: _redoType } : {}, keep.delivery ? { delivery: keep.delivery } : {},
-        keep.belief && !_nu.belief ? { belief: keep.belief } : {});
+        keep.belief && !_nu.belief ? { belief: keep.belief } : {},
+        keep.ck ? { ck: keep.ck } : {}, keep.firstAt ? { firstAt: keep.firstAt } : {});   // v720: the same idea keeps its key
       if (_keepNs) { state[si].newsSource = _keepNs; state[si].caption = typesCaptionWithSource(String(state[si].caption || '').replace(/(?:^|\n)Source: https:\/\/\S+\s*$/, '').replace(/\s+$/, ''), _keepNs); }
       // a new title that clashes with ANOTHER idea gets a suffix (its own old title is free to reuse)
       { const _taken = new Set(state.filter((x, j) => j !== si && x).map(x => String(x.title || '').toLowerCase().trim()));
@@ -21445,7 +22100,7 @@ async function ideaRedoRun(id){
       // Title changed → delete the old title's DB row so it can't reappear as a duplicate on reload.
       try {
         const newTitle = (state[si].title||'').trim();
-        if(currentBrand && typeof sb!=='undefined' && oldTitle && oldTitle!==newTitle){
+        if(currentBrand && typeof sb!=='undefined' && oldTitle && oldTitle!==newTitle && !(typeof csKeyedNow==='function' && csKeyedNow('ideas', currentBrand.id))){   // v720: keyed = updated in place
           // v674: same silent-refusal trap as _dropRenamedIdeaRow — see the note there.
           const { data: _gone, error: _e } = await sb.from('ideas').delete()
             .eq('brand_id', currentBrand.id).eq('title', oldTitle).select('id');
@@ -25117,8 +25772,8 @@ function awChips(i, withType){
   const t = withType ? awType(i) : '', f0 = awFormat(i), f = (t && f0.toLowerCase() === t.toLowerCase()) ? '' : f0;   // a Q&A that is a Q&A: one chip
   return (t ? '<span class="aw-tag">' + awE(t) + '</span>' : '') + (f ? '<span class="aw-tag ghost">' + awE(f) + '</span>' : '');
 }
-// when an idea arrived: this session's freshAt, else the first time this device saw it (saveState's statusAt), else its row time
-function awWhen(i){ return Number(i && i.freshAt) || Number(i && i.statusAt) || Number(i && i._rowAt) || 0; }
+// when an idea arrived: v720 its first_created_at (the real date, when the database has it), else this session's freshAt, else the first time this device saw it (saveState's statusAt), else its row time
+function awWhen(i){ return Number(i && i.firstAt) || Number(i && i.freshAt) || Number(i && i.statusAt) || Number(i && i._rowAt) || 0; }
 function awGroup(t, now){
   if (!t) return 2;
   const n = new Date(now == null ? Date.now() : now), d = new Date(t);

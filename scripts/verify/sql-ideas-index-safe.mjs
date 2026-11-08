@@ -42,6 +42,8 @@ const allSql = files.map(f => stripSqlComments(fs.readFileSync(path.join(sqlDir,
 
 // ── Is the index live in the repo? ──────────────────────────────────────────────────────────────
 const INDEX_LIVE = /create\s+unique\s+index[\s\S]{0,120}?\bon\s+(?:public\s*\.\s*)?ideas\s*\([^)]*\bbrand_id\b[^)]*\btitle\b[^)]*\)/i.test(allSql);
+// v720 — the ideas save upserts on a stable per-idea key instead of the title (sql/saves-v720.sql).
+const KEY_INDEX_LIVE = /create\s+unique\s+index[\s\S]{0,120}?\bon\s+(?:public\s*\.\s*)?ideas\s*\(\s*brand_id\s*,\s*client_key\s*\)/i.test(allSql);
 
 // ── What does app.html do on the ideas write path? ──────────────────────────────────────────────
 const appPath = path.join(root, 'app.html');
@@ -52,6 +54,7 @@ const app = stripComments(fs.readFileSync(appPath, 'utf8'));
 const PLAIN_INSERT = /from\(\s*['"]ideas['"]\s*\)\s*\.\s*insert\s*\(/i.test(app);
 const UPSERT = /from\(\s*['"]ideas['"]\s*\)\s*\.\s*upsert\s*\(/i.test(app);
 const UPSERT_KEYED = /from\(\s*['"]ideas['"]\s*\)\s*\.\s*upsert\s*\([\s\S]{0,200}?onConflict[\s\S]{0,60}?brand_id\s*,\s*title/i.test(app);
+const UPSERT_CK = /from\(\s*['"]ideas['"]\s*\)\s*\.\s*upsert\s*\([\s\S]{0,200}?onConflict[\s\S]{0,60}?brand_id\s*,\s*client_key/i.test(app);
 
 // ── The rule ────────────────────────────────────────────────────────────────────────────────────
 if (INDEX_LIVE && PLAIN_INSERT) {
@@ -61,7 +64,7 @@ if (INDEX_LIVE && PLAIN_INSERT) {
        '— on every approve, mark-done and dismiss. Switch the insert to ' +
        ".upsert(batch, { onConflict: 'brand_id,title' }) FIRST, or comment the index back out.");
 }
-if (UPSERT && !UPSERT_KEYED) {
+if (UPSERT && !UPSERT_KEYED && !UPSERT_CK) {
   fail("app.html upserts ideas but not with onConflict 'brand_id,title' — an upsert with no matching " +
        'unique index falls back to a plain insert and silently reintroduces duplicates');
 }
@@ -69,6 +72,10 @@ if (UPSERT_KEYED && !INDEX_LIVE) {
   fail("app.html upserts ideas with onConflict 'brand_id,title' but no such UNIQUE index exists in sql/** — " +
        'PostgreSQL rejects an ON CONFLICT target with no matching unique index, so every ideas save fails. ' +
        'Enable PART 2 of sql/v657-ideas-dedupe.sql.');
+}
+if (UPSERT_CK && !KEY_INDEX_LIVE) {
+  fail("app.html upserts ideas with onConflict 'brand_id,client_key' but no UNIQUE index on ideas(brand_id, client_key) " +
+       'exists in sql/** — PostgreSQL rejects an ON CONFLICT target with no matching unique index (sql/saves-v720.sql)');
 }
 if (!PLAIN_INSERT && !UPSERT) {
   fail("no ideas write found in app.html (neither .insert nor .upsert on from('ideas')) — the scanner is broken, " +
@@ -104,6 +111,6 @@ if (fails.length) {
   process.exit(1);
 }
 console.log(`ideas unique index ${INDEX_LIVE ? 'ENABLED' : 'held back'}; app.html write path: ` +
-            `${UPSERT_KEYED ? "upsert onConflict 'brand_id,title'" : UPSERT ? 'upsert (unkeyed)' : 'plain insert'} — consistent`);
+            `${UPSERT_KEYED ? "upsert onConflict 'brand_id,title'" : UPSERT_CK ? "upsert onConflict 'brand_id,client_key' (v720) + the old insert" : UPSERT ? 'upsert (unkeyed)' : 'plain insert'} — consistent`);
 console.log('v657-ideas-dedupe.sql archives to the `archive` schema before it deletes');
 console.log('ideas index safety verification passed');

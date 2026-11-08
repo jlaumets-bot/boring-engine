@@ -123,7 +123,9 @@ begin
       -- v693: sql/brand-memory.sql — the cap trigger function (fires as a trigger only).
       ('brand_memory_enforce_cap', array[]::text[]),
       -- v706: sql/fact-pack.sql — keeps brands.fact_pack server-only (fires as a trigger only).
-      ('brands_pin_fact_pack',  array[]::text[])
+      ('brands_pin_fact_pack',  array[]::text[]),
+      -- v720: sql/saves-v720.sql — stamps ideas.created_at / keeps first_created_at (fires as a trigger only).
+      ('ideas_v720_touch',      array[]::text[])
     ) as t(fn, keep)
   loop
     -- Overloads are handled by looping over pg_proc rather than typing a signature:
@@ -201,7 +203,8 @@ with expected(fn, allowed) as (
          ('blind_test_reveal',    array['service_role']),
          ('content_metrics',      array['service_role']),
          ('brand_memory_enforce_cap', array['service_role']),
-         ('brands_pin_fact_pack', array['service_role'])
+         ('brands_pin_fact_pack', array['service_role']),
+         ('ideas_v720_touch',     array['service_role'])
 ),
 fns as (
   select p.oid, p.proname, p.proowner,
@@ -236,6 +239,6 @@ join fns f on f.proname = e.fn
 where not has_function_privilege(r.oid, f.oid, 'EXECUTE')
   -- pin_brand_id / brands_pin_ownership fire as triggers, not as calls; service_role is
   -- granted them for symmetry only, so do not fail if that grant is absent.
-  and not (e.fn in ('pin_brand_id','brands_pin_ownership','brand_limit_for','brands_enforce_limit','brand_memory_enforce_cap','brands_pin_fact_pack'))
+  and not (e.fn in ('pin_brand_id','brands_pin_ownership','brand_limit_for','brands_enforce_limit','brand_memory_enforce_cap','brands_pin_fact_pack','ideas_v720_touch'))
 
 order by 1, 2;
