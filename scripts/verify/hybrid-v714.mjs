@@ -143,11 +143,11 @@ function feedReady() { V('_cf.brandId = "b1"'); c.cfApply(FEED()); }
     ok(/<button type="button" class="hy-paste" id="hyPasteBig" onclick="hyPaste\(\)">[\s\S]*?<span>Paste TikTok link<\/span><\/button>/.test(h), '1 the big round "Paste TikTok link" button (v722 label)');
     ok(/<h2 class="hy-lt">New from your creators<\/h2>/.test(h) && />See all<\/button>/.test(h), '1 "New from your creators" + "See all"');
     const rows = (h.match(/class="hy-row"/g) || []).length;
-    ok(rows === 4 && btns === 1 + 1 + 4 + 1 && /<button type="button" class="hy-add" onclick="hyAddOpen\(\)">\+ Add creator<\/button>/.test(h), '1 four rows (5 videos) + "+ Add creator" (3 of 5 followed): the only buttons (' + btns + ')');
+    ok(rows === 4 && btns === 1 + 1 + 4 + 3 + 1 && /<button type="button" class="hy-add" onclick="hyAddOpen\(\)">\+ Add creator<\/button>/.test(h), '1 four rows (5 videos) + 3 creator rows (v723) + "+ Add creator" (3 of 5 followed): the only buttons (' + btns + ')');
     ok(h.indexOf('>Today<') > 0 && h.indexOf('>Yesterday<') > h.indexOf('>Today<') && !/>Earlier</.test(h), '1 grouped Today / Yesterday');
     ok(/4\.2× usual/.test(h) && /3\.0× usual/.test(h) && /1\.8× usual/.test(h) && (h.match(/class="hy-dot"/g) || []).length === 3, '1 "N× usual" chips and a "Words ready" dot on the 3 ready rows');
     const allowed = ['Paste TikTok link', 'In TikTok: Share → Copy link, then press here.', 'New from your creators', 'See all', 'Today', 'Yesterday', 'Your first cup decides your whole morning', 'Stop writing SOPs <b>nobody</b> reads',
-      'I quit hustle culture for 90 days', 'Coffee at noon, not at seven', '@morningcup', '@studioops', '@calmfounder', '4.2× usual', '2.1× usual', '3.0× usual', '1.8× usual', 'Words ready', '+ Add creator'];
+      'I quit hustle culture for 90 days', 'Coffee at noon, not at seven', '@morningcup', '@studioops', '@calmfounder', '4.2× usual', '2.1× usual', '3.0× usual', '1.8× usual', 'Words ready', '+ Add creator', 'Your creators', '3 of 5', 'M', 'S', 'C'];   // v723: the followed creators are listed
     let rest = text; for (const a of allowed.sort((x, y) => y.length - x.length)) rest = rest.split(a).join(' ');
     ok(rest.replace(/\s+/g, '') === '', '1 no other text on the start screen (left over: "' + rest.trim() + '")');
     ok(els.hyBar.hidden === true && els.hyHint.textContent === '' && els.hyNewBtn.hidden === true && els.hyIn.getAttribute('placeholder') === 'Paste a link or type an idea…',

@@ -2,6 +2,14 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+### v723 — "i cant add creators" (2026-11-13)
+- Phone start screen now LISTS followed creators ("Your creators", N of 5, one 52px row per @handle; press → Creators manager). Before, adding one changed nothing on screen. `hyFollowHtml` in app.html, `.hy-cr*` in clean.css.
+- Adding shows a toast "Added @handle" (`hyAddCreator`).
+- `cfCall` sends `tzOffsetMin`, so retry times show in the user's clock, not UTC.
+- api/creator-feed.js: `authFailed(why)` — when Apify refuses our key (401/403) the user sees MSG.feedOffline ("offline on our side… your creators are saved"), never "Try again after HH:MM".
+- Root cause of the feed error on 2026-11-13: Apify answered 401 "User was not found or authentication token is not valid" — APIFY_API_TOKEN in Vercel must be replaced by the owner.
+- Gates: scripts/verify/creator-add-v723.mjs (browser, phone); creator-feed-v711.mjs section 16 (server).
+
 ## ▶▶ 2026-11-08 — v722. GROK-STYLE LANDING + free public transcript preview + paste-button copy + sign-up hand-over.
 Mockups: cloud /mnt/user-data/outputs/design-options/landing/. Contract .unlazy/landing/CONTRACT.md.
 - index.html: first screen = h1 + sub-line + BIG paste box + 4 tiny steps; after paste → /api/try-transcript → "Here's what they

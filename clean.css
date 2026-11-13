@@ -2174,6 +2174,14 @@ body.hy-has-bar[data-cs-view="create"]:not(.hy-classic) .mascot-wrap { bottom: c
 .hy-w { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .hy-dot { display: inline-block; width: 7px; height: 7px; border-radius: 4px; background: var(--cs-ok); flex: none; }
 .hy-add { min-height: 44px; margin-top: 2px; padding: 0 2px; border: 0; background: none; font: inherit; font-size: 15px; font-weight: 500; color: var(--cs-muted); cursor: pointer; }
+.hy-crh { margin-top: 20px; }
+.hy-of { font-size: 13px; color: var(--cs-muted); }
+.hy-crl { display: flex; flex-direction: column; gap: 2px; }
+.hy-cr { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 6px 4px; border: 0; border-radius: 12px; background: none; font: inherit; font-size: 16px; color: var(--cs-text); text-align: left; cursor: pointer; }
+.hy-cr:hover { background: var(--cs-hover); }
+.hy-cr:focus-visible { outline: 2px solid var(--cs-text); outline-offset: 2px; }
+.hy-cav { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 18px; background: var(--cs-chip); font-size: 15px; font-weight: 600; }
+.hy-ch { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hy-add:hover { color: var(--cs-text); }
 .hy-empty { padding: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--cs-muted); }
 .hy-addf { display: flex; align-items: center; gap: 8px; margin-top: 8px; }

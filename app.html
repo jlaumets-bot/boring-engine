@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v722';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v723';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -24897,6 +24897,7 @@ async function cfCall(action, videoId){
   const brandId = (currentBrand && currentBrand.id) || '';
   if (!brandId) { const e0 = new Error('Pick a brand first.'); e0.code = 'no_brand'; throw e0; }
   const body = { brandId: brandId, action: action };
+  try { body.tzOffsetMin = new Date().getTimezoneOffset(); } catch (e) {}   // v723: retry times in YOUR clock, not UTC
   if (videoId != null) body.videoId = String(videoId);
   const fb = action === 'transcript' ? "Couldn't get the words from that TikTok — try again in a minute." : "Couldn't load your creators' new posts — try again in a minute.";
   let resp;
@@ -25251,23 +25252,29 @@ function hyStartHtml(){
 function hyFollowCount(){ try { return cfFollowedHandles(null).length; } catch (e) { return 0; } }
 function hyFollowHtml(){
   try { if (typeof listLoadFailed === 'function' && listLoadFailed('bookmarks')) return ''; } catch (e) {}
-  const n = hyFollowCount();
-  if (n >= CF_MAX_CREATORS) return '';
+  // v723: the phone start screen LISTS who you follow (before, adding one changed nothing on screen — owner 2026-11-13 "i cant add creators")
+  let hs = []; try { hs = cfFollowedHandles(null).slice(0, CF_MAX_CREATORS); } catch (e) { hs = []; }
+  const n = hs.length;
+  const list = n ? '<div class="hy-lh hy-crh"><h2 class="hy-lt">Your creators</h2><span class="hy-of">' + n + ' of ' + CF_MAX_CREATORS + '</span></div>'
+    + '<div class="hy-crl">' + hs.map(x => '<button type="button" class="hy-cr" onclick="toggleBookmarkBar()"><span class="hy-cav" aria-hidden="true">' + hyE(x.charAt(0).toUpperCase()) + '</span><span class="hy-ch">@' + hyE(x) + '</span></button>').join('') + '</div>' : '';
+  if (n >= CF_MAX_CREATORS) return list;
   const add = _hy.adding
     ? '<form class="hy-addf" onsubmit="event.preventDefault();hyAddCreator();"><label for="hyAddLink" class="cs-sr">TikTok profile link</label>'
       + '<input type="text" class="hy-addin" id="hyAddLink" placeholder="tiktok.com/@name" autocomplete="off" enterkeyhint="done" oninput="_hy.addVal=this.value">'
       + '<button type="submit" class="hy-addgo">Add</button><button type="button" class="hy-addx" aria-label="Cancel" onclick="hyAddClose()">\u00d7</button></form>'
       + '<div class="hy-adderr" id="hyAddErr" role="alert">' + hyE(_hy.addErr) + '</div>'
     : '<button type="button" class="hy-add" onclick="hyAddOpen()">+ Add creator</button>';
-  return (n ? '' : '<div class="hy-empty">Follow up to 5 TikTok creators to see their new videos here</div>') + add;
+  return list + (n ? '' : '<div class="hy-empty">Follow up to 5 TikTok creators to see their new videos here</div>') + add;
 }
 function hyAddOpen(){ _hy.adding = true; _hy.addVal = ''; _hy.addErr = ''; hyRender(); try { const f = hyEl('hyAddLink'); if (f) f.focus(); } catch (e) {} return true; }
 function hyAddClose(){ _hy.adding = false; _hy.addErr = ''; hyRender(); return true; }
 function hyAddCreator(){
+  let before = []; try { before = cfFollowedHandles(null); } catch (e) {}
   const okAdd = fpAdd('hyAdd');
   if (!okAdd) { const er = hyEl('hyAddErr'); _hy.addErr = er ? String(er.textContent || '') : ''; return false; }
   _hy.adding = false; _hy.addVal = ''; _hy.addErr = '';
   hyRender();
+  try { const nw = cfFollowedHandles(null).filter(h => before.indexOf(h) < 0); showToast(nw.length ? 'Added @' + nw[0] : 'Added'); } catch (e) {}   // v723: say it worked
   try { cfRefresh(); } catch (e) {}   // their videos: the feed's own refresh (server-guarded)
   return true;
 }

@@ -27,6 +27,7 @@ setTimeout(() => { console.log('FAIL: wall clock (60s) exceeded'); process.exit(
 let finished = false; process.on('exit', (code) => { if (!finished && code === 0) { console.log('FAIL: the gate ended before all checks ran'); process.exitCode = 1; } });
 let fail = 0; const ok = (c, m) => { if (!c) { console.log('FAIL:', m); fail++; } else console.log('ok:', m); };
 const J = v => JSON.stringify(v);
+const noTz = (b) => { const o = Object.assign({}, b); delete o.tzOffsetMin; return o; };   // v723: tzOffsetMin rides along
 const grab = n => {
   let i = html.indexOf('\nfunction ' + n + '('); if (i < 0) i = html.indexOf('\nasync function ' + n + '(');
   if (i < 0) throw new Error('no ' + n + ' in app.html');
@@ -134,7 +135,7 @@ const tt = (i) => ({ id: 'e' + i, name: 'C' + i, links: { tt: 'https://www.tikto
       '1 the list is the very first thing in Remix, above the paste box and the Step 1 card'); }
   resetFeed(); calls = []; route = FEED();
   c.switchView('create'); await tick();
-  ok(feedCalls().length === 1 && feedCalls('list').length === 1 && J(feedCalls()[0].body) === J({ brandId: 'brand-1', action: 'list' }), '1 opening Remix sends ONE {brandId, action:"list"} (' + J(calls.map(x => x.body)) + ')');
+  ok(feedCalls().length === 1 && feedCalls('list').length === 1 && J(noTz(feedCalls()[0].body)) === J({ brandId: 'brand-1', action: 'list' }) && Number.isFinite(feedCalls()[0].body.tzOffsetMin), '1 opening Remix sends ONE {brandId, action:"list"} (' + J(calls.map(x => x.body)) + ')');
   c.renderCreate(); c.renderCreate(); vm.runInContext('cfRender(); cfRender();', c); c.switchView('create'); await tick();
   ok(feedCalls().length === 1, '1 re-renders and switchView("create") while already on Remix do not refire (' + feedCalls().length + ')');
   c.switchView('ideas'); await tick(); ok(feedCalls().length === 1, '1 leaving Remix sends nothing');
@@ -201,7 +202,7 @@ const tt = (i) => ({ id: 'e' + i, name: 'C' + i, links: { tt: 'https://www.tikto
     const t0 = toasts.length;
     const p2 = c.cfPick(idxOf('v3')); await tick();
     ok(toasts.length === t0, '5 a double tap on the busy row is silent (no "wait" toast) — the row itself is the busy guard');
-    ok(feedCalls('transcript').length === 1 && J(feedCalls('transcript')[0].body) === J({ brandId: 'brand-1', action: 'transcript', videoId: 'v3' }), '5 one {action:"transcript", videoId} call (' + J(calls.map(x => x.body)) + ')');
+    ok(feedCalls('transcript').length === 1 && J(noTz(feedCalls('transcript')[0].body)) === J({ brandId: 'brand-1', action: 'transcript', videoId: 'v3' }), '5 one {action:"transcript", videoId} call (' + J(calls.map(x => x.body)) + ')');
     ok(await p2 === false, '5 a double tap is ignored');
     ok(/Getting the words…/.test(rowOf('v3')) && /class="cf-main"[^>]*disabled aria-busy="true"/.test(rowOf('v3')) && /cf-busy/.test(rowOf('v3')), '5 the row shows a busy state and is disabled');
     ok(vm.runInContext('_rxFetching', c) === true, '5 the paste box knows a read is running (one at a time)');
@@ -333,7 +334,7 @@ const tt = (i) => ({ id: 'e' + i, name: 'C' + i, links: { tt: 'https://www.tikto
   resetFeed(); calls = []; route = FEED(); c.switchView('create'); await tick();
   { route = FEED({ note: 'Fresh already — next refresh after 14:05' });
     await c.cfRefresh(); await tick();
-    ok(feedCalls('refresh').length === 1 && J(feedCalls('refresh')[0].body) === J({ brandId: 'brand-1', action: 'refresh' }), '8 Refresh sends {action:"refresh"}');
+    ok(feedCalls('refresh').length === 1 && J(noTz(feedCalls('refresh')[0].body)) === J({ brandId: 'brand-1', action: 'refresh' }), '8 Refresh sends {action:"refresh"}');
     ok(/>Fresh already — next refresh after 14:05</.test(F()) && order().length === 8, '8 and shows the server\'s note');
     route = async () => ({ status: 429, body: { error: 'rate_limited', code: 'rate_limited' } });
     await c.cfRefresh(); await tick();

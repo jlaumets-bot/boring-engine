@@ -584,6 +584,29 @@ let r1;
   } finally { https.request = prevReq; https.get = prevGet; }
 }
 
+// ── 16. v723: Apify refuses OUR key (401/403) — waiting will not fix it, so no "Try again after HH:MM" ──
+{
+  const B12 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  db.comp[B12] = bookmarks(FOLLOWS);
+  const OFF = /offline on our side/;
+  const before = runs();
+  A.onStart = () => ({ status: 401, data: { error: { type: 'user-or-token-not-found', message: 'User was not found or authentication token is not valid' } } });
+  let r = await call({ brandId: B12, action: 'list', tzOffsetMin: -120 });
+  ok(r.statusCode === 502 && OFF.test(r.body.error) && !/Try again after/.test(r.body.error) && runs() === before + 1, '16a no cache + key refused -> the plain "offline" message, no retry time (' + (r.body && r.body.error) + ')');
+  r = await call({ brandId: B12, action: 'refresh', tzOffsetMin: -120 });
+  ok(runs() === before + 1 && r.statusCode === 502 && OFF.test(r.body.error), '16b inside the wait: no new run, still the "offline" message');
+  clock += 31 * MIN;
+  db.state[B12].fetched_at = iso(clock - 30 * HOUR);   // an old cache: the user still sees the last videos, with the honest note
+  A.onStart = () => ({ status: 403, data: null });
+  r = await call({ brandId: B12, action: 'list', tzOffsetMin: -120 });
+  ok(r.statusCode === 200 && OFF.test(JSON.stringify(r.body)) && runs() === before + 2, '16c with a cache + 403 -> 200 with the last videos and the "offline" note');
+  A.onStart = () => ({ status: 402, data: null });
+  clock += 7 * HOUR;
+  r = await call({ brandId: B12, action: 'refresh', tzOffsetMin: -120 });
+  ok(!OFF.test(JSON.stringify(r.body)), '16d other failures (402 out of credits) keep their own message');
+  A.onStart = null;
+}
+
 clearTimeout(WALL);
 console.log(passed + ' passed, ' + failed + ' failed');
 if (failed) { console.log('FAIL: creator-feed-v711'); process.exit(1); }

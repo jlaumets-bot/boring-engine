@@ -81,6 +81,7 @@ const MSG = {
   notTiktokHandle: 'Save their TikTok profile link (tiktok.com/@name) so we can load their videos.',
   apifyFailed: "Couldn't load your creators' videos just now. Try again in a little while.",
   notConfigured: "Creator updates aren't switched on yet.",
+  feedOffline: "The creator feed is offline on our side right now. Your creators are saved — paste a TikTok link for now.",
   transcribeFailed: "Couldn't get the words from that video. Try another one, or open it on TikTok.",
   notFound: 'That video is not in your feed any more. Refresh and try again.',
   fallbackLimit: "We couldn't read this video the quick way, and the backup reader is used up for today. Open it on TikTok and paste the spoken words instead.",
@@ -438,6 +439,8 @@ function clock(t, tz) {
   const hm = String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
   return off == null ? hm + ' UTC' : hm;
 }
+// v723: Apify refused our key (401/403) — waiting will not fix it, so never tell the user "try again after HH:MM"
+function authFailed(why) { return /HTTP 40[13]\b/.test(String(why || '')); }
 function ago(t, now) {
   const m = Math.max(0, Math.round((now - t) / 60000));
   if (m < 2) return 'Updated just now';
@@ -587,6 +590,10 @@ async function run(req, res) {
   }
   if (!pendingRun && inBackoff(state, now)) {
     const retry = clock(ms(state.failed_at) + backoffMs(state), tz);
+    if (authFailed(state.last_error)) {
+      if (!at) return fail(res, 502, 'apify_failed', MSG.feedOffline);
+      return res.status(200).json(buildPayload(f, state, rows, MSG.feedOffline));
+    }
     if (!at) return fail(res, 502, 'apify_failed', "Couldn't load your creators' videos just now. Try again after " + retry + '.');
     return res.status(200).json(buildPayload(f, state, rows, "Couldn't reach TikTok just now — showing your last update. Try again after " + retry + '.'));
   }
@@ -648,6 +655,10 @@ async function run(req, res) {
     if (!out.ok) {
       console.error('creator-feed: pull failed for brand ' + brandId + ' — ' + out.why + (out.keepRun ? ' (run kept for a re-read)' : ''));
       await failedPull(out.why, !!(out.keepRun && out.runId));
+      if (authFailed(out.why)) {
+        if (!at2) return fail(res, 502, 'apify_failed', MSG.feedOffline);
+        return res.status(200).json(buildPayload(f, state, rows, MSG.feedOffline));
+      }
       if (!at2) return fail(res, 502, 'apify_failed', MSG.apifyFailed);
       return res.status(200).json(buildPayload(f, state, rows, "Couldn't reach TikTok just now — showing your last update."));
     }
