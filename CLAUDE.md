@@ -2,6 +2,11 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+### v725 — the shrimp stops popping up by itself (2026-11-13)
+- Removed every self-started shrimp line: the launch pop (brain scan / next brain field — always "Customer Reviews" first), "N ideas waiting — review them in Ideas" (re-fired every launch because its once-a-day memory was in-page), "scripts ready", "review your new ideas", the streak line. Tap / double-tap / long-press still talk.
+- The ONE self-started message: mascotSetupNudge — "Finish your setup for better results." [Finish setup][Later], 12 s after a finished "Make it yours" version, only while the brand brain is incomplete, max once per 3 days per brand (lsGet('setup_nudge_at')). Finish setup → Brand Voice (deep scan if mostly empty, else the first missing field via bvAskField).
+- Gate: scripts/verify/mascot-quiet-v725.mjs.
+
 ### v724 — "My take" highlighted (2026-11-13)
 - The "My take" twist button gets a brighter 1.5px border and bold label (`hy-main`) until something is picked; all six buttons stay. hybrid-v714 gate accepts the extra class.
 

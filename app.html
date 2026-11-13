@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v724';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v725';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -25604,6 +25604,7 @@ async function hyTwist(mode){
     blk.versions.push(v); blk.sel = 0; blk.pendingTwist = false;
     hyKeepRemix(v, mode, t.src);
     try { if (typeof aw2SrcUsed === 'function') aw2SrcUsed(t.src); } catch (e) {}   // v717
+    try { if (typeof window.mascotSetupNudgeSoon === 'function') window.mascotSetupNudgeSoon(); } catch (e) {}   // v725: AFTER a result, never at launch
     return true;
   } catch (e) {
     if (seq !== _hy.seq) return false;
@@ -31578,6 +31579,37 @@ setTimeout(() => {
       return true;
     } catch(e){ return false; }
   }
+  // v725: the ONE message the shrimp starts by itself — after the user has seen a finished version (so "better results"
+  // means something), only while the brand brain is incomplete, at most once per 3 days per brand. "Finish setup" goes
+  // straight to the place needed: the deep scan while the brain is mostly empty, else the first missing field.
+  const SETUP_NUDGE_GAP = 3 * 24 * 3600 * 1000;
+  function mascotSetupNudge(){
+    try {
+      if (!mascotReady || bubbleOpen || isSleeping || (typeof isOnboardingActive === 'function' && isOnboardingActive())) return false;
+      const last = Number((typeof lsGet === 'function' ? lsGet('setup_nudge_at') : null) || 0);
+      if (last && Date.now() - last < SETUP_NUDGE_GAP) return false;
+      const scan = brainNeedsScan();
+      const bq = scan ? null : ((typeof getBrainQuestion === 'function') ? getBrainQuestion() : null);
+      if (!scan && !bq) return false;   // brand brain complete → nothing to say
+      const wrap = document.getElementById('mascotWrap'), text = document.getElementById('mascotText'), actions = document.getElementById('mascotActions');
+      if (!wrap || !text || !actions) return false;
+      if (typeof lsSet === 'function') lsSet('setup_nudge_at', String(Date.now()));
+      const hd = document.getElementById('mascotHeadLabel'); if (hd) hd.textContent = 'Coach';
+      text.innerHTML = 'Finish your setup for better results.<span class="mascot-bubble-powers">A few answers about your brand make every version sound more like you.</span>';
+      actions.innerHTML = '<button class="mascot-bubble-btn primary" id="snGo">Finish setup</button><button class="mascot-bubble-btn" id="snLater">Later</button>';
+      const go = document.getElementById('snGo');
+      if (go) go.addEventListener('click', function(e){ e.stopPropagation(); mascotDismiss();
+        if (scan) _markScanOffered();
+        if (typeof openBrandVoice === 'function') openBrandVoice();
+        if (bq && typeof bvAskField === 'function') { _bqAsked.add(bq.key); setTimeout(function(){ bvAskField(bq.key); }, 220); } });
+      const lt = document.getElementById('snLater'); if (lt) lt.addEventListener('click', function(e){ e.stopPropagation(); mascotDismiss(); });
+      wrap.classList.add('active'); bubbleOpen = true; currentTipId = null;
+      return true;
+    } catch (e) { return false; }
+  }
+  let _snTimer = null;
+  window.mascotSetupNudge = mascotSetupNudge;
+  window.mascotSetupNudgeSoon = function(){ clearTimeout(_snTimer); _snTimer = setTimeout(mascotSetupNudge, 12000); };   // let them read the version first
   function showBrainScanBubble(){
     var wrap=document.getElementById('mascotWrap'), text=document.getElementById('mascotText'), actions=document.getElementById('mascotActions');
     if(!wrap||!text||!actions) return;
@@ -31855,16 +31887,8 @@ setTimeout(() => {
     // Only show each nudge once per day
     if (pipelineCheckDone[checkKey]) return;
 
-    if (total === 0) {
-      mascotSay('Hit Generate to get your first content ideas', 4000);
-      pipelineCheckDone[checkKey] = true;
-    } else if (filming >= 5) {
-      mascotSay(filming + ' scripts ready — open Pipeline to start filming', 4000);
-      pipelineCheckDone[checkKey] = true;
-    } else if (pending > 10) {
-      mascotSay('You have ' + pending + ' ideas waiting — review them in Ideas', 4000);
-      pipelineCheckDone[checkKey] = true;
-    }
+    // v725: no self-started "ideas waiting / scripts ready" lines (they re-fired on every launch); the badge is enough.
+    void pending; void filming; void total; pipelineCheckDone[checkKey] = true;
   }, 60000);
 
   // ---- Generate-without-approve nudge (once per generate) ----
@@ -31877,9 +31901,7 @@ setTimeout(() => {
       lastGenerateTime = Date.now();
       clearTimeout(genNudgeTimer);
       genNudgeTimer = setTimeout(() => {
-        if (Date.now() - lastGenerateTime >= 29000 && !isSleeping) {
-          mascotSay('Scroll down to review your new ideas', 3500);
-        }
+        // v725: no self-started "review your new ideas" line
       }, 30000);
     }
     // Clear nudge timer if user approves
@@ -31899,11 +31921,7 @@ setTimeout(() => {
     streak = (lastDay === yesterday) ? streak + 1 : 1;
     localStorage.setItem('mascot_streak', streak.toString());
     localStorage.setItem('mascot_last_day', today);
-    if (streak >= 3) {
-      setTimeout(() => {
-        if (!bubbleOpen) mascotSay(streak + '-day streak — consistency builds your brand', 4000);
-      }, 6000);
-    }
+    // v725: the streak is still counted, but the shrimp no longer announces it on its own
   }
 
   // ---- Init ----
@@ -31918,15 +31936,8 @@ setTimeout(() => {
       checkStreak();
       setTimeout(() => {
         mascotSyncBadge();
-        // v582: the shrimp POPS the next brain-fill question on its own (so it's not skipped) —
-        // once per launch; the badge stays lit after, and it re-pops next session ("then it reminds").
-        setTimeout(() => {
-          if (bubbleOpen || isSleeping || (typeof isOnboardingActive === 'function' && isOnboardingActive())) return;
-          if (brainNeedsScan()) { showBrainScanBubble(); return; }   // v585: push the deep scan first
-          var _bq = (typeof getBrainQuestion === 'function') ? getBrainQuestion() : null;
-          if (_bq) { _bqAsked.add(_bq.key); showBrainQuestionBubble(_bq); }
-          else { mascotSay("Press me \u2014 I'll tell you what I'm doing back here", 3500); }
-        }, 2200);
+        // v725: NO pop at launch (owner 2026-11-13: "popping up right away … always the same … super annoying").
+        // The one self-started message is mascotSetupNudge, after a finished "Make it yours" version, max once per 3 days.
       }, 1000);
     }, 700);
   }, 2000);
