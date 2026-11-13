@@ -2,6 +2,9 @@
 
 Purpose of this file: so a new chat continues from here instead of starting from zero.
 
+### v724 — "My take" highlighted (2026-11-13)
+- The "My take" twist button gets a brighter 1.5px border and bold label (`hy-main`) until something is picked; all six buttons stay. hybrid-v714 gate accepts the extra class.
+
 ### v723 — "i cant add creators" (2026-11-13)
 - Phone start screen now LISTS followed creators ("Your creators", N of 5, one 52px row per @handle; press → Creators manager). Before, adding one changed nothing on screen. `hyFollowHtml` in app.html, `.hy-cr*` in clean.css.
 - Adding shows a toast "Added @handle" (`hyAddCreator`).

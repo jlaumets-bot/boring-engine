@@ -35,7 +35,7 @@
   try { document.documentElement.dataset.theme = csResolveTheme(); } catch (e) {}
   // the status bar matches from the first paint: #1a1a1a dark, #fbfbfa light (toggleDarkMode keeps it in step)
   try { var _csTc = document.querySelector('meta[name="theme-color"]'); if (_csTc) _csTc.content = csResolveTheme() === 'dark' ? '#1a1a1a' : '#fbfbfa'; } catch (e) {}
-  window.APP_VERSION = 'v723';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
+  window.APP_VERSION = 'v724';   // ← bump alongside sw.js BUILD. Shown in More footer + drives the update prompt.
   /* v687 — THIS BANNER COULD DESTROY A FINISHED VIDEO. The service worker is re-checked every
      60 seconds and on every visibilitychange, and a split-screen build takes minutes. The banner
      is z-index 100000 — above the result sheet (50000) and above the rescue sheet (99999) — has
@@ -25538,7 +25538,7 @@ function hyThreadHtml(){
   if (!s.reading) {
     const lastB = t.blocks.length ? t.blocks[t.blocks.length - 1] : null;
     h += (s.kind === 'text' ? '<div class="hy-say">Good one. Pick a twist</div>' : '') + '<div class="hy-label">Make it yours</div><div class="hy-grid">'
-      + hyTwists(s).map(m => '<button type="button" class="hy-pill' + ((lastB ? lastB.twist === m.id : s.pre === m.id) ? ' on' : '') + '" data-twist="' + m.id + '"'
+      + hyTwists(s).map(m => '<button type="button" class="hy-pill' + ((lastB ? lastB.twist === m.id : s.pre === m.id) ? ' on' : '') + (m.id === 'remix' ? ' hy-main' : '') + '" data-twist="' + m.id + '"'
         + (busy ? ' disabled aria-disabled="true"' : '') + ' onclick="hyTwist(\'' + m.id + '\')">' + hyE(m.label) + '</button>').join('') + '</div>';
   }
   const lastIdx = t.blocks.length - 1;

@@ -221,7 +221,7 @@ function feedReady() { V('_cf.brandId = "b1"'); c.cfApply(FEED()); }
   {
     const h = main();
     ok(/Your version <span class="hy-tag">My take<\/span>/.test(h) && h.includes('V1 SCRIPT') && /class="hy-hook">Hot take\.</.test(h) && /cap one/.test(h) && /#water/.test(h), '5 "Your version · My take" with the existing renderer fields (hook, script, caption, hashtags)');
-    ok(/class="hy-pill on" data-twist="remix"/.test(h), '5 the picked twist is highlighted');
+    ok(/class="hy-pill on( hy-main)?" data-twist="remix"/.test(h), '5 the picked twist is highlighted');
     ok(els.hyBar.hidden === false && /onclick="hyFilm\(\)"/.test(els.hyBar.innerHTML) && /onclick="hyCopy\(this\)"/.test(els.hyBar.innerHTML) && els.hyIn.getAttribute('placeholder') === 'Ask for changes…',
       '5 the sticky bar [Film it][copy] appears; the input now says "Ask for changes…"');
     ok(/onclick="hyMenu\(\)"/.test(h), '5 a "⋯" holds the secondary actions');

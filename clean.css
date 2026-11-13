@@ -1871,6 +1871,7 @@ hr { border-color: var(--cs-line); }
   font: inherit; font-size: 16px; font-weight: 500; line-height: 1.2; cursor: pointer; }
 .aw-pill:hover, .hy-pill:hover { border-color: var(--cs-muted); }
 .aw-pill.on, .hy-pill.on { background: var(--cs-primary); color: var(--cs-on-primary); border-color: var(--cs-primary); }
+.hy-pill.hy-main:not(.on) { border: 1.5px solid var(--cs-text); font-weight: 600; }   /* v724: "My take" = the suggested pick */
 .aw-pill:disabled, .hy-pill:disabled { opacity: .55; cursor: progress; }
 .aw-bar,
 .hy-bar { display: flex; gap: 10px; border-top: 1px solid var(--cs-line); }
